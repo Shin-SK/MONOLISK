@@ -1,0 +1,7 @@
+venv/
+_old-v1-250227/
+frontend/.vscode/
+frontend/node_modules/
+
+.DS_Store
+.env

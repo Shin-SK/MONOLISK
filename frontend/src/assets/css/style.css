@@ -1,0 +1,466 @@
+@charset "UTF-8";
+@import url("https://use.typekit.net/dno3cfa.css");
+html, body, div, span, applet, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, img, ins, kbd, q, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, embed,
+figure, figcaption, footer, header, hgroup,
+menu, nav, output, ruby, section, summary,
+time, mark, audio, video {
+  margin: 0;
+  padding: 0;
+  border: none;
+  font-style: normal;
+  text-align: left;
+  zoom: 1;
+}
+
+article, aside, details, figcaption, figure,
+footer, header, hgroup, menu, nav, section {
+  display: block;
+}
+
+table {
+  border-collapse: collapse;
+  font-family: inherit;
+}
+
+h1, h2, h3, h4, h5 {
+  font-size: 100%;
+  font-weight: normal;
+  line-height: 1;
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: 16px;
+}
+
+input[type=button], input[type=text], input[type=submit] {
+  -webkit-appearance: none;
+  border-radius: 0;
+}
+
+textarea {
+  resize: none;
+  -webkit-appearance: none;
+  border-radius: 0;
+}
+
+th, td {
+  border-collapse: collapse;
+}
+
+table th, table td {
+  white-space: nowrap;
+}
+
+ul, ol {
+  list-style-type: none;
+}
+
+img {
+  vertical-align: text-bottom;
+  vertical-align: -webkit-baseline-middle;
+  max-width: 100%;
+  height: auto;
+  width: auto;
+}
+
+.h1, .h2, .h3, .h4, .h5, .h6, h1, h2, h3, h4, h5, h6 {
+  margin-bottom: unset;
+  font-weight: unset;
+  line-height: unset;
+}
+
+/* ----------------------------------------------------------------------------------------------------
+Super Form Reset
+A couple of things to watch out for:
+- IE8: If a text input doesn't have padding on all sides or none the text won't be centered.
+- The default border sizes on text inputs in all UAs seem to be slightly different. You're better off using custom borders.
+- You NEED to set the font-size and family on all form elements
+- Search inputs need to have their appearance reset and the box-sizing set to content-box to match other UAs
+- You can style the upload button in webkit using ::-webkit-file-upload-button
+- ::-webkit-file-upload-button selectors can't be used in the same selector as normal ones. FF and IE freak out.
+- IE: You don't need to fake inline-block with labels and form controls in IE. They function as inline-block.
+- By turning off ::-webkit-search-decoration, it removes the extra whitespace on the left on search inputs
+----------------------------------------------------------------------------------------------------*/
+input,
+label,
+select,
+button,
+textarea {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  display: inline-block;
+  vertical-align: middle;
+  white-space: normal;
+  background: none;
+  line-height: 1;
+  /* Browsers have different default form fonts */
+  font-size: unset;
+  font-family: Arial;
+}
+
+/* Remove the stupid outer glow in Webkit */
+input:focus {
+  outline: 0;
+}
+
+/* Box Sizing Reset
+-----------------------------------------------*/
+/* All of our custom controls should be what we expect them to be */
+input,
+textarea {
+  box-sizing: border-box;
+}
+
+/* These elements are usually rendered a certain way by the browser */
+button,
+input[type=reset],
+input[type=button],
+input[type=submit],
+input[type=checkbox],
+input[type=radio],
+select {
+  box-sizing: border-box;
+}
+
+/* Text Inputs
+-----------------------------------------------*/
+/* Button Controls
+-----------------------------------------------*/
+input[type=checkbox],
+input[type=radio] {
+  width: 13px;
+  height: 13px;
+}
+
+/* File Uploads
+-----------------------------------------------*/
+/* Search Input
+-----------------------------------------------*/
+/* Make webkit render the search input like a normal text field */
+input[type=search] {
+  -webkit-appearance: textfield;
+  -webkit-box-sizing: content-box;
+}
+
+/* Turn off the recent search for webkit. It adds about 15px padding on the left */
+::-webkit-search-decoration {
+  display: none;
+}
+
+/* Buttons
+-----------------------------------------------*/
+button,
+input[type=reset],
+input[type=button],
+input[type=submit] {
+  /* Fix IE7 display bug */
+  overflow: visible;
+  width: auto;
+}
+
+/* IE8 and FF freak out if this rule is within another selector */
+::-webkit-file-upload-button {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* Textarea
+-----------------------------------------------*/
+textarea {
+  /* Move the label to the top */
+  vertical-align: top;
+  /* Turn off scroll bars in IE unless needed */
+  overflow: auto;
+}
+
+/* Selects
+-----------------------------------------------*/
+select[multiple] {
+  /* Move the label to the top */
+  vertical-align: top;
+}
+
+/* 除算math.divを使うのに必要な記述 */
+html {
+  font-size: 62.5%;
+}
+
+body {
+  font-size: clamp(1.4rem, 1.3346938776rem + 0.2040816327vw, 1.6rem);
+}
+body a {
+  color: #0f0f0f;
+}
+body a :hover {
+  transition: 0.5s;
+  -webkit-transition: 0.5s; /* Chrome、Safari用 */
+  -moz-transition: 0.5s; /* Firefox用 */
+  -o-transition: 0.5s; /* Opera用 */
+  opacity: 0.8;
+}
+body img {
+  max-width: 100%;
+  height: auto;
+}
+body .mincho {
+  font-family: "Times New Roman", "YuMincho", "Hiragino Mincho ProN", "Yu Mincho", "MS PMincho", serif;
+  font-size: clamp(3rem, 2.9346938776rem + 0.2040816327vw, 3.2rem);
+}
+body section {
+  margin-bottom: 40px;
+  /* 2番目だけ変えたい */
+}
+body section::before { /* アンカーズレ調整 */
+  content: "";
+  display: block;
+  height: 100px; /* 調整したい高さ（固定ヘッダーの高さ） */
+  margin-top: -100px; /* heightと同じ分のネガティブマージン */
+  visibility: hidden;
+}
+body section:nth-of-type(2)::before {
+  height: unset;
+  margin-top: unset;
+}
+
+/* 非表示状態 */
+.inactive {
+  display: none;
+  opacity: 0;
+}
+
+/* 表示状態 */
+.active {
+  display: block;
+  opacity: 1;
+}
+
+body {
+  line-height: normal;
+}
+
+.base {
+  min-height: 100vh;
+}
+
+.header {
+  padding: 16px 0px;
+}
+.header h1 {
+  text-align: center;
+  font-size: clamp(3rem, 2.9346938776rem + 0.2040816327vw, 3.2rem);
+  font-family: "brother-1816", sans-serif;
+  font-weight: 800;
+  font-style: normal;
+  color: #2e2930;
+}
+
+.base-grid-wrapper {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  min-height: 100vh;
+}
+.base-grid-wrapper__inner {
+  padding: 0px 16px;
+}
+
+.aside {
+  background-color: #2e2930;
+  padding: 16px 0px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  justify-content: space-between;
+}
+.aside .footer {
+  color: white;
+  opacity: 20%;
+}
+.aside ul li a {
+  padding: 8px 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  text-decoration: none;
+  background-color: transparent;
+  transition: background-color 0.2s ease-in-out;
+  color: white;
+}
+.aside ul li a:hover {
+  background-color: #7d6f83;
+}
+
+.footer {
+  text-align: center;
+  padding: 16px;
+}
+
+h2 {
+  text-align: center;
+  font-weight: bold;
+}
+
+button, .button {
+  width: 100%;
+  background-color: #e8e8e8;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: black;
+  padding: 16px;
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+}
+button:hover, .button:hover {
+  background-color: #7d6f83;
+  color: white;
+}
+
+.reservation__list .menu {
+  margin-top: 40px;
+}
+.reservation__list .menu .area button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+.reservation__list .reservation-list .grid {
+  margin-top: 80px;
+}
+.reservation__list .reservation-list .grid .head, .reservation__list .reservation-list .grid .value {
+  display: grid;
+  grid-template-columns: 30px repeat(7, 1fr);
+  gap: 16px;
+}
+.reservation__list .reservation-list .grid .head {
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+.reservation__list .reservation-list .grid .value__outer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.reservation__list .reservation-list .grid .cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.reservation__list .reservation-list .grid .cell button {
+  border-radius: 100px;
+}
+.reservation__edit, .reservation__create {
+  margin-bottom: 160px;
+}
+.reservation__edit h2, .reservation__create h2 {
+  margin-bottom: 40px;
+}
+.reservation__edit .area, .reservation__create .area {
+  margin-bottom: 40px;
+}
+.reservation__edit .area .head, .reservation__create .area .head {
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 16px;
+}
+.reservation__edit .radio .value, .reservation__edit .checkbox .value, .reservation__create .radio .value, .reservation__create .checkbox .value {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: center;
+  gap: 40px;
+}
+.reservation__edit .radio .value__inner, .reservation__edit .checkbox .value__inner, .reservation__create .radio .value__inner, .reservation__create .checkbox .value__inner {
+  display: contents;
+}
+.reservation__edit .radio .value__inner--input, .reservation__edit .checkbox .value__inner--input, .reservation__create .radio .value__inner--input, .reservation__create .checkbox .value__inner--input {
+  display: none;
+}
+.reservation__edit .radio .value__inner--input:checked + .value__inner--label, .reservation__edit .checkbox .value__inner--input:checked + .value__inner--label, .reservation__create .radio .value__inner--input:checked + .value__inner--label, .reservation__create .checkbox .value__inner--input:checked + .value__inner--label {
+  background-color: #7d6f83;
+  color: white;
+}
+.reservation__edit .radio .value__inner--label, .reservation__edit .checkbox .value__inner--label, .reservation__create .radio .value__inner--label, .reservation__create .checkbox .value__inner--label {
+  width: 100%;
+  padding: 16px;
+  display: block;
+  text-align: center;
+  cursor: pointer;
+  background-color: #e8e8e8;
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+}
+.reservation__edit .radio .value__inner--label:hover, .reservation__edit .checkbox .value__inner--label:hover, .reservation__create .radio .value__inner--label:hover, .reservation__create .checkbox .value__inner--label:hover {
+  background-color: #7d6f83;
+  color: white;
+}
+.reservation__edit .text .box, .reservation__edit .calendar .box, .reservation__edit .number .box, .reservation__create .text .box, .reservation__create .calendar .box, .reservation__create .number .box {
+  display: grid;
+  grid-template-columns: 1fr 3fr;
+  gap: 40px;
+  align-items: center;
+}
+.reservation__edit .text .box input, .reservation__edit .calendar .box input, .reservation__edit .number .box input, .reservation__create .text .box input, .reservation__create .calendar .box input, .reservation__create .number .box input {
+  background-color: #e8e8e8;
+  padding: 16px;
+}
+.reservation__edit .area--reservation_amount, .reservation__create .area--reservation_amount {
+  margin-top: 80px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 40px;
+  border: 1px #2e2930 solid;
+}
+.reservation__edit .area--reservation_amount .box, .reservation__create .area--reservation_amount .box {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  gap: 16px;
+}
+.reservation__edit .area--reservation_amount .box .head, .reservation__create .area--reservation_amount .box .head {
+  font-size: clamp(2rem, 1.9346938776rem + 0.2040816327vw, 2.2rem);
+  font-weight: bold;
+}
+.reservation__edit .area--reservation_amount .box .cell, .reservation__create .area--reservation_amount .box .cell {
+  font-size: clamp(4rem, 3.9346938776rem + 0.2040816327vw, 4.2rem);
+  font-weight: bold;
+}
+.reservation__edit .area--input .wrap, .reservation__create .area--input .wrap {
+  margin: 40px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  justify-content: flex-start;
+}
+.reservation__edit .area--input .wrap .box, .reservation__create .area--input .wrap .box {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  align-items: center;
+  margin-bottom: 40px;
+}
+.reservation__edit .area--input .wrap .box label, .reservation__create .area--input .wrap .box label {
+  font-weight: bold;
+}
+.reservation__edit .area--input .wrap .box input, .reservation__create .area--input .wrap .box input {
+  background-color: #e8e8e8;
+  padding: 16px;
+  width: 100%;
+}
+
+.d-contents {
+  display: contents;
+}/*# sourceMappingURL=style.css.map */

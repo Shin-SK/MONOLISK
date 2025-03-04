@@ -1,0 +1,127 @@
+@use "sass:math"; /* 除算math.divを使うのに必要な記述 */
+@use "sass:color";
+
+
+//----- color -----//
+
+$mc: #2e2930;
+$pink: #E8546B;
+$gray: #e8e8e8;
+$black: #0f0f0f;
+$lmc: color.adjust($mc, $lightness: 30%);
+
+//----- font-style -----//
+$gosic: system-ui;
+$mincho: "Times New Roman", "YuMincho", "Hiragino Mincho ProN", "Yu Mincho", "MS PMincho", serif;
+$cinzel: 'Cinzel', serif;
+$tegaki: 'Satisfy', cursive;
+
+//----- font-size -----//
+@mixin fs($fs_min) {
+$width_small: 320;
+$width_large: 1300;
+$fs_max: ($fs_min+2);
+$preferred_vw_base: math.div(($fs_max - $fs_min), ($width_large - $width_small));
+$preferred_vw: ($preferred_vw_base * 100) * 1vw;
+$preferred_rem: ($width_small * -1 * $preferred_vw_base + $fs_min) * .1rem;
+font-size: clamp($fs_min * .1rem, $preferred_rem + $preferred_vw, $fs_max * .1rem);
+}
+
+
+// ----- media screen ----- //
+$sp: 576px;
+$md: 768px;
+$pc: 1280px;
+@mixin sp {
+  @media screen and (max-width: ($sp)) {
+    @content;
+  }
+}
+@mixin md {
+    @media screen and (max-width: ($md)) {
+      @content;
+    }
+}
+@mixin pc {
+    @media screen and (max-width: ($pc)) {
+      @content;
+    }
+}
+
+$time: 0.5s;
+@mixin transition{
+    transition: $time;
+    -webkit-transition: $time; /* Chrome、Safari用 */
+    -moz-transition: $time; /* Firefox用 */
+    -o-transition: $time; /* Opera用 */
+}
+
+@mixin shadow{
+    box-shadow: 0px 0px 10px -5px #777777;
+}
+
+@mixin flex{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+html {font-size: 62.5%;}
+
+body{
+    @include fs(14);
+    a{
+        color: $black;
+        :hover{
+            @include transition();
+            opacity: 0.8;
+        }
+    }
+    img{
+        max-width: 100%;;
+        height: auto;
+    }
+    .mincho{
+      font-family: $mincho;
+      @include fs(30);
+  }
+    section{
+        margin-bottom: 40px;
+        &::before { /* アンカーズレ調整 */
+          content: "";
+          display: block;
+          height: 100px; /* 調整したい高さ（固定ヘッダーの高さ） */
+          margin-top: -100px; /* heightと同じ分のネガティブマージン */
+          visibility: hidden;
+        }
+        /* 2番目だけ変えたい */
+        &:nth-of-type(2)::before {
+            height: unset;
+            margin-top: unset;
+        }
+    }//section
+}
+
+
+@mixin shadow{
+  box-shadow: 0px 0px 15px -5px #777777;
+}
+
+/* 非表示状態 */
+.inactive {
+  display: none;
+  opacity: 0;
+}
+
+/* 表示状態 */
+.active {
+  display: block;
+  opacity: 1;
+}
+
+body{
+  line-height: normal;
+}
+
+
+

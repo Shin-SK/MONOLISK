@@ -1,0 +1,15 @@
+//----- font -----//
+
+@import url("https://use.typekit.net/dno3cfa.css");
+
+@mixin gotham{
+    font-family: "brother-1816", sans-serif;
+    font-weight: 800;
+    font-style: normal;
+}
+
+@mixin cinzel{
+    font-family: "cinzel", sans-serif;
+    font-weight: 400;
+    font-style: normal;
+}
