@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Reservation, Course, Menu, Discount, StorePricing
+from .models import Reservation, Course, Menu, Discount
 from account.models import StoreUser, CustomUser, Store
 
 class CourseSerializer(serializers.ModelSerializer):
@@ -17,23 +17,20 @@ class DiscountSerializer(serializers.ModelSerializer):
         model = Discount
         fields = ["id", "name", "amount"]
 
-class StorePricingSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = StorePricing
-        fields = ["id", "store", "course", "time_minutes", "price"]
 
+#######################
+# 読み取り専用 (GET用) #
+#######################
 class ReservationSerializer(serializers.ModelSerializer):
     """
-    予約の読み取り専用シリアライザ (GET時用)
-    例: 一覧や詳細を返す
+    GET時（一覧/詳細）の読み取り専用
     """
-    course = CourseSerializer(required=False, allow_null=True)
+
+    course = CourseSerializer(required=False)
     menus = MenuSerializer(many=True, required=False)
     store = serializers.SerializerMethodField()
     cast = serializers.SerializerMethodField()
     driver = serializers.SerializerMethodField()
-    store_user = serializers.SerializerMethodField()
-    discounts = DiscountSerializer(many=True, required=False)
 
     class Meta:
         model = Reservation
@@ -46,7 +43,7 @@ class ReservationSerializer(serializers.ModelSerializer):
             "store",
             "cast",
             "driver",
-            "store_user",
+            "store_user",        # 直接表示してもいいし get_store_user()にしてもいい
             "cast_received",
             "driver_received",
             "store_received",
@@ -77,22 +74,18 @@ class ReservationSerializer(serializers.ModelSerializer):
             return {"id": obj.driver.id, "full_name": obj.driver.full_name}
         return None
 
-    def get_store_user(self, obj):
-        if obj.store_user:
-            return {
-                "id": obj.store_user.id,
-                "nickname": obj.store_user.nickname
-            }
-        return None
 
+###############################
+# 新規作成 / 更新 (POST/PUT用) #
+###############################
 class ReservationCreateSerializer(serializers.ModelSerializer):
     """
-    新規作成/更新用シリアライザ (POST/PUT用)
-    モデルのすべてのフィールドを列挙し、
-    フロントが送ってくるフィールドをすべて書き込みできるようにする。
+    予約を新規作成/更新する際に使用するシリアライザ。
+    モデルの全フィールドを列挙し、
+    フロントが送ってくるデータに対応させる。
     """
 
-    # 外部キー関連: driver, store_user, cast, store, course など
+    # 外部キー関連
     driver = serializers.PrimaryKeyRelatedField(
         queryset=CustomUser.objects.filter(role='driver'),
         required=False,
@@ -119,7 +112,7 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
         allow_null=True
     )
 
-    # 多対多: menus, discounts
+    # 多対多
     menus = serializers.PrimaryKeyRelatedField(
         queryset=Menu.objects.all(),
         many=True,
@@ -144,7 +137,7 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2,
         required=False, allow_null=True
     )
-    membership_type = serializers.CharField(required=False, allow_blank=True)
+    membership_type = serializers.CharField(required=False)
     reservation_amount = serializers.DecimalField(
         max_digits=10, decimal_places=2,
         required=False, allow_null=True

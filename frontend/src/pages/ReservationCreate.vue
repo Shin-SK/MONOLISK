@@ -53,7 +53,7 @@
 	  <!-- 予約開始時間 -->
 	  <div>
 		<label>開始時刻</label>
-		<input type="datetime-local" v-model="formData.start_time" />
+		<input type="datetime-local" v-model="formData.start_time" required/>
 	  </div>
   
 	  <!-- 予約時間(分) -->
@@ -268,16 +268,16 @@
   
   // ==================== 予約作成(POST) ====================
   async function createReservation() {
-	try {
-	  const payload = { ...formData.value }
-	  // POST /reservations/
-	  await api.post('/reservations/', payload)
-	  alert('予約を作成しました')
-	  router.push('/reservations') // 一覧ページなどに遷移
-	} catch (e) {
-	  console.error('予約作成失敗', e)
-	  alert('作成に失敗しました')
-	}
+  try {
+    const payload = { ...formData.value }
+    console.log('送信payload:', JSON.stringify(payload))
+    const res = await api.post('/reservations/', payload)
+    alert('予約を作成しました')
+    router.push('/reservations')
+  } catch (e) {
+    console.error('予約作成失敗', e)
   }
+}
+
   </script>
   
