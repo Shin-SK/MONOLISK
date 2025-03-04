@@ -4,7 +4,6 @@ import Login from '@/pages/Login.vue'
 import Dashboard from '@/pages/Dashboard.vue'
 import ReservationList from '@/pages/ReservationList.vue'
 import ReservationDetail from '@/pages/ReservationDetail.vue'
-import ReservationEdit from '@/pages/ReservationEdit.vue'
 import ReservationCreate from '@/pages/ReservationCreate.vue'
 
 const routes = [
@@ -13,12 +12,12 @@ const routes = [
   { 
     path: '/dashboard', 
     component: Base,
-    children: [ // 子ルートを定義
+    children: [
       { path: '', component: Dashboard },
       { path: 'reservations', component: ReservationList },
       { path: 'reservations/create', component: ReservationCreate },
+      // ReservationDetail を「詳細＆編集ページ」として利用
       { path: 'reservations/:id', component: ReservationDetail },
-      { path: 'reservations/:id/edit', component: ReservationEdit }
     ]
   }
 ]

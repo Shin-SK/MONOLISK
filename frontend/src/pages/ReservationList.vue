@@ -19,7 +19,6 @@
           <div class="head__inner cell">コース</div>
           <div class="head__inner cell">料金</div>
           <div class="head__inner cell">ドライバー</div>
-          <div class="head__inner cell">編集</div>
           <div class="head__inner cell">詳細</div>
         </div>
         <div class="value__outer">
@@ -32,9 +31,6 @@
             <div class="value__inner cell">{{ reservation.driver ? reservation.driver.full_name : '未定' }}</div>
             <div class="value__inner cell">
               <button @click="$router.push(`/dashboard/reservations/${reservation.id}`)">詳細</button>
-            </div>
-            <div class="value__inner cell">
-              <button @click="$router.push(`/dashboard/reservations/${reservation.id}/edit/`)">編集</button>
             </div>
           </div>
         </div>
