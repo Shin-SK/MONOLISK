@@ -1,173 +1,81 @@
 <template>
 	<div class="reservation__create">
-	  <h2>予約作成</h2>
+	  <h2>新規予約</h2>
   
-	  <!-- ===== 店舗 (Store) ===== -->
-	  <div class="area radio store">
-		<div class="head">店舗</div>
-		<div class="value">
-		  <div class="value__inner" v-for="storeOption in storeOptions" :key="storeOption.id">
-			<input 
-			  type="radio" 
-			  v-model="formData.store" 
-			  :id="'radio-store-' + storeOption.id"
-			  :value="storeOption.id"
-			  @change="handleStoreChange"
-			/>
-			<label :for="'radio-store-' + storeOption.id">{{ storeOption.name }}</label>
-		  </div>
+	  <!-- ===== 予約名 (customer_name) ===== -->
+	  <div>
+		<label>予約名</label>
+		<input type="text" v-model="formData.customer_name" placeholder="予約名" />
+	  </div>
+  
+	  <!-- 店舗選択 -->
+	  <div>
+		<label>店舗</label>
+		<select v-model="selectedStoreId" @change="fetchStoreUsers">
+		  <option value="" disabled>--- 店舗を選択してください ---</option>
+		  <option v-for="store in storeOptions" :key="store.id" :value="store.id">
+			{{ store.name }}
+		  </option>
+		</select>
+	  </div>
+  
+	  <!-- StoreUser選択 (キャスト + ランク情報) -->
+	  <div v-if="storeUserOptions.length">
+		<label>キャスト (StoreUser)</label>
+		<select v-model="formData.store_user">
+		  <option value="" disabled>--- キャストを選択してください ---</option>
+		  <option
+			v-for="su in storeUserOptions"
+			:key="su.id"
+			:value="su.id"
+		  >
+			{{ su.full_name }} ({{ su.nickname }})
+			- ランク: {{ su.rank_name }} ☆{{ su.star_count }}
+		  </option>
+		</select>
+	  </div>
+  
+	  <!-- ドライバー選択 -->
+	  <div>
+		<label>ドライバー</label>
+		<select v-model="formData.driver">
+		  <option value="" disabled>--- ドライバーを選択してください ---</option>
+		  <option
+			v-for="drv in driverOptions"
+			:key="drv.id"
+			:value="drv.id"
+		  >
+			{{ drv.full_name }}
+		  </option>
+		</select>
+	  </div>
+  
+	  <!-- 予約開始時間 -->
+	  <div>
+		<label>開始時刻</label>
+		<input type="datetime-local" v-model="formData.start_time" />
+	  </div>
+  
+	  <!-- 予約時間(分) -->
+	  <div>
+		<label>予約時間(分)</label>
+		<input type="number" v-model.number="formData.time_minutes" />
+	  </div>
+  
+	  <!-- メニュー一覧 (チェックボックス) -->
+	  <div>
+		<label>メニュー</label>
+		<div v-for="menu in menuOptions" :key="menu.id">
+		  <input
+			type="checkbox"
+			:value="menu.id"
+			v-model="formData.menus"
+		  />
+		  {{ menu.name }} ({{ menu.price }}円)
 		</div>
 	  </div>
   
-	  <!-- ===== キャスト (Cast) ===== -->
-	  <div class="area radio cast">
-		<div class="head">キャスト</div>
-		<div class="value">
-		  <div class="value__inner" v-for="castOption in castOptions" :key="castOption.id">
-			<input 
-			  type="radio" 
-			  v-model="formData.cast" 
-			  :id="'radio-cast-' + castOption.id"
-			  :value="castOption.id"
-			/>
-			<label
-			  v-for="(store, index) in castOption.stores" 
-			  :key="index"
-			  :for="'radio-cast-' + castOption.id"
-			>
-			  {{ store.nickname }}
-			</label>
-			<!-- 店舗情報がない場合 -->
-			<label 
-			  v-if="!castOption.stores || castOption.stores.length === 0" 
-			  :for="'radio-cast-' + castOption.id"
-			>
-			  {{ castOption.nickname }}
-			</label>
-		  </div>
-		</div>
-	  </div>
-  
-	  <!-- ===== ドライバー (Driver) ===== -->
-	  <div class="area radio">
-		<div class="head">ドライバー</div>
-		<div class="value">
-		  <div class="value__inner" v-for="driverOption in driverOptions" :key="driverOption.id">
-			<input 
-			  type="radio" 
-			  v-model="formData.driver" 
-			  :id="'radio-driver-' + driverOption.id"
-			  :value="driverOption.id"
-			/>
-			<label :for="'radio-driver-' + driverOption.id">{{ driverOption.full_name }}</label>
-		  </div>
-		</div>
-	  </div>
-  
-	  <!-- ===== 顧客名 (customer_name) ===== -->
-	  <div class="area text">
-		<div class="head">ご予約名</div>
-		<input v-model="formData.customer_name" type="text" />
-	  </div>
-  
-	  <!-- ===== 開始時間 (start_time) ===== -->
-	  <div class="area calendar">
-		<div class="head">ご予約日時</div>
-		<input v-model="formData.start_time" type="datetime-local" />
-	  </div>
-  
-	  <!-- ===== コース (course) ===== -->
-	  <div class="area radio course">
-		<div class="head">コース</div>
-		<div class="value">
-		  <div class="value__inner" v-for="courseOption in courseOptions" :key="courseOption.id">
-			<input 
-			  type="radio" 
-			  v-model="formData.course" 
-			  :id="'radio-course-' + courseOption.id"
-			  :value="courseOption.id"
-			/>
-			<label :for="'radio-course-' + courseOption.id">
-			  {{ courseOption.name }} ({{ courseOption.price }}円)
-			</label>
-		  </div>
-		</div>
-	  </div>
-  
-	  <!-- ===== メニュー (menus) ===== -->
-	  <div class="area checkbox menu">
-		<div class="head">メニュー</div>
-		<div class="value">
-		  <div class="value__inner" v-for="menuOption in menuOptions" :key="menuOption.id">
-			<input 
-			  type="checkbox" 
-			  v-model="formData.menus" 
-			  :id="'checkbox-menu-' + menuOption.id"
-			  :value="menuOption.id"
-			/>
-			<label :for="'checkbox-menu-' + menuOption.id">
-			  {{ menuOption.name }} ({{ menuOption.price }}円)
-			</label>
-		  </div>
-		</div>
-	  </div>
-  
-	  <!-- ===== 会員種別 (membership_type) ===== -->
-	  <div class="area radio membership">
-		<div class="head">会員種別</div>
-		<div class="value">
-		  <label>
-			<input 
-			  type="radio" 
-			  v-model="formData.membership_type" 
-			  value="new"
-			/>
-			新規
-		  </label>
-		  <label>
-			<input 
-			  type="radio" 
-			  v-model="formData.membership_type" 
-			  value="general"
-			/>
-			一般会員
-		  </label>
-		  <label>
-			<input 
-			  type="radio" 
-			  v-model="formData.membership_type" 
-			  value="member"
-			/>
-			本会員
-		  </label>
-		</div>
-	  </div>
-  
-	  <!-- ===== 予約時間 (time_minutes) ===== -->
-	  <div class="area number">
-		<div class="head">予約時間(分)</div>
-		<input v-model.number="formData.time_minutes" type="number" />
-	  </div>
-  
-	  <!-- ===== 割引 (discounts) ===== -->
-	  <div class="area checkbox discount">
-		<div class="head">割引</div>
-		<div class="value">
-		  <div class="value__inner" v-for="discountOption in discountOptions" :key="discountOption.id">
-			<input
-			  type="checkbox"
-			  v-model="formData.discounts"
-			  :value="discountOption.id"
-			  :id="'checkbox-discount-' + discountOption.id"
-			/>
-			<label :for="'checkbox-discount-' + discountOption.id">
-			  {{ discountOption.name }} ({{ discountOption.amount }}円引き)
-			</label>
-		  </div>
-		</div>
-	  </div>
-  
-	  <!-- ===== その他 (enrollment_fee, etc.) ===== -->
+	  <!-- 追加オプション (例: 入会金や写真指名など) -->
 	  <div class="area checkbox">
 		<div class="head">その他</div>
 		<div class="value">
@@ -198,181 +106,176 @@
 		</div>
 	  </div>
   
-	  <!-- ===== 予約金額 (reservation_amount) ===== -->
-	  <div class="area--reservation_amount">
-		<div class="head">予約金額</div>
-		<div>{{ formData.reservation_amount }}</div>
+	  <!-- 予約金額表示 -->
+	  <div>
+		<label>予約金額</label>
+		{{ formData.reservation_amount }}
 	  </div>
   
-	  <!-- ===== キャスト・ドライバー・店舗受取金 ===== -->
-	  <div class="area--input">
-		<div>
-		  <label>キャスト受取金</label>
-		  <input v-model.number="formData.cast_received" type="number" />
-		</div>
-		<div>
-		  <label>ドライバー受取金</label>
-		  <input v-model.number="formData.driver_received" type="number" />
-		</div>
-		<div>
-		  <label>店舗受取金</label>
-		  <input v-model.number="formData.store_received" type="number" />
-		</div>
-	  </div>
-  
-	  <!-- ===== 計算ボタン & 作成ボタン ===== -->
+	  <!-- 「計算」ボタン -->
 	  <button @click="calcReservation">計算</button>
-	  <button class="submit" @click="createReservation">作成</button>
+  
+	  <!-- 「作成」ボタン -->
+	  <button @click="createReservation">作成</button>
 	</div>
   </template>
   
   <script setup>
   import { ref, onMounted } from 'vue'
   import { useRouter } from 'vue-router'
-  import api from '@/api'
+  import api from '@/api' // Axiosインスタンスなど
   
   const router = useRouter()
   
-  // 選択肢一覧 (Store, Driver, Course, Menu, Discount)
-  const storeOptions = ref([])
-  const castOptions = ref([])
-  const driverOptions = ref([])
-  const courseOptions = ref([])
-  const menuOptions = ref([])
-  const discountOptions = ref([])
+  // ==================== 各種リスト ====================
+  const storeOptions = ref([])       // 店舗一覧
+  const storeUserOptions = ref([])   // 店舗×キャスト(StoreUser)一覧
+  const driverOptions = ref([])      // ドライバー一覧
+  const menuOptions = ref([])        // メニュー一覧
+  const rankOptions = ref([])        // ランク一覧 (price_60, price_75等を持つ)
   
-  // フォームデータ
+  // ==================== フォームデータ ====================
+  const selectedStoreId = ref(null)  // 選択された「店舗ID」
+  
   const formData = ref({
-	customer_name: '',
-	start_time: '',
-	store: null,
-	cast: null,
-	driver: null,
-	course: null,
-	menus: [],
-	membership_type: 'general',
-	time_minutes: 0,
-	reservation_amount: 0,
-	discounts: [],
-	enrollment_fee: false,
-	enrollment_fee_discounted: false,
-	photo_nomination_fee: false,
-	photo_nomination_fee_discounted: false,
-	regular_nomination_fee: false,
-	regular_nomination_fee_discounted: false,
-	cast_received: 0,
-	driver_received: 0,
-	store_received: 0,
+	customer_name: '',          // 予約名
+	store_user: null,           // キャスト(StoreUser)
+	driver: null,               // ドライバーID
+	start_time: '',             // 予約開始日時
+	time_minutes: 60,           // 予約時間(分)
+	menus: [],                  // 選択されたメニューIDの配列
+	enrollment_fee: false,      
+	photo_nomination_fee: false, 
+	// ...他のフラグやフィールド
+	reservation_amount: 0       // 計算結果
   })
   
-  // 初期データ取得
+  // ==================== マウント時処理 ====================
   onMounted(async () => {
-	await fetchInitialData()
-	// 全キャスト取得したいなら、下記のような実装でもOK
-	// const res = await api.get('/accounts/users/')
-	// castOptions.value = res.data.filter(user => user.role === 'cast')
+	// ランク一覧
+	await fetchRanks()
+	// 店舗一覧
+	await fetchStores()
+	// メニュー一覧
+	await fetchMenus()
+	// ドライバー一覧
+	await fetchDrivers()
   })
   
-  async function fetchInitialData() {
+  // ==================== API取得関数 ====================
+  async function fetchRanks() {
 	try {
-	  const [storeRes, driverRes, courseRes, menuRes, discountRes] = await Promise.all([
-		api.get('/accounts/stores/'),
-		api.get('/accounts/users/?role=driver'),
-		api.get('/reservations/courses/'),
-		api.get('/reservations/menus/'),
-		api.get('/reservations/discounts/')
-	  ])
-	  storeOptions.value = storeRes.data
-	  driverOptions.value = driverRes.data
-	  courseOptions.value = courseRes.data
-	  menuOptions.value = menuRes.data
-	  discountOptions.value = discountRes.data
-	} catch (e) {
-	  console.error('初期データ取得失敗:', e)
+	  const { data } = await api.get('/accounts/ranks/')
+	  rankOptions.value = data
+	} catch (err) {
+	  console.error('ランク一覧取得失敗', err)
 	}
   }
   
-  // 店舗が変わったら、該当のキャストリストを取得
-  async function handleStoreChange() {
-	if (!formData.value.store) {
-	  castOptions.value = []
-	  formData.value.cast = null
+  async function fetchStores() {
+	try {
+	  const { data } = await api.get('/accounts/stores/')
+	  storeOptions.value = data
+	} catch (e) {
+	  console.error('店舗一覧取得失敗', e)
+	}
+  }
+  
+  async function fetchMenus() {
+	try {
+	  const { data } = await api.get('/reservations/menus/')
+	  menuOptions.value = data
+	} catch (e) {
+	  console.error('メニュー一覧取得失敗', e)
+	}
+  }
+  
+  // ★ ドライバー一覧取得
+  async function fetchDrivers() {
+	try {
+	  // 例: /accounts/users/?role=driver
+	  const { data } = await api.get('/accounts/users/?role=driver')
+	  driverOptions.value = data
+	} catch (e) {
+	  console.error('ドライバー一覧取得失敗', e)
+	}
+  }
+  
+  // 店舗を選んだら StoreUser一覧を取得
+  async function fetchStoreUsers() {
+	if (!selectedStoreId.value) {
+	  storeUserOptions.value = []
+	  formData.value.store_user = null
 	  return
 	}
 	try {
-	  const res = await api.get(`/accounts/casts/?store=${formData.value.store}`)
-	  castOptions.value = res.data.casts
-	} catch (error) {
-	  console.error('店舗に紐づくキャスト取得失敗:', error)
+	  const { data } = await api.get(`/accounts/store-users/?store=${selectedStoreId.value}`)
+	  storeUserOptions.value = data
+	  formData.value.store_user = null
+	} catch (e) {
+	  console.error('StoreUser一覧取得失敗', e)
 	}
   }
   
-  // ====== 計算ロジック (フロントで実施) ======
+  // ==================== 計算処理 ====================
   function calcReservation() {
+	console.log("calcReservation called!")
 	let total = 0
   
-	// コースの価格
-	const chosenCourse = courseOptions.value.find(c => c.id === formData.value.course)
-	if (chosenCourse) {
-	  total += Number(chosenCourse.price) || 0
-	}
-  
-	// メニューの価格合計
+	// 1) メニュー加算
 	formData.value.menus.forEach(menuId => {
-	  const menuItem = menuOptions.value.find(m => m.id === menuId)
-	  if (menuItem) {
-		total += Number(menuItem.price) || 0
-	  }
+	  const item = menuOptions.value.find(m => m.id === menuId)
+	  if (item) total += Number(item.price) || 0
 	})
   
-	// 予約時間 × α (例: 1分100円)
-	if (formData.value.time_minutes) {
-	  total += formData.value.time_minutes * 100
+	// 2) 入会金など
+	if (formData.value.enrollment_fee) {
+	  total += 5000
+	}
+	if (formData.value.photo_nomination_fee) {
+	  total += 2000
 	}
   
-	// 入会金などチェック
-	// - 入会金 (例: 3000円)
-	if (formData.value.enrollment_fee && !formData.value.enrollment_fee_discounted) {
-	  total += 3000
-	}
-	// 写真指名(500円)
-	if (formData.value.photo_nomination_fee && !formData.value.photo_nomination_fee_discounted) {
-	  total += 500
-	}
-	// 本指名(1000円)
-	if (formData.value.regular_nomination_fee && !formData.value.regular_nomination_fee_discounted) {
-	  total += 1000
-	}
-  
-	// 割引の合計額を減算
-	formData.value.discounts.forEach(discountId => {
-	  const discountItem = discountOptions.value.find(d => d.id === discountId)
-	  if (discountItem) {
-		total -= Number(discountItem.amount) || 0
+	// 3) ランク (StoreUser) 計算
+	const chosenSU = storeUserOptions.value.find(su => su.id === formData.value.store_user)
+	if (chosenSU) {
+	  const chosenRank = rankOptions.value.find(r => r.id === chosenSU.rank_id)
+	  if (chosenRank) {
+		// 時間別料金
+		const t = formData.value.time_minutes
+		if (t === 60) {
+		  total += chosenRank.price_60
+		} else if (t === 75) {
+		  total += chosenRank.price_75
+		} else if (t === 90) {
+		  total += chosenRank.price_90
+		} else if (t === 120) {
+		  total += chosenRank.price_120
+		} else if (t === 150) {
+		  total += chosenRank.price_150
+		} else if (t === 180) {
+		  total += chosenRank.price_180
+		}
+		// 星数 × plus_per_star
+		const starCount = chosenSU.star_count || 0
+		total += starCount * chosenRank.plus_per_star
 	  }
-	})
+	}
   
-	// 計算結果をフォームに反映
 	formData.value.reservation_amount = total
-  
-	// ※キャスト/ドライバー/店舗受取金を自動計算したいならここで分配してもOK
-	// 今回はサンプルとして省略
+	console.log("計算結果:", total)
   }
   
-  // ====== 作成(POST) ======
+  // ==================== 予約作成(POST) ====================
   async function createReservation() {
 	try {
-	  // 必要ならcalcReservation() を自動的に呼ぶ
-	  // calcReservation()
-  
 	  const payload = { ...formData.value }
-	  // 新規POST
-	  const res = await api.post('/reservations/', payload)
+	  // POST /reservations/
+	  await api.post('/reservations/', payload)
 	  alert('予約を作成しました')
-	  // 作成したIDにリダイレクト
-	  router.push(`/dashboard/reservations/${res.data.id}`)
-	} catch (error) {
-	  console.error('予約作成失敗:', error)
+	  router.push('/reservations') // 一覧ページなどに遷移
+	} catch (e) {
+	  console.error('予約作成失敗', e)
 	  alert('作成に失敗しました')
 	}
   }

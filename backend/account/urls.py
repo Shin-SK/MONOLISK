@@ -1,13 +1,18 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import UserViewSet, StoreCastsAPIView, StoreListView
+from .views import (
+    UserViewSet, StoreUserViewSet, 
+    StoreListView, StoreCastsAPIView,
+    RankViewSet  # 追加
+)
 
-# DRFのルーターを作成
 router = DefaultRouter()
-router.register(r'users', UserViewSet)  # /api/accounts/users/
+router.register(r'users', UserViewSet, basename='users')
+router.register(r'store-users', StoreUserViewSet, basename='store-users')
+router.register(r'ranks', RankViewSet, basename='ranks')  # 追加
 
 urlpatterns = [
-    path('', include(router.urls)),  # ViewSetのURLを自動生成
-    path("casts/", StoreCastsAPIView.as_view(), name="store-casts"),  # 🔥 追加
-    path("stores/", StoreListView.as_view(), name="store-list"),  # 🔥 店舗一覧を追加
+    path('stores/', StoreListView.as_view(), name='store-list'),
+    path('casts/', StoreCastsAPIView.as_view(), name='store-casts'),
+    path('', include(router.urls)),
 ]

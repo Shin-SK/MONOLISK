@@ -12,13 +12,17 @@ from .serializers import (
 from account.models import CustomUser, Store
 
 class ReservationViewSet(viewsets.ModelViewSet):
+    """
+    予約のCRUDを行うViewSet
+    """
     queryset = Reservation.objects.all().order_by("start_time")
 
     def get_serializer_class(self):
-        if self.action == 'create':
+        # POST(create), PUT/PATCH(update) は書き込みシリアライザ
+        if self.action in ['create', 'update', 'partial_update']:
             return ReservationCreateSerializer
+        # それ以外 (list/retrieve) は読み取り専用
         return ReservationSerializer
-
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()

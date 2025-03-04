@@ -1,16 +1,27 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import StoreUser, Store
+from .models import StoreUser, Store, Rank
 
 User = get_user_model()
 
 class StoreUserSerializer(serializers.ModelSerializer):
-    store_name = serializers.CharField(source="store.name")  # 店舗名
-    nickname = serializers.CharField()  # ニックネーム
+    user_id = serializers.ReadOnlyField(source='user.id')
+    full_name = serializers.ReadOnlyField(source='user.full_name')
+    nickname = serializers.CharField()
+    # 追加: rankやstar_countを返したければここで定義
+    rank_name = serializers.ReadOnlyField(source='rank.name', default=None)
+    star_count = serializers.IntegerField(default=0)
 
     class Meta:
         model = StoreUser
-        fields = ["store_name", "nickname"]
+        fields = [
+          'id',  # ← StoreUser PK
+          'user_id',
+          'full_name',
+          'nickname',
+          'rank_name',
+          'star_count'
+        ]
 
 
 class StoreSerializer(serializers.ModelSerializer):
@@ -27,17 +38,29 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ["id", "username", "full_name", "role", "stores"]  # `stores` を追加
 
 
+
 class StoreUserCastSerializer(serializers.ModelSerializer):
-    """
-    店舗に紐づく User（role=cast）を取得する際、
-    storeごとのニックネームを返す。
-    """
+    id = serializers.IntegerField(read_only=True)
     user_id = serializers.IntegerField(source='user.id')
     full_name = serializers.CharField(source='user.full_name')
+    nickname = serializers.CharField()
+
+    rank_id = serializers.IntegerField(source='rank.id', allow_null=True)  # ← 追加
+    rank_name = serializers.ReadOnlyField(source='rank.name', default=None)
+    star_count = serializers.IntegerField(default=0)
 
     class Meta:
         model = StoreUser
-        fields = ['user_id', 'nickname', 'full_name']
+        fields = [
+            'id',
+            'user_id',
+            'nickname',
+            'full_name',
+            'rank_id',     # rankのPK
+            'rank_name',   # rankの名称
+            'star_count'
+        ]
+
 
 
 class CastWithNicknamesSerializer(serializers.ModelSerializer):
@@ -52,3 +75,21 @@ class CastWithNicknamesSerializer(serializers.ModelSerializer):
         # obj.storeuser_set.all() で関連するStoreUserレコードを取得し、
         # その中のnicknameを抽出
         return [store_user.nickname for store_user in obj.storeuser_set.all()]
+
+
+
+class RankSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Rank
+        fields = [
+            'id',
+            'name',
+            'price_60',
+            'price_75',
+            'price_90',
+            'price_120',
+            'price_150',
+            'price_180',
+            'price_extension_30',
+            'plus_per_star',
+        ]

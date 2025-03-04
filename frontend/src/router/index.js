@@ -3,7 +3,7 @@ import Base from '@/layouts/Base.vue'
 import Login from '@/pages/Login.vue'
 import Dashboard from '@/pages/Dashboard.vue'
 import ReservationList from '@/pages/ReservationList.vue'
-import ReservationDetail from '@/pages/ReservationDetail.vue'
+import ReservationForm from '@/pages/ReservationForm.vue'
 import ReservationCreate from '@/pages/ReservationCreate.vue'
 
 const routes = [
@@ -17,7 +17,7 @@ const routes = [
       { path: 'reservations', component: ReservationList },
       { path: 'reservations/create', component: ReservationCreate },
       // ReservationDetail を「詳細＆編集ページ」として利用
-      { path: 'reservations/:id', component: ReservationDetail },
+      { path: 'reservations/:id', component: ReservationForm },
     ]
   }
 ]

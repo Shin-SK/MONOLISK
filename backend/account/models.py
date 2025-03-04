@@ -1,11 +1,31 @@
-from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.contrib.auth.models import AbstractUser
 
 class Store(models.Model):
     name = models.CharField(max_length=255, unique=True, verbose_name="店舗名")
-
     def __str__(self):
         return self.name
+
+class Rank(models.Model):
+    """
+    キャストのランク。各時間帯の基本料金や星ごとの加算額を管理
+    """
+    name = models.CharField(max_length=50, unique=True)  # "Luxury", "Black", "Platinum" など
+    
+    price_60 = models.IntegerField(default=0)
+    price_75 = models.IntegerField(default=0)
+    price_90 = models.IntegerField(default=0)
+    price_120 = models.IntegerField(default=0)
+    price_150 = models.IntegerField(default=0)
+    price_180 = models.IntegerField(default=0)
+    
+    price_extension_30 = models.IntegerField(default=0)
+    
+    plus_per_star = models.IntegerField(default=1000)
+    
+    def __str__(self):
+        return self.name
+
 
 class CustomUser(AbstractUser):
     ROLE_CHOICES = (
@@ -14,10 +34,9 @@ class CustomUser(AbstractUser):
         ('driver', 'ドライバー'),
         ('cast', 'キャスト'),
     )
-
     full_name = models.CharField(max_length=255, verbose_name="氏名", blank=True, null=True)
     role = models.CharField(max_length=50, choices=ROLE_CHOICES, default='staff')
-    stores = models.ManyToManyField("Store", through="StoreUser", related_name="users")  # 🔥 `through=` を適用
+    stores = models.ManyToManyField("Store", through="StoreUser", related_name="users")  
 
     def save(self, *args, **kwargs):
         # スーパーユーザーなら role を自動で "admin" にする
@@ -29,12 +48,39 @@ class CustomUser(AbstractUser):
         return ", ".join([f"{su.store.name}：{su.nickname}" for su in self.storeuser_set.all()])
 
     def __str__(self):
-        return f"{self.username} ({self.get_role_display()})"
+        return self.full_name or self.username
 
-class StoreUser(models.Model):  # 🔥 `CustomUser` の後に定義
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    store = models.ForeignKey(Store, on_delete=models.CASCADE)
-    nickname = models.CharField(max_length=255, verbose_name="ニックネーム")
+
+
+
+class StoreUser(models.Model):
+    user = models.ForeignKey(
+        CustomUser, 
+        on_delete=models.CASCADE,
+        verbose_name="キャスト"  # ← 表示ラベルを変更
+    )
+    store = models.ForeignKey(
+        Store, 
+        on_delete=models.CASCADE,
+        verbose_name="店舗"
+    )
+    rank = models.ForeignKey(
+        Rank, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        verbose_name="ランク"
+    )
+    star_count = models.IntegerField(default=0, verbose_name="☆数")
+    nickname = models.CharField(
+        max_length=255,
+        verbose_name="ニックネーム",
+        blank=True, 
+        null=True
+    )
 
     def __str__(self):
-        return f"{self.store.name}：{self.nickname}"
+        info = f"{self.user} / {self.store.name}"
+        if self.rank:
+            info += f" / Rank: {self.rank.name}, ☆ x {self.star_count}"
+        return info
