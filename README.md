@@ -1,1 +1,0 @@
-# SHINDRA Project
