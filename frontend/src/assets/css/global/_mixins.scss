@@ -6,7 +6,7 @@
 
 $mc: #2e2930;
 $pink: #E8546B;
-$gray: #e8e8e8;
+$gray: #ededed;
 $black: #0f0f0f;
 $lmc: color.adjust($mc, $lightness: 30%);
 
@@ -124,4 +124,8 @@ body{
 }
 
 
-
+@mixin fa($unicode) {
+  font-family: "Font Awesome 5 Free";
+  font-weight: 900;
+  content: "#{$unicode}";
+}

@@ -43,20 +43,7 @@
 		</select>
 	  </div>
   
-	  <!-- ドライバー選択 -->
-	  <div>
-		<label>ドライバー</label>
-		<select v-model="formData.driver">
-		  <option value="" disabled>--- ドライバーを選択してください ---</option>
-		  <option
-			v-for="drv in driverOptions"
-			:key="drv.id"
-			:value="drv.id"
-		  >
-			{{ drv.full_name }}
-		  </option>
-		</select>
-	  </div>
+
   
 	  <!-- 予約開始時間 -->
 	  <div>
@@ -91,7 +78,7 @@
 		  {{ menu.name }} ({{ menu.price }}円)
 		</div>
 	  </div>
-  
+
 	  <!-- 追加オプション (入会金, 写真指名など) -->
 	  <div class="area checkbox">
 		<div class="head">その他</div>
@@ -121,6 +108,21 @@
 			本指名割引
 		  </div>
 		</div>
+	  </div>
+
+	  <!-- ドライバー選択 -->
+	  <div>
+		<label>ドライバー</label>
+		<select v-model="formData.driver">
+		  <option value="" disabled>--- ドライバーを選択してください ---</option>
+		  <option
+			v-for="drv in driverOptions"
+			:key="drv.id"
+			:value="drv.id"
+		  >
+			{{ drv.full_name }}
+		  </option>
+		</select>
 	  </div>
   
 	  <!-- キャスト受取金 / ドライバー受取金 / 店舗受取金 -->

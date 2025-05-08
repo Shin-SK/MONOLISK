@@ -6,7 +6,10 @@ export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+      '@': path.resolve(__dirname, 'src') // これで `@` が `src/` を指すようになる
+    }
+  },
+  css: {
+    devSourcemap: true
   },
 });

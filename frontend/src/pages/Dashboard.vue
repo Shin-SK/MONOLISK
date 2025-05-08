@@ -1,7 +1,7 @@
 <template>
 	<div class="dashboard">
 	  <h2>ダッシュボード</h2>
-	  <p>ようこそ, {{ user.username }} さん</p>
+    <p v-if="user">ようこそ, {{ user.username }} さん</p>
 	  <button @click="logout">ログアウト</button>
 	</div>
   </template>

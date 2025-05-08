@@ -2,152 +2,464 @@
 @use "sass:color";
 
 
-.reservation{
-	&__list{
-		.menu{
-			margin-top: 40px;
-			.area{
-				button{
-					@include flex();
-					gap: 8px;
-				}
-			}
-		}
-		.reservation-list{
-			.grid{
-				margin-top: 80px;
-				.head, .value{
-					display: grid;
-					grid-template-columns: 30px repeat(7,1fr);
-					gap: 16px;
-				}
-				.head{
-					font-weight: bold;
-					margin-bottom: 16px;
-					&__inner{}
-				}
-				.value{
-					&__outer{
-						display: flex;
-						flex-direction: column;
-						gap: 16px;
-					}
-				}
-				.cell{
-					display: flex;
-					align-items: center;
-					justify-content: flex-start;
-					button{
-						border-radius: 100px;
-					}
-				}
-			}
-		}
-	}
-	&__edit, &__create{
-		margin-bottom: 160px;
-		h2{
-			margin-bottom: 40px;
-		}
-		.area{
-			margin-bottom: 40px;
-			.head{
-				font-weight: bold;
-				text-align: center;
-				margin-bottom: 16px;
-			}
-		}
-		.radio, .checkbox{
-			.value{
-				display:grid;
-				grid-template-columns: repeat(4,1fr);
-				align-items: center;
-				gap: 40px;
-				&__inner{
-					display: contents;
-					&--input{
-						display: none;
-						&:checked + .value__inner--label{
-							background-color: $lmc;
-							color: white;
-						}
-					}
-					&--label{
-						width: 100%;
-						padding: 16px;
-						display: block;
-						text-align: center;
-						cursor: pointer;
-						background-color: $gray;
-						transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
-						&:hover{
-							background-color: $lmc;
-							color: white;
-						}
-					}
-				}
-			}
-		}//radio
-		.text, .calendar, .number{
-			.box{
-				display: grid;
-				grid-template-columns: 1fr 3fr;
-				gap: 40px;
-				align-items: center;
-				input{
-					background-color: $gray;
-					padding: 16px;
-				}
-			}
-		}
-		.area--reservation_amount{
-			margin-top: 80px;
-			@include flex();
-			width: 100%;
-			padding: 40px;
-			border: 1px $mc solid;
-			.box{
-				@include flex();
-				flex-direction: column;
-				gap: 16px;
-				.head{
-					@include fs(20);
-					font-weight: bold;
-				}
-				.cell{
-					@include fs(40);
-					font-weight: bold;
-				}
-			}
-		}
-		.area--input{
+// .reservation{
+// 	&__list{
+// 		.menu{
+// 			margin-top: 40px;
+// 			.area{
+// 				button{
+// 					@include flex();
+// 					gap: 8px;
+// 				}
+// 			}
+// 		}
+// 		.reservation-list{
+// 			.grid{
+// 				margin-top: 80px;
+// 				.head, .value{
+// 					display: grid;
+// 					grid-template-columns: 30px repeat(7,1fr);
+// 					gap: 16px;
+// 				}
+// 				.head{
+// 					font-weight: bold;
+// 					margin-bottom: 16px;
+// 					&__inner{}
+// 				}
+// 				.value{
+// 					&__outer{
+// 						display: flex;
+// 						flex-direction: column;
+// 						gap: 16px;
+// 					}
+// 				}
+// 				.cell{
+// 					display: flex;
+// 					align-items: center;
+// 					justify-content: flex-start;
+// 					button{
+// 						border-radius: 100px;
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
+// 	&__edit, &__create{
+// 		margin-bottom: 160px;
+// 		h2{
+// 			margin-bottom: 40px;
+// 		}
+// 		.area{
+// 			margin-bottom: 40px;
+// 			.head{
+// 				font-weight: bold;
+// 				text-align: center;
+// 				margin-bottom: 16px;
+// 			}
+// 		}
+// 		.radio, .checkbox{
+// 			.value{
+// 				display:grid;
+// 				grid-template-columns: repeat(4,1fr);
+// 				align-items: center;
+// 				gap: 40px;
+// 				&__inner{
+// 					display: contents;
+// 					&--input{
+// 						display: none;
+// 						&:checked + .value__inner--label{
+// 							background-color: $lmc;
+// 							color: white;
+// 						}
+// 					}
+// 					&--label{
+// 						width: 100%;
+// 						padding: 16px;
+// 						display: block;
+// 						text-align: center;
+// 						cursor: pointer;
+// 						background-color: $gray;
+// 						transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+// 						&:hover{
+// 							background-color: $lmc;
+// 							color: white;
+// 						}
+// 					}
+// 				}
+// 			}
+// 		}//radio
+// 		.text, .calendar, .number{
+// 			.box{
+// 				display: grid;
+// 				grid-template-columns: 1fr 3fr;
+// 				gap: 40px;
+// 				align-items: center;
+// 				input{
+// 					background-color: $gray;
+// 					padding: 16px;
+// 				}
+// 			}
+// 		}
+// 		.area--reservation_amount{
+// 			margin-top: 80px;
+// 			@include flex();
+// 			width: 100%;
+// 			padding: 40px;
+// 			border: 1px $mc solid;
+// 			.box{
+// 				@include flex();
+// 				flex-direction: column;
+// 				gap: 16px;
+// 				.head{
+// 					@include fs(20);
+// 					font-weight: bold;
+// 				}
+// 				.cell{
+// 					@include fs(40);
+// 					font-weight: bold;
+// 				}
+// 			}
+// 		}
+// 		.area--input{
 
-			.wrap{
-				margin: 40px auto;
-				display: flex;
-				flex-direction: column;
-				gap: 40px;
-				justify-content: flex-start;
-				.box{
-					display: grid;
-					grid-template-columns: 150px 1fr;
-					align-items: center;
-					margin-bottom: 40px;
-					label{
-						font-weight: bold;
-					}
-					input{
-						background-color: $gray;
-						padding: 16px;
-						width: 100%;
-					}
-				}
-			}
-		}
-	}
-}//reservation
+// 			.wrap{
+// 				margin: 40px auto;
+// 				display: flex;
+// 				flex-direction: column;
+// 				gap: 40px;
+// 				justify-content: flex-start;
+// 				.box{
+// 					display: grid;
+// 					grid-template-columns: 150px 1fr;
+// 					align-items: center;
+// 					margin-bottom: 40px;
+// 					label{
+// 						font-weight: bold;
+// 					}
+// 					input{
+// 						background-color: $gray;
+// 						padding: 16px;
+// 						width: 100%;
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
+// }//reservation
 
 
 .d-contents{
 	display: contents;
+}
+
+.form{
+	.grid-default{
+		display: grid;
+		grid-template-columns: repeat(6,1fr);
+		gap: 8px;
+		label{
+			text-align: center;
+		}
+		@include sp{
+			grid-template-columns: repeat(2,1fr);
+		}
+	}
+	.box{
+		margin-bottom: 24px;
+		.head{
+			font-weight: bold;
+			margin-bottom: 8px;
+		}
+		input[type="text"],input[type="number"],input[type="time"]{
+			background-color: $gray;
+			padding: 16px;
+			width: 100%;
+		}
+		.radio-group{
+
+			input[type="radio"]{
+				display: none;
+			}
+			label{
+				@include flex();
+				padding: 16px;
+				background-color: $gray;
+				cursor: pointer;
+				.wrap{
+					display: flex;
+					flex-direction: column;
+					gap: 8px;
+					width: 100%;
+					.nickname{
+						font-weight: bold;
+						border-bottom: 1px dotted white;
+						padding-bottom: 4px
+					}
+					.full{
+						@include fs(10);
+					}
+					.rank{
+						@include fs(10);
+					}
+				}
+			}
+			input[type="radio"]:checked + label{
+					background-color: $mc;
+					color:white;
+			}
+		}// radio-group
+		.check-group{
+			.check-item{
+				input{
+					display: none;
+				}
+				label{
+					display: flex;
+					flex-direction: column;
+					gap: 4px;
+					padding: 16px;
+					background-color: $gray;
+					cursor: pointer;
+					.name{
+						font-weight: bold;
+						border-bottom: 1px white dotted;
+						padding-bottom: 4px;
+					}
+					.price{
+						@include fs(10);
+					}
+				}
+				input + label{
+					background-color: $gray;
+				}
+				input:checked + label{
+					background-color: $mc;
+					color: white;
+				}
+			}
+		}//check-group
+	}
+	.amount{
+		margin-top: 80px;
+		@include flex();
+		margin-bottom: 80px;
+		&__wrap{
+			@include flex();
+			flex-direction: column;
+			gap: 16px;
+			border: 1px $mc solid;
+			padding: 16px 40px;
+			min-width: 300px;
+			.head{
+				font-weight: bold;
+			}
+			.value{
+				@include fs(20);
+			}
+		}
+	}
+}
+
+
+
+.reservation{
+	&__create{
+		.cast{
+			label{
+				padding: 8px;
+			}
+		}
+		.calendar{
+			.dp__input{
+				background-color: $gray;
+				padding-top: 16px;
+				padding-bottom: 16px;
+				border: unset;
+				@include fs(16);
+			}
+			.dp__selection_preview{
+				@include fs(14);
+			}
+			&__wrap{
+				display: flex;
+				justify-content: flex-start;
+				gap: 40px;
+			}
+		}
+		.adress{
+			.wrap{
+				display: flex;
+				flex-direction: column;
+				gap: 16px;
+				.zip{
+					max-width: 200px;
+				}
+			}
+			.google-map{
+				margin-top: 16px;
+				iframe{
+					aspect-ratio: 4 / 3;
+					height: auto;
+					max-width: 50%;
+					@include sp{
+						max-width: 100%;
+					}
+				}
+			}
+		}
+	}//create
+	&__list{
+		&--wrap{
+		margin-top: 40px;
+		display: flex;
+		flex-direction: column;
+		gap: 40px;
+			.grid{
+				display: grid;
+				align-items: center;
+			}
+			.area{
+				.contents{
+					width: 100%;
+					.head{
+						display: flex;
+						justify-content: space-between;
+						margin-bottom: 24px;
+						.cast{
+							display: flex;
+							gap: 16px;
+							align-items: center;
+							.photo{
+								img{
+									aspect-ratio: 1/1;
+									border-radius: 100%;
+									height: auto;
+									object-fit: cover;
+									object-position: top center;
+									max-width: 80px;
+								}
+							}
+							.name{
+								font-weight: bold;
+								@include fs(20);
+							}
+						}//cast
+						.staff{
+							display: flex;
+							gap: 16px;
+							align-items: center;
+							justify-content: center;
+							.id{
+								background-color: $gray;
+								@include flex();
+								padding: 8px;
+								@include fs(10);
+							}//id
+							.driver{
+								background-color: white;
+								padding: 4px;
+								&::before{
+									@include fa("\f1b9");
+									margin-right: 8px;
+									@include fs(20);
+								}
+							}
+							.store{
+								@include flex();
+								background-color: $mc;
+								color: white;
+								font-weight: bold;
+								padding: 4px 24px;
+								border-radius: 100px;
+								@include fs(10);
+							}
+
+						}//staff
+					}//head
+
+					.customer{
+						display: flex;
+						flex-direction: column;
+						width: 100%;
+						gap: 8px;
+						.grid-1{
+							grid-template-columns: auto 1fr;
+							gap: 16px;
+						}
+						.grid-2{
+							grid-template-columns: 1fr;
+						}
+						.grid-3{
+							grid-template-columns: auto auto auto;
+							gap: 16px;
+							justify-content: start;
+						}
+						.name{
+							@include fs(20);
+							font-weight: bold;
+							&::before{
+								@include fa("\f007");
+								margin-right: 8px;
+							}
+						}
+						.adress{
+							@include fs(16);
+							&:before{
+								@include fa("\f3c5");
+								margin-right: 8px;
+							}
+						}
+						.option{
+							@include flex();
+							justify-content: flex-start;
+							gap: 16px;
+							padding: 0px 4px;
+							&::before{
+								@include fa("\f02e");
+							}
+							ul{
+								display: flex;
+								align-items: center;
+								gap: 8px;
+								li{
+									&::after{
+										margin-left: 8px;
+										content: "|";
+									}
+									&:last-of-type::after{
+										margin: unset;
+										content: '';
+									}
+								}
+							}
+						}//option
+						.start{
+							@include fs(16);
+							&::before{
+								@include fa("\f017");
+								margin-right: 8px;
+							}
+						}
+						.time{
+							@include fs(16);
+							&::before{
+								@include fa("\f251");
+								margin-right: 8px;
+							}
+						}
+						.amount{
+							@include flex();
+							padding: 4px 16px;
+							font-weight: bold;
+							@include fs(16);
+							&:before{
+								@include fa("\f157");
+								margin-right: 8px;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }
