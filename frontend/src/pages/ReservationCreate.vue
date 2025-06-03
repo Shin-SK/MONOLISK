@@ -119,7 +119,7 @@
 							width="100%"
 							height="300"
 							style="border:0;"
-							:src="`https://www.google.com/maps/embed/v1/place?q=${encodeURIComponent(formData.address)}&key=AIzaSyAfTYdOTehT3vQBWLi5pIzQC-VCjbGq4Rs`"
+							:src="" <!-- google api -->
 							allowfullscreen
 							loading="lazy"
 							></iframe>
