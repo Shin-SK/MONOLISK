@@ -1,0 +1,77 @@
+@use '../global/global' as *;
+
+.admin{
+	.aside{
+		padding: 40px 8px;
+		width: 20%;
+		color: black;
+		background-color: white;
+		position: relative;
+		height: 100vh;
+		h1{
+			@include fs(16);
+			font-weight: bold;
+			margin-bottom: 40px;
+		}
+		.nav{
+			gap: 16px;
+			a{
+				color: rgba($mc, 0.5);
+				padding: 8px;
+			}
+			.router-link-active{
+				color: $mc;
+				background-color: rgba($mc, 0.1);
+				position: relative;
+				font-weight: bold;
+				border-radius: 16px;
+				&::before{
+					content: '';
+					position: absolute;
+					width: 4px;
+					height: 100%;
+					background-color: $mc;
+					top: 0;
+					left: -8px;
+				}
+			}
+		}
+	}
+	.auth{
+		@include flex();
+		justify-content: flex-start;
+		position: absolute;
+		bottom: 16px;
+		left: 8px;
+		.icon{
+			img{
+				width: 40px;
+				height: 40px;
+				border-radius: 50%;
+				object-fit: cover;
+			}
+		}
+		.name{
+			font-weight: bold;
+		}
+	}
+	.h3{
+		text-align: center;
+		margin-bottom: 16px;
+		font-weight: bold;
+		color: $mc;
+	}
+	.ReservationList{
+		.list{
+			.cast-icon{
+				width: 40px;
+				height: 40px;
+			}
+			td.cast{
+				display: flex;
+				align-items: center;
+				gap: 8px;
+			}
+		}
+	}
+}

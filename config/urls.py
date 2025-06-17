@@ -1,33 +1,24 @@
 # config/urls.py
 from django.contrib import admin
 from django.urls import include, path
-from rest_framework import routers
-from core import views
+from django.conf import settings
+from django.conf.urls.static import static
+from django.http import HttpResponseNotFound
 
-# ----- Router -----
-router = routers.DefaultRouter()
-router.register(r'stores',                views.StoreViewSet)
-router.register(r'ranks',                 views.RankViewSet)
-router.register(r'courses',               views.CourseViewSet)
-router.register(r'rank-courses',          views.RankCourseViewSet)
-router.register(r'options',               views.OptionViewSet)
-router.register(r'group-option-prices',   views.GroupOptionPriceViewSet)
-router.register(r'casts',                 views.CastViewSet)
-router.register(r'cast-course-prices',    views.CastCoursePriceViewSet)
-router.register(r'cast-options',          views.CastOptionViewSet)
-router.register(r'drivers',               views.DriverViewSet)
-router.register(r'customers',             views.CustomerViewSet)
-router.register(r'reservations',          views.ReservationViewSet, basename='reservation')
-
-# ----- urlpatterns -----
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path("admin/", admin.site.urls),
 
-    # API
-    path('api/', include(router.urls)),
-    path('api/auth/', include('dj_rest_auth.urls')),
-    path('api/auth/registration/', include('dj_rest_auth.registration.urls')),
+    # ---------- API ----------
+    path("api/", include("core.urls")),
+    path("api/auth/registration/", include("dj_rest_auth.registration.urls")),
+    path("api/dj-rest-auth/", include("dj_rest_auth.urls")),   # ← これ
 
-    # allauth HTML ビューを使う場合だけ有効化
-    # path('accounts/', include('allauth.urls')),
+    # ---------- MVP UI ----------
+    path("", include("mvp_ui.urls")) if settings.DEBUG else path("", HttpResponseNotFound),
 ]
+
+
+if settings.DEBUG:
+    urlpatterns += static(
+        settings.MEDIA_URL, document_root=settings.MEDIA_ROOT
+    )

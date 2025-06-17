@@ -1,0 +1,15 @@
+@forward "sass:math";   // ← bootstrap と一緒に使うなら入れておくと警告が減る
+
+// ① 変数を import
+@use "settings/variables" as *;
+
+// ② Bootstrap 本体を読み込み（with でも OK）
+@use "bootstrap/scss/bootstrap" with (
+  $font-size-base: $font-size-base,
+  $body-color:     $body-color,
+  $body-bg:        $body-bg
+);
+
+@use "parts/base";
+@use "parts/admin";
+@use "parts/monolisk";

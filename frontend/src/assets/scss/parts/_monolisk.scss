@@ -1,0 +1,10 @@
+@use '../global/global' as *;
+
+
+.cr{
+	position: absolute;
+	right: 16px;
+	bottom: 16px;
+	color: rgba($mc, 0.1);
+	@include monsttera;
+}

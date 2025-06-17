@@ -1,0 +1,138 @@
+@use '../global/global' as *;
+
+
+.cast-icon{
+	width: 24px;
+	height: 24px;
+	border-radius: 100%;
+	object-fit: cover;
+	object-position: top center;
+}
+
+@mixin button-basic{
+	@include flex();
+	color: white;
+	gap: 8px;
+	background-color: $mc;
+	@include fs(14);
+	padding: 4px 40px;
+	border-radius: 100px;
+	border: unset;
+	transition: background-color 0.25s ease;
+	&:hover{
+		background-color: rgba($mc, 0.5);
+	}
+}
+
+.btn-new {
+	@include button-basic();
+	margin: 40px auto;
+	&::before {
+		@include googleicon("add_circle");
+		color: white;
+	}
+}
+
+.btn-search{
+	@include button-basic();
+	&::before {
+		@include googleicon("search");
+		color: white;
+	}
+}
+
+.btn-reset{
+	@include button-basic();
+	&::before {
+		@include googleicon("refresh");
+		color: white;
+	}
+}
+
+
+.form{
+
+	.search-wrap{
+		display: grid;
+		align-items: start;
+		justify-content: center;
+		grid-template-columns: 1fr 240px;
+		gap: 24px;
+		margin-top: 16px;
+		.field-group{
+			background-color: white;
+			padding: 8px;
+			width: 100%;
+			min-height: 120px;
+		}
+	}
+	.radio-items{
+		@include flex();
+		gap: 8px;
+		.radio-item{
+			padding: 4px 24px;
+			@include flex();
+			background-color: rgba($mc, 0.3);
+			color: white;
+			border-radius: 16px;
+			gap: 4px;
+			input{
+				opacity: 0;
+				position: absolute;
+				z-index: -1;
+			}
+			&:hover{
+				cursor: pointer;
+			}
+			&:has(input:checked){
+				background-color: $mc;
+			}
+		}
+	}
+	.date-box{
+		.button-area{
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 8px;
+			.date-btn{
+				@include button-basic();
+				border-radius: unset;
+				width: 100%;
+				padding: 4px;
+				&.active{
+					background-color: $mc;
+				}
+			}
+		}
+		.result{
+			@include flex();
+			width: 100%;
+			height: 24px;
+			background-color: #f9f9f9;
+			margin-top: 8px;
+			button{
+				background-color: unset;
+				border: unset;
+				@include flex();
+				span{
+					@include fs(10);
+				}
+				
+			}
+		}
+		.hidden-input{
+			visibility: hidden;
+			position: absolute;
+		}
+	}
+	.radio-cast{
+		justify-content: start;
+	}
+	.btn-wrap{
+		@include flex();
+		gap: 40px;
+		margin: 16px auto;
+	}
+}
+
+
