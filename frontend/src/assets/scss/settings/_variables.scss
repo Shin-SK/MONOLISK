@@ -2,5 +2,12 @@
 @use '../global/global' as *;
 
 $font-size-base: 1.4rem;
-$body-color: rgba($mc, 0.1);
-$body-bg: #f9f9f9;
+$body-color: $mc;
+$body-bg: rgba($mc, 0.03);
+$border-width: 0px;
+$primary: $mc;
+$btn-padding-y: 0.5rem;
+$btn-padding-x: 2rem;
+$table-bg: white;
+$table-striped-bg: rgba($mc, .02);
+$table-striped-color:  inherit;

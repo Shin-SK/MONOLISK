@@ -122,36 +122,6 @@ class ReservationViewSet(viewsets.ModelViewSet):
         ]
         ReservationCast.objects.bulk_create(objs)
 
-    # ------- 新規 --------
-    # def create(self, request, *args, **kwargs):
-    #     data        = request.data.copy()
-    #     casts_data  = data.pop("casts", [])
-
-    #     serializer  = self.get_serializer(data=data)
-    #     serializer.is_valid(raise_exception=True)
-    #     self.perform_create(serializer)
-    #     self._sync_casts(serializer.instance, casts_data)
-
-    #     return Response(
-    #         self.get_serializer(serializer.instance).data,
-    #         status=status.HTTP_201_CREATED
-    #     )
-
-    # ------- 更新 --------
-    # def update(self, request, *args, **kwargs):
-    #     partial     = kwargs.pop("partial", False)
-    #     instance    = self.get_object()
-
-    #     data        = request.data.copy()
-    #     casts_data  = data.pop("casts", [])
-
-    #     serializer  = self.get_serializer(instance, data=data, partial=partial)
-    #     serializer.is_valid(raise_exception=True)
-    #     self.perform_update(serializer)
-    #     self._sync_casts(instance, casts_data)
-
-    #     return Response(self.get_serializer(instance).data)
-
 
     @action(detail=False, methods=['get'], url_path='mine')
     def mine(self, request):
@@ -167,16 +137,25 @@ class ReservationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='mine-driver')
     def mine_driver(self, request):
-        """ログイン中のドライバー本人だけの予約"""
+        """ログイン中ドライバー本人だけの予約"""
         if not request.user.groups.filter(name='DRIVER').exists():
             return Response(status=403)
 
         qs = self.filter_queryset(self.get_queryset())
         qs = qs.filter(driver__user=request.user)
 
-        date = request.query_params.get('date')
-        if date:
-            qs = qs.filter(start_at__date=date)
+        # ① 期間フィルタを追加
+        date_from = request.query_params.get('from')
+        date_to   = request.query_params.get('to')
+        single    = request.query_params.get('date')
+
+        if single:
+            qs = qs.filter(start_at__date=single)
+        else:
+            if date_from:
+                qs = qs.filter(start_at__date__gte=date_from)
+            if date_to:
+                qs = qs.filter(start_at__date__lte=date_to)
 
         return Response(self.get_serializer(qs, many=True).data)
 

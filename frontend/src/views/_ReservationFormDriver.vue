@@ -51,11 +51,17 @@ async function save () {
 
 			<!-- ボタン押したら、タイムラインかカレンダーに飛びたい -->
 			<div class="mini-nav">
-				<button class="btn btn-outline-primary button" @click="mode='list'">
+				<button
+					class="button"
+					:class="mode==='list' ? 'btn btn-primary active' : 'btn btn-outline-primary'"
+					@click="mode='list'">
 					<span class="material-symbols-outlined">list</span>
 				</button>
 
-				<button class="btn btn-outline-primary button" @click="mode='timeline'">
+				<button
+					class="button"
+					:class="mode==='timeline' ? 'btn btn-primary active' : 'btn btn-outline-primary'"
+					@click="mode='timeline'">
 					<span class="material-symbols-outlined">view_timeline</span>
 				</button>
 			</div>

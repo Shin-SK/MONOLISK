@@ -207,3 +207,19 @@ body{
   font-style: normal;
   font-weight: 900;
 }
+
+
+@mixin button-basic{
+	@include flex();
+	color: white;
+	gap: 8px;
+	background-color: $mc;
+	@include fs(14);
+	padding: 4px 40px;
+	border-radius: 100px;
+	border: unset;
+	transition: background-color 0.25s ease;
+	&:hover{
+		background-color: rgba($mc, 0.5);
+	}
+}

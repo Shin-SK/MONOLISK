@@ -77,17 +77,35 @@ class CustomerSerializer(serializers.ModelSerializer):
     class Meta: model = Customer; fields = '__all__'
 
 # ---------- 予約周り（ネスト用） ----------
+
 class ReservationCastSerializer(serializers.ModelSerializer):
+    stage_name = serializers.CharField(source='cast_profile.stage_name', read_only=True)
+    avatar_url = serializers.SerializerMethodField()        # ★ CharField → 変更
+    minutes    = serializers.IntegerField(
+        source='rank_course.course.minutes', read_only=True
+    )
+
     class Meta:
         model  = ReservationCast
-        read_only_fields = ('reservation',)   # ★ これを追加
+        read_only_fields = ('reservation',)
         fields = '__all__'
 
+    def get_avatar_url(self, obj):
+        """
+        - cast_profile.photo_url は既に『絶対 or static』を返す property
+        - request があれば必ず build_absolute_uri でフルパスに
+        """
+        request = self.context.get('request')
+        url = obj.cast_profile.photo_url or static('img/cast-default.png')
+        return request.build_absolute_uri(url) if request else url
+
+
 class ReservationChargeSerializer(serializers.ModelSerializer):
+    option_name = serializers.CharField(source='option.name', read_only=True)
+
     class Meta:
         model  = ReservationCharge
-        # reservation を読み取り専用に指定
-        read_only_fields = ('reservation',)      # ← これを追加
+        read_only_fields = ('reservation',)
         fields = '__all__'
 
 class CashFlowSerializer(serializers.ModelSerializer):

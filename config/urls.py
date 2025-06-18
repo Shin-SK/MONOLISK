@@ -13,8 +13,6 @@ urlpatterns = [
     path("api/auth/registration/", include("dj_rest_auth.registration.urls")),
     path("api/dj-rest-auth/", include("dj_rest_auth.urls")),   # ← これ
 
-    # ---------- MVP UI ----------
-    path("", include("mvp_ui.urls")) if settings.DEBUG else path("", HttpResponseNotFound),
 ]
 
 

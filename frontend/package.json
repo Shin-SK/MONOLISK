@@ -9,8 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fullcalendar/core": "^6.1.17",
+    "@fullcalendar/interaction": "^6.1.17",
+    "@fullcalendar/timegrid": "^6.1.17",
+    "@fullcalendar/vue3": "^6.1.17",
     "@popperjs/core": "^2.11.8",
     "axios": "^1.9.0",
+    "dayjs": "^1.11.13",
     "lodash.debounce": "^4.0.8",
     "pinia": "^3.0.3",
     "vue": "^3.5.13",

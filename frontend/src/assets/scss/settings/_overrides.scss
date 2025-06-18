@@ -1,0 +1,19 @@
+// _overrides.scss
+@use '../global/global' as *;
+
+.form-control{
+	background-color: white;
+	padding: 8px;
+}
+
+.table-striped-even {
+  /* 奇数行を透明に戻す */
+  > tbody > tr:nth-of-type(odd)  > * {
+    background-color: transparent;
+  }
+  /* 偶数行に色を付ける  */
+  > tbody > tr:nth-of-type(even) > * {
+    background-color: var(--bs-table-striped-bg);
+    color:            var(--bs-table-striped-color);
+  }
+}

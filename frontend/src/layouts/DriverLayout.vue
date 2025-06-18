@@ -1,31 +1,33 @@
+<!-- src/components/Header.vue -->
 <script setup>
-import { RouterLink } from 'vue-router'
+import { useRouter } from 'vue-router'
+import { computed } from 'vue'			// ★忘れずに
+import { api } from '@/api'
+import { useUser } from '@/stores/useUser'
+
+const router	= useRouter()
+const userStore	= useUser()
+
+// yyyy/mm/dd
+const today = computed(() => {
+	const d = new Date()
+	return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+})
+
+async function logout () {
+	try {
+		await api.post('dj-rest-auth/logout/')
+	} finally {
+		userStore.clear()
+		router.push('/login')
+	}
+}
 </script>
 
 <template>
-  <div class="d-flex flex-column min-vh-100">
-    <!-- ヘッダー -->
-    <header class="navbar navbar-dark bg-primary">
-      <div class="container-fluid">
-        <span class="navbar-brand mb-0 h5">ドライバー</span>
-        <RouterLink to="/login" class="btn btn-sm btn-light">ログアウト</RouterLink>
-      </div>
-    </header>
+<div class="driver min-vh-100">
 
-    <!-- 本体 -->
-    <div class="d-flex flex-grow-1">
-      <!-- メニュー -->
-      <aside class="border-end p-3" style="width: 200px;">
-        <nav class="nav flex-column">
-          <RouterLink to="/driver"              class="nav-link">今日の配車</RouterLink>
-          <RouterLink to="/driver/timeline"     class="nav-link">タイムライン</RouterLink>
-        </nav>
-      </aside>
+		<router-view />
 
-      <!-- 詳細 -->
-      <main class="flex-fill p-4 overflow-auto bg-white">
-        <router-view />
-      </main>
-    </div>
-  </div>
+</div>
 </template>

@@ -143,8 +143,8 @@ onMounted(async () => {
 
 
   <div class="list">
-    <table class="table table-bordered table-hover align-middle">
-      <thead class="table-light">
+    <table class="table table-bordered table-hover align-middle table-striped">
+      <thead class="table-dark">
         <tr>
           <th>ID</th>
           <th>店舗</th>

@@ -15,13 +15,12 @@ import ReservationFormDriver from '@/views/ReservationFormDriver.vue'
 import Login                 from '@/views/Login.vue'
 import TimelineAdmin         from '@/views/TimelineAdmin.vue'
 import TimelineCast          from '@/views/TimelineCast.vue'
-import TimelineDriver        from '@/views/TimelineDriver.vue'
+import DriverTimeline        from '@/views/DriverTimeline.vue'
 import CustomerList          from '@/views/CustomerList.vue'
 import CustomerForm          from '@/views/CustomerForm.vue'
 import CastList              from '@/views/CastList.vue'
 import CastForm              from '@/views/CastForm.vue'
 import ClosingList           from '@/views/ClosingList.vue'
-import DriverList            from '@/views/DriverList.vue'
 
 const routes = [
   { path: '/', redirect: '/reservations' },
@@ -65,8 +64,7 @@ const routes = [
     component: DriverLayout,
     meta: { requiresAuth: true, driverOnly: true },
     children: [
-      { path: '',        component: DriverList },           // /driver
-      { path: 'timeline', component: TimelineDriver },
+      { path: '',        component: DriverTimeline },
       { path: 'reservations/:id', component: ReservationFormDriver },
     ],
   },

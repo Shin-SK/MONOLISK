@@ -1,0 +1,262 @@
+@use '../global/global' as *;
+
+.driver{
+	display:flex;
+	flex-direction:column;
+	min-height:100vh;
+	.header{
+		&__wrap{
+			padding-top: 8px;
+			padding-bottom: 8px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			.area{
+				@include flex();
+				gap: 8px;
+				.icon{
+					img{
+						width: 40px;
+						height: 40px;
+						border-radius: 100%;
+						object-fit: cover;
+					}
+				}
+			}
+		}
+	}//header
+	main{
+		flex:1 1 auto;			// 残りを全部
+		display:flex;
+		flex-direction:column;
+		min-height:0;		
+	}
+
+	.mini-nav{
+		@include flex();
+		gap: 16px;
+		.btn{
+			@include flex();
+			border-radius: 100%;
+			padding: 8px;
+			color: $mc;
+			transition: background-color color 0.5s ease;
+			&.active{
+				color: white;
+			}
+		}
+	}
+
+	.timeline{
+		flex:1 1 auto;
+		display:flex;
+		flex-direction:column;
+		min-height:0;
+		padding-bottom: 8px;
+		.timeline-header{
+			margin-bottom: 16px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding-left: 45px;
+			.wrap{
+				display: grid;
+				grid-template-columns: repeat(7,1fr);
+				align-items: center;
+				justify-content: center;
+				width: 100%;
+				.weekday{
+					@include flex();
+					&__wrap{
+						flex-direction: column;
+						@include flex();
+						width: fit-content;
+						cursor:pointer;
+						padding: 8px;
+						max-width: 60px;
+						&.active,&:hover{
+							background:rgba($mc, $alpha: 0.1);
+							border-radius: 40px;
+						}
+					}
+					.date{
+						@include fs(10);
+						color: gray;
+						@include monsttera;
+						font-weight: 100;
+					}
+					.day{
+						font-weight: bold;
+						@include fs(18);
+						@include monsttera;
+						font-weight: 400;
+					}
+				}
+
+			}
+		}
+		.fc-height{
+			flex:1;					// これで高さ確保
+			min-height:0;
+		}
+		.fc{
+			tbody[role="rowgroup"]{
+				background-color: white;
+			}
+			.fc-timegrid-slot-label-cushion{
+				@include monsttera;
+				font-weight: 400;
+			}
+			/* today 行／列のハイライト無効化 */
+			&.fc-theme-standard{
+				.fc-day-today,
+				.fc-daygrid-day.fc-day-today,
+				.fc-timegrid-col.fc-day-today{
+					background:none !important;	/* ← 背景色を完全に消す */
+				}
+			}
+		}
+
+		&--card{
+			.wrapper{
+				display: grid;
+				grid-template-columns: 40px 1fr;
+				align-items: start;
+				.card-date{
+					@include flex();
+					flex-direction: column;
+					margin-top: 8px;
+					gap: 4px;
+					.month{
+						@include fs(10);
+					}
+					.day{
+						@include fs(18);
+						background-color: white;
+						border-radius: 100%;
+						padding: 8px;
+						aspect-ratio: 1/1;
+						@include monsttera;
+						@include flex();
+						font-weight: 600;
+					}
+					.date{
+						@include fs(12);
+						font-weight: bold;
+					}
+				}
+				.card{
+					border-radius: 16px;
+					background-color: white;
+					padding: 8px;
+					margin-bottom: 16px;
+					&.settled{
+						position: relative;
+						&::before{
+							content:'';
+							position:absolute;
+							inset:0;
+							background:rgba(black, 0.5);
+							backdrop-filter:grayscale(1);
+							pointer-events:auto;
+							border-radius:inherit;
+							z-index: 999;
+						}
+					}
+					&__wrap{
+						display: flex;
+						flex-direction: column;
+						align-items: center;
+						.cast-image{
+							position: relative;
+							img{
+								width: 100%;
+								height: 100%;
+								object-fit: cover;
+								border-radius: 8px;
+								aspect-ratio: 16/6;
+								object-position: center top;
+							}
+							.name{
+								position: absolute;
+								top: 0;
+								left: 0;
+								width: auto;
+								background-color: rgba(white, 0.8);
+								padding: 8px;
+								font-weight: bold;
+								@include flex();
+								border-radius: 8px;
+							}
+							.time-area{
+								@include flex();
+								@include fs(16);
+								gap: 16px;
+								background-color: rgba($mc ,0.8);
+								border-radius: 8px;
+								color: white;
+								padding: 4px;
+								position: absolute;
+								bottom: 0;
+								left: 0;
+								width: 100%;
+								.start{
+									font-weight: bold;
+								}
+								.time{
+									font-weight: bold;
+									@include flex();
+									gap: 4px;
+									&::before {
+										@include googleicon("schedule");
+									}
+								}
+							}
+						}
+						.info{
+							width: 100%;
+							margin-top: 8px;
+							.customer{
+								font-weight: bold;
+								@include fs(16);
+								margin-top: 8px;
+							}
+							.other-area{
+								display: grid;
+								align-items: center;
+								grid-template-columns: 1fr 62px;
+								gap: 8px;
+								.area{
+									.adress{
+										@include flex();
+										gap: 4px;
+										justify-content: flex-start;
+										&::before {
+											@include googleicon("location_on");
+										}
+									}
+								}
+								.googlemap{
+									.img-fluid{
+										width: 62px;
+										height: 62px;
+										object-fit: cover;
+										object-position: center;
+										border-radius: 8px;
+									}
+								}
+							}
+
+						}
+					}
+				}
+			}
+		}
+		.pull-indicator {
+			margin-top: 16px;
+			font-size: 0.9rem;
+			color: #6c757d;	/* muted */
+			user-select: none;
+		}
+	}//timeline
+}//driver
