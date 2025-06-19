@@ -181,28 +181,35 @@ User = get_user_model()
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    """
-    username / email / password は標準。
-    追加した display_name も一覧・フォームに出す。
-    """
-
-    # 一覧表示
-    list_display  = ("id", "username", "display_name", "email", "is_staff", "is_active")
+    list_display  = ("id", "username", "display_name", "email",
+                     "is_staff", "is_active", "thumb")
     list_filter   = ("is_staff", "is_active")
     search_fields = ("username", "display_name", "email")
+    readonly_fields = ("thumb",)
 
-    # 既存 fieldsets に 1 行だけ足す      ↓ここ
+    # ───── ここを１つにまとめる ─────
     fieldsets = BaseUserAdmin.fieldsets + (
-        (_('Personal info'), {'fields': ('display_name',)}),
+        ("Extra", {"fields": ("display_name", "avatar")}),
     )
+    #  └─ これで重複ゼロ。『Personal info』の追加行は削除
 
-    # 追加フォーム用 (createsuperuser など)
+    # 新規追加フォーム (createsuperuser 用)
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
         (None, {
-            'classes': ('wide',),
-            'fields': ('display_name',),
+            "classes": ("wide",),
+            "fields": ("display_name", "avatar"),   # ← avatar も追加可
         }),
     )
+
+    def thumb(self, obj):
+        if obj.avatar:
+            return format_html(
+                '<img src="{}" style="height:40px;border-radius:50%;" />',
+                obj.avatar.url,
+            )
+        return "-"
+    thumb.short_description = "Avatar"
+
 
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):

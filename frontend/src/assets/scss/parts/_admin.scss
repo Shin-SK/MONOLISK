@@ -1,6 +1,10 @@
 @use '../global/global' as *;
 
 .admin{
+	main{
+		overflow: scroll;
+		height: 100vh;
+	}
 	.aside{
 		padding: 40px 8px;
 		width: 20%;
