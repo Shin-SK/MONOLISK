@@ -168,12 +168,20 @@ class ReservationViewSet(viewsets.ModelViewSet):
         qs = self.filter_queryset(self.get_queryset())
         qs = qs.filter(casts__cast_profile__user=request.user)
 
-        date = request.query_params.get('date')
-        if date:
-            qs = qs.filter(start_at__date=date)
+        # ↓★ 期間フィルタを driver と同じ形で追加
+        date_from = request.query_params.get('from')
+        date_to   = request.query_params.get('to')
+        single    = request.query_params.get('date')
 
-        serializer = self.get_serializer(qs, many=True)
-        return Response(serializer.data)
+        if single:
+            qs = qs.filter(start_at__date=single)
+        else:
+            if date_from:
+                qs = qs.filter(start_at__date__gte=date_from)
+            if date_to:
+                qs = qs.filter(start_at__date__lte=date_to)
+
+        return Response(self.get_serializer(qs, many=True).data)
 
 class CastProfileViewSet(viewsets.ModelViewSet):
     queryset = CastProfile.objects.select_related('store', 'rank', 'performer')

@@ -1,14 +1,20 @@
 <script setup>
-import { ref, computed } from 'vue'
-import { useRouter }     from 'vue-router'
+import { computed } from 'vue'
 import { api }           from '@/api'
 import { useUser }       from '@/stores/useUser'
+import { useRouter, useRoute } from 'vue-router'
 
 /* ---------- state / helper ---------- */
 const router    = useRouter()
+const route     = useRoute()
 const userStore = useUser()
-const mode      = ref('timeline')               // タイムライン / リスト切替
 
+// ✓ list / timeline / ''（どちらもハイライト無し）
+const mode = computed(() => {
+  if (route.query.view === 'list')      return 'list'
+  if (route.path.includes('/mypage'))   return 'timeline'
+  return ''                             // それ以外のページ
+})
 
 const rootPath = computed(() =>
   userStore.isDriver ? '/driver' :
@@ -33,8 +39,8 @@ const menuItems = computed(() => {
 })
 
 /* ---------- ナビボタン ---------- */
-function goTimeline () { router.push(`${rootPath.value}/mypage`);            mode.value='timeline' }
-function goList     () { router.push(`${rootPath.value}/mypage?view=list`); mode.value='list' }
+function goTimeline () { router.push(`${rootPath.value}/mypage`) }
+function goList     () { router.push(`${rootPath.value}/mypage?view=list`) }
 
 /* ▼ 追加：表示名（display_name が無ければ username） */
 const displayName = computed(() =>

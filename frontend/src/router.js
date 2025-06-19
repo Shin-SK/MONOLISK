@@ -16,6 +16,7 @@ import ReservationFormCast from '@/views/ReservationFormCast.vue'
 import Login                 from '@/views/Login.vue'
 import TimelineAdmin         from '@/views/TimelineAdmin.vue'
 import CastMypage          from '@/views/CastMypage.vue'
+import CastSales          from '@/views/CastSales.vue'
 import DriverMypage        from '@/views/DriverMypage.vue'
 import CustomerList          from '@/views/CustomerList.vue'
 import CustomerForm          from '@/views/CustomerForm.vue'
@@ -80,6 +81,7 @@ const routes = [
       { path: '', redirect: '/cast/mypage' },
       { path: 'mypage',        component: CastMypage },
       { path: 'reservations/:id', component: ReservationFormCast },
+      { path:'sales', component: CastSales },
     ],
   },
 

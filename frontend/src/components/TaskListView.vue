@@ -226,7 +226,12 @@ function openDetail(id){
 			:id="`date-${g.date.format('YYYYMMDD')}`"
 			class="wrapper"
 		>
-
+			<!-- ☆
+			 	ここ、ある場合もない場合もこのdivがないと、表示が崩れちゃうみたい
+				display grid 1fr 1frみたいにしちゃって
+				ないとき、食い込んじゃう
+				この場合どうしたらいい？☆
+			-->
 			<h6 class="card-date">
 				<div class="month">
 					<span>{{ g.date.format('M') }}月</span>
@@ -239,12 +244,11 @@ function openDetail(id){
 				</div>
 			</h6>
 
-			 <div v-for="r in g.list" :key="r.id">
+			 <div v-for="r in g.list" :key="r.id" class="card">
 
 				<div
 					v-for="c in (r.casts ?? [])"
 					:key="`${r.id}-${c.id}`"
-					class="card"
 					:class="{ settled: r.received_amount != null }"
 				>
 					<div class="card__wrap">

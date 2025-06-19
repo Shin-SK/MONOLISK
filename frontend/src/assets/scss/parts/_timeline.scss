@@ -79,6 +79,7 @@
 					flex-direction: column;
 					margin-top: 8px;
 					gap: 4px;
+					grid-column:1;
 					.month{
 						@include fs(10);
 					}
@@ -98,6 +99,7 @@
 					}
 				}
 				.card{
+					grid-column:2;
 					border-radius: 16px;
 					background-color: white;
 					padding: 8px;
