@@ -15,11 +15,10 @@ SECRET_KEY = 'django-insecure-^7unv9!08vya=%@1%&&+5hk)*8)-a_5!3&90s09=lncdd5@hwl
 # SECURITY WARNING: don't run with debug turned on in production!
 
 ALLOWED_HOSTS = [
-    "localhost",          # 開発用
-    "127.0.0.1",
-    "monolisk-98ae20a1c14b.herokuapp.com",   # ← Heroku
+    'monolisk-98ae20a1c14b.herokuapp.com',
+    'monolisk.netlify.app',
+    'localhost', '127.0.0.1',
 ]
-
 
 # Application definition
 
@@ -88,10 +87,14 @@ if not DEBUG:
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SAMESITE = 'Lax'
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = [
+CORS_ALLOWED_ORIGINS = [
+    'https://monolisk.netlify.app',
     'http://localhost:5173',
-    "https://monolisk.netlify.app",
-    ]
+]
+CSRF_TRUSTED_ORIGINS = [
+    'https://monolisk.netlify.app',
+    'http://localhost:5173',
+]
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
