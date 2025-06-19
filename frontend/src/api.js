@@ -1,12 +1,15 @@
 // src/api.js
 import axios from 'axios'
 
+axios.defaults.withCredentials = true;
+axios.defaults.xsrfCookieName  = 'csrftoken';
+axios.defaults.xsrfHeaderName  = 'X-CSRFToken';
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
   withCredentials: true,
-  xsrfCookieName: 'csrftoken',
-  xsrfHeaderName: 'X-CSRFTOKEN'
-})
+});
+
 
 /* ---------- Reservations ---------- */
 export const getReservations = (params = {}) =>
