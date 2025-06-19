@@ -10,8 +10,10 @@ django-filter==25.1
 django-htmx==1.23.0
 django-import-export==4.3.7
 djangorestframework==3.16.0
+gunicorn==23.0.0
 htmx-django==0.1.1
 idna==3.10
+packaging==25.0
 pillow==11.2.1
 psycopg2-binary==2.9.10
 requests==2.32.3
