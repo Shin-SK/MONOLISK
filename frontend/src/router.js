@@ -12,10 +12,11 @@ import CastLayout       from '@/layouts/CastLayout.vue'
 import ReservationList       from '@/views/ReservationList.vue'
 import ReservationFormAdmin  from '@/views/ReservationFormAdmin.vue'
 import ReservationFormDriver from '@/views/ReservationFormDriver.vue'
+import ReservationFormCast from '@/views/ReservationFormCast.vue'
 import Login                 from '@/views/Login.vue'
 import TimelineAdmin         from '@/views/TimelineAdmin.vue'
-import TimelineCast          from '@/views/TimelineCast.vue'
-import DriverTimeline        from '@/views/DriverTimeline.vue'
+import CastMypage          from '@/views/CastMypage.vue'
+import DriverMypage        from '@/views/DriverMypage.vue'
 import CustomerList          from '@/views/CustomerList.vue'
 import CustomerForm          from '@/views/CustomerForm.vue'
 import CastList              from '@/views/CastList.vue'
@@ -64,7 +65,8 @@ const routes = [
     component: DriverLayout,
     meta: { requiresAuth: true, driverOnly: true },
     children: [
-      { path: '',        component: DriverTimeline },
+      { path: '', redirect: '/driver/mypage' },
+      { path: 'mypage',        component: DriverMypage },
       { path: 'reservations/:id', component: ReservationFormDriver },
     ],
   },
@@ -75,7 +77,9 @@ const routes = [
     component: CastLayout,
     meta: { requiresAuth: true, castOnly: true },
     children: [
-      { path: 'timeline', component: TimelineCast },        // /cast/timeline
+      { path: '', redirect: '/cast/mypage' },
+      { path: 'mypage',        component: CastMypage },
+      { path: 'reservations/:id', component: ReservationFormCast },
     ],
   },
 
@@ -100,8 +104,8 @@ router.beforeEach(async (to, _from, next) => {
   const meta = (key) => to.matched.some(r => r.meta[key])
 
   const defaultPath =
-    userStore.isCast   ? '/cast/timeline'  :
-    userStore.isDriver ? '/driver'         :
+    userStore.isCast   ? '/cast/mypage'  :
+    userStore.isDriver ? '/driver/mypage'         :
     userStore.isStaff  ? '/reservations' 
                             : '/staff/reservations';
 

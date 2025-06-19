@@ -1,25 +1,20 @@
+<!-- src/layouts/DriverLayout.vue -->
 <script setup>
-import { RouterLink } from 'vue-router'
+import AppHeader   from '@/components/AppHeader.vue'
+import { ref }     from 'vue'
+
+const mode = ref('timeline')          // ヘッダー内で切替ボタン状態だけ持つ
 </script>
 
 <template>
-  <div class="d-flex flex-column min-vh-100 bg-light">
-    <!-- トップバー -->
-    <header class="navbar navbar-expand bg-danger navbar-dark">
-      <div class="container-fluid">
-        <span class="navbar-brand h5 mb-0">キャスト</span>
-        <RouterLink to="/login" class="btn btn-sm btn-light">ログアウト</RouterLink>
-      </div>
-    </header>
+  <div class="cast mypage min-vh-100 d-flex flex-column">
 
-    <!-- コンテンツ -->
-    <main class="flex-fill p-4">
-      <router-view />
+    <!-- ▽ ヘッダー -->
+    <AppHeader></AppHeader>
+
+    <!-- ▽ ページ本体 -->
+    <main class="flex-fill container d-flex flex-column">
+      <router-view/>
     </main>
-
-    <!-- フッタータブ（モバイル向け） -->
-    <nav class="nav nav-tabs nav-fill fixed-bottom d-md-none">
-      <RouterLink to="/cast/timeline" class="nav-link">タイムライン</RouterLink>
-    </nav>
   </div>
 </template>

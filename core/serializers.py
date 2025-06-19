@@ -36,6 +36,12 @@ class CastSerializer(serializers.ModelSerializer):
     )
     photo_url = serializers.SerializerMethodField()
 
+    user = serializers.PrimaryKeyRelatedField(
+        queryset=get_user_model().objects.all(),
+        allow_null=True,
+        required=False
+    )
+
     class Meta:
         model  = CastProfile
         fields = '__all__'          # memo, ng_customers も含まれる

@@ -1,52 +1,4 @@
 @use '../global/global' as *;
-
-.driver{
-	display:flex;
-	flex-direction:column;
-	min-height:100vh;
-	.header{
-		&__wrap{
-			padding-top: 8px;
-			padding-bottom: 8px;
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			.area{
-				@include flex();
-				gap: 8px;
-				.icon{
-					img{
-						width: 40px;
-						height: 40px;
-						border-radius: 100%;
-						object-fit: cover;
-					}
-				}
-			}
-		}
-	}//header
-	main{
-		flex:1 1 auto;			// 残りを全部
-		display:flex;
-		flex-direction:column;
-		min-height:0;		
-	}
-
-	.mini-nav{
-		@include flex();
-		gap: 16px;
-		.btn{
-			@include flex();
-			border-radius: 100%;
-			padding: 8px;
-			color: $mc;
-			transition: background-color color 0.5s ease;
-			&.active{
-				color: white;
-			}
-		}
-	}
-
 	.timeline{
 		flex:1 1 auto;
 		display:flex;
@@ -169,6 +121,7 @@
 						align-items: center;
 						.cast-image{
 							position: relative;
+							width: 100%;
 							img{
 								width: 100%;
 								height: 100%;
@@ -193,9 +146,9 @@
 								@include fs(16);
 								gap: 16px;
 								background-color: rgba($mc ,0.8);
-								border-radius: 8px;
+								border-radius: 0px 0px 8px 8px;
 								color: white;
-								padding: 4px;
+								padding: 0px;
 								position: absolute;
 								bottom: 0;
 								left: 0;
@@ -259,4 +212,3 @@
 			user-select: none;
 		}
 	}//timeline
-}//driver

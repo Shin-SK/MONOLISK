@@ -160,6 +160,21 @@ class ReservationViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(qs, many=True).data)
 
 
+    @action(detail=False, methods=['get'], url_path='mine-cast')
+    def mine_cast(self, request):
+        if not request.user.groups.filter(name='CAST').exists():
+            return Response(status=403)
+
+        qs = self.filter_queryset(self.get_queryset())
+        qs = qs.filter(casts__cast_profile__user=request.user)
+
+        date = request.query_params.get('date')
+        if date:
+            qs = qs.filter(start_at__date=date)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
 class CastProfileViewSet(viewsets.ModelViewSet):
     queryset = CastProfile.objects.select_related('store', 'rank', 'performer')
     serializer_class = CastSerializer

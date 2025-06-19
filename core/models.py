@@ -100,10 +100,17 @@ class CastProfile(TimeStamped):
 	stage_name = models.CharField(max_length=50)		  # 源氏名
 	rank	   = models.ForeignKey(Rank, on_delete=models.CASCADE)
 	star_count = models.PositiveSmallIntegerField(default=0)
-	user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
 	memo = models.TextField(blank=True) 
 	ng_customers = models.ManyToManyField('Customer', blank=True, related_name='ng_casts_of')
 	photo = models.ImageField(upload_to='cast_photos/', null=True, blank=True)
+	user = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.SET_NULL,
+		null=True,
+		blank=True,
+		related_name='cast_profiles',
+		help_text='このログインで管理画面・マイページに入れるキャストなら紐付ける'
+	)
 
 	class PriceMode(models.TextChoices):
 		DEFAULT = 'DEFAULT', 'Default'

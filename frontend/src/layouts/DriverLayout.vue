@@ -1,33 +1,20 @@
-<!-- src/components/Header.vue -->
+<!-- src/layouts/DriverLayout.vue -->
 <script setup>
-import { useRouter } from 'vue-router'
-import { computed } from 'vue'			// ★忘れずに
-import { api } from '@/api'
-import { useUser } from '@/stores/useUser'
+import AppHeader   from '@/components/AppHeader.vue'
+import { ref }     from 'vue'
 
-const router	= useRouter()
-const userStore	= useUser()
-
-// yyyy/mm/dd
-const today = computed(() => {
-	const d = new Date()
-	return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
-})
-
-async function logout () {
-	try {
-		await api.post('dj-rest-auth/logout/')
-	} finally {
-		userStore.clear()
-		router.push('/login')
-	}
-}
+const mode = ref('timeline')          // ヘッダー内で切替ボタン状態だけ持つ
 </script>
 
 <template>
-<div class="driver min-vh-100">
+  <div class="driver mypage min-vh-100 d-flex flex-column">
 
-		<router-view />
+    <!-- ▽ ヘッダー -->
+    <AppHeader></AppHeader>
 
-</div>
+    <!-- ▽ ページ本体 -->
+    <main class="flex-fill container d-flex flex-column">
+      <router-view/>
+    </main>
+  </div>
 </template>

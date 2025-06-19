@@ -6,24 +6,30 @@ import { api }	from '@/api'
 import 'dayjs/locale/ja'   // 追加
 import { useRouter } from 'vue-router'   // 追加
 
+
 dayjs.locale('ja')         // アプリ起動時にどこかで 1 回だけ
 
 
-
 /* ---------- props ---------- */
-const props = defineProps({ selectedDate:Object })
+const props = defineProps({
+  apiPath:      { type:String, required:true },   // 例 'reservations/mine-driver/'
+  detailRoute:  { type:String, required:true },   // 例 '/driver/reservations'
+  showSettled:  { type:Boolean, default:false },  // Driver だけ true
+  selectedDate: Object                            // 既存
+})
 
 /* ---------- state ---------- */
-const items = reactive([])			// 昇順リスト
-const loadingPast	= ref(false)	// P2R 中
-const loadingFuture = ref(false)	// 未来側 IO 中
-const error			= ref(null)
-const router = useRouter()
+const items          = reactive([])   // 予約リスト
+const loadingPast    = ref(false)
+const loadingFuture  = ref(false)
+const error          = ref(null)
 
-/* P2R 描画用 */
-const pullDistance	= ref(0)		// ピクセル
-const isPulling		= ref(false)
-const listRef		= ref(null)
+const router  = useRouter() // ← ここ 1 回だけ
+const listRef = ref(null)
+
+/* ---------- Pull-to-Refresh 用 ---------- */
+const pullDistance = ref(0)
+const isPulling    = ref(false)
 
 /* ---------- 日付レンジ ---------- */
 const today  = dayjs().startOf('day')
@@ -35,34 +41,43 @@ const rangeParams = (f,t)=>({
 	to:  t.format('YYYY-MM-DD')
 })
 
+
 /* ---------- API ---------- */
-async function fetchRange(fromDate, toDate, prepend = false){
-	try{
-		const { data } = await api.get('reservations/mine-driver/', {
-			params: rangeParams(fromDate, toDate)
-		})
-		const normalized = data
-			.slice()
-			.sort((a,b)=> new Date(a.start_at) - new Date(b.start_at))
+async function fetchRange(fromDate, toDate, prepend = false) {
+  try {
+    const { data } = await api.get(props.apiPath, {
+      params: {
+        from: fromDate.format('YYYY-MM-DD'),
+        to:   toDate.format('YYYY-MM-DD')
+      }
+    })
 
-		const seen = new Set(items.map(i=>i.id))
+    const normalized = data
+      .slice()
+      .sort((a, b) => new Date(a.start_at) - new Date(b.start_at))
 
-		if(prepend){
-			const beforeH = listRef.value.scrollHeight
-			const beforeT = listRef.value.scrollTop
+    const seen = new Set(items.map(i => i.id))
 
-			normalized.slice().reverse().forEach(d=>{
-				if(!seen.has(d.id)) items.unshift(d)
-			})
-			await nextTick()
-			listRef.value.scrollTop = beforeT + (listRef.value.scrollHeight - beforeH)
-		}else{
-			normalized.forEach(d=>{
-				if(!seen.has(d.id)) items.push(d)
-			})
-		}
-	}catch(e){ error.value = e }
+    /* 追加位置の違い（prepend / append） */
+    if (prepend) {
+      const beforeH = listRef.value.scrollHeight
+      const beforeT = listRef.value.scrollTop
+
+      normalized.slice().reverse().forEach(d => {
+        if (!seen.has(d.id)) items.unshift(d)
+      })
+      await nextTick()
+      listRef.value.scrollTop = beforeT + (listRef.value.scrollHeight - beforeH)
+    } else {
+      normalized.forEach(d => {
+        if (!seen.has(d.id)) items.push(d)
+      })
+    }
+  } catch (e) {
+    error.value = e
+  }
 }
+
 
 /* ---------- 初期ロード (今日〜+3日) ---------- */
 onMounted(async ()=>{
@@ -139,45 +154,40 @@ function initFutureObserver(){
 
 /* ---------- 日付ごとにまとめた配列 ---------- */
 const groups = computed(() => {
-	// items は start_at 昇順で並んでいる
-	const map = new Map();		// key: 'YYYY-MM-DD' → その日の予約配列
-	for (const r of items) {
-		const key = dayjs(r.start_at).format('YYYY-MM-DD');
-		if (!map.has(key)) map.set(key, []);
-		map.get(key).push(r);
-	}
-	// Map → [{ date: dayjs, list: [...] }] へ変換
-	return Array.from(map.entries()).map(([key, list]) => ({
-		date: dayjs(key),
-		list
-	}));
-});
+  const map = new Map()
+  for (const r of items) {
+    const key = dayjs(r.start_at).format('YYYY-MM-DD')
+    if (!map.has(key)) map.set(key, [])
+    map.get(key).push(r)
+  }
+  return Array.from(map.entries()).map(([key, list]) => ({
+    date: dayjs(key),
+    list
+  }))
+})
 
 /* ---------- 親の selectedDate 変更 ---------- */
 watch(() => props.selectedDate, async d => {
-	if (!d) return;
-
-	if (d.isBefore(oldest)) {
-		await fetchRange(d.clone().subtract(3, 'day'), oldest, true);
-		oldest = d.clone().subtract(3, 'day');
-	}
-	if (d.isAfter(newest)) {
-		await fetchRange(newest.add(1, 'day'), d.clone().add(3, 'day'));
-		newest = d.clone().add(3, 'day');
-	}
-
-	nextTick(() => {
-		document
-			.getElementById(`date-${d.format('YYYYMMDD')}`)
-			?.scrollIntoView({ block: 'start' });
-	});
-});
+  if (!d) return
+  if (d.isBefore(oldest)) {
+    await fetchRange(d.clone().subtract(3, 'day'), oldest, true)
+    oldest = d.clone().subtract(3, 'day')
+  }
+  if (d.isAfter(newest)) {
+    await fetchRange(newest.add(1, 'day'), d.clone().add(3, 'day'))
+    newest = d.clone().add(3, 'day')
+  }
+  nextTick(() => {
+    document.getElementById(`date-${d.format('YYYYMMDD')}`)
+      ?.scrollIntoView({ block: 'start' })
+  })
+})
 
 
 /* ---------- Google Static Map ---------- */
 const GMAP_KEY = import.meta.env.VITE_GMAP_KEY || ''
 const mapImg  = a=> a
-	? `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(a)}&zoom=15&size=400x120&markers=color:red|${encodeURIComponent(a)}&key=${GMAP_KEY}`
+	? `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(a)}&zoom=15&size=100x100&markers=color:red|${encodeURIComponent(a)}&key=${GMAP_KEY}`
 	: ''
 const mapLink = a=> `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a)}`
 
@@ -190,8 +200,7 @@ const pullText = computed(()=>{
 
 /* ---------- ルーター ----------*/
 function openDetail(id){
-	/* ドライバー用の詳細ページへ */
-	router.push(`/driver/reservations/${id}`)
+  router.push(`${props.detailRoute}/${id}`)
 }
 
 </script>
