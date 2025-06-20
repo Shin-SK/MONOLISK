@@ -1,14 +1,26 @@
 // src/api.js
 import axios from 'axios'
 
-axios.defaults.withCredentials = true;
-axios.defaults.xsrfCookieName  = 'csrftoken';
-axios.defaults.xsrfHeaderName  = 'X-CSRFToken';
-
-export const api = axios.create({
+const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
   withCredentials: true,
 });
+
+// ★ ここで毎リクエスト直前に Cookie から csrftoken を拾って付与
+api.interceptors.request.use(config => {
+  const m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+  if (m) {
+    config.headers['X-CSRFToken'] = decodeURIComponent(m[1]);
+  }
+  return config;
+});
+
+export default api;
+
+
+axios.defaults.withCredentials = true;
+axios.defaults.xsrfCookieName  = 'csrftoken';
+axios.defaults.xsrfHeaderName  = 'X-CSRFToken';
 
 
 /* ---------- Reservations ---------- */
