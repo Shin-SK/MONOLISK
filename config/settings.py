@@ -25,9 +25,6 @@ ALLOWED_HOSTS = [
 # Application definition
 
 INSTALLED_APPS = [
-    "cloudinary",
-    "cloudinary_storage",
-
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -46,11 +43,27 @@ INSTALLED_APPS = [
     'django_htmx',
     'import_export',
     'django_filters',
+    "cloudinary",
+    "cloudinary_storage",
 
     'core.apps.CoreConfig'
     
 ]
 
+
+DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+
+CLOUDINARY_STORAGE = {
+    "CLOUD_NAME": os.getenv("CLOUDINARY_CLOUD_NAME"),
+    "API_KEY":    os.getenv("CLOUDINARY_API_KEY"),
+    "API_SECRET": os.getenv("CLOUDINARY_API_SECRET"),
+    "MEDIA_ROOT": "media",
+}
+
+STORAGES = {
+    "default": {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 
 SITE_ID = 1
 AUTH_USER_MODEL = 'core.User'
@@ -195,19 +208,4 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 STATIC_URL  = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-STATICFILES_STORAGE = (
-    "whitenoise.storage.CompressedManifestStaticFilesStorage"
-)
 
-
-if not DEBUG:
-    CLOUDINARY_STORAGE = {
-        "CLOUD_NAME":   os.getenv("CLOUDINARY_CLOUD_NAME"),
-        "API_KEY":      os.getenv("CLOUDINARY_API_KEY"),
-        "API_SECRET":   os.getenv("CLOUDINARY_API_SECRET"),
-    }
-    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
-else:
-    # 開発時はローカル media/ を使う
-    MEDIA_URL  = "/media/"
-    MEDIA_ROOT = BASE_DIR / "media"
