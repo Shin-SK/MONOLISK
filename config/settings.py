@@ -25,6 +25,9 @@ ALLOWED_HOSTS = [
 # Application definition
 
 INSTALLED_APPS = [
+    "cloudinary",
+    "cloudinary_storage",
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -43,8 +46,7 @@ INSTALLED_APPS = [
     'django_htmx',
     'import_export',
     'django_filters',
-    "cloudinary",
-    "cloudinary_storage",
+
     'core.apps.CoreConfig'
     
 ]
@@ -198,9 +200,14 @@ STATICFILES_STORAGE = (
 )
 
 
-DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
-CLOUDINARY_STORAGE = {
-    "CLOUD_NAME": os.getenv("CLOUDINARY_CLOUD_NAME"),
-    "API_KEY":    os.getenv("CLOUDINARY_API_KEY"),
-    "API_SECRET": os.getenv("CLOUDINARY_API_SECRET"),
-}
+if not DEBUG:
+    CLOUDINARY_STORAGE = {
+        "CLOUD_NAME":   os.getenv("CLOUDINARY_CLOUD_NAME"),
+        "API_KEY":      os.getenv("CLOUDINARY_API_KEY"),
+        "API_SECRET":   os.getenv("CLOUDINARY_API_SECRET"),
+    }
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+else:
+    # 開発時はローカル media/ を使う
+    MEDIA_URL  = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
