@@ -54,7 +54,7 @@ const displayName = computed(() =>
     <div class="header__wrap container d-flex justify-content-between align-items-center">
 
       <!-- アバター（メニュー開閉トグル） -->
-	   <button class="btn p-0 border-0 bg-transparent"
+	   <button class="avatar-icon btn p-0 border-0 bg-transparent"
         data-bs-toggle="offcanvas"
         data-bs-target="#appSidebar"
         aria-controls="appSidebar">
