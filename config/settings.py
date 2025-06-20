@@ -50,6 +50,11 @@ INSTALLED_APPS = [
     
 ]
 
+DJ_REST_AUTH = {
+    "USER_DETAILS_SERIALIZER": "core.serializers.UserDetailSerializer",
+    # ※ 他に書く項目があればここに
+}
+
 
 DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
@@ -73,19 +78,23 @@ REST_AUTH_SERIALIZERS = {
 }
 
 REST_AUTH = {
-    # 旧: USERNAME_REQUIRED / EMAIL_REQUIRED
-    # 新: SIGNUP_FIELDS で必須・任意を宣言
     'SIGNUP_FIELDS': {
         'username': {'required': True},
         'email':    {'required': True},
-        # 他に first_name など追加する場合はここへ
     },
+    'LOGIN_FIELD': 'username',
 }
+
+# allauth のログインは username のみ許可
+ACCOUNT_AUTHENTICATION_METHOD = "username"
+ACCOUNT_EMAIL_REQUIRED        = True
+ACCOUNT_USERNAME_REQUIRED     = True
+ACCOUNT_EMAIL_VERIFICATION    = "none"     # ← 面倒を避けるなら
 
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",  # 全 API をデフォルト締め
@@ -94,6 +103,7 @@ REST_FRAMEWORK = {
         'django_filters.rest_framework.DjangoFilterBackend',   # ★ 追加
     ),
 }
+REST_SESSION_LOGIN = False 
 
 # 本番だけ締める場合
 if not DEBUG:

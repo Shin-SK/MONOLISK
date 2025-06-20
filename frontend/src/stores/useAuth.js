@@ -1,19 +1,17 @@
-// src/stores/useAuth.js
-import { defineStore } from 'pinia';
-import { api } from '@/api';
-import { useUser } from '@/stores/useUser';
+import { defineStore } from 'pinia'
+import { login as apiLogin, logout as apiLogout } from '@/api'
+import { useUser } from '@/stores/useUser'
 
 export const useAuth = defineStore('auth', {
-  actions : {
-    async login (username, password) {
-      // dj-rest-auth は Cookie を返すので token 管理は不要
-      await api.post('dj-rest-auth/login/', { username, password });
-      useUser().clear();      // 状態をリセットして…
-      await useUser().fetch(); // …最新ユーザ情報を取得
+  actions: {
+    async login(username, password) {
+      await apiLogin(username, password)   // token 保存
+      useUser().clear()
+      await useUser().fetch()
     },
-    async logout () {
-      await api.post('dj-rest-auth/logout/');
-      useUser().clear();
+    async logout() {
+      await apiLogout()                    // ← ここを修正
+      useUser().clear()
     }
   }
-});
+})

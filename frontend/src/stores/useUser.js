@@ -1,33 +1,76 @@
 // src/stores/useUser.js
 import { defineStore } from 'pinia';
-import { api } from '@/api';
+import { api, login as apiLogin, logout as apiLogout } from '@/api';
 
+/**
+ * ログイン状態と /dj-rest-auth/user/ の情報を管理するストア
+ */
 export const useUser = defineStore('user', {
-  state : () => ({
-    info: null          // dj-rest-auth/user/ 全体を保持
+  // -------------------------------------------------------------------------
+  // state
+  // -------------------------------------------------------------------------
+  state: () => ({
+    /** 未取得: null / 未ログイン: {} / ログイン済み: ユーザーオブジェクト */
+    info: null,
   }),
 
-  getters : {
-    avatar : s => s.info?.avatar_url ?? '/static/img/user-default.png',
-    name   : s => s.info?.display_name || s.info?.username || '',
-    isDriver : s => s.info?.groups?.includes('DRIVER') ?? false,
-    isCast   : s => s.info?.groups?.includes('CAST')   ?? false,   // 既存
-    isStaff  : s => !s.isDriver && !s.isCast,                      // STAFF 判定
-    fullName : s => s.info?.display_name || s.info?.username || '',
-    isStaff () { return !this.isDriver && !this.isCast }
+  // -------------------------------------------------------------------------
+  // getters
+  // -------------------------------------------------------------------------
+  getters: {
+    avatar:   (s) => s.info?.avatar_url ?? '/static/img/user-default.png',
+    name:     (s) => s.info?.display_name || s.info?.username || '',
+    isDriver: (s) => s.info?.groups?.includes('DRIVER') ?? false,
+    isCast:   (s) => s.info?.groups?.includes('CAST')   ?? false,
+    isStaff() { return !this.isDriver && !this.isCast },
+    fullName() { return this.name },
   },
 
-  actions : {
-    async fetch () {
-      if (this.info !== null) return;           // 既に取得済み
+  // -------------------------------------------------------------------------
+  // actions
+  // -------------------------------------------------------------------------
+  actions: {
+    /**
+     * 現在ログイン中のユーザー情報を取得
+     * - 401 / 403 は「未ログイン」とみなして空オブジェクトをセット
+     */
+    async fetch() {
+      // 一度取得済みなら再取得しない
+      if (this.info !== null && Object.keys(this.info).length) return;
+
       try {
         const { data } = await api.get('dj-rest-auth/user/');
-        this.info = data;                       // ログイン済み
+        this.info = data; // ログイン済み
       } catch (err) {
-        if (err?.response?.status === 403) this.info = {};   // 未ログイン
-        else throw err;
+        const status = err?.response?.status;
+        if (status === 401 || status === 403) {
+          this.info = {}; // 未ログイン
+        } else {
+          throw err;      // その他のエラーは上位へ
+        }
       }
     },
-    clear () { this.info = null; }
-  }
+
+    /**
+     * ログイン
+     * @param {string} username
+     * @param {string} password
+     */
+    async login(username, password) {
+      await apiLogin(username, password); // token を保存 （api.js 内）
+      this.info = null;                  // キャッシュクリア
+      await this.fetch();                // 取得し直し
+    },
+
+    /** ログアウト */
+    async logout() {
+      await apiLogout(); // token 破棄＆サーバ側ログアウト（失敗しても無視）
+      this.clear();
+    },
+
+    /** 強制クリア（ストア初期化） */
+    clear() {
+      this.info = null;
+    },
+  },
 });

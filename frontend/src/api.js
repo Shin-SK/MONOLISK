@@ -1,26 +1,56 @@
 // src/api.js
 import axios from 'axios'
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
-  withCredentials: true,
-});
+})
 
-// ★ ここで毎リクエスト直前に Cookie から csrftoken を拾って付与
-api.interceptors.request.use(config => {
-  const m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
-  if (m) {
-    config.headers['X-CSRFToken'] = decodeURIComponent(m[1]);
+/* ------------------------------------------------------------------ */
+/* 1. interceptor: “ログイン系 URL には token を付けない”            */
+/* ------------------------------------------------------------------ */
+const SKIP_AUTH = [
+  'dj-rest-auth/login/',
+  'dj-rest-auth/registration/',
+  'dj-rest-auth/password/reset/',
+]
+
+api.interceptors.request.use(cfg => {
+  // 対象 URL ならスキップ
+  if (!SKIP_AUTH.some(p => cfg.url.includes(p))) {
+    const t = localStorage.getItem('token')
+    if (t) cfg.headers.Authorization = `Token ${t}`
   }
-  return config;
-});
-
-export default api;
+  return cfg
+})
 
 
-axios.defaults.withCredentials = true;
-axios.defaults.xsrfCookieName  = 'csrftoken';
-axios.defaults.xsrfHeaderName  = 'X-CSRFToken';
+api.interceptors.response.use(
+  res => res,
+  err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('token')      // ← 壊れた token を掃除
+    }
+    return Promise.reject(err)
+  }
+)
+
+/* ------------------------------------------------------------------ */
+/* 2. 認証 API                                                         */
+/* ------------------------------------------------------------------ */
+export async function login(username, password) {
+  localStorage.removeItem('token')                // ← まず完全クリア
+  const { data } = await api.post(
+    'dj-rest-auth/login/',
+    { username, password },
+    { headers: { Authorization: '' } }           // ← 念のため空ヘッダで上書き
+  )
+  localStorage.setItem('token', data.key)
+}
+
+export async function logout() {
+  try { await api.post('dj-rest-auth/logout/') } catch (_) {}
+  localStorage.removeItem('token')
+}
 
 
 /* ---------- Reservations ---------- */
@@ -60,3 +90,5 @@ export const getCustomer    = id          => api.get(`customers/${id}/`).then(r 
 /* ---------- キャストオプション ---------- */
 export const getCastOptions  = castId => api.get('cast-options/', { params: { cast_profile: castId } }).then(r => r.data)
 export const patchCastOption = (id, p) => api.patch(`cast-options/${id}/`, p).then(r => r.data)
+
+
