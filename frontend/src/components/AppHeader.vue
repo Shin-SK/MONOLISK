@@ -30,13 +30,6 @@ async function logout () {
   }
 }
 
-/* ---------- ロール別メニュー ---------- */
-const menuItems = computed(() => {
-  const base   = [{ label:'プロフィール編集', action:()=>router.push(`${rootPath.value}/profile`) }]
-  if (userStore.isCast)   base.push({ label:'売上', action:()=>router.push(`${rootPath.value}/sales`) })
-  base.push({ label:'ログアウト', action:logout })
-  return base
-})
 
 /* ---------- ナビボタン ---------- */
 function goTimeline () { router.push(`${rootPath.value}/mypage`) }
@@ -92,10 +85,20 @@ const displayName = computed(() =>
 
 		<div class="offcanvas-body d-flex flex-column justify-content-between h-100 gap-3">
 			<div class="wrap d-flex flex-column">
-				<RouterLink class="btn btn-outline-primary w-100 d-flex justfy-content-start" to="/profile">プロフィール編集</RouterLink>
+        <RouterLink
+          class="btn btn-outline-primary w-100 d-flex justfy-content-start"
+          :to="`${rootPath}/profile`"
+        >
+          プロフィール編集
+        </RouterLink>
 
-				<!-- v-if で切替（例） -->
-				<RouterLink v-if="userStore.isCast" class="btn btn-outline-primary w-100 d-flex justfy-content-start" to="/cast/sales">売上</RouterLink>
+        <RouterLink
+          v-if="userStore.isCast"
+          class="btn btn-outline-primary w-100 d-flex justfy-content-start"
+          :to="`${rootPath}/sales`"
+        >
+          売上
+        </RouterLink>
 			</div>
 			<div class="bottom">
 				<div class="user d-flex gap-2 align-items-center">
@@ -104,7 +107,6 @@ const displayName = computed(() =>
 						{{ displayName }}
 					</div>
 				</div>
-				<!-- ☆ここにユーザー名とか本人がわかるやつがだしたい -->
 				<button class="btn btn-outline-danger w-100" @click="logout">ログアウト</button>
 			</div>
 		</div>

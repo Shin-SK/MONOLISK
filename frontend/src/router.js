@@ -22,6 +22,7 @@ import CustomerList          from '@/views/CustomerList.vue'
 import CustomerForm          from '@/views/CustomerForm.vue'
 import CastList              from '@/views/CastList.vue'
 import CastForm              from '@/views/CastForm.vue'
+import UserProfileEdit              from '@/views/UserProfileEdit.vue'
 import ClosingList           from '@/views/ClosingList.vue'
 
 const routes = [
@@ -69,6 +70,8 @@ const routes = [
       { path: '', redirect: '/driver/mypage' },
       { path: 'mypage',        component: DriverMypage },
       { path: 'reservations/:id', component: ReservationFormDriver },
+      { path: 'profile', component: UserProfileEdit }   // /driver/profile など
+
     ],
   },
 
@@ -82,6 +85,7 @@ const routes = [
       { path: 'mypage',        component: CastMypage },
       { path: 'reservations/:id', component: ReservationFormCast },
       { path:'sales', component: CastSales },
+      { path: 'profile', component: UserProfileEdit }   // /cast/profile など
     ],
   },
 

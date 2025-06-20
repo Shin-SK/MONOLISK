@@ -41,27 +41,6 @@ async function save () {
 
 <template>
 
-	<header class="header">
-		<div class="header__wrap container">
-			<div class="area">
-				<div class="icon">
-					<img :src="userStore.avatar" class="rounded-circle"/>
-				</div>
-			</div>
-
-			<!-- ボタン押したら、タイムラインかカレンダーに飛びたい -->
-			<div class="mini-nav">
-				<button class="btn btn-outline-primary button" @click="mode='list'">
-					<span class="material-symbols-outlined">list</span>
-				</button>
-
-				<button class="btn btn-outline-primary button" @click="mode='timeline'">
-					<span class="material-symbols-outlined">view_timeline</span>
-				</button>
-			</div>
-		</div>
-	</header>
-
 <div class="container py-4" v-if="rsv">
   <h1 class="h4 mb-4">予約 #{{ rsv.id }}（ドライバー）</h1>
 
