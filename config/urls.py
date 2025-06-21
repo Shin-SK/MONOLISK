@@ -24,34 +24,3 @@ if settings.DEBUG:
         settings.MEDIA_URL, document_root=settings.MEDIA_ROOT
     )
 
-# ログインアウト画面制作用
-
-# if settings.DEBUG:
-#     urlpatterns += [
-#         # ログアウト画面プレビュー → http://localhost:8000/_preview/logout/
-#         path(
-#             "_preview/logout/",
-#             TemplateView.as_view(
-#                 template_name="registration/logged_out.html",
-#                 extra_context={
-#                     # logged_out.html で {{ user }} 等を使っている場合は
-#                     # 適当にダミー値を入れておくと安心
-#                     "user": None,
-#                 },
-#             ),
-#             name="logout-preview",
-#         ),
-
-#         # ログイン画面プレビュー  → http://localhost:8000/_preview/login/
-#         path(
-#             "_preview/login/",
-#             TemplateView.as_view(
-#                 template_name="registration/login.html",
-#                 extra_context={
-#                     # ログインフォームを実際に表示したいなら
-#                     "form": AuthenticationForm(),
-#                 },
-#             ),
-#             name="login-preview",
-#         ),
-#     ]

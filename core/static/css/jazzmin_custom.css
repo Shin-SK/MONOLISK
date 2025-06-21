@@ -1,49 +1,40 @@
-.btn {
+.theme-lux .btn {
   padding: 8px 24px;
   border-radius: 4px;
 }
-
-.btn-primary {
+.theme-lux .btn-primary {
   background-color: #020202;
   border: unset;
 }
-.btn-primary:hover {
+.theme-lux .btn-primary:hover {
   background-color: rgba(2, 2, 2, 0.7);
 }
-
-.btn-success {
+.theme-lux .btn-success {
   background-color: #461B35;
 }
-
-.table td, .table th {
+.theme-lux .table td, .theme-lux .table th {
   padding: 8px;
 }
-
-.card {
+.theme-lux .card {
   box-shadow: unset !important;
   border: unset !important;
-  width: 30vw;
-  min-width: 200px;
-  max-width: 350px;
 }
-
-.main-sidebar .elevation-3 {
+.theme-lux .main-sidebar .elevation-3 {
   box-shadow: unset !important;
 }
-.main-sidebar.elevation-4 {
+.theme-lux .main-sidebar.elevation-4 {
   box-shadow: 0 10px 0px rgba(0, 0, 0, 0.25), 0 0px 10px rgba(0, 0, 0, 0.22) !important;
 }
-.main-sidebar .user-profile {
+.theme-lux .main-sidebar .user-profile {
   color: #020202;
 }
-.main-sidebar ul.nav {
+.theme-lux .main-sidebar ul.nav {
   margin: auto;
 }
-.main-sidebar ul.nav li.nav-item:first-of-type {
+.theme-lux .main-sidebar ul.nav li.nav-item:first-of-type {
   display: none;
 }
-
-.dashboard-wrapper td {
+.theme-lux .dashboard-wrapper td {
   align-content: center;
 }
 
@@ -51,6 +42,18 @@
   color: #461B35;
 }
 
+.jazzmin-login-page .login-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.jazzmin-login-page .btn-primary {
+  background-color: #020202;
+  border: unset;
+}
+.jazzmin-login-page .btn-primary:hover {
+  background-color: rgba(2, 2, 2, 0.7);
+}
 .jazzmin-login-page .login-logo {
   display: flex;
   align-items: center;
@@ -59,4 +62,11 @@
 .jazzmin-login-page .login-logo img {
   max-width: 160px;
   height: auto;
+}
+.jazzmin-login-page .card {
+  box-shadow: unset !important;
+  border: unset !important;
+  width: 30vw;
+  min-width: 200px;
+  max-width: 350px;
 }/*# sourceMappingURL=jazzmin_custom.css.map */

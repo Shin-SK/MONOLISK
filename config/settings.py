@@ -59,6 +59,9 @@ DJ_REST_AUTH = {
     # ※ 他に書く項目があればここに
 }
 
+# 管理画面に飛ばしたい場合
+LOGIN_REDIRECT_URL = "/admin/"
+
 
 DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
