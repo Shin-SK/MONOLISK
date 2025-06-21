@@ -1,0 +1,1 @@
+default_app_config = "jazzmin_settings.apps.JazzminSettingsConfig"

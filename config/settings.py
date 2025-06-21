@@ -25,6 +25,7 @@ ALLOWED_HOSTS = [
 # Application definition
 
 INSTALLED_APPS = [
+    "jazzmin",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -45,9 +46,12 @@ INSTALLED_APPS = [
     'django_filters',
     "cloudinary",
     "cloudinary_storage",
+    'dal',              # ← 追加
+    'dal_select2',      # ← 追加（Select2 フロント）
 
-    'core.apps.CoreConfig'
-    
+    'core.apps.CoreConfig',
+    "jazzmin_settings",
+    "jazzmin_hide.apps.JazzminHideConfig", 
 ]
 
 DJ_REST_AUTH = {
@@ -219,3 +223,90 @@ STATIC_URL  = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 
+# jazzmin
+
+# ===========================================
+#  Jazzmin ― 完全版設定（コピー＆ペースト用）
+# ===========================================
+JAZZMIN_SETTINGS = {
+    # ─ サイト基本情報 ───────────────────────
+    "site_title":   "管理者【MONOLISK】",
+    "site_brand":   "MONOLISK",
+    "site_header":  "MONOLISK 管理",
+    "site_logo":    "img/logo.webp",          # static 配下（collectstatic 後のパス）
+    "welcome_sign": "ようこそ MONOLISK へ",
+    "copyright":    "MONOLISK",
+
+    #──────── サイドバー完全カスタム ────────
+    # ─ サイドバー全体を完全手書きで制御 ────
+    "navigation_expanded": False,             # 常に折りたたみ開始
+    "hide_apps": [],   # core 標準ツリーを丸ごと隠す
+    "order_with_respect_to": [
+        "core",            # メイン（Reservation, Customer …）
+        "jazzmin_hide",    # その他 ← ここに proxy が並ぶ
+        "jazzmin_settings",
+        "auth",            # ここは jazzmin が自動で作る “アカウント” 親
+    ],
+
+    "side_menu": [
+        {
+            "app": "core",
+            "label": "メイン",
+            "icon": "fa fa-home",
+            "models": [
+                {"model": "core.reservation", "label": "予約",        "icon": "fa fa-calendar-check"},
+                {"model": "core.customer",    "label": "顧客",        "icon": "fa fa-users"},
+                {"model": "core.option",      "label": "オプション",  "icon": "fa fa-tasks"},
+                {"model": "core.castprofile", "label": "キャスト情報","icon": "fa fa-star"},
+            ],
+        },
+        {
+            "app": "jazzmin_hide",
+            "label": "その他",
+            "icon": "fa fa-ellipsis-h",
+            "models": "*"         # ← proxy 全部自動で並ぶ
+        },
+        "-",                      # 仕切り線
+        {"app": "jazzmin_settings", "label": "設定",   "icon": "fa fa-cogs"},
+        {"app": "auth",            "label": "ユーザー","icon": "fa fa-user-shield"},
+    ],
+
+    # 元モデルは非表示
+    "hide_models": [
+        "core.Store", "core.Rank", "core.Course", "core.RankCourse",
+        "core.GroupOptionPrice", "core.Driver", "core.CashFlow",
+        "core.ReservationCast", "core.ReservationCharge",
+        "core.CastCoursePrice", "core.CastOption",
+        "core.Performer",                 # Performer も “メイン外” ならここに
+        # Django 標準など
+        "auth.Group", "auth.Permission", "sites.Site",
+    ],
+
+    # アイコンを追加（無い物だけ）
+    "icons": {
+        # …既存アイコン…
+        "jazzmin_hide.storeproxy":            "fa fa-store",
+        "jazzmin_hide.rankproxy":             "fa fa-award",
+        "jazzmin_hide.courseproxy":           "fa fa-clock",
+        "jazzmin_hide.rankcourseproxy":       "fa fa-money-bill",
+        "jazzmin_hide.groupoptionpriceproxy": "fa fa-users",
+        "jazzmin_hide.driverproxy":           "fa fa-id-badge",
+        "jazzmin_hide.cashflowproxy":         "fa fa-coins",
+        "jazzmin_hide.reservationcastproxy":  "fa fa-user-friends",
+        "jazzmin_hide.reservationchargeproxy":"fa fa-yen-sign",
+        "jazzmin_hide.castcoursepriceproxy":  "fa fa-dollar-sign",
+        "jazzmin_hide.castoptionproxy":       "fa fa-tag",
+    },
+
+    # カスタム CSS / JS
+    "custom_css": "css/jazzmin_custom.css",
+    # "custom_js":  "js/admin_extra.js",
+}
+
+
+
+
+JAZZMIN_UI_TWEAKS = {
+    "theme": "lux",
+    "sidebar": "sidebar-light-primary",
+}

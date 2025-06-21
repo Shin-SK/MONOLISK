@@ -65,6 +65,7 @@ class RankCourse(TimeStamped):
 		return f"{self.course.minutes}min ({self.rank.name})"
 
 class Option(TimeStamped):
+
 	class Category(models.TextChoices):
 		OTHER = 'OTHER', 'その他'
 		GROUP  = 'GROUP',  '3P/4P'
@@ -75,6 +76,10 @@ class Option(TimeStamped):
 	category	   = models.CharField(max_length=20, choices=Category.choices)
 	def __str__(self):
 		return self.name
+
+	class Meta:
+		verbose_name = 'オプション'
+		verbose_name_plural = 'オプション'
 	
 
 class GroupOptionPrice(TimeStamped):
@@ -92,6 +97,10 @@ class Performer(TimeStamped):
 	# 将来: bank_account, id_card_photo 等
 	def __str__(self):
 		return self.real_name
+
+	class Meta:
+		verbose_name = '予約'
+		verbose_name_plural = '予約'
 
 # ---------- CastProfile（旧 Cast を分割） ----------
 class CastProfile(TimeStamped):
@@ -121,7 +130,9 @@ class CastProfile(TimeStamped):
 	)
 
 	class Meta:
-		unique_together = ("performer", "store")		  # 同じ店で別名禁止
+		unique_together = ("performer", "store")
+		verbose_name = 'キャスト情報'
+		verbose_name_plural = 'キャスト情報'
 
 	def __str__(self):
 		return f"{self.stage_name} @ {self.store.name}"
@@ -162,6 +173,10 @@ class Customer(TimeStamped):
 	def __str__(self):
 		return self.name
 
+	class Meta:
+		verbose_name = '顧客'
+		verbose_name_plural = '顧客'
+
 
 # ---------- 予約 ----------
 class Reservation(TimeStamped):
@@ -172,14 +187,14 @@ class Reservation(TimeStamped):
 		CLOSED	 = 'CLOSED',  'Closed'
 		CANCELED   = 'CANCELED','Canceled'
 
-	store	 = models.ForeignKey(Store,  on_delete=models.CASCADE)
-	driver	= models.ForeignKey(Driver, on_delete=models.CASCADE)
-	customer  = models.ForeignKey(Customer,on_delete=models.CASCADE)
-	start_at  = models.DateTimeField()
+	store	 = models.ForeignKey(Store,  on_delete=models.CASCADE, verbose_name='店舗',)
+	driver	= models.ForeignKey(Driver, on_delete=models.CASCADE, verbose_name='ドライバー',)
+	customer  = models.ForeignKey(Customer,on_delete=models.CASCADE, verbose_name='顧客')
+	start_at  = models.DateTimeField(verbose_name='開始時刻')
 	total_time= models.PositiveSmallIntegerField()  # 分
-	status	= models.CharField(max_length=10, choices=Status.choices, default=Status.BOOKED)
-	manual_extra_price = models.IntegerField(default=0)
-	received_amount   = models.IntegerField(null=True, blank=True)
+	status	= models.CharField(max_length=10, choices=Status.choices, default=Status.BOOKED , verbose_name='ステータス')
+	manual_extra_price = models.IntegerField(default=0, verbose_name='延長料金')
+	received_amount   = models.IntegerField(null=True, blank=True, verbose_name='受取金')
 	discrepancy_flag  = models.BooleanField(default=False)
 	deposited_amount = models.PositiveIntegerField(default=0)
 
@@ -197,10 +212,49 @@ class Reservation(TimeStamped):
 			self.discrepancy_flag = (self.received_amount != self.expected_amount)
 		super().save(*args, **kwargs)
 
+	class Meta:
+		verbose_name = '予約'
+		verbose_name_plural = '予約'
+
 class ReservationCast(TimeStamped):
-	reservation   = models.ForeignKey(Reservation, related_name='casts', on_delete=models.CASCADE)
-	cast_profile  = models.ForeignKey(CastProfile, on_delete=models.CASCADE)
-	rank_course   = models.ForeignKey(RankCourse, on_delete=models.CASCADE)
+	reservation  = models.ForeignKey(
+		Reservation, on_delete=models.CASCADE,
+		verbose_name=_('予約')
+	)
+	cast_profile = models.ForeignKey(
+		CastProfile, on_delete=models.CASCADE,
+		verbose_name=_('キャスト')
+	)
+	course	   = models.ForeignKey(				   # ← 追加済み
+		Course, on_delete=models.CASCADE,
+		null=True, blank=True,
+		verbose_name=_('コース')
+	)
+	rank_course  = models.ForeignKey(
+		RankCourse, on_delete=models.CASCADE,
+		null=True, blank=True, editable=False
+	)
+
+	class Meta:
+		verbose_name = _('キャスト')
+		verbose_name_plural = _('キャスト')
+
+	def save(self, *args, **kwargs):
+		"""
+		cast_profile・course が揃ったら自動で RankCourse を決定
+		"""
+		if self.cast_profile_id and self.course_id and not self.rank_course_id:
+			try:
+				self.rank_course = RankCourse.objects.get(
+					store  = self.reservation.store,
+					rank   = self.cast_profile.rank,
+					course = self.course
+				)
+			except RankCourse.DoesNotExist:
+				from django.core.exceptions import ValidationError
+				raise ValidationError("RankCourse が未登録です")
+
+		super().save(*args, **kwargs)
 
 	@property
 	def total_price(self):

@@ -12,6 +12,7 @@ django-cors-headers==4.7.0
 django-filter==25.1
 django-htmx==1.23.0
 django-import-export==4.3.7
+django-jazzmin==3.0.1
 djangorestframework==3.16.0
 gunicorn==23.0.0
 htmx-django==0.1.1

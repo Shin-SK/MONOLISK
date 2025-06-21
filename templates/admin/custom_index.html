@@ -1,0 +1,67 @@
+{# templates/admin/custom_index.html #}
+{% extends "admin/index.html" %}
+{% load i18n humanize dashboard_tags %}
+
+{% block content %}
+<div class="dashboard-wrapper d-flex flex-column gap-4 w-100">
+
+  <div class="new-res d-flex flex-fill justify-content-center mb-4">
+    <a href="{% url 'admin:core_reservation_add' %}"
+       class="w-100 btn btn-primary d-flex justify-content-center align-items-center gap-4">
+      <i class="fas fa-plus-circle"></i>新規予約
+    </a>
+  </div>
+
+  {% recent_reservations 30 as recent %}
+  <div class="card shadow-sm">
+    <div class="card-header fw-bold">最近の予約（最新 30 件）</div>
+
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th>
+            <th>キャスト</th>
+            <th>開始</th>
+            <th>分数</th>
+            <th>ドライバー</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for r in recent %}
+          <tr onclick="location.href='{% url 'admin:core_reservation_change' r.id %}'"
+              style="cursor:pointer">
+            <td>{{ r.id }}</td>
+
+            <td>
+              {% for c in r.casts.all %}
+                <div class="d-flex align-items-center">
+                  <img src="{{ c.cast_profile.photo_url }}"
+                       alt="{{ c.cast_profile.stage_name }}"
+                       class="rounded-circle border mr-1"
+                       style="width:32px;height:32px;object-fit:cover;">
+                  <span>{{ c.cast_profile.stage_name }}</span>
+                </div>
+              {% empty %}
+                <span class="text-muted">―</span>
+              {% endfor %}
+            </td>
+
+            <td>{{ r.start_at|date:"m/d H:i" }}</td>
+            <td>{{ r.total_time }}</td>
+            <td>{{ r.driver }}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" class="text-center text-muted py-4">
+              予約はありません
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -16,6 +16,8 @@ from .resources import RankCourseRes
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
 
+from .forms import ReservationForm
+
 
 
 
@@ -43,6 +45,7 @@ class RankCourseAdmin(ImportExportModelAdmin):
 @admin.register(Option)
 class OptionAdmin(admin.ModelAdmin):
 	list_display = ('id', 'name', 'default_price', 'category')
+	list_display_links = ('id', 'name')
 	list_filter = ('category',)
 
 @admin.register(GroupOptionPrice)
@@ -61,7 +64,7 @@ class PerformerRes(resources.ModelResource):
 class PerformerAdmin(ImportExportModelAdmin):
 	resource_classes = [PerformerRes]
 	list_display = ("id", "real_name", "birthday")
-
+	list_display_links = ('id', 'real_name')
 
 
 # ─ CastProfile ───────────────────────
@@ -125,6 +128,13 @@ class CastProfileAdmin(ImportExportModelAdmin):
 		])
 
 
+# ---------- CashFlow (単体表示も欲しい場合) ----------
+@admin.register(CashFlow)
+class CashFlowAdmin(admin.ModelAdmin):
+	list_display = ('id', 'reservation', 'type', 'amount', 'recorded_at')
+	list_filter = ('type', 'recorded_at')
+
+
 
 # ---------- 顧客・ドライバー ----------
 @admin.register(Driver)
@@ -140,45 +150,12 @@ class DriverAdmin(admin.ModelAdmin):
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
 	list_display = ('id', 'name', 'phone')
+	list_display_links = ('id', 'name')
 	search_fields = ('name', 'phone')
 
-# ---------- 予約 ----------
-
-class ReservationForm(forms.ModelForm):
-	class Meta:
-		model  = Reservation
-		fields = "__all__"
-
-	def clean(self):
-		data = super().clean()
-		rc: RankCourse | None = data.get("rank_course")
-		if rc:
-			data["total_time"] = rc.course.minutes   # ← 自動コピー
-		return data
-
-class ReservationCastInline(admin.TabularInline):
-	model = ReservationCast
-	extra = 0
-
-class ReservationChargeInline(admin.TabularInline):
-	model = ReservationCharge
-	extra = 0
 
 
-class CashFlowInline(admin.TabularInline):
-	model = CashFlow
-	extra = 0
-
-
-
-# ---------- CashFlow (単体表示も欲しい場合) ----------
-@admin.register(CashFlow)
-class CashFlowAdmin(admin.ModelAdmin):
-	list_display = ('id', 'reservation', 'type', 'amount', 'recorded_at')
-	list_filter = ('type', 'recorded_at')
-
-
-
+# ---------- ユーザー ----------
 
 User = get_user_model()
 
@@ -213,14 +190,98 @@ class UserAdmin(BaseUserAdmin):
 		return "-"
 	thumb.short_description = "Avatar"
 
+# ---------- 予約 ----------
+
+
+class ReservationCastInline(admin.TabularInline):
+	model   = ReservationCast
+	fields  = ("cast_profile", "course")
+	extra   = 0
+	# ↓ クラスを３つセット（collapse は折りたたみ表示を防ぐため無しでも可）
+	classes = ( "tab-reserve", "extrapretty", "wide")  # ★ tab-reserve に統一
+
+class ReservationChargeInline(admin.TabularInline):
+	model   = ReservationCharge
+	extra   = 0
+	classes = ("tab-reserve","extrapretty", "wide")  # ★ 同じタブへ
+
+class CashFlowInline(admin.TabularInline):
+	model   = CashFlow
+	extra   = 0
+	classes = ( "tab-money", "extrapretty", "wide")	# 金額タブは別
+
+
 
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
-	form = ReservationForm # total_time 自動入力
-	inlines  = [ReservationCastInline,
-				ReservationChargeInline,
-				CashFlowInline]
-	list_display = ('id', 'store', 'start_at', 'status',
-					'expected_amount', 'discrepancy_flag')
-	list_filter  = ('store', 'status', 'discrepancy_flag')
-	date_hierarchy = 'start_at'
+	form = ReservationForm
+	inlines = []					  # ← インライン不要
+
+	jazzmin_form_tabs = [
+		("tab-reserve", _("予約")),   # ← インラインと同じ ID
+		("tab-money",   _("金額")),
+		("tab-extra",   _("その他")),
+	]
+
+	def get_form(self, request, obj=None, **kwargs):
+		form = super().get_form(request, obj, **kwargs)
+		store_id = request.GET.get("store")
+		qs = CastProfile.objects.filter(store_id=store_id) if store_id else CastProfile.objects.all()
+		form.base_fields["cast_profile"].queryset = qs
+		return form
+
+
+	fieldsets = (
+		('予約情報', {'fields': (
+			'store', 'cast_profile', 'start_at', 'course', 'customer',
+		)}),
+		('金額', {'fields': ('manual_extra_price', 'received_amount')}),
+		('その他', {'classes': ('collapse',), 'fields': ('driver', 'status')}),
+	)
+
+
+
+	# 並び替え（タブ内の順序を保証）
+	jazzmin_section_order = (
+		'予約情報',		  # フィールドセット
+		'reservation charges', # インライン (verbose_name_plural)
+		'キャスト',			# インライン (verbose_name_plural)
+		'金額',
+		'cash flows',
+		'その他',
+	)
+
+	list_display	   = ('id', 'store', 'start_at', 'customer')
+	list_filter		= ('store', 'status')
+	date_hierarchy	 = 'start_at'
+
+	# ───────── カスタム列 ──────────
+	@admin.display(description='キャスト', ordering='casts__cast_profile__stage_name')
+	def cast_column(self, obj):
+		"""
+		予約に紐づくキャストを ➜ [写真] 名前 で表示。
+		複数キャストの場合は改行区切り。
+		"""
+		if not obj.casts.exists():
+			return '-'
+
+		html_parts = []
+		for rc in obj.casts.all():
+			cp = rc.cast_profile
+			html_parts.append(
+				'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
+				f'<img src="{cp.photo_url}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">'
+				f'<span>{cp.stage_name}</span></div>'
+			)
+		return format_html(''.join(html_parts))
+
+	@admin.display(description='ドライバー', ordering='driver__user__username')
+	def driver_column(self, obj):
+		return obj.driver  # Driver.__str__() でユーザー名を返している
+
+
+
+	admin.site.index_template = "admin/custom_index.html"
+
+
+

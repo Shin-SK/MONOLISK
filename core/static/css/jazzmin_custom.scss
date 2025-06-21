@@ -1,0 +1,62 @@
+$mc:#020202;
+$second: #461B35;
+$yellow: #FBC710;
+$red:#C44429;
+
+
+//343a40
+
+body.theme-lux {
+
+	.btn{
+		padding: 8px 24px;
+		border-radius: 4px;
+	}
+
+	.btn-primary{
+		background-color: $mc;
+	}
+
+	.btn-success{
+		background-color: $second;
+	}
+
+	.table td, .table th {
+   		padding: 8px;
+	}
+
+	.card{
+		box-shadow: unset;
+		border: unset;
+	}
+
+	.main-sidebar{
+		.elevation-3{
+			box-shadow: unset !important;
+		}
+		&.elevation-4 {
+			box-shadow: 0 10px 0px rgba(0, 0, 0, .25), 0 0px 10px rgba(0, 0, 0, .22) !important;
+		}
+		.user-profile{
+			color: $mc;
+		}
+
+		ul.nav{
+			margin: auto;
+			li.nav-item:first-of-type{
+				display: none;
+			}
+		}
+	}
+
+	.dashboard-wrapper{
+		td{
+			align-content: center;
+		}
+	}
+
+}
+
+.accent-primary .btn-link, .accent-primary .nav-tabs .nav-link, .accent-primary a:not(.dropdown-item):not(.btn-app):not(.nav-link):not(.brand-link):not(.page-link):not(.btn){
+	color: $second;
+}
