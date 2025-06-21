@@ -4,11 +4,14 @@ from django.urls import include, path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import HttpResponseNotFound
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, RedirectView
 from django.contrib.auth.forms import AuthenticationForm
 from core.autocomplete import CustomerByPhone
 
 urlpatterns = [
+    path("", RedirectView.as_view(pattern_name="admin:index", permanent=False)),
+
+
     path("admin/", admin.site.urls),
 
     # ---------- API ----------
