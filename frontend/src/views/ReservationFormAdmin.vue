@@ -100,6 +100,22 @@ function clearCustomer () {
   showList.value      = false
 }
 
+/* ---------- 店舗が変わったらキャストを再フェッチ ---------- */
+
+watch(
+  () => form.value.store,
+  async newStore => {
+    form.value.cast_profile = ''                // 選択クリア
+    if (!newStore) {
+      opts.value.casts = []
+      return
+    }
+    // store 指定で API 叩く
+    opts.value.casts = await getCastProfiles(newStore)
+  },
+  { immediate: true }     // ← 初期ロード時にも 1 回走らせたい
+)
+
 /* ---------- 動的見積 ---------- */
 watch([() => form.value.cast_profile, () => form.value.course], async ([cp, cs]) => {
   price.value = (cp && cs) ? await getPrice(cp, cs) : 0
@@ -108,7 +124,6 @@ watch([() => form.value.cast_profile, () => form.value.course], async ([cp, cs])
 /* ---------- 初期ロード ---------- */
 onMounted(async () => {
   await fetchMasters()
-  opts.value.casts = await getCastProfiles()
   await fetchReservation()
 })
 
