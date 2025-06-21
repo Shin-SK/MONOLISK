@@ -219,6 +219,7 @@ class Reservation(TimeStamped):
 class ReservationCast(TimeStamped):
 	reservation  = models.ForeignKey(
 		Reservation, on_delete=models.CASCADE,
+		related_name="casts",
 		verbose_name=_('予約')
 	)
 	cast_profile = models.ForeignKey(
