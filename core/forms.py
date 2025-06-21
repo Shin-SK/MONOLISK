@@ -4,7 +4,7 @@ from django import forms
 from .models import Reservation, CastProfile, Course, RankCourse, ReservationCast
 
 class ReservationForm(forms.ModelForm):
-    # ---------- 追加フィールド ----------
+    # 追加した独自フィールド ──────────────
     cast_profile = forms.ModelChoiceField(
         queryset=CastProfile.objects.all(),
         label='キャスト',
@@ -23,16 +23,26 @@ class ReservationForm(forms.ModelForm):
         label='コース',
         required=True,
     )
-    # -----------------------------------
+
 
     class Meta:
         model = Reservation
-        # ★ モデルに存在するフィールドだけを書く！
+        # モデルに存在するフィールドだけ
         fields = [
             'store', 'start_at', 'customer',
             'manual_extra_price', 'received_amount',
             'driver', 'status',
         ]
+        widgets = {
+            "customer": autocomplete.ModelSelect2(
+                url="customer-by-phone",
+                attrs={
+                    "data-placeholder": "電話番号を入力…",
+                    "data-minimum-input-length": 2,
+                },
+            ),
+        }
+
 
     # --- 予約保存時に ReservationCast を 1 行だけ同期 ---
     def save(self, commit=True):

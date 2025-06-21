@@ -6,6 +6,7 @@ from django.conf.urls.static import static
 from django.http import HttpResponseNotFound
 from django.views.generic import TemplateView
 from django.contrib.auth.forms import AuthenticationForm
+from core.autocomplete import CustomerByPhone
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -13,9 +14,9 @@ urlpatterns = [
     # ---------- API ----------
     path("api/", include("core.urls")),
     path("api/auth/registration/", include("dj_rest_auth.registration.urls")),
-    path("api/dj-rest-auth/", include("dj_rest_auth.urls")),   # ← これ
-    path('autocomplete/', include('core.autocomplete')),  # ← 追加
-    
+    path("api/dj-rest-auth/", include("dj_rest_auth.urls")),
+    path("ac/", include("core.autocomplete")),
+
 ]
 
 
