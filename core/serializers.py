@@ -212,28 +212,27 @@ class ReservationSerializer(serializers.ModelSerializer):
 			)
 
 	def _sync_charges(self, reservation, charges_data):
-		"""
-		charges 配列で ReservationCharge 行を置き換える
-		"""
 		ReservationCharge.objects.filter(reservation=reservation).delete()
-		objs = [
-			ReservationCharge(
-				reservation = reservation,
-				kind		= c["kind"],
-				option_id   = c.get("option"),
-				extend_course_id = c.get("extend_course"),
-				amount	  = c.get("amount"),
-			) for c in charges_data
-		]
-		ReservationCharge.objects.bulk_create(objs)
+
+		for ch in charges_data:
+			ReservationCharge.objects.create(
+				reservation     = reservation,
+				kind            = ch["kind"],
+				# ★ オブジェクトを渡すように変更
+				option          = ch.get("option"),          # ← ここ！
+				extend_course   = ch.get("extend_course"),   # ← ここも同様
+				amount          = ch.get("amount"),
+			)
 
 	def _sync_casts(self, reservation, casts_data):
 		ReservationCast.objects.filter(reservation=reservation).delete()
 		for c in casts_data:
+			# ★ ここを “*_id=” → “*=” に変えるだけで OK
 			ReservationCast.objects.create(
-				reservation      = reservation,
-				cast_profile_id  = c["cast_profile"],
-				course_id        = c["course"],        # rank_course 渡さない
+				reservation   = reservation,
+				cast_profile  = c["cast_profile"],   # ← オブジェクトをそのまま
+				course        = c["course"],         # ← 〃
+				# rank_course は ReservationCast.save() 内で自動設定される
 			)
 
 
