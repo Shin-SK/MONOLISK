@@ -122,11 +122,14 @@ class ReservationSerializer(serializers.ModelSerializer):
 	casts   = ReservationCastSerializer(many=True, required=False)
 	charges = ReservationChargeSerializer(many=True, required=False)
 	cast_photos = serializers.SerializerMethodField()
-
-	# ↓★ 一覧表示用の読みやすいフィールド
 	store_name	  = serializers.CharField(source="store.name", read_only=True)
 	customer_name   = serializers.CharField(source="customer.name", read_only=True)
 	customer_address = serializers.CharField(source='customer.address', read_only=True)
+	driver = serializers.PrimaryKeyRelatedField(
+		queryset=Driver.objects.all(),
+		allow_null=True,		  # ★これを追加
+		required=False
+	)
 	driver_name	 = serializers.SerializerMethodField()
 	cast_names	  = serializers.SerializerMethodField()
 	course_minutes  = serializers.SerializerMethodField()
@@ -226,23 +229,12 @@ class ReservationSerializer(serializers.ModelSerializer):
 
 	def _sync_casts(self, reservation, casts_data):
 		ReservationCast.objects.filter(reservation=reservation).delete()
-		objs = [
-			ReservationCast(
-				reservation	 = reservation,
-                cast_profile_id = c["cast_profile"],
-                course_id       = c["course"], 
-				# cast_profile_id = (
-				# 	c["cast_profile"].id if isinstance(c["cast_profile"], CastProfile)
-				# 	else c["cast_profile"]
-				# ),
-				# rank_course_id  = (
-				# 	c["rank_course"].id  if isinstance(c["rank_course"], RankCourse)
-				# 	else c["rank_course"]
-				# ),
+		for c in casts_data:
+			ReservationCast.objects.create(
+				reservation      = reservation,
+				cast_profile_id  = c["cast_profile"],
+				course_id        = c["course"],        # rank_course 渡さない
 			)
-			for c in casts_data
-		]
-		ReservationCast.objects.bulk_create(objs)
 
 
 

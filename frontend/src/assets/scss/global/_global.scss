@@ -1,6 +1,9 @@
 @use "sass:color"; 
 
-$mc: #0f0f0f;
+$mc:#020202;
+$second: #461B35;
+$yellow: #FBC710;
+$red:#C44429;
 $bg:#B79A53;
 $black: #0f0f0f;
 $gray: color.adjust($black, $lightness: 40%);

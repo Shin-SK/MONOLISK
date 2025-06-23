@@ -188,7 +188,7 @@ class Reservation(TimeStamped):
 		CANCELED   = 'CANCELED','Canceled'
 
 	store	 = models.ForeignKey(Store,  on_delete=models.CASCADE, verbose_name='店舗',)
-	driver	= models.ForeignKey(Driver, on_delete=models.CASCADE, verbose_name='ドライバー',)
+	driver	= models.ForeignKey(Driver, on_delete=models.SET_NULL, verbose_name='ドライバー', null=True, blank=True,)
 	customer  = models.ForeignKey(Customer,on_delete=models.CASCADE, verbose_name='顧客')
 	start_at  = models.DateTimeField(verbose_name='開始時刻')
 	total_time= models.PositiveSmallIntegerField()  # 分
