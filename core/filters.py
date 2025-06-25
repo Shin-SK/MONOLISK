@@ -35,9 +35,9 @@ class ReservationFilter(df.FilterSet):
 
 	def filter_cast(self, qs, name, value):
 		if not value:
-            return qs
+			return qs
 		return qs.filter(casts__cast_profile_id=value)
-		
+
 	class Meta:
 		model  = Reservation
 		fields = ['store', 'cast', 'date', 'customer']
