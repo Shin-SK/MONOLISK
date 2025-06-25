@@ -26,6 +26,7 @@ ALLOWED_HOSTS = [
 
 INSTALLED_APPS = [
     "jazzmin",
+    "django.contrib.postgres",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',

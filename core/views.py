@@ -7,6 +7,7 @@ from .filters import CustomerFilter
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from django.shortcuts import get_object_or_404
+from core.querysets import ReservationQuerySet
 
 from .models import (
     Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
@@ -135,9 +136,9 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
 
 class ReservationViewSet(viewsets.ModelViewSet):
-    queryset = Reservation.objects.select_related(
-        "store", "driver", "customer"
-    ).prefetch_related("casts", "charges")
+    # queryset = Reservation.objects.select_related(
+    #     "store", "driver", "customer"
+    # ).prefetch_related("casts", "charges")
     serializer_class    = ReservationSerializer
     permission_classes  = [AllowAny]
     pagination_class    = None      # ← 必要なら外して OK
@@ -242,23 +243,11 @@ class ReservationViewSet(viewsets.ModelViewSet):
 
 
     def get_queryset(self):
-        qs = super().get_queryset()
-
-        qp = self.request.query_params   # <- 省略表記
-
-        store = qp.get('store')
-        if store:        # 空文字 '' は False になるので自動的に無視
-            qs = qs.filter(store_id=store)
-
-        cast = qp.get('cast')
-        if cast:
-            qs = qs.filter(casts__cast_profile_id=cast)
-
-        date = qp.get('date')
-        if date:
-            qs = qs.filter(start_at__date=date)
-
-        return qs
+        return (
+            Reservation.objects.with_cast_names()               # ← ここがキモ
+            .select_related("store", "driver", "customer")
+            .prefetch_related("casts", "charges")
+        )
 
 
 class CastProfileViewSet(viewsets.ModelViewSet):
