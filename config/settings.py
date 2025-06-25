@@ -317,6 +317,18 @@ JAZZMIN_UI_TWEAKS = {
 
 LOGGING = {
     "version": 1,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
-    "root": {"handlers": ["console"], "level": "ERROR"},
+    "disable_existing_loggers": False,        # ← 既存を殺さない
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    # ――― ここを足す ―――
+    "loggers": {
+        "django.request": {                   # 500 を出すロガー
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,               # ルートに渡さず直吐き
+        },
+    },
 }
