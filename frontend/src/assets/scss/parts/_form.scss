@@ -112,6 +112,26 @@
 						gap: 16px;
 						align-items: center;
 					}
+					.card-area{
+						display: grid;
+						grid-template-columns: 150px 1fr;
+						gap: 40px;
+						align-items: center;
+						.image{
+							img{
+								width: 100%;
+								height: auto;
+								object-fit: cover;
+								object-position: top center;
+							}
+						}
+						.text{
+							display: flex;
+							flex-direction: column;
+							gap: 8px;
+							@include fs(14);
+						}
+					}
 					ul{
 						padding: 0;
 						li{

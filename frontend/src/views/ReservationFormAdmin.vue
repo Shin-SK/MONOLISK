@@ -21,6 +21,7 @@ import {
 const route   = useRoute()
 const router  = useRouter()
 const isEdit  = !!route.params.id
+const latest = ref(null)
 
 /* ---------- 読み取り専用 ---------- */
 const rsv = ref({ received_amount: 0 })
@@ -88,6 +89,7 @@ async function fetchMasters () {
 async function fetchReservation () {
   if (!isEdit) return
   const res = await getReservation(route.params.id)
+  latest.value = await getLatestReservation(res.customer)
   rsv.value = res
   Object.assign(form.value, {
     stores          : res.store ? [res.store] : [],
@@ -162,10 +164,11 @@ watch(() => form.value.customer, async id => {
 	if (!id) {
 		addresses.value = []
 		selectedAddress.value = ''
+		latest.value = null 
 		return
 	}
 	addresses.value = await getCustomerAddresses(id)
-	// 既存予約編集時は res.address をここでセットしておく
+	latest.value = await getLatestReservation(id)
 })
 
 /* ---------- 料金計算（省略: 以前と同じ） ---------- */
@@ -369,31 +372,41 @@ if (import.meta.env.DEV) {
 			<div v-if="latest" class="latest-carte card mt-3">
 			  <div class="card-header">前回の予約</div>
 			  <div class="card-body">
-				<p class="mb-1">
-				  {{ new Date(latest.start_at).toLocaleString() }}
-				  / {{ latest.store_name }}
-				</p>
-				  <div v-for="rc in latest.casts" :key="rc.cast_profile" class="mb-1 d-flex align-items-center gap-2">
-					<img :src="rc.avatar_url || '/static/img/cast-default.png'"
-						class="rounded-circle border"
-						style="width:32px;height:32px;object-fit:cover;">
-					<span>{{ rc.stage_name }}</span>
-				  </div>
-				<div v-for="c in latest.courses" :key="c.cast">
-				  <span>
-					{{ c.minutes }}分コース
-				  </span>
+
+
+				<div class="card-area">
+					<div class="wrap image">
+						<div v-for="rc in latest.casts" :key="rc.cast_profile" class="">
+							<RouterLink :to="`/reservations/${latest.id}`">
+							<img :src="rc.avatar_url || '/static/img/cast-default.png'">
+							</RouterLink>
+						</div>
+					</div>
+					<div class="wrap text">
+						<div class="items">
+							<span>
+								{{ new Date(latest.start_at).toLocaleString() }} / {{ latest.store_name }}
+							</span>
+						</div>
+						<div v-for="rc in latest.casts" :key="rc.cast_profile" class="items">
+							<span class="fw-bold">{{ rc.stage_name }}</span>
+						</div>
+						<div v-for="c in latest.courses" :key="c.cast" class="items">
+							<span>
+								{{ c.minutes }}分コース
+							</span>
+						</div>
+						<ul class="items">
+							<li v-for="o in latest.options" :key="o.option_id" class="badge bg-secondary">
+								{{ o.name }}
+							</li>
+						</ul>
+						<div class="items">
+							<span>金額: {{ latest.expected_amount.toLocaleString() }} 円</span>
+						</div>
+
+					</div>
 				</div>
-				<ul>
-				  <li v-for="o in latest.options" :key="o.option_id" class="btn btn-outline-primary">
-					{{ o.name }}
-				  </li>
-				</ul>
-				<p class="mb-0">金額: {{ latest.expected_amount.toLocaleString() }} 円</p>
-				<RouterLink
-				  class="btn btn-sm btn-link mt-2"
-				  :to="`/reservations/${latest.id}`"
-				>詳細</RouterLink>
 			  </div>
 			</div>
 		</div>
