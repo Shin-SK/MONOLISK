@@ -27,26 +27,33 @@ class ReservationFilter(df.FilterSet):
 	date	  = df.DateFilter(field_name='start_at', lookup_expr='date')
 	customer  = filters.NumberFilter()					# ★ ここで filters を使用
 
+	def filter_store(self, qs, name, value):
+		# value が '' や None のときはそのまま返す
+		if not value:
+			return qs
+		return qs.filter(store_id=value)
+
+	def filter_cast(self, qs, name, value):
+		if not value:
+            return qs
+		return qs.filter(casts__cast_profile_id=value)
+		
 	class Meta:
 		model  = Reservation
 		fields = ['store', 'cast', 'date', 'customer']
 
-	def filter_cast(self, qs, name, value):
-		return qs.filter(casts__cast_profile_id=value)
-
-
 class NumberInFilter(filters.BaseInFilter, filters.NumberFilter):
-    """カンマ区切りの id リストを受け取る汎用フィルタ"""
-    pass
+	"""カンマ区切りの id リストを受け取る汎用フィルタ"""
+	pass
 
 class CastProfileFilter(filters.FilterSet):
-    store = NumberInFilter(field_name="store_id", lookup_expr="in")
-    rank  = filters.NumberFilter(field_name="rank_id")
-    q     = filters.CharFilter(method="filter_name")
+	store = NumberInFilter(field_name="store_id", lookup_expr="in")
+	rank  = filters.NumberFilter(field_name="rank_id")
+	q	 = filters.CharFilter(method="filter_name")
 
-    def filter_name(self, qs, name, value):
-        return qs.filter(stage_name__icontains=value)
+	def filter_name(self, qs, name, value):
+		return qs.filter(stage_name__icontains=value)
 
-    class Meta:
-        model  = CastProfile
-        fields = ["store", "rank"]
+	class Meta:
+		model  = CastProfile
+		fields = ["store", "rank"]

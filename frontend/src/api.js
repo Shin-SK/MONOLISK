@@ -55,11 +55,11 @@ export async function logout() {
 
 /* ---------- Reservations ---------- */
 export const getReservations = (params = {}) => {
-  const clean = Object.fromEntries(
-    Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined)
-  )
-  return api.get('reservations/', { params: clean }).then(r => r.data)
-}
+  const cleaned = Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v !== '' && v != null)
+  );
+  return api.get('reservations/', { params: cleaned }).then(r => r.data);
+};
 
 
 export const getReservation    = id      => api.get(`reservations/${id}/`).then(r => r.data)
