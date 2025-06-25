@@ -301,6 +301,73 @@ if (import.meta.env.DEV) {
     {{ isEdit ? `予約 #${route.params.id} 編集` : '新規予約' }}
   </h1>
 
+
+	<!-- 顧客（電話検索） -->
+	<div class="my-5 customer">
+	  <div class="wrap d-flex gap-4">
+		<div class="col-8 search">
+			<!-- 入力 -->
+			<input v-if="!selectedCustomer" v-model="phone" @input="fetchCandidates"
+				  class="form-control" placeholder="090…" />
+
+			<!-- 候補 -->
+			<ul v-if="showList" class="d-flex gap-4 mt-4">
+			  <li v-for="c in candidates" :key="c.id"
+				  class="btn btn-outline-primary"
+				  @click="choose(c)">
+				{{ c.name }} / {{ c.phone }}
+			  </li>
+			</ul>
+
+			<!-- 選択済み表示 -->
+			<div v-if="selectedCustomer" class="selected p-2 bg-white rounded d-flex align-items-center justify-content-between">
+			  <div class="wrap">
+				{{ selectedCustomer.name }}（{{ selectedCustomer.phone }}）
+			  </div>
+			  <button class="btn btn-outline-secondary" @click="clearCustomer">
+				変更
+			  </button>
+			</div>
+
+			<!-- 直近カード -->
+			<div v-if="latest" class="latest-carte card mt-3">
+			  <div class="card-header">前回の予約</div>
+			  <div class="card-body">
+				<p class="mb-1">
+				  {{ new Date(latest.start_at).toLocaleString() }}
+				  / {{ latest.store_name }}
+				</p>
+				  <div v-for="rc in latest.casts" :key="rc.cast_profile" class="mb-1 d-flex align-items-center gap-2">
+					<img :src="rc.avatar_url || '/static/img/cast-default.png'"
+						class="rounded-circle border"
+						style="width:32px;height:32px;object-fit:cover;">
+					<span>{{ rc.stage_name }}</span>
+				  </div>
+				<div v-for="c in latest.courses" :key="c.cast">
+				  <span>
+					{{ c.minutes }}分コース
+				  </span>
+				</div>
+				<ul>
+				  <li v-for="o in latest.options" :key="o.option_id" class="btn btn-outline-primary">
+					{{ o.name }}
+				  </li>
+				</ul>
+				<p class="mb-0">金額: {{ latest.expected_amount.toLocaleString() }} 円</p>
+				<RouterLink
+				  class="btn btn-sm btn-link mt-2"
+				  :to="`/reservations/${latest.id}`"
+				>詳細</RouterLink>
+			  </div>
+			</div>
+		</div>
+		<div class="col-4">
+		  <button class="btn btn-primary w-100" @click="registerNew">＋ 新規顧客を登録</button>
+		</div>
+	  </div>
+
+	</div>
+
   <!-- ◆ 店舗選択 ◆ -->
   <div class="mb-3">
     <label class="form-label fw-bold">店舗</label><br>

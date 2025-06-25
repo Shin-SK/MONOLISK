@@ -3,7 +3,6 @@ from django.contrib.auth.models import AbstractUser, Group
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from django.templatetags.static import static
-from core.querysets import ReservationQuerySet
 
 # ---------- 共通 ──────────
 class TimeStamped(models.Model):
@@ -198,8 +197,6 @@ class CustomerAddress(TimeStamped):
 
 # ---------- 予約 ----------
 class Reservation(TimeStamped):
-
-	objects = ReservationQuerySet.as_manager()
 
 	class Status(models.TextChoices):
 		BOOKED	 = 'BOOKED', 'Booked'

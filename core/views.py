@@ -7,7 +7,6 @@ from .filters import CustomerFilter
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from django.shortcuts import get_object_or_404
-from core.querysets import ReservationQuerySet
 
 from .models import (
     Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
@@ -21,7 +20,7 @@ from .serializers import (
     DriverSerializer, CustomerSerializer, ReservationSerializer, DriverListSerializer,
     CustomerReservationSerializer,CustomerAddressSerializer
 )
-from.filters import ReservationFilter,CastProfileFilter
+from.filters import ReservationFilter,CastProfileFilter, CustomerFilter
 
 
 
@@ -95,7 +94,10 @@ class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
     permission_classes = [AllowAny]
-    filter_backends = [DjangoFilterBackend]
+    filter_backends = [
+        DjangoFilterBackend,
+    ]
+    search_fields   = ['phone', 'name']   # ← ② 追加
     filterset_class    = CustomerFilter
 
     @action(detail=True, methods=["get"])
@@ -136,15 +138,16 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
 
 class ReservationViewSet(viewsets.ModelViewSet):
-    # queryset = Reservation.objects.select_related(
-    #     "store", "driver", "customer"
-    # ).prefetch_related("casts", "charges")
+    queryset = (
+        Reservation.objects
+        .select_related("store", "driver", "customer")
+        .prefetch_related("casts__cast_profile", "charges")
+    )
     serializer_class    = ReservationSerializer
     permission_classes  = [AllowAny]
     pagination_class    = None      # ← 必要なら外して OK
 
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    # filterset_class    = ReservationFilter
     filterset_fields = ['customer']	
     ordering_fields = ["start_at", "id"]      # 並び替え許可フィールド
     ordering = ["-start_at"]                  # ← デフォルトを新しい順に
@@ -240,14 +243,6 @@ class ReservationViewSet(viewsets.ModelViewSet):
             )
         deleted, _ = Reservation.objects.filter(id__in=ids).delete()
         return Response({"deleted": deleted}, status=status.HTTP_204_NO_CONTENT)
-
-
-    def get_queryset(self):
-        return (
-            Reservation.objects.with_cast_names()               # ← ここがキモ
-            .select_related("store", "driver", "customer")
-            .prefetch_related("casts", "charges")
-        )
 
 
 class CastProfileViewSet(viewsets.ModelViewSet):

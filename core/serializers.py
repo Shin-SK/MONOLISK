@@ -369,6 +369,29 @@ class ReservationSerializer(serializers.ModelSerializer):
 
 		return reservation
 
+	def get_courses(self, obj):
+		rows = []
+		for rc in obj.casts.all():
+			course = rc.course or getattr(rc.rank_course, "course", None)
+			if not course:
+				# ログに残すだけでスキップ
+				import logging
+				logging.warning(f"ReservationCast {rc.id} has no course")
+				continue
+			rows.append({
+				"cast":	  rc.cast_profile_id,
+				"course_id": course.id,
+				"minutes":   course.minutes,
+			})
+		return rows
+
+	def get_cast_names(self, obj):
+		"""
+		DB ベンダに依存しないキャスト名一覧（重複除去＋順序保証）
+		"""
+		names = {c.cast_profile.stage_name for c in obj.casts.all()}
+		return sorted(names)
+
 
 class CustomerReservationSerializer(ReservationSerializer):
 	courses = serializers.SerializerMethodField()
