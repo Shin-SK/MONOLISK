@@ -405,69 +405,94 @@ if (import.meta.env.DEV) {
 	</div>
 
   <!-- ◆ 店舗選択 ◆ -->
-  <div class="mb-3">
-    <label class="form-label fw-bold">店舗</label><br>
-    <template v-for="s in opts.stores" :key="s.id">
-      <input class="btn-check" type="checkbox"
-             :id="`store-${s.id}`" v-model="form.stores" :value="s.id">
-      <label class="btn btn-outline-primary me-2 mb-2"
-             :for="`store-${s.id}`"
-             :class="{ active: form.stores.includes(s.id) }">
-        {{ s.name }}
-      </label>
-    </template>
+   <div class="cast-search">
 
-    <!-- ▼ キャスト検索ボタン -->
-    <button class="btn btn-sm btn-success ms-2"
-			:disabled="false"
-            @click="fetchCasts">
-      キャスト検索
-    </button>
-  </div>
+	<div class="mb-3 d-flex justify-content-center flex-column gap-4">
+		<div class="search-area  d-flex gap-4 flex-column">
+			<div class="box d-flex gap-4">
+				<template v-for="s in opts.stores" :key="s.id">
+				<input class="btn-check" type="checkbox"
+						:id="`store-${s.id}`" v-model="form.stores" :value="s.id">
+				<label class="btn btn-outline-primary me-2 mb-2"
+						:for="`store-${s.id}`"
+						:class="{ active: form.stores.includes(s.id) }">
+					{{ s.name }}
+				</label>
+				</template>
+			</div>
+			<div class="box d-flex gap-4">
+				<div class="btn btn-outline-primary disabled">綺麗系</div>
+				<div class="btn btn-outline-primary disabled">可愛い系</div>
+				<div class="btn btn-outline-primary disabled">モデル</div>
+			</div>
+			<div class="box d-flex gap-4">
+				<div class="btn btn-outline-primary disabled">Aカップ</div>
+				<div class="btn btn-outline-primary disabled">Bカップ</div>
+				<div class="btn btn-outline-primary disabled">Cカップ</div>
+				<div class="btn btn-outline-primary disabled">Dカップ</div>
+				<div class="btn btn-outline-primary disabled">Eカップ</div>
+			</div>
 
-  <!-- ◆ キャスト選択 ◆ -->
-  <div class="mb-4">
-    <label class="form-label fw-bold">キャスト</label>
-    <ReservationCastSelector
-      :casts="visibleCasts"
-      v-model:modelValue="form.cast_profiles"
-    />
+		</div>
+		<!-- ▼ キャスト検索ボタン -->
+		<button class="btn btn-sm btn-success ms-2"
+				:disabled="false"
+				@click="fetchCasts">
+		キャスト検索
+		</button>
+	</div>
+
+   </div>
+
+	<div class="contents">
+		  <!-- ◆ キャスト選択 ◆ -->
+  <div class="area">
+    <div class="h5">キャスト</div>
+	<div class="bg-white p-4">
+		<ReservationCastSelector
+		:casts="visibleCasts"
+		v-model:modelValue="form.cast_profiles"
+		/>
+	</div>
   </div>
 
 
 	<!-- タブインデント！ -->
-	<label class="form-label">送迎場所</label>
-	<div class="d-flex flex-wrap gap-3" role="group">
-		<!-- 既存 -->
-		<label
-			v-for="a in addresses"
-			:key="a.id"
-			class="btn btn-outline-primary"
-			:class="{ active: selectedAddress === a.id }"
-		>
-			<input
-				type="radio"
-				class="btn-check"
-				v-model="selectedAddress"
-				:value="a.id"
-			/>
-			{{ a.label }} / {{ a.address_text }}
-		</label>
+	 <div class="area">
+		<div class="h5">送迎場所</div>
+		<div class="d-flex flex-wrap gap-3" role="group">
+			<!-- 既存 -->
+			<label
+				v-for="a in addresses"
+				:key="a.id"
+				class="btn btn-outline-primary"
+				:class="{ active: selectedAddress === a.id }"
+			>
+				<input
+					type="radio"
+					class="btn-check"
+					v-model="selectedAddress"
+					:value="a.id"
+				/>
+				{{ a.label }} / {{ a.address_text }}
+			</label>
 
-		<!-- 新規 -->
-		<label
-			class="btn btn-outline-success"
-			:class="{ active: selectedAddress === '__new__' }"
-		>
-			<input
-				type="radio"
-				class="btn-check"
-				v-model="selectedAddress"
-				value="__new__"
-			/>
-			＋ 新規住所
-		</label>
-	</div>
+			<!-- 新規 -->
+			<label
+				class="btn btn-outline-success"
+				:class="{ active: selectedAddress === '__new__' }"
+			>
+				<input
+					type="radio"
+					class="btn-check"
+					v-model="selectedAddress"
+					value="__new__"
+				/>
+				＋ 新規住所
+			</label>
+		</div>
+	 </div>
+
 
 	<!-- 新規入力フォーム -->
 	<div v-if="selectedAddress === '__new__'" class="mt-3">
@@ -486,14 +511,14 @@ if (import.meta.env.DEV) {
 
 
 	<!-- 開始日時 -->
-	<div class="col-md-6">
-	  <label class="form-label">開始日時</label>
+	<div class="area">
+	  <div class="h5">開始日時</div>
 	  <input type="datetime-local" v-model="form.start_at" class="form-control">
 	</div>
 
 	<!-- ★ select を削除してボタン型ラジオへ -->
-	<div class="col-md-6">
-	  <label class="form-label">コース</label>
+	<div class="area">
+	  <div class="h5">コース</div>
 	  <div class="d-flex flex-wrap gap-3" role="group" aria-label="Courses">
 		<template v-for="c in opts.courses" :key="c.id">
 		  <!-- hidden radio -->
@@ -511,8 +536,8 @@ if (import.meta.env.DEV) {
 	  </div>
 	</div>
 	<!-- オプション -->
-	<div class="col-12">
-	  <label class="form-label">オプション</label>
+	<div class="area">
+	  <div class="h5">オプション</div>
 
 	  <!-- 見た目をそろえるため flex+gap  -->
 	  <div class="d-flex flex-wrap gap-3" role="group" aria-label="Options">
@@ -541,8 +566,8 @@ if (import.meta.env.DEV) {
 
 	<!-- ドライバー -->
 	<!-- ★ select を削除してボタン型ラジオへ -->
-	<div class="col-md-6">
-	  <label class="form-label">ドライバー</label>
+	<div class="area">
+	  <div class="h5">ドライバー</div>
 	  <div class="d-flex flex-wrap gap-3" role="group" aria-label="Drivers">
 		<!-- 未指定 -->
 		<input  class="btn-check" type="radio" id="driver-null"
@@ -568,25 +593,27 @@ if (import.meta.env.DEV) {
 
 
 	<!-- 見積 -->
-	<div class="col-12">
-	  <div class="alert alert-info">
+	<div class="area">
+	  <div class="alert alert-warning">
 		現在の見積 <strong>{{ price.toLocaleString() }}</strong> 円
 	  </div>
 	</div>
 
 	<!-- テンプレート：受取と入金の 2 つ表示 -->
-	<div class="col-md-6">
-	  <label class="form-label">受取金額</label>
+	<div class="area">
+	  <div class="h5">受取金額</div>
 	  <input type="number" class="form-control" v-model.number="rsv.received_amount" disabled />
 	</div>
-	<div class="col-md-6">
-	  <label class="form-label">入金額</label>
+	<div class="area">
+	  <div class="h5">入金額</div>
 	  <input type="number" class="form-control" v-model.number="form.deposited_amount" />
 	</div>
 
-	<div class="col-12 text-end">
+	<div class="areatext-end">
 	  <button class="btn btn-primary" @click="save">保存</button>
 	</div>
+	</div>
+
 </div>
 </template>
 
