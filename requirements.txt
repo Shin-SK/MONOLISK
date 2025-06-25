@@ -15,6 +15,7 @@ django-htmx==1.23.0
 django-import-export==4.3.7
 django-jazzmin==3.0.1
 djangorestframework==3.16.0
+drf-nested-routers==0.94.2
 gunicorn==23.0.0
 htmx-django==0.1.1
 idna==3.10

@@ -20,7 +20,7 @@ from .serializers import (
     DriverSerializer, CustomerSerializer, ReservationSerializer, DriverListSerializer,
     CustomerReservationSerializer,CustomerAddressSerializer
 )
-from.filters import ReservationFilter
+from.filters import ReservationFilter,CastProfileFilter
 
 
 
@@ -242,11 +242,11 @@ class ReservationViewSet(viewsets.ModelViewSet):
 
 
 class CastProfileViewSet(viewsets.ModelViewSet):
-    queryset = CastProfile.objects.select_related('store', 'rank', 'performer')
+    queryset = CastProfile.objects.select_related("store", "rank", "performer")
     serializer_class = CastSerializer
-    permission_classes = [IsStaff]          # STAFF だけ CRUD
-    filter_backends    = [DjangoFilterBackend]
-    filterset_fields   = ['store', 'rank', 'stage_name']
+    permission_classes = [IsStaff]
+    filter_backends   = [DjangoFilterBackend]
+    filterset_class   = CastProfileFilter
     
     # --- これだけ ---
     def get_queryset(self):

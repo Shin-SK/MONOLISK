@@ -1,6 +1,6 @@
 // src/api.js
 import axios from 'axios'
-
+import qs        from 'qs'
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
 })
@@ -81,13 +81,29 @@ export const getCourses   = () => api.get('courses/?simple=1').then(simple)
 export const getOptions   = () => api.get('options/').then(r => r.data)
 
 /* ---------- キャスト & 料金 ---------- */
-export const getCastProfiles = store =>
-  api.get('cast-profiles/', { params: { store } })
-     .then(r => r.data.results ?? r.data)
+export const getCastProfiles = (storeIds = [], keyword = '') => {
+  storeIds = [].concat(storeIds).filter(Boolean)   // ← 空配列なら「全店」
+  return api.get('cast-profiles/', {
+    params: {
+      ...(storeIds.length ? { store: storeIds.join(',') } : {}),
+      q: keyword || undefined,
+    },
+  }).then(r => r.data);
+};
 
-export const getPrice = (castProfile, course) =>
-  api.get('pricing/', { params: { cast_profile: castProfile, course } })
-     .then(r => r.data.price)
+// export function getPrice (params) {
+//   return axios.get('/pricing/', {
+//     params,
+//     paramsSerializer: p => qs.stringify(p, { arrayFormat: 'repeat' })
+//   }).then(res => res.data.total_price)   // ← 返り値はお好みで
+// }
+
+	export function getPrice(params) {
+	  return api.get('pricing/', {            // ← api インスタンスで /api/pricing/
+	    params,
+	    paramsSerializer: p => qs.stringify(p, { arrayFormat: 'repeat' }),
+	  }).then(r => r.data.price)
+	}
 
 /* ---------- 顧客 ---------- */
 export const searchCustomers = q =>

@@ -1,130 +1,131 @@
+<!-- src/views/ReservationFormAdmin.vue -->
 <script setup>
 /* =============================================================== *
- *  ReservationFormAdmin.vue  –  管理者予約フォーム
- *  ・店舗選択後に [キャスト検索] ボタンを押すと所属キャストを取得
- *  ・取得したキャストは ReservationCastSelector.vue で選択
+ *  予約フォーム（管理者用）
+ *  - 料金計算はすべてリアクティブに (VueUse asyncComputed で非同期も吸収)
+ *  - “延長料金” や “手書き加算” をあとから UI に足すだけで合計へ反映
  * =============================================================== */
+
 import { ref, computed, onMounted, watch } from 'vue'
-import { asyncComputed }            from '@vueuse/core'
-import { useRoute, useRouter }      from 'vue-router'
-import debounce                     from 'lodash.debounce'
-import ReservationCastSelector      from '@/components/ReservationCastSelector.vue'   // ★追加
+import { asyncComputed }			from '@vueuse/core'
+import Multiselect from 'vue-multiselect'
+import { useRoute, useRouter }	  from 'vue-router'
+import debounce					 from 'lodash.debounce'
 import {
+  /* ---------- API ---------- */
   getStores, getCustomers, getDrivers, getCourses,
   getOptions, getCastProfiles, getPrice,
   searchCustomers, createCustomer,
-  createReservation, updateReservation, getReservation,
-  getLatestReservation, getCustomerAddresses, createCustomerAddress
+  createReservation, updateReservation, getReservation, getLatestReservation,
+  getCustomerAddresses, createCustomerAddress,
 } from '@/api'
 
 /* ---------- 基本 ---------- */
-const route   = useRoute()
-const router  = useRouter()
-const isEdit  = !!route.params.id
+const route  = useRoute()
+const router = useRouter()
+const isEdit = !!route.params.id   // id があれば編集
 
-/* ---------- 読み取り専用 ---------- */
+/* ---------- 予約（読み取り専用） ---------- */
 const rsv = ref({ received_amount: 0 })
 
 /* ---------- フォーム値 ---------- */
 const form = ref({
-  stores:          [],
+  stores:		  [],
   cast_profiles:   [],
-  start_at:        '',
-  course:          '',
-  driver:          '',
-  customer:        '',
+  start_at:		'',
+  course:		  '',
+  driver:		  '',
+  customer:		'',
   deposited_amount: 0,
-  manual_extra:    0,
-  extension_fee:   0,
+
+  /* ← 将来拡張用の自由フィールドも先に置いておく */
+  manual_extra:	0,   // 手書き加算
+  extension_fee:   0,   // 延長料金
 })
 
 /* ---------- マスタ ---------- */
 const opts = ref({
-  stores:    [], customers: [], drivers: [],
-  courses:   [], options:   []
+  stores:   [],
+  customers:[],
+  drivers:  [],
+  courses:  [],
+  options:  [],
+  casts:	[],
 })
+// store ごとのキャストをキャッシュ
+const castsByStore = ref({})				// { [storeId]: Cast[] }
 
- /* --- 店舗ごとのキャストをキャッシュ --- */
-	const castsByStore  = ref({})          // 検索結果キャッシュ
-	const searchStores  = ref([])          // 「検索確定」した店舗
-	/* 選択中キャストが所属外なら外す */
-	/* ❶ ここで **グローバル** に visibleCasts を定義しておく */
-	const visibleCasts = computed(() =>
-	  Object.keys(castsByStore.value)
-	        .flatMap(id => castsByStore.value[id] || [])
-	)
- 
+// 現在選択している店舗に属するキャストだけを集約
+const visibleCasts = computed(() =>
+	form.value.stores.flatMap(id => castsByStore.value[id] || [])
+)
 
-/* ---------- キャストを検索（ボタン押下） ---------- */
-async function fetchCasts () {
-  // 1) 検索対象店舗を確定
-  searchStores.value = [...form.value.stores]
+const latest = ref(null)
 
-  // 2) キャッシュをリセットして取得し直す
-  castsByStore.value = {};          // リセット
-
-  // 店舗が未選択なら “全店” を取る
-  const targetStores = form.value.stores.length
-        ? form.value.stores
-        : [null];                       // getCastProfiles([]) → store パラメータ無し
-
-  for (const id of targetStores) {
-   const key = id ?? 'all';
-   castsByStore.value[key] = await getCastProfiles(id);
-  }
-  /* 選択中キャストが所属外なら外す */
-  form.value.cast_profiles = form.value.cast_profiles
-    .filter(id => visibleCasts.value.some(c => c.id === id))
-}
 
 /* ---------- マスタ取得 ---------- */
 async function fetchMasters () {
   const [stores, customers, drivers, courses, options] = await Promise.all([
-    getStores(), getCustomers(), getDrivers(), getCourses(), getOptions()
+	getStores(), getCustomers(), getDrivers(), getCourses(), getOptions()
   ])
-  opts.value = { stores, customers, drivers, courses, options }
-
+  opts.value = { stores, customers, drivers, courses, options, casts:[] }
+  if (!isEdit && stores.length && form.value.stores.length === 0) {
+	form.value.stores = [stores[0].id]	// 新規時: 先頭店舗を初期 ON
+  }
 }
 
-/* ---------- 既存予約読み込み（編集時） ---------- */
+/* ---------- 既存予約読み込み ---------- */
 async function fetchReservation () {
   if (!isEdit) return
   const res = await getReservation(route.params.id)
   rsv.value = res
   Object.assign(form.value, {
-    stores          : res.store ? [res.store] : [],
-    cast_profiles   : [],
-    start_at        : res.start_at.slice(0,16),
-    course          : res.casts[0]?.course ?? '',
-    driver          : res.driver,
-    customer        : res.customer,
-    deposited_amount: res.deposited_amount ?? 0,
+	stores		 : res.store ? [res.store] : [],
+	cast_profiles  : res.casts.map(c => c.cast_profile.id),
+	start_at	   : res.start_at.slice(0,16),
+	course		 : res.casts[0]?.course ?? '',
+	driver		 : res.driver,
+	customer	   : res.customer,
+	deposited_amount : res.deposited_amount ?? 0,
+	manual_extra	 : 0,
+	extension_fee	: 0,
   })
 
-  // 顧客住所帳
-  addresses.value = await getCustomerAddresses(res.customer)
-  if (res.address_book) {
-    selectedAddress.value = res.address_book
-  } else if (res.address_text) {
-    selectedAddress.value = '__new__'
-    newAddress.value      = { label: '', address_text: res.address_text }
-  }
-
+	addresses.value = await getCustomerAddresses(res.customer)
+	if (res.address_book) {
+		selectedAddress.value = res.address_book			// 既存帳票
+	} else if (res.address_text) {
+		selectedAddress.value = '__new__'					// 手書き
+		newAddress.value	  = { label:'', address_text:res.address_text }
+	}
   selectedOptions.value = res.charges
-    .filter(c => c.kind === 'OPTION')
-    .map(c => c.option)
-
-	await fetchCasts()
-	// API は cast_profile を “数値” で返すので、そのままセット
-	form.value.cast_profiles = res.casts.map(c => 
-		typeof c.cast_profile === 'object' ? c.cast_profile.id : c.cast_profile
-	)
+	.filter(c => c.kind === 'OPTION')
+	.map(c => c.option)
+	await nextTick()
+	form.value.cast_profiles = res.casts.map(c => c.cast_profile.id)
 }
+
+/* ---------- 店舗が変わったらキャスト再フェッチ ---------- */
+watch(
+	() => [...form.value.stores],		// 配列を監視
+	async ids => {
+		for (const id of ids) {
+			if (!castsByStore.value[id]) {
+				castsByStore.value[id] = await getCastProfiles(id)
+			}
+		}
+		/* 店舗変更後、所属しないキャストは外す */
+		form.value.cast_profiles = form.value.cast_profiles.filter(
+			id => visibleCasts.value.some(c => c.id === id)
+		)
+	},
+	{ immediate:true }
+)
 
 /* ---------- オプション選択 ---------- */
 const selectedOptions = ref([])
 
-/* ---------- 顧客検索（省略: 以前と同じ） ---------- */
+/* ---------- 顧客検索 ---------- */
 const phone	  = ref('')
 const candidates = ref([])
 const showList   = ref(false)
@@ -170,36 +171,22 @@ watch(() => form.value.customer, async id => {
 	// 既存予約編集時は res.address をここでセットしておく
 })
 
-/* ---------- 料金計算（省略: 以前と同じ） ---------- */
+
+/* =============================================================== */
+/*  💰 料金計算（完全リアクティブ）								 */
+/* =============================================================== */
+
 /* 1. キャスト×コース基本料金（非同期計算） */
 const castPriceSum = asyncComputed(
   async () => {
-
-    console.log('[castPriceSum] fire', {
-      course : form.value.course,
-      casts  : [...form.value.cast_profiles],
-    })
-
-    if (!form.value.course || !form.value.cast_profiles.length) return 0;
-
-	  /* どんな形で来ても最終的に純粋な ID 配列にする */
-	  const ids = form.value.cast_profiles
-	    .map(c =>
-	      typeof c === 'number'         ? c :
-	      typeof c === 'object'         ? (c.cast_profile ?? c.id) :
-	      null
-	    )
-    .filter(Boolean);               // undefined / null を除外
-
-     /* 例）バックエンドで一括見積 API がある場合 */
-     return await getPrice({
-      course        : form.value.course,
-      cast_profile  : ids,
-     })
-	},
-	0,                                   // 初期値
-	{ lazy:false }                       // ← これで必ず 1 回目が走る
-);
+	if (!form.value.course || !form.value.cast_profiles.length) return 0
+	const prices = await Promise.all(
+	  form.value.cast_profiles.map(id => getPrice(id, form.value.course))
+	)
+	return prices.reduce((a,b)=>a+b, 0)
+  },
+  0
+)
 
 /* 2. オプション料金 */
 const optionPriceSum = computed(() =>
@@ -217,29 +204,29 @@ const price = computed(
   () => castPriceSum.value + optionPriceSum.value + manualSum.value + extensionSum.value
 )
 
+
+// 顧客カルテ
+
+watch(
+  () => form.value.customer,
+  async id => {
+	latest.value = id ? await getLatestReservation(id) : null
+  }
+)
+
 /* ---------- 初期ロード ---------- */
 onMounted(async () => {
-  await fetchMasters();
-  await fetchReservation();
-  if (!isEdit) await fetchCasts()   // ← 新規時は全店取得
-});
+  await fetchMasters()
+  await fetchReservation()
+})
 
-/* ---------- 保存（省略: 以前と同じ） ---------- */
+/* ---------- 保存 ---------- */
 async function save () {
   const minutes =
 	opts.value.courses.find(c => c.id === form.value.course)?.minutes ?? 0
 
   const toId = v => (v && typeof v === 'object') ? v.id : v
-	  /* ① どんな要素でも “数値 ID” に揃えるユーティリティ */
-	  const castIdOf = c =>
-	        typeof c === 'number'          ? c :
-	        typeof c === 'object' && 'cast_profile' in c ? c.cast_profile :
-	        typeof c === 'object' && 'id'  in c ? c.id :
-	        null;                           // 想定外は弾く
-	
-	  const castIds = form.value.cast_profiles
-	        .map(castIdOf)
-	        .filter(Boolean);               // null / undefined を除外
+
   const payload = {
 	store  : toId(form.value.stores[0] ?? null),
 	driver : toId(form.value.driver) || null,
@@ -247,10 +234,10 @@ async function save () {
 	start_at  : new Date(form.value.start_at).toISOString(),
 	total_time: minutes,
 	deposited_amount : form.value.deposited_amount,
-	casts: castIds.map(id => ({
-      cast_profile: id,
-      course      : form.value.course,  // すでに数値
-    })),
+	casts: form.value.cast_profiles.map(cpId => ({
+	  cast_profile: toId(cpId),
+	  course	  : toId(form.value.course),
+	})),
 	charges: [
 	  /* オプション */
 	  ...selectedOptions.value.map(id => ({ kind:'OPTION', option:id, amount:null })),
@@ -286,50 +273,148 @@ async function save () {
 	alert(e.response?.data?.detail || 'バリデーションエラー')
   }
 }
-
-if (import.meta.env.DEV) {
-  Object.assign(window, {
-    debug: { form, visibleCasts, price, castPriceSum }
-  })
-}
 </script>
+
+
+
 
 <template>
 <div class="form form-admin container">
   <h1 class="h3 mb-4">
-    管理者用ページ&nbsp;
-    {{ isEdit ? `予約 #${route.params.id} 編集` : '新規予約' }}
+	管理者用ページ {{ isEdit ? `予約 #${route.params.id} 編集` : '新規予約' }}
   </h1>
 
-  <!-- ◆ 店舗選択 ◆ -->
-  <div class="mb-3">
-    <label class="form-label fw-bold">店舗</label><br>
-    <template v-for="s in opts.stores" :key="s.id">
-      <input class="btn-check" type="checkbox"
-             :id="`store-${s.id}`" v-model="form.stores" :value="s.id">
-      <label class="btn btn-outline-primary me-2 mb-2"
-             :for="`store-${s.id}`"
-             :class="{ active: form.stores.includes(s.id) }">
-        {{ s.name }}
-      </label>
-    </template>
+	<!-- 顧客（電話検索） -->
+	<div class="my-5 customer">
+		<div class="wrap d-flex justify-content-between">
+			<div class="w-75 search">
+				<!-- 入力 -->
+				<input v-if="!selectedCustomer" v-model="phone" @input="fetchCandidates"
+					class="form-control" placeholder="090…" />
 
-    <!-- ▼ キャスト検索ボタン -->
-    <button class="btn btn-sm btn-success ms-2"
-			:disabled="false"
-            @click="fetchCasts">
-      キャスト検索
-    </button>
-  </div>
+				<!-- 候補 -->
+				<ul v-if="showList" class="d-flex gap-4 mt-4">
+				<li v-for="c in candidates" :key="c.id"
+					class="btn btn-outline-primary"
+					@click="choose(c)">
+					{{ c.name }} / {{ c.phone }}
+				</li>
+				</ul>
 
-  <!-- ◆ キャスト選択 ◆ -->
-  <div class="mb-4">
-    <label class="form-label fw-bold">キャスト</label>
-    <ReservationCastSelector
-      :casts="visibleCasts"
-      v-model:modelValue="form.cast_profiles"
-    />
-  </div>
+				<!-- 選択済み表示 -->
+				<div v-if="selectedCustomer" class="selected p-2 bg-white rounded d-flex align-items-center justify-content-between">
+				<div class="wrap">
+					{{ selectedCustomer.name }}（{{ selectedCustomer.phone }}）
+				</div>
+				<button class="btn btn-outline-secondary" @click="clearCustomer">
+					変更
+				</button>
+				</div>
+			</div>
+			<div class="w-auto new">
+			<button class="btn btn-primary w-100" @click="registerNew">＋ 新規顧客を登録</button>
+			</div>
+		</div>
+		<div class="d-flex align-items-center">
+			<div v-if="latest" class="latest-carte card m-atuo mt-3">
+				<div class="card-header">前回の予約</div>
+				<div class="card-body">
+
+					<div class="card-body__wrap d-flex align-items-center">
+
+						<div class="area">
+							<div v-for="rc in latest.casts" :key="rc.cast_profile" class="d-flex align-items-center gap-2">
+								<RouterLink :to="`/reservations/${latest.id}`">
+								<img :src="rc.avatar_url || '/static/img/cast-default.png'"
+									class="border"
+									style="object-fit: cover;">
+								</RouterLink>
+							</div>
+						</div>
+						<div class="area">
+							<span>{{ latest.stage_name }}</span>
+							<div class="date mb-1">
+							{{ new Date(latest.start_at).toLocaleString() }}
+							/ {{ latest.store_name }}
+							</div>
+							<div v-for="c in latest.courses" :key="c.cast">
+							<span>
+								{{ c.minutes }}分コース
+							</span>
+							</div>
+							<ul>
+								<!-- オプションが 0 件のとき -->
+								<li v-if="!latest.options || !latest.options.length" class="text-muted">
+									オプションはありません
+								</li>
+
+								<!-- 1 件以上あるとき -->
+								<li
+									v-else
+									v-for="o in latest.options"
+									:key="o.option_id"
+									class="btn btn-outline-primary"
+								>
+									{{ o.name }}
+								</li>
+							</ul>
+							<p class="mb-0">金額: {{ latest.expected_amount.toLocaleString() }} 円</p>						
+						</div>
+
+
+					</div><!-- __wrap -->
+
+				</div><!-- card-body -->
+			</div><!-- card -->
+		</div>
+	</div>
+
+
+  <div class="d-flex flex-column gap-5 my-5">
+	<!-- 店舗ボタン：チェックボックス -->
+	<div class="d-flex flex-wrap gap-3" role="group" aria-label="Stores">
+	  <template v-for="s in opts.stores" :key="s.id">
+		<input  class="btn-check" type="checkbox"
+				:id="`store-${s.id}`"
+				v-model="form.stores"
+				:value="s.id" autocomplete="off">
+
+		<label  class="btn btn-outline-primary"
+				:class="{ active: form.stores.includes(s.id) }"
+				:for="`store-${s.id}`">
+		  {{ s.name }}
+		</label>
+	  </template>
+	</div>
+
+
+
+	<!-- キャスト：チェックボックス -->
+	<div class="d-flex flex-wrap gap-4" role="group" aria-label="Casts">
+	  <template v-for="c in opts.casts" :key="c.id">
+		<!-- hidden checkbox -->
+		<input  class="btn-check"
+				type="checkbox"
+				:id="`cast-${c.id}`"
+				v-model="form.cast_profiles"
+				:value="c.id" autocomplete="off">
+
+		<!-- 表示用ボタン -->
+		<label  class="btn btn-outline-primary d-flex align-items-center gap-2"
+				:class="{ active: form.cast_profiles.includes(c.id) }"
+				:for="`cast-${c.id}`">
+
+		  <!-- ▼アバター画像（丸型 32×32）-->
+		  <img :src="c.photo_url || '/static/img/cast-default.png'"
+			  alt=""
+			  class="rounded-circle border"
+			  style="width:32px;height:32px;object-fit:cover;">
+
+		  <!-- 名前と☆ -->
+		  <span>{{ c.stage_name }}（☆{{ c.star_count }}）</span>
+		</label>
+	  </template>
+	</div>
 
 
 	<!-- タブインデント！ -->
@@ -484,9 +569,6 @@ if (import.meta.env.DEV) {
 	<div class="col-12 text-end">
 	  <button class="btn btn-primary" @click="save">保存</button>
 	</div>
+  </div>
 </div>
 </template>
-
-<style>
-@import "vue-multiselect/dist/vue-multiselect.css";
-</style>

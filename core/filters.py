@@ -4,7 +4,7 @@ import django_filters as df
 from django_filters import rest_framework as filters	# ★ 追加
 
 from django.db.models import Q
-from .models import Customer, Reservation
+from .models import Customer, Reservation, CastProfile
 
 
 class CustomerFilter(df.FilterSet):
@@ -33,3 +33,20 @@ class ReservationFilter(df.FilterSet):
 
 	def filter_cast(self, qs, name, value):
 		return qs.filter(casts__cast_profile_id=value)
+
+
+class NumberInFilter(filters.BaseInFilter, filters.NumberFilter):
+    """カンマ区切りの id リストを受け取る汎用フィルタ"""
+    pass
+
+class CastProfileFilter(filters.FilterSet):
+    store = NumberInFilter(field_name="store_id", lookup_expr="in")
+    rank  = filters.NumberFilter(field_name="rank_id")
+    q     = filters.CharFilter(method="filter_name")
+
+    def filter_name(self, qs, name, value):
+        return qs.filter(stage_name__icontains=value)
+
+    class Meta:
+        model  = CastProfile
+        fields = ["store", "rank"]

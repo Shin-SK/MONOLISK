@@ -154,6 +154,8 @@ class CashFlowSerializer(serializers.ModelSerializer):
 
 # ---------- 予約メイン ----------
 class ReservationSerializer(serializers.ModelSerializer):
+	courses = serializers.SerializerMethodField()
+	options = serializers.SerializerMethodField()
 	casts   = ReservationCastSerializer(many=True, required=False)
 	charges = ReservationChargeSerializer(many=True, required=False)
 	cast_photos = serializers.SerializerMethodField()
@@ -214,6 +216,25 @@ class ReservationSerializer(serializers.ModelSerializer):
 		first = obj.casts.first()
 		return first.rank_course.course.minutes if first else ''
 
+	def get_courses(self, obj):
+		return [
+			{
+				"cast":	  rc.cast_profile_id,
+				"course_id": rc.course_id,
+				"minutes":   rc.course.minutes,
+			}
+			for rc in obj.casts.all()
+		]
+
+	def get_options(self, obj):
+		return [
+			{
+				"option_id": ch.option_id,
+				"name":	  ch.option.name if ch.option else None,
+				"amount":	ch.amount,
+			}
+			for ch in obj.charges.filter(kind="OPTION")
+		]
 
 	def get_cast_photos(self, obj):
 		request = self.context.get("request")   # ← ここだけ追加
@@ -274,12 +295,12 @@ class ReservationSerializer(serializers.ModelSerializer):
 
 		for ch in charges_data:
 			ReservationCharge.objects.create(
-				reservation     = reservation,
-				kind            = ch["kind"],
+				reservation	 = reservation,
+				kind			= ch["kind"],
 				# ★ オブジェクトを渡すように変更
-				option          = ch.get("option"),          # ← ここ！
+				option		  = ch.get("option"),		  # ← ここ！
 				extend_course   = ch.get("extend_course"),   # ← ここも同様
-				amount          = ch.get("amount"),
+				amount		  = ch.get("amount"),
 			)
 
 	def _sync_casts(self, reservation, casts_data):
@@ -289,7 +310,7 @@ class ReservationSerializer(serializers.ModelSerializer):
 			ReservationCast.objects.create(
 				reservation   = reservation,
 				cast_profile  = c["cast_profile"],   # ← オブジェクトをそのまま
-				course        = c["course"],         # ← 〃
+				course		= c["course"],		 # ← 〃
 				# rank_course は ReservationCast.save() 内で自動設定される
 			)
 
@@ -360,7 +381,7 @@ class CustomerReservationSerializer(ReservationSerializer):
 	def get_courses(self, obj):
 		return [
 			{
-				"cast":      rc.cast_profile_id,
+				"cast":	  rc.cast_profile_id,
 				"course_id": rc.course_id,
 				"minutes":   rc.course.minutes,
 			}
@@ -371,8 +392,8 @@ class CustomerReservationSerializer(ReservationSerializer):
 		return [
 			{
 				"option_id": ch.option_id,
-				"name":      ch.option.name if ch.option else None,
-				"amount":    ch.amount,
+				"name":	  ch.option.name if ch.option else None,
+				"amount":	ch.amount,
 			}
 			for ch in obj.charges.filter(kind="OPTION")
 		]

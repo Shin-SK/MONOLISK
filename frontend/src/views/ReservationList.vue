@@ -186,6 +186,8 @@ onMounted(async () => {
           <th>開始</th>
           <th>コース</th>
           <th>顧客</th>
+          <th>コース</th>        <!-- minutes のまま → 詳細表示用へ変更 -->
+          <th>オプション</th>    <!-- ★追加 -->
           <th>ドライバー</th>
           <th>予約金</th>
           <th>受取金</th>
@@ -215,6 +217,20 @@ onMounted(async () => {
           <td>{{ new Date(r.start_at).toLocaleString() }}</td>
           <td>{{ r.course_minutes }}min</td>
           <td>{{ r.customer_name }}</td>
+          <td>
+            <template v-if="r.courses && r.courses.length">
+              {{ r.courses.map(c => c.minutes + '分').join(', ') }}
+            </template>
+            <template v-else>―</template>
+          </td>
+
+          <!-- オプション列: 名前をカンマ区切りで -->
+          <td>
+            <template v-if="r.options && r.options.length">
+              {{ r.options.map(o => o.name || '(自由課金)').join(', ') }}
+            </template>
+            <template v-else>―</template>
+          </td>
           <td>{{ r.driver_name || '―' }}</td>
           <td class="text-end">{{ (r.expected_amount??0).toLocaleString() }}円</td>
           <td class="text-end">{{ (r.received_amount??0).toLocaleString() }}円</td>
