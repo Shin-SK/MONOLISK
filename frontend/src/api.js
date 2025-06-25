@@ -86,15 +86,8 @@ export const getCourses   = () => api.get('courses/?simple=1').then(simple)
 export const getOptions   = () => api.get('options/').then(r => r.data)
 
 /* ---------- キャスト & 料金 ---------- */
-export const getCastProfiles = (storeIds = [], keyword = '') => {
-  storeIds = [].concat(storeIds).filter(Boolean)   // ← 空配列なら「全店」
-  return api.get('cast-profiles/', {
-    params: {
-      ...(storeIds.length ? { store: storeIds.join(',') } : {}),
-      q: keyword || undefined,
-    },
-  }).then(r => r.data);
-};
+export const getCastProfiles = (params = {}) =>
+  api.get('cast-profiles/', { params }).then(r => r.data);
 
 // export function getPrice (params) {
 //   return axios.get('/pricing/', {

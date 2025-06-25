@@ -57,21 +57,19 @@ const opts = ref({
 
 /* ---------- キャストを検索（ボタン押下） ---------- */
 async function fetchCasts () {
-  // 1) 検索対象店舗を確定
-  searchStores.value = [...form.value.stores]
 
-  // 2) キャッシュをリセットして取得し直す
-  castsByStore.value = {};          // リセット
+	searchStores.value = [...form.value.stores]
+	castsByStore.value = {};
 
-  // 店舗が未選択なら “全店” を取る
-  const targetStores = form.value.stores.length
-        ? form.value.stores
-        : [null];                       // getCastProfiles([]) → store パラメータ無し
+	/* ――― ここから新ロジック ――― */
+	// ① まず API クエリパラメータを組み立てる
+	const params = {}
+		if (form.value.stores.length) params.store = form.value.stores.join(',');
 
-  for (const id of targetStores) {
-   const key = id ?? 'all';
-   castsByStore.value[key] = await getCastProfiles(id);
-  }
+	// ② 取得して “all” キーにまとめてキャッシュ
+	castsByStore.value = {
+	  all: await getCastProfiles(params)     // API 側は複合クエリ対応済み前提
+	};
   /* 選択中キャストが所属外なら外す */
   form.value.cast_profiles = form.value.cast_profiles
     .filter(id => visibleCasts.value.some(c => c.id === id))
@@ -240,8 +238,46 @@ async function save () {
 	  const castIds = form.value.cast_profiles
 	        .map(castIdOf)
 	        .filter(Boolean);               // null / undefined を除外
+
+
+	/* ---------- store 決定ロジック ---------- */
+	// キャスト→store をひとまず全部引き抜く
+	const castStores = castIds
+	  .map(id => visibleCasts.value.find(c => c.id === id))
+	  .map(c => c?.store ?? c?.store_id ?? null)
+	  .filter(Boolean)
+
+	// フロントで選択した店舗（任意）を優先
+	let storeId = form.value.stores[0] ?? null
+
+	// 未選択の場合はキャスト側から推測
+	if (!storeId && castStores.length) storeId = castStores[0]
+
+	// ---------- バリデーション ----------
+	const uniqueStores = [...new Set(castStores)]
+
+	// キャストが複数店舗ならエラー
+	if (!form.value.stores.length && uniqueStores.length > 1) {
+	  alert('異なる店舗のキャストが混在しています。店舗を選択してください')
+	  return
+	}
+
+	// 店舗を選んでいるのにキャストと不一致ならエラー
+	if (form.value.stores.length && uniqueStores.some(s => s !== storeId)) {
+	  alert('選択した店舗とキャストの店舗が一致しません')
+	  return
+	}
+
+	// まだ決まらない＝店舗もキャストも空
+	if (!storeId) {
+	  alert('店舗またはキャストを選択してください')
+	  return
+	}
+
+
+
   const payload = {
-	store  : toId(form.value.stores[0] ?? null),
+	store  : storeId,
 	driver : toId(form.value.driver) || null,
 	customer  : form.value.customer || null,
 	start_at  : new Date(form.value.start_at).toISOString(),
