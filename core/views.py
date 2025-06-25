@@ -241,6 +241,26 @@ class ReservationViewSet(viewsets.ModelViewSet):
         return Response({"deleted": deleted}, status=status.HTTP_204_NO_CONTENT)
 
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        qp = self.request.query_params   # <- 省略表記
+
+        store = qp.get('store')
+        if store:        # 空文字 '' は False になるので自動的に無視
+            qs = qs.filter(store_id=store)
+
+        cast = qp.get('cast')
+        if cast:
+            qs = qs.filter(casts__cast_profile_id=cast)
+
+        date = qp.get('date')
+        if date:
+            qs = qs.filter(start_at__date=date)
+
+        return qs
+
+
 class CastProfileViewSet(viewsets.ModelViewSet):
     queryset = CastProfile.objects.select_related("store", "rank", "performer")
     serializer_class = CastSerializer
