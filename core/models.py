@@ -164,11 +164,10 @@ class Driver(TimeStamped):
 	def __str__(self):
 		return str(self.user)
 
-
+# ---------- 顧客 ----------
 class Customer(TimeStamped):
 	name	= models.CharField(max_length=60)
 	phone = models.CharField(max_length=20, db_index=True, unique=True)
-	address = models.CharField(max_length=255, blank=True)
 	memo	= models.TextField(blank=True)
 	def __str__(self):
 		return self.name
@@ -176,6 +175,24 @@ class Customer(TimeStamped):
 	class Meta:
 		verbose_name = '顧客'
 		verbose_name_plural = '顧客'
+
+class CustomerAddress(TimeStamped):
+	customer		= models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='addresses')
+	label			= models.CharField(max_length=30, blank=True)
+	address			= models.CharField(max_length=255)
+	is_primary		= models.BooleanField(default=False)
+
+	class Meta:
+		verbose_name = '顧客住所'
+		verbose_name_plural = '顧客住所'
+		unique_together = ('customer', 'address')
+
+	def save(self, *args, **kwargs):
+		super().save(*args, **kwargs)
+		# is_primary が立ったら他を倒す
+		if self.is_primary:
+			self.customer.addresses.exclude(id=self.id).update(is_primary=False)
+
 
 
 # ---------- 予約 ----------
@@ -197,6 +214,11 @@ class Reservation(TimeStamped):
 	received_amount   = models.IntegerField(null=True, blank=True, verbose_name='受取金')
 	discrepancy_flag  = models.BooleanField(default=False)
 	deposited_amount = models.PositiveIntegerField(default=0)
+	address_text	= models.CharField(max_length=255, null=True, blank=True,)
+	address_book	= models.ForeignKey(
+		CustomerAddress, null=True, blank=True,
+		on_delete=models.SET_NULL, related_name='reservations'
+	)
 
 
 	# ──簡易プロパティ──

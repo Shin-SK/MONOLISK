@@ -60,6 +60,17 @@ export const getReservations = (params = {}) =>
 export const getReservation    = id      => api.get(`reservations/${id}/`).then(r => r.data)
 export const createReservation = payload => api.post('reservations/', payload)
 export const updateReservation = (id, p) => api.patch(`reservations/${id}/`, p)
+export const deleteReservations = (ids) =>
+  axios.delete('/api/reservations/bulk-delete/', { data: { ids } })
+
+export const getLatestReservation = id =>
+  api.get(`customers/${id}/latest_reservation/`).then(r => r.data)
+
+export const getCustomerAddresses = custId =>
+	api.get(`customers/${custId}/addresses/`).then(r => r.data)
+
+export const createCustomerAddress = (custId, payload) =>
+	api.post(`customers/${custId}/addresses/`, payload).then(r => r.data)
 
 /* ---------- マスター ---------- */
 const simple = r => r.data
@@ -86,6 +97,11 @@ export const createCustomer = p           => api.post('customers/', p).then(r =>
 export const updateCustomer = (id, p)     => api.put(`customers/${id}/`, p).then(r => r.data)
 export const deleteCustomer = id          => api.delete(`customers/${id}/`)
 export const getCustomer    = id          => api.get(`customers/${id}/`).then(r => r.data)
+
+export const getReservationsByCustomer = id =>
+	api.get('reservations/', {
+		params:{ customer:id, ordering:'-start_at' }
+	}).then(r => r.data)
 
 /* ---------- キャストオプション ---------- */
 export const getCastOptions  = castId => api.get('cast-options/', { params: { cast_profile: castId } }).then(r => r.data)

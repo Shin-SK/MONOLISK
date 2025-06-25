@@ -1,13 +1,14 @@
 <!-- src/views/ReservationList.vue -->
 <script setup>
-import { ref, watch, onMounted } from 'vue'
-import { getStores, getCastProfiles, getReservations } from '@/api'
+import { ref, watch, onMounted, computed } from 'vue'
+import { getStores, getCastProfiles, getReservations, deleteReservations } from '@/api'
 import { useRouter } from 'vue-router'
 const router = useRouter()
 
 const stores = ref([])
 const casts	= ref([])
 const rows	 = ref([])
+const selected = ref(new Set())
 
 const form = ref({ store:'', cast:'', date:'' })
 
@@ -34,13 +35,42 @@ watch(() => form.value.store, async s => {
 
 /* 検索実行 */
 async function search() {
-	rows.value = await getReservations(form.value)
+	rows.value = await getReservations({ ...form.value, ordering: '-start_at' })
 }
 
 async function resetForm() {
   form.value = { store:'', cast:'', date:'' }
   casts.value = await getCastProfiles()    // 全キャスト
   await search()
+}
+
+// 削除
+function toggle(id) {
+  selected.value.has(id)
+    ? selected.value.delete(id)
+    : selected.value.add(id)
+}
+
+const allChecked = computed({
+  get: () => rows.value.length && selected.value.size === rows.value.length,
+  set: (val) => {
+    selected.value = val
+      ? new Set(rows.value.map(r => r.id))
+      : new Set()
+  }
+})
+
+async function bulkDelete() {
+  if (!confirm(`${selected.value.size} 件を削除します。よろしいですか？`)) return
+  try {
+    await deleteReservations([...selected.value])
+    // 削除済みを UI から除外
+    rows.value = rows.value.filter(r => !selected.value.has(r.id))
+    selected.value.clear()
+  } catch (e) {
+    alert('削除に失敗しました')
+    console.error(e)
+  }
 }
 
 
@@ -61,7 +91,7 @@ onMounted(async () => {
   <div class="search">
     <form class="form search-row" @submit.prevent="search">
       <!-- 店舗ラジオ -->
-      <fieldset class="field-group radio-items">
+      <fieldset class="field-group radio-items radio-store">
         <label class="radio-item">
           <input type="radio" value="" v-model="form.store" />
           <span>全店舗</span>
@@ -89,26 +119,26 @@ onMounted(async () => {
             <!-- 昨日／今日／明日ボタン -->
             <button
               type="button"
-              :class="['date-btn', { active: form.date === yyyy_mm_dd(new Date(today.setDate(today.getDate()-1))) }]"
+              :class="['btn btn-dark', { active: form.date === yyyy_mm_dd(new Date(today.setDate(today.getDate()-1))) }]"
               @click="setRelative(-1)"
             >昨日</button>
 
             <button
               type="button"
-              :class="['date-btn', { active: form.date === yyyy_mm_dd(new Date()) }]"
+              :class="['btn btn-dark', { active: form.date === yyyy_mm_dd(new Date()) }]"
               @click="setRelative(0)"
             >今日</button>
 
             <button
               type="button"
-              :class="['date-btn', { active: form.date === yyyy_mm_dd(new Date(today.setDate(today.getDate()+1))) }]"
+              :class="['btn btn-dark', { active: form.date === yyyy_mm_dd(new Date(today.setDate(today.getDate()+1))) }]"
               @click="setRelative(1)"
             >明日</button>
 
             <!-- 日付指定ボタン（選択済み＝active） -->
             <button
               type="button"
-              :class="['date-btn', { active: form.date && !['昨日','今日','明日'].includes(form.date) }]"
+              :class="['btn btn-dark', { active: form.date && !['昨日','今日','明日'].includes(form.date) }]"
               @click="openPicker"
             >日付指定</button>
               <!-- 隠れ input -->
@@ -134,8 +164,11 @@ onMounted(async () => {
 
       <!-- ボタン -->
       <div class="btn-wrap">
-        <button type="submit" class="btn-search">検索</button>
-        <button type="button" class="btn-reset" @click="resetForm">リセット</button>
+        <button type="submit" class="btn btn-dark btn-search">検索</button>
+        <button type="button" class="btn btn-dark btn-reset" @click="resetForm">リセット</button>
+        <button class="btn btn-dark btn-new" @click="router.push('/reservations/new')">
+          新規予約
+        </button>
       </div>
 
     </form>
@@ -146,6 +179,7 @@ onMounted(async () => {
     <table class="table table-bordered table-hover align-middle table-striped">
       <thead class="table-dark">
         <tr>
+          <th><input type="checkbox" v-model="allChecked" /></th>
           <th>ID</th>
           <th>店舗</th>
           <th>キャスト</th>
@@ -162,6 +196,13 @@ onMounted(async () => {
 
       <tbody>
         <tr v-for="r in rows" :key="r.id">
+          <td>
+            <input
+              type="checkbox"
+              :checked="selected.has(r.id)"
+              @change="toggle(r.id)"
+            />
+          </td>
           <td>{{ r.id }}</td>
           <td>{{ r.store_name }}</td>
           <td class="cast">
@@ -181,7 +222,7 @@ onMounted(async () => {
           <td>{{ r.status }}</td>
           <td>
             <button class="btn btn-link p-0"
-                    @click="router.push(`reservations/${r.id}`)">
+                    @click="router.push(`/reservations/${r.id}`)">
               詳細
             </button>
           </td>
@@ -190,8 +231,9 @@ onMounted(async () => {
     </table>
   </div>
 
-	<button class="btn-new" @click="router.push('/reservations/new')">
-		新規予約
-	</button>
+    <button class="btn btn-danger mb-3" :disabled="!selected.size" @click="bulkDelete" >
+      選択を削除
+    </button>
+
 </div>
 </template>

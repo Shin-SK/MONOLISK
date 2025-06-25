@@ -12,8 +12,8 @@
 
 
 .btn-new {
-	@include button-basic();
-	margin: 40px auto;
+	@include flex();
+	gap: 4px;
 	&::before {
 		@include googleicon("add_circle");
 		color: white;
@@ -21,7 +21,8 @@
 }
 
 .btn-search{
-	@include button-basic();
+	@include flex();
+	gap: 4px;
 	&::before {
 		@include googleicon("search");
 		color: white;
@@ -29,15 +30,24 @@
 }
 
 .btn-reset{
-	@include button-basic();
+	@include flex();
+	gap: 4px;
 	&::before {
 		@include googleicon("refresh");
 		color: white;
 	}
 }
 
+.pre-line {
+	white-space: pre-line;	/* \n → 改行、連続空白は 1 文字 */
+}
+
 .container{
 	max-width: 768px;
+}
+
+textarea.form-control{
+	height: 200px;
 }
 
 .avatar-icon{

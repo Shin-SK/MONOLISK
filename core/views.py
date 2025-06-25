@@ -5,17 +5,20 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import CustomerFilter
 from rest_framework.decorators import action
+from rest_framework.filters import OrderingFilter
+from django.shortcuts import get_object_or_404
 
 from .models import (
     Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
     CastProfile, CastCoursePrice, CastOption, Driver, Customer,
-    Reservation, ReservationCast
+    Reservation, ReservationCast, CustomerAddress
 )
 from .serializers import (
     StoreSerializer, RankSerializer, CourseSerializer, RankCourseSerializer,
     OptionSerializer, GroupOptionPriceSerializer,
     CastSerializer, CastCoursePriceSerializer, CastOptionSerializer,
-    DriverSerializer, CustomerSerializer, ReservationSerializer, DriverListSerializer,  
+    DriverSerializer, CustomerSerializer, ReservationSerializer, DriverListSerializer,
+    CustomerReservationSerializer,CustomerAddressSerializer
 )
 from.filters import ReservationFilter
 
@@ -86,12 +89,47 @@ class DriverViewSet(viewsets.ModelViewSet):
             return DriverListSerializer
         return DriverSerializer
 
+
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend]
     filterset_class    = CustomerFilter
+
+    @action(detail=True, methods=["get"])
+    def latest_reservation(self, request, pk=None):
+        """顧客の直近 1 件"""
+        r = (
+            Reservation.objects
+            .filter(customer_id=pk)
+            .order_by("-start_at")
+            .select_related("store")
+            .prefetch_related("casts__cast_profile")
+            .first()
+        )
+        if not r:
+            return Response(None)
+        ser = CustomerReservationSerializer(r)
+        return Response(ser.data)
+
+    @action(detail=True, methods=["get"])
+    def reservations(self, request, pk=None):
+        """
+        顧客の予約一覧（?limit=20 & ?offset=40 も使える）
+        """
+        qs = (
+            Reservation.objects
+            .filter(customer_id=pk)
+            .order_by("-start_at")
+            .select_related("store")
+            .prefetch_related("casts__cast_profile")
+        )
+        # pagination は DRF のデフォルトをそのまま
+        page = self.paginate_queryset(qs)
+        ser  = CustomerReservationSerializer(page, many=True)
+        return self.get_paginated_response(ser.data)
+
 
 # ---------- 予約 ----------
 
@@ -103,8 +141,12 @@ class ReservationViewSet(viewsets.ModelViewSet):
     serializer_class    = ReservationSerializer
     permission_classes  = [AllowAny]
     pagination_class    = None      # ← 必要なら外して OK
-    filter_backends    = [DjangoFilterBackend]
-    filterset_class    = ReservationFilter
+
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    # filterset_class    = ReservationFilter
+    filterset_fields = ['customer']	
+    ordering_fields = ["start_at", "id"]      # 並び替え許可フィールド
+    ordering = ["-start_at"]                  # ← デフォルトを新しい順に
 
     # ------- 共通ヘルパ -------
     def _sync_casts(self, reservation, casts_data):
@@ -183,6 +225,22 @@ class ReservationViewSet(viewsets.ModelViewSet):
 
         return Response(self.get_serializer(qs, many=True).data)
 
+
+    @action(detail=False, methods=['delete'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """
+        payload: { "ids": [1, 2, 3] }
+        """
+        ids = request.data.get('ids', [])
+        if not ids:
+            return Response(
+                {"detail": "ids を配列で送ってください"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        deleted, _ = Reservation.objects.filter(id__in=ids).delete()
+        return Response({"deleted": deleted}, status=status.HTTP_204_NO_CONTENT)
+
+
 class CastProfileViewSet(viewsets.ModelViewSet):
     queryset = CastProfile.objects.select_related('store', 'rank', 'performer')
     serializer_class = CastSerializer
@@ -197,3 +255,16 @@ class CastProfileViewSet(viewsets.ModelViewSet):
         if store_id:
             qs = qs.filter(store_id=store_id)
         return qs
+
+
+
+class CustomerAddressViewSet(viewsets.ModelViewSet):
+	serializer_class = CustomerAddressSerializer
+	permission_classes = [AllowAny]
+
+	def get_queryset(self):
+		return CustomerAddress.objects.filter(customer_id=self.kwargs['customer_pk'])
+
+	def perform_create(self, serializer):			# ★ 追加
+		customer = get_object_or_404(Customer, pk=self.kwargs['customer_pk'])
+		serializer.save(customer=customer)

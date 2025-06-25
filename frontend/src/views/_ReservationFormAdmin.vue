@@ -6,9 +6,8 @@
  *  - “延長料金” や “手書き加算” をあとから UI に足すだけで合計へ反映
  * =============================================================== */
 
-import { ref, computed, onMounted, watch } from 'vue'
-import { asyncComputed }			from '@vueuse/core'
-import Multiselect from 'vue-multiselect'
+import { ref, computed, onMounted } from 'vue'
+import { asyncComputed }			from '@vueuse/core'		  // ★追加
 import { useRoute, useRouter }	  from 'vue-router'
 import debounce					 from 'lodash.debounce'
 import {
@@ -16,8 +15,7 @@ import {
   getStores, getCustomers, getDrivers, getCourses,
   getOptions, getCastProfiles, getPrice,
   searchCustomers, createCustomer,
-  createReservation, updateReservation, getReservation, getLatestReservation,
-  getCustomerAddresses, createCustomerAddress,
+  createReservation, updateReservation, getReservation, getLatestReservation
 } from '@/api'
 
 /* ---------- 基本 ---------- */
@@ -52,16 +50,8 @@ const opts = ref({
   options:  [],
   casts:	[],
 })
-// store ごとのキャストをキャッシュ
-const castsByStore = ref({})				// { [storeId]: Cast[] }
-
-// 現在選択している店舗に属するキャストだけを集約
-const visibleCasts = computed(() =>
-	form.value.stores.flatMap(id => castsByStore.value[id] || [])
-)
 
 const latest = ref(null)
-
 
 /* ---------- マスタ取得 ---------- */
 async function fetchMasters () {
@@ -83,43 +73,32 @@ async function fetchReservation () {
 	stores		 : res.store ? [res.store] : [],
 	cast_profiles  : res.casts.map(c => c.cast_profile.id),
 	start_at	   : res.start_at.slice(0,16),
-	course		 : res.casts[0]?.course ?? '',
+	course		 : res.casts[0]?.rank_course ?? '',
 	driver		 : res.driver,
 	customer	   : res.customer,
 	deposited_amount : res.deposited_amount ?? 0,
 	manual_extra	 : 0,
 	extension_fee	: 0,
   })
-
-	addresses.value = await getCustomerAddresses(res.customer)
-	if (res.address_book) {
-		selectedAddress.value = res.address_book			// 既存帳票
-	} else if (res.address_text) {
-		selectedAddress.value = '__new__'					// 手書き
-		newAddress.value	  = { label:'', address_text:res.address_text }
-	}
   selectedOptions.value = res.charges
 	.filter(c => c.kind === 'OPTION')
 	.map(c => c.option)
-	await nextTick()
-	form.value.cast_profiles = res.casts.map(c => c.cast_profile.id)
 }
 
 /* ---------- 店舗が変わったらキャスト再フェッチ ---------- */
+import { watch } from 'vue'
 watch(
-	() => [...form.value.stores],		// 配列を監視
-	async ids => {
-		for (const id of ids) {
-			if (!castsByStore.value[id]) {
-				castsByStore.value[id] = await getCastProfiles(id)
-			}
-		}
-		/* 店舗変更後、所属しないキャストは外す */
-		form.value.cast_profiles = form.value.cast_profiles.filter(
-			id => visibleCasts.value.some(c => c.id === id)
-		)
-	},
-	{ immediate:true }
+  () => form.value.stores,
+  async (stores=[]) => {
+	form.value.cast_profiles = []
+	if (!stores.length) { opts.value.casts = []; return }
+	const lists = await Promise.all(stores.map(s => getCastProfiles(s)))
+	/* id 重複を排除してマージ */
+	opts.value.casts = Object.values(
+	  lists.flat().reduce((acc, c) => ({ ...acc, [c.id]: c }), {})
+	)
+  },
+  { immediate:true }
 )
 
 /* ---------- オプション選択 ---------- */
@@ -150,27 +129,6 @@ async function registerNew () {
   choose(newCust)
 }
 function clearCustomer () { form.value.customer=''; phone.value=''; showList.value=false }
-
-
-// タブインデント！
-const addresses			= ref([])		// 一覧
-const selectedAddress	= ref('')		// 選択中 id or "__new__"
-const newAddress		= ref({			// 新規入力用
-	label: '',
-	address_text: ''
-})
-
-// 顧客が決まったら住所一覧を取得
-watch(() => form.value.customer, async id => {
-	if (!id) {
-		addresses.value = []
-		selectedAddress.value = ''
-		return
-	}
-	addresses.value = await getCustomerAddresses(id)
-	// 既存予約編集時は res.address をここでセットしておく
-})
-
 
 /* =============================================================== */
 /*  💰 料金計算（完全リアクティブ）								 */
@@ -247,22 +205,6 @@ async function save () {
 	],
   }
 
-	if (selectedAddress.value === '__new__') {
-		/* 手書き住所をまず顧客住所帳へ保存してから、
-		   返ってきた ID を address_book に入れる */
-		if (!newAddress.value.address_text.trim()) {
-			alert('住所を入力してください'); return
-		}
-		const created = await createCustomerAddress(
-			form.value.customer,
-			newAddress.value
-		)
-		payload.address_book = created.id
-	} else {
-		/* 既存住所 or 未選択(null) */
-		payload.address_book = selectedAddress.value || null
-	}
-
   try {
 	isEdit
 	  ? await updateReservation(route.params.id, payload)
@@ -286,87 +228,68 @@ async function save () {
 
 	<!-- 顧客（電話検索） -->
 	<div class="my-5 customer">
-		<div class="wrap d-flex justify-content-between">
-			<div class="w-75 search">
-				<!-- 入力 -->
-				<input v-if="!selectedCustomer" v-model="phone" @input="fetchCandidates"
-					class="form-control" placeholder="090…" />
+	  <div class="wrap d-flex gap-4">
+		<div class="col-8 search">
+			<!-- 入力 -->
+			<input v-if="!selectedCustomer" v-model="phone" @input="fetchCandidates"
+				  class="form-control" placeholder="090…" />
 
-				<!-- 候補 -->
-				<ul v-if="showList" class="d-flex gap-4 mt-4">
-				<li v-for="c in candidates" :key="c.id"
-					class="btn btn-outline-primary"
-					@click="choose(c)">
-					{{ c.name }} / {{ c.phone }}
-				</li>
+			<!-- 候補 -->
+			<ul v-if="showList" class="d-flex gap-4 mt-4">
+			  <li v-for="c in candidates" :key="c.id"
+				  class="btn btn-outline-primary"
+				  @click="choose(c)">
+				{{ c.name }} / {{ c.phone }}
+			  </li>
+			</ul>
+
+			<!-- 選択済み表示 -->
+			<div v-if="selectedCustomer" class="selected p-2 bg-white rounded d-flex align-items-center justify-content-between">
+			  <div class="wrap">
+				{{ selectedCustomer.name }}（{{ selectedCustomer.phone }}）
+			  </div>
+			  <button class="btn btn-outline-secondary" @click="clearCustomer">
+				変更
+			  </button>
+			</div>
+
+			<!-- 直近カード -->
+			<div v-if="latest" class="latest-carte card mt-3">
+			  <div class="card-header">前回の予約</div>
+			  <div class="card-body">
+				<p class="mb-1">
+				  {{ new Date(latest.start_at).toLocaleString() }}
+				  / {{ latest.store_name }}
+				</p>
+				  <div v-for="rc in latest.casts" :key="rc.cast_profile" class="mb-1 d-flex align-items-center gap-2">
+					<img :src="rc.avatar_url || '/static/img/cast-default.png'"
+						class="rounded-circle border"
+						style="width:32px;height:32px;object-fit:cover;">
+					<span>{{ rc.stage_name }}</span>
+				  </div>
+				<div v-for="c in latest.courses" :key="c.cast">
+				  <span>
+					{{ c.minutes }}分コース
+				  </span>
+				</div>
+				<ul>
+				  <li v-for="o in latest.options" :key="o.option_id" class="btn btn-outline-primary">
+					{{ o.name }}
+				  </li>
 				</ul>
-
-				<!-- 選択済み表示 -->
-				<div v-if="selectedCustomer" class="selected p-2 bg-white rounded d-flex align-items-center justify-content-between">
-				<div class="wrap">
-					{{ selectedCustomer.name }}（{{ selectedCustomer.phone }}）
-				</div>
-				<button class="btn btn-outline-secondary" @click="clearCustomer">
-					変更
-				</button>
-				</div>
-			</div>
-			<div class="w-auto new">
-			<button class="btn btn-primary w-100" @click="registerNew">＋ 新規顧客を登録</button>
+				<p class="mb-0">金額: {{ latest.expected_amount.toLocaleString() }} 円</p>
+				<RouterLink
+				  class="btn btn-sm btn-link mt-2"
+				  :to="`/reservations/${latest.id}`"
+				>詳細</RouterLink>
+			  </div>
 			</div>
 		</div>
-		<div class="d-flex align-items-center">
-			<div v-if="latest" class="latest-carte card m-atuo mt-3">
-				<div class="card-header">前回の予約</div>
-				<div class="card-body">
-
-					<div class="card-body__wrap d-flex align-items-center">
-
-						<div class="area">
-							<div v-for="rc in latest.casts" :key="rc.cast_profile" class="d-flex align-items-center gap-2">
-								<RouterLink :to="`/reservations/${latest.id}`">
-								<img :src="rc.avatar_url || '/static/img/cast-default.png'"
-									class="border"
-									style="object-fit: cover;">
-								</RouterLink>
-							</div>
-						</div>
-						<div class="area">
-							<span>{{ latest.stage_name }}</span>
-							<div class="date mb-1">
-							{{ new Date(latest.start_at).toLocaleString() }}
-							/ {{ latest.store_name }}
-							</div>
-							<div v-for="c in latest.courses" :key="c.cast">
-							<span>
-								{{ c.minutes }}分コース
-							</span>
-							</div>
-							<ul>
-								<!-- オプションが 0 件のとき -->
-								<li v-if="!latest.options || !latest.options.length" class="text-muted">
-									オプションはありません
-								</li>
-
-								<!-- 1 件以上あるとき -->
-								<li
-									v-else
-									v-for="o in latest.options"
-									:key="o.option_id"
-									class="btn btn-outline-primary"
-								>
-									{{ o.name }}
-								</li>
-							</ul>
-							<p class="mb-0">金額: {{ latest.expected_amount.toLocaleString() }} 円</p>						
-						</div>
-
-
-					</div><!-- __wrap -->
-
-				</div><!-- card-body -->
-			</div><!-- card -->
+		<div class="col-4">
+		  <button class="btn btn-primary w-100" @click="registerNew">＋ 新規顧客を登録</button>
 		</div>
+	  </div>
+
 	</div>
 
 
@@ -417,54 +340,6 @@ async function save () {
 	</div>
 
 
-<!-- タブインデント！ -->
-<label class="form-label">送迎場所</label>
-<div class="d-flex flex-wrap gap-3" role="group">
-	<!-- 既存 -->
-	<label
-		v-for="a in addresses"
-		:key="a.id"
-		class="btn btn-outline-primary"
-		:class="{ active: selectedAddress === a.id }"
-	>
-		<input
-			type="radio"
-			class="btn-check"
-			v-model="selectedAddress"
-			:value="a.id"
-		/>
-		{{ a.label }} / {{ a.address_text }}
-	</label>
-
-	<!-- 新規 -->
-	<label
-		class="btn btn-outline-success"
-		:class="{ active: selectedAddress === '__new__' }"
-	>
-		<input
-			type="radio"
-			class="btn-check"
-			v-model="selectedAddress"
-			value="__new__"
-		/>
-		＋ 新規住所
-	</label>
-</div>
-
-<!-- 新規入力フォーム -->
-<div v-if="selectedAddress === '__new__'" class="mt-3">
-	<input
-		v-model="newAddress.label"
-		class="form-control mb-2"
-		placeholder="例）ホテルA"
-	/>
-	<textarea
-		v-model="newAddress.address_text"
-		class="form-control"
-		placeholder="住所を入力"
-		rows="3"
-	></textarea>
-</div>
 
 
 	<!-- 開始日時 -->

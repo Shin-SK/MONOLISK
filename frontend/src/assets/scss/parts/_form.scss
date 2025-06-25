@@ -38,21 +38,15 @@
 				background-color: $mc;
 			}
 		}
+		&.radio-store{
+			gap: 40px;
+		}
 	}
 	.date-box{
 		.button-area{
 			display: grid;
 			grid-template-columns: 1fr 1fr;
 			gap: 8px;
-			.date-btn{
-				@include button-basic();
-				border-radius: unset;
-				width: 100%;
-				padding: 4px;
-				&.active{
-					background-color: $mc;
-				}
-			}
 		}
 		.result{
 			@include flex();
@@ -82,5 +76,59 @@
 		@include flex();
 		gap: 40px;
 		margin: 16px auto;
+	}
+}
+
+.form-admin{
+	.btn{
+		height: 40px;
+		@include flex();
+	}
+	.customer{
+		.wrap{
+			.search{
+				ul{
+					margin: unset;
+					padding: unset;
+				}
+				.btn{
+					height: auto;
+				}
+				.selected{
+					height: 40px;
+				}
+			}
+		}
+		.latest-carte{
+			&.card{
+				background-color: white;
+				.card-header{
+					background-color: $mc;
+					color: white;
+				}
+				.card-body{
+					&__wrap{
+						display: flex;
+						gap: 16px;
+						align-items: center;
+					}
+					ul{
+						padding: 0;
+						li{
+							list-style: none;
+						}
+					}
+					img{
+						width: 160px;
+						object-fit: cover;
+						object-position: top center;
+						height: 160px;
+					}
+					.text-muted{
+						margin: 16px auto;
+					}
+				}
+			}
+		}
 	}
 }

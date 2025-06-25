@@ -7,7 +7,7 @@ from django.db.models import Q
 from .models import (
 	Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
 	CastProfile, CastCoursePrice, CastOption, Driver, Customer,
-	Reservation, ReservationCast, ReservationCharge, CashFlow
+	Reservation, ReservationCast, ReservationCharge, CashFlow, CustomerAddress
 )
 
 # ---------- マスタ ----------
@@ -79,8 +79,43 @@ class DriverSerializer(serializers.ModelSerializer):
 		fields = '__all__'
 
 # ---------- Customer ----------
+
+class CustomerAddressSerializer(serializers.ModelSerializer):
+	class Meta:
+		model	= CustomerAddress
+		fields	= ('id', 'label', 'address', 'is_primary')
+
+
+
 class CustomerSerializer(serializers.ModelSerializer):
-	class Meta: model = Customer; fields = '__all__'
+	addresses	= CustomerAddressSerializer(many=True, required=False)
+
+	class Meta:
+		model	= Customer
+		fields	= ('id', 'name', 'phone', 'memo', 'addresses')
+
+	def _sync_addresses(self, instance, addresses):
+		"""PUT 時は全置換して簡潔に"""
+		instance.addresses.all().delete()
+		for data in addresses:
+			CustomerAddress.objects.create(customer=instance, **data)
+
+	def create(self, validated_data):
+		addresses	= validated_data.pop('addresses', [])
+		customer	= super().create(validated_data)
+		self._sync_addresses(customer, addresses)
+		return customer
+
+	def update(self, instance, validated_data):
+		addresses = validated_data.pop('addresses', None)
+		instance	= super().update(instance, validated_data)
+		if addresses is not None:
+			self._sync_addresses(instance, addresses)
+		return instance
+
+
+
+
 
 # ---------- 予約周り（ネスト用） ----------
 
@@ -134,6 +169,13 @@ class ReservationSerializer(serializers.ModelSerializer):
 	cast_names	  = serializers.SerializerMethodField()
 	course_minutes  = serializers.SerializerMethodField()
 	expected_amount = serializers.IntegerField(read_only=True)
+	address_book = serializers.PrimaryKeyRelatedField(
+		queryset=CustomerAddress.objects.all(),
+		allow_null=True, required=False
+	)
+
+	#送迎住所を１本化
+	pickup_address = serializers.SerializerMethodField()
 
 	class Meta:
 		model  = Reservation
@@ -141,7 +183,23 @@ class ReservationSerializer(serializers.ModelSerializer):
 		read_only_fields = (
 			"store_name", "customer_name", "driver_name",
 			"cast_names", "course_minutes", "expected_amount","customer_address",
+			"pickup_address",
 		)
+
+	def get_pickup_address(self, obj):
+		"""
+		① address_text（手書き）があれば優先
+		② address_book があれば label + address
+		"""
+		if obj.address_text:
+			return obj.address_text
+
+		if obj.address_book_id:
+			label = obj.address_book.label or ''
+			addr  = obj.address_book.address
+			return f"{label} / {addr}" if label else addr
+
+		return ''
 
 	def get_driver_name(self, obj):
 		if not obj.driver_id:
@@ -289,6 +347,35 @@ class ReservationSerializer(serializers.ModelSerializer):
 			self._sync_charges(reservation, charges_data)
 
 		return reservation
+
+
+class CustomerReservationSerializer(ReservationSerializer):
+	courses = serializers.SerializerMethodField()
+	options = serializers.SerializerMethodField()
+
+	class Meta(ReservationSerializer.Meta):
+		fields = '__all__'
+
+	# ───── ここが肝心 ──────────────────
+	def get_courses(self, obj):
+		return [
+			{
+				"cast":      rc.cast_profile_id,
+				"course_id": rc.course_id,
+				"minutes":   rc.course.minutes,
+			}
+			for rc in obj.casts.all()
+		]
+
+	def get_options(self, obj):
+		return [
+			{
+				"option_id": ch.option_id,
+				"name":      ch.option.name if ch.option else None,
+				"amount":    ch.amount,
+			}
+			for ch in obj.charges.filter(kind="OPTION")
+		]
 
 
 
