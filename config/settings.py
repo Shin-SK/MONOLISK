@@ -312,3 +312,10 @@ JAZZMIN_UI_TWEAKS = {
     "theme": "lux",
     "sidebar": "sidebar-light-primary",
 }
+
+
+LOGGING = {
+    "version": 1,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "ERROR"},
+}
