@@ -54,8 +54,13 @@ export async function logout() {
 
 
 /* ---------- Reservations ---------- */
-export const getReservations = (params = {}) =>
-  api.get('reservations/', { params }).then(r => r.data)
+export const getReservations = (params = {}) => {
+  const clean = Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined)
+  )
+  return api.get('reservations/', { params: clean }).then(r => r.data)
+}
+
 
 export const getReservation    = id      => api.get(`reservations/${id}/`).then(r => r.data)
 export const createReservation = payload => api.post('reservations/', payload)
