@@ -142,14 +142,14 @@ function centerNow () {
   el.scrollLeft = ratio * el.scrollWidth - el.clientWidth / 2
 }
 onMounted(() => nextTick(centerNow))
-
+watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
 </script>
 
 
 
 
 <template>
-  <div class="gc-wrapper" style="overflow-x:auto;" ref="wrapperRef">
+  <div class="gc-wrapper" style="overflow-x:auto;">
 
   <div class="gantt-board">
     <!-- 固定キャスト列 -->
