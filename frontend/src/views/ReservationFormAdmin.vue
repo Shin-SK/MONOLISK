@@ -247,113 +247,93 @@ watch(
 )
 
 /* ---------- 保存（省略: 以前と同じ） ---------- */
+// ───────── まるごと置き換え ─────────
 async function save () {
+  /* ---------- 前準備 ---------- */
   const minutes =
-	opts.value.courses.find(c => c.id === form.value.course)?.minutes ?? 0
+    opts.value.courses.find(c => c.id === form.value.course)?.minutes ?? 0
 
   const toId = v => (v && typeof v === 'object') ? v.id : v
-	  /* ① どんな要素でも “数値 ID” に揃えるユーティリティ */
-	  const castIdOf = c =>
-	        typeof c === 'number'          ? c :
-	        typeof c === 'object' && 'cast_profile' in c ? c.cast_profile :
-	        typeof c === 'object' && 'id'  in c ? c.id :
-	        null;                           // 想定外は弾く
-	
-	  const castIds = form.value.cast_profiles
-	        .map(castIdOf)
-	        .filter(Boolean);               // null / undefined を除外
+  const castIdOf = c =>
+        typeof c === 'number'                         ? c :
+        typeof c === 'object' && 'cast_profile' in c ? c.cast_profile :
+        typeof c === 'object' && 'id' in c            ? c.id :
+        null
+  const castIds = form.value.cast_profiles
+        .map(castIdOf)
+        .filter(Boolean)
 
+  /* ---------- store 決定ロジック & バリデーション ---------- */
+  const castStores = castIds
+    .map(id => visibleCasts.value.find(c => c.id === id))
+    .map(c => c?.store ?? c?.store_id ?? null)
+    .filter(Boolean)
 
-	/* ---------- store 決定ロジック ---------- */
-	// キャスト→store をひとまず全部引き抜く
-	const castStores = castIds
-	  .map(id => visibleCasts.value.find(c => c.id === id))
-	  .map(c => c?.store ?? c?.store_id ?? null)
-	  .filter(Boolean)
+  let storeId = form.value.stores[0] ?? castStores[0] ?? null
+  const uniqueStores = [...new Set(castStores)]
 
-	// フロントで選択した店舗（任意）を優先
-	let storeId = form.value.stores[0] ?? null
-
-	// 未選択の場合はキャスト側から推測
-	if (!storeId && castStores.length) storeId = castStores[0]
-
-	// ---------- バリデーション ----------
-	const uniqueStores = [...new Set(castStores)]
-
-	// キャストが複数店舗ならエラー
-	if (!form.value.stores.length && uniqueStores.length > 1) {
-	  alert('異なる店舗のキャストが混在しています。店舗を選択してください')
-	  return
-	}
-
-	// 店舗を選んでいるのにキャストと不一致ならエラー
-	if (form.value.stores.length && uniqueStores.some(s => s !== storeId)) {
-	  alert('選択した店舗とキャストの店舗が一致しません')
-	  return
-	}
-
-	// まだ決まらない＝店舗もキャストも空
-	if (!storeId) {
-	  alert('店舗またはキャストを選択してください')
-	  return
-	}
-
-
-
-  const payload = {
-	store  : storeId,
- /* --- ドライバー (中間テーブル) --- */
-	drivers: [
-	...(form.value.driver_PU
-		? [{ role:'PU',  driver:toId(form.value.driver_PU) }] : []),
-	...(form.value.driver_DO
-		? [{ role:'DO', driver:toId(form.value.driver_DO) }] : []),
-	],
-	customer  : form.value.customer || null,
-	start_at  : new Date(form.value.start_at).toISOString(),
-	total_time: minutes,
-	deposited_amount : form.value.deposited_amount,
-	casts: castIds.map(id => ({
-      cast_profile: id,
-      course      : form.value.course,  // すでに数値
-    })),
-	charges: [
-	  /* オプション */
-	  ...selectedOptions.value.map(id => ({ kind:'OPTION', option:id, amount:null })),
-	  /* 手書き & 延長は “自由課金” としてバックエンド実装するとき用の例 */
-	  ...(manualSum.value	? [{ kind:'MANUAL',  label:'手書き', amount:manualSum.value }] : []),
-	  ...(extensionSum.value ? [{ kind:'EXTEND',  label:'延長',   amount:extensionSum.value }] : []),
-	],
+  if (!form.value.stores.length && uniqueStores.length > 1) {
+    alert('異なる店舗のキャストが混在しています。店舗を選択してください'); return
+  }
+  if (form.value.stores.length && uniqueStores.some(s => s !== storeId)) {
+    alert('選択した店舗とキャストの店舗が一致しません'); return
+  }
+  if (!storeId) {
+    alert('店舗またはキャストを選択してください'); return
   }
 
-	if (selectedAddress.value === '__new__') {
-		/* 手書き住所をまず顧客住所帳へ保存してから、
-		   返ってきた ID を address_book に入れる */
-		if (!newAddress.value.address_text.trim()) {
-			alert('住所を入力してください'); return
-		}
-		const created = await createCustomerAddress(
-			form.value.customer,
-			newAddress.value
-		)
-		payload.address_book = created.id
-	} else {
-		/* 既存住所 or 未選択(null) */
-		payload.address_book = selectedAddress.value || null
-	}
+  /* ---------- payload ---------- */
+  const payload = {
+    store : storeId,
+    drivers: [
+      ...(form.value.driver_PU ? [{ role:'PU', driver:toId(form.value.driver_PU) }] : []),
+      ...(form.value.driver_DO ? [{ role:'DO', driver:toId(form.value.driver_DO) }] : []),
+    ],
+    customer        : form.value.customer || null,
+    start_at        : new Date(form.value.start_at).toISOString(),
+    total_time      : minutes,
+    deposited_amount: form.value.deposited_amount,
+    casts: castIds.map(id => ({ cast_profile:id, course:form.value.course })),
+    charges: [
+      ...selectedOptions.value.map(id => ({ kind:'OPTION', option:id, amount:null })),
+      ...(manualSum.value   ? [{ kind:'MANUAL', label:'手書き', amount:manualSum.value   }] : []),
+      ...(extensionSum.value? [{ kind:'EXTEND', label:'延長',   amount:extensionSum.value}] : []),
+    ],
+  }
 
+  /* ---------- 住所帳 ---------- */
+  if (selectedAddress.value === '__new__') {
+    if (!newAddress.value.address_text.trim()) {
+      alert('住所を入力してください'); return
+    }
+    const created = await createCustomerAddress(form.value.customer, newAddress.value)
+    payload.address_book = created.id
+  } else {
+    payload.address_book = selectedAddress.value || null
+  }
+
+  /* ---------- 保存 ---------- */
   try {
-	isEdit
-	  ? await updateReservation(currentId.value, payload)
-	  : await createReservation(payload)
-	emit('saved', { id: currentId.value })       // 親へ通知
-	// ルートで使うときだけ一覧へ戻したいなら props で ON/OFF
-	if (!props.inModal) router.push('/reservations')
+    let id  // ← 確定した予約 ID
+
+    if (isEdit.value) {                       // 更新
+      await updateReservation(currentId.value, payload)
+      id = currentId.value
+    } else {                                  // 新規
+      const res = await createReservation(payload)
+      id = res.id
+    }
+
+    emit('saved', { id })                     // 親へ通知
+
+    if (!props.inModal) router.push('/reservations')
   } catch (e) {
-	console.error(e.response?.data)
-	alert(e.response?.data?.detail || 'バリデーションエラー')
+    console.error(e.response?.data)
+    alert(e.response?.data?.detail || 'バリデーションエラー')
   }
 }
+
+
 
 if (import.meta.env.DEV) {
   Object.assign(window, {

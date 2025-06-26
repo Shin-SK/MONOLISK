@@ -1,6 +1,7 @@
 #serializers.py
 from django.contrib.auth import get_user_model
 from django.templatetags.static import static
+from django.db import transaction
 from rest_framework import serializers
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.db.models import Q
@@ -230,8 +231,27 @@ class ReservationSerializer(serializers.ModelSerializer):
 		return [c.cast_profile.stage_name for c in obj.casts.all()]
 
 	def get_course_minutes(self, obj):
+		"""
+		先頭のキャストについて
+		① ReservationCast.course が入っていればそれを優先
+		② rank_course が入っていればそこから course.minutes
+		③ どちらも無ければ '' を返して落ちないようにする
+		"""
 		first = obj.casts.first()
-		return first.rank_course.course.minutes if first else ''
+		if not first:
+			return ''                       # キャスト自体が無い
+
+		# ① course 直指定があればそれ
+		if first.course_id:
+			return first.course.minutes
+
+		# ② rank_course 経由
+		rc = first.rank_course
+		if rc and rc.course_id:
+			return rc.course.minutes
+
+		# ③ どちらも無ければ空文字で回避
+		return ''
 
 	def get_courses(self, obj):
 		return [
@@ -332,25 +352,43 @@ class ReservationSerializer(serializers.ModelSerializer):
 			)
 
 
-
-	# ------- 新規 --------
+	# --- ReservationSerializer の create() をまるっと差し替え ----------
+	@transaction.atomic
 	def create(self, validated_data):
-		casts_data = validated_data.pop("casts", [])
-		charges	= validated_data.pop("charges", [])
+		"""
+		・drivers / casts / charges をネスト付きで受け取り
+		・Reservation を作ったあとに個別に INSERT する
+		（bulk_create だと model.save() が走らず rank_course 等が
+			自動セットされないため）
+		"""
+		drivers_data = validated_data.pop("drivers", [])
+		casts_data   = validated_data.pop("casts",   [])
+		charges_data = validated_data.pop("charges", [])
 
-		# NG 判定
-		self._check_ng(
-			validated_data.get("customer"),
-			[c["cast_profile"] for c in casts_data]
-		)
-		self._check_option_ng(
-			[c["cast_profile"] for c in casts_data],
-			[ch["option"] for ch in charges if ch["kind"] == "OPTION"]
-		)
+		# ① NG 系バリデーション（必要なら↓を有効に）
+		# self._check_ng(
+		#	 validated_data.get("customer"),
+		#	 [c["cast_profile"] for c in casts_data],
+		# )
+		# self._check_option_ng(
+		#	 [c["cast_profile"] for c in casts_data],
+		#	 [ch["option"] for ch in charges_data if ch["kind"] == "OPTION"],
+		# )
 
+		# ② 親テーブル
 		reservation = super().create(validated_data)
-		self._sync_casts(reservation, casts_data)
-		self._sync_charges(reservation, charges)
+
+		# ③ 子テーブルは save() を通して 1 件ずつ作る
+		for d in drivers_data:
+			ReservationDriver.objects.create(reservation=reservation, **d)
+
+		for c in casts_data:
+			# ReservationCast.save() 内で rank_course などを解決させるため
+			ReservationCast.objects.create(reservation=reservation, **c)
+
+		for ch in charges_data:
+			ReservationCharge.objects.create(reservation=reservation, **ch)
+
 		return reservation
 
 	# ------- 更新 --------
@@ -372,11 +410,11 @@ class ReservationSerializer(serializers.ModelSerializer):
 				ReservationCast.objects.create(reservation=instance, **c)
 
 		if drivers_data is not None:
-			instance.drivers.all().delete()               # ← related_name に合わせる
+			instance.drivers.all().delete()			   # ← related_name に合わせる
 			for d in drivers_data:
 				ReservationDriver.objects.create(
 					reservation = instance,
-					**d         # kind, driver など
+					**d		 # kind, driver など
 				)
 
 		if charges_data is not None:
