@@ -26,7 +26,7 @@ import UserProfileEdit              from '@/views/UserProfileEdit.vue'
 import ClosingList           from '@/views/ClosingList.vue'
 
 const routes = [
-  { path: '/', redirect: '/reservations' },
+  { path: '/', redirect: '/dashboard' },
 
   /* ---------- 管理者 ---------- */
   {
@@ -34,7 +34,7 @@ const routes = [
     component: AdminLayout,
     meta: { requiresAuth: true, adminOnly: true },
     children: [
-      { path: '',      redirect: 'reservations' },          // /admin
+      { path: 'dashboard',   component: () => import('@/views/DashboardAdmin.vue') },          // /admin
       { path: 'reservations', component: ReservationList },
       { path: 'reservations/new',     component: ReservationFormAdmin },
       { path: 'reservations/:id',     component: ReservationFormAdmin, name: 'admin-reservation-detail' },
@@ -45,6 +45,7 @@ const routes = [
       { path: 'casts',                component: CastList },
       { path: 'casts/new',            component: CastForm },
       { path: 'casts/:id',            component: CastForm },
+      { path: 'shifts', component: () => import('@/views/ShiftPlanAdmin.vue') },
       { path: 'closing',              component: ClosingList },
     ],
   },

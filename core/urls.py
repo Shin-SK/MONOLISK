@@ -18,6 +18,9 @@ router.register(r'drivers',              views.DriverViewSet)
 router.register(r'customers',            views.CustomerViewSet, basename='customers')
 router.register(r'reservations',         views.ReservationViewSet, basename='reservations')
 router.register(r'cast-profiles',        views.CastProfileViewSet, basename='cast-profiles')
+router.register(r"shift-plans",       views.ShiftPlanViewSet)
+router.register(r"shift-attendances", views.ShiftAttendanceViewSet, basename="shiftattendance")
+router.register(r"reservation-drivers", views.ReservationDriverViewSet)
 
 # ── Customer → Addresses のネスト ──
 addresses_router = NestedDefaultRouter(router, r'customers', lookup='customer')

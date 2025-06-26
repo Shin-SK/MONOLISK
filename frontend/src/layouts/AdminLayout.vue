@@ -50,14 +50,16 @@ async function logout () {
 
     <aside class="offcanvas-body aside d-flex flex-column justify-content-between vh-100">
       <div class="top">
-        <h1 class="h1">管理者用</h1>
+        <h1 class="h1"><RouterLink to="/dashboard">管理者用</RouterLink></h1>
 
         <nav class="nav flex-column">
           <RouterLink to="/reservations">予約一覧</RouterLink>
           <RouterLink to="/customers"   >顧客</RouterLink>
           <RouterLink to="/casts"       >キャスト</RouterLink>
+          <RouterLink to="/shifts">シフト管理</RouterLink>
           <RouterLink to="/closing"     >売上管理</RouterLink>
           <RouterLink to="/timeline"    >タイムライン</RouterLink>
+
         </nav>
       </div>
 

@@ -7,7 +7,8 @@ from django.db.models import Q
 from .models import (
 	Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
 	CastProfile, CastCoursePrice, CastOption, Driver, Customer,
-	Reservation, ReservationCast, ReservationCharge, CashFlow, CustomerAddress
+	Reservation, ReservationCast, ReservationCharge, CashFlow, CustomerAddress, ShiftPlan, ShiftAttendance,
+	ReservationDriver
 )
 
 # ---------- マスタ ----------
@@ -152,6 +153,21 @@ class ReservationChargeSerializer(serializers.ModelSerializer):
 class CashFlowSerializer(serializers.ModelSerializer):
 	class Meta: model = CashFlow; fields = '__all__'
 
+
+class ReservationDriverSerializer(serializers.ModelSerializer):
+	driver_name = serializers.CharField(
+		source="driver.user.display_name", read_only=True
+	)
+
+	class Meta:
+		model  = ReservationDriver
+		fields = (
+			"id", "driver", "driver_name",
+			"role", "start_at", "end_at",
+			"collected_amount", "status",
+		)
+		read_only_fields = ("status",)
+
 # ---------- 予約メイン ----------
 class ReservationSerializer(serializers.ModelSerializer):
 	courses = serializers.SerializerMethodField()
@@ -167,6 +183,7 @@ class ReservationSerializer(serializers.ModelSerializer):
 		allow_null=True,		  # ★これを追加
 		required=False
 	)
+	drivers = ReservationDriverSerializer(many=True, required=False)
 	driver_name	 = serializers.SerializerMethodField()
 	cast_names	  = serializers.SerializerMethodField()
 	course_minutes  = serializers.SerializerMethodField()
@@ -338,36 +355,36 @@ class ReservationSerializer(serializers.ModelSerializer):
 
 	# ------- 更新 --------
 	def update(self, instance, validated_data):
-		# pop のデフォルトを None に
+		# ① ネストを抜き取っておく
 		casts_data   = validated_data.pop('casts',   None)
+		drivers_data = validated_data.pop('drivers', None)
 		charges_data = validated_data.pop('charges', None)
 
-		# 現在の cast_ids をまず決定
-		cast_ids = (
-			[c['cast_profile'] for c in casts_data] if casts_data is not None
-			else list(instance.casts.values_list('cast_profile_id', flat=True))
-		)
+		# ② 親モデルを更新
+		for attr, value in validated_data.items():
+			setattr(instance, attr, value)
+		instance.save()
 
-		# NG 判定
-		self._check_ng(
-			validated_data.get('customer', instance.customer_id),
-			cast_ids
-		)
-		if charges_data is not None:
-			self._check_option_ng(
-				cast_ids,
-				[c['option'] for c in charges_data if c['kind'] == 'OPTION']
-			)
-
-		# モデル保存（received_amount だけなら本当にそこだけ更新）
-		reservation = super().update(instance, validated_data)
-
+		# ③ ネストは好きなロジックで同期（例: 全削除→再作成）
 		if casts_data is not None:
-			self._sync_casts(reservation, casts_data)
-		if charges_data is not None:
-			self._sync_charges(reservation, charges_data)
+			instance.casts.all().delete()
+			for c in casts_data:
+				ReservationCast.objects.create(reservation=instance, **c)
 
-		return reservation
+		if drivers_data is not None:
+			instance.drivers.all().delete()               # ← related_name に合わせる
+			for d in drivers_data:
+				ReservationDriver.objects.create(
+					reservation = instance,
+					**d         # kind, driver など
+				)
+
+		if charges_data is not None:
+			instance.charges.all().delete()
+			for ch in charges_data:
+				ReservationCharge.objects.create(reservation=instance, **ch)
+
+		return instance
 
 	def get_courses(self, obj):
 		rows = []
@@ -451,3 +468,30 @@ class UserDetailSerializer(serializers.ModelSerializer):
 		request = self.context.get("request")
 		url = obj.avatar.url if obj.avatar else static("img/user-default.png")
 		return request.build_absolute_uri(url) if request else url
+
+
+
+
+class ShiftPlanSerializer(serializers.ModelSerializer):
+	stage_name = serializers.CharField(source='cast_profile.stage_name')
+	store_name = serializers.CharField(source='cast_profile.store.name')
+	photo_url  = serializers.CharField(source='cast_profile.photo_url', read_only=True)  # ★追加
+
+	is_checked_in = serializers.BooleanField(read_only=True)
+
+	class Meta:
+		model  = ShiftPlan
+		fields = [
+			'id', 'store', 'store_name', 'cast_profile',
+			'date',
+			'stage_name', 'photo_url',
+			'start_at', 'end_at', 'is_checked_in',
+		]
+class ShiftAttendanceSerializer(serializers.ModelSerializer):
+	class Meta:
+		model  = ShiftAttendance
+		fields = "__all__"
+		read_only_fields = ("checked_in_at", "checked_out_at")
+
+
+

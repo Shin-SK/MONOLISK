@@ -7,20 +7,24 @@ from .filters import CustomerFilter
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from django.shortcuts import get_object_or_404
+from django.db.models import Exists, OuterRef
 
 from .models import (
     Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
     CastProfile, CastCoursePrice, CastOption, Driver, Customer,
-    Reservation, ReservationCast, CustomerAddress
+    Reservation, ReservationCast, CustomerAddress, ShiftPlan, ShiftAttendance, ReservationDriver
 )
 from .serializers import (
     StoreSerializer, RankSerializer, CourseSerializer, RankCourseSerializer,
     OptionSerializer, GroupOptionPriceSerializer,
     CastSerializer, CastCoursePriceSerializer, CastOptionSerializer,
     DriverSerializer, CustomerSerializer, ReservationSerializer, DriverListSerializer,
-    CustomerReservationSerializer,CustomerAddressSerializer
+    CustomerReservationSerializer,CustomerAddressSerializer, ShiftPlanSerializer, ShiftAttendanceSerializer, ReservationDriverSerializer
 )
-from.filters import ReservationFilter,CastProfileFilter, CustomerFilter
+from.filters import (
+    ReservationFilter,CastProfileFilter, CustomerFilter, ShiftPlanFilter, ReservationDriverFilter
+)
+
 
 
 
@@ -141,7 +145,11 @@ class ReservationViewSet(viewsets.ModelViewSet):
     queryset = (
         Reservation.objects
         .select_related("store", "driver", "customer")
-        .prefetch_related("casts__cast_profile", "charges")
+        .prefetch_related(
+            "casts__cast_profile",
+            "charges",
+            "drivers__driver__user",  # ★ 追加
+        )
     )
     serializer_class    = ReservationSerializer
     permission_classes  = [AllowAny]
@@ -272,3 +280,72 @@ class CustomerAddressViewSet(viewsets.ModelViewSet):
 	def perform_create(self, serializer):			# ★ 追加
 		customer = get_object_or_404(Customer, pk=self.kwargs['customer_pk'])
 		serializer.save(customer=customer)
+
+
+
+
+class ShiftPlanViewSet(viewsets.ModelViewSet):
+    queryset = ShiftPlan.objects.all()          # ★ 追加
+    serializer_class = ShiftPlanSerializer
+    permission_classes = [IsStaff]
+    filter_backends   = [DjangoFilterBackend]
+    filterset_class   = ShiftPlanFilter
+
+    def get_queryset(self):
+        qs = (
+            super()
+            .get_queryset()
+            .select_related("cast_profile__store")
+            .annotate(
+                is_checked_in = Exists(
+                    ShiftAttendance.objects.filter(
+                        shift_plan=OuterRef("pk"),
+                        checked_out_at__isnull=True
+                    )
+                )
+            )
+        )
+        # date 未指定なら今日
+        if "date" not in self.request.query_params:
+            qs = qs.filter(date=timezone.localdate())
+        return qs
+
+# core/views.py  ── 末尾あたりに追記
+class ShiftAttendanceViewSet(viewsets.ModelViewSet):
+    """打刻専用 ViewSet: /shift-attendances/<pk>/checkin|checkout/"""
+    queryset           = ShiftAttendance.objects.all()
+    serializer_class   = ShiftAttendanceSerializer
+    http_method_names  = ["get", "post", "head", "options"]
+
+    @action(detail=True, methods=["post"])
+    def checkin(self, request, pk=None):
+        sa = self.get_object()
+        at = request.data.get("at") or timezone.now()
+        sa.checked_in_at = at
+        sa.save(update_fields=["checked_in_at"])
+        return Response(self.get_serializer(sa).data)
+
+    @action(detail=True, methods=["post"])
+    def checkout(self, request, pk=None):
+        sa = self.get_object()
+        at = request.data.get("at") or timezone.now()
+        sa.checked_out_at = at
+        sa.save(update_fields=["checked_out_at"])
+        return Response(self.get_serializer(sa).data)
+
+
+
+
+class ReservationDriverViewSet(viewsets.ModelViewSet):
+    """
+    /api/reservation-drivers/
+    - list: ?reservation=123 で予約ごとの PU/DO 一覧
+    - create: ドライバーアサイン or 集金登録
+    - partial_update (PATCH): 時刻や金額の確定
+    """
+    queryset         = ReservationDriver.objects.select_related(
+        "driver__user", "reservation"
+    )
+    serializer_class = ReservationDriverSerializer
+    filterset_class  = ReservationDriverFilter
+    permission_classes = [permissions.IsAuthenticated]

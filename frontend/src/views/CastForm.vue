@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, getCastOptions, patchCastOption } from '@/api'
 import { searchCustomers, createCustomer } from '@/api'   // ★ 追加
+import { getShiftPlans } from '@/api'
 
 const route   = useRoute()
 const router  = useRouter()
@@ -17,6 +18,8 @@ const castOpts = ref([])
 const ranks     = ref([])
 const stores    = ref([])
 const customers = ref([])
+const shifts = ref([]) 
+
 
 /* ---------- NG顧客検索用 ---------- */
 const kwNg     = ref('')
@@ -66,6 +69,8 @@ async function fetchCast() {
     await api.get(`cast-profiles/${route.params.id}/`).then(r=>r.data))
 
 	castOpts.value = await getCastOptions(route.params.id)
+  /* そのキャストの全シフト */
+  shifts.value = await getShiftPlans({ cast_profile: route.params.id })
 }
 
 
@@ -173,6 +178,24 @@ onMounted(async () => {
 		</label>
 	</div>
 	</div>
+
+  <div class="mb-4" v-if="isEdit">
+    <h5>登録シフト</h5>
+    <table class="table table-sm">
+      <thead class="table-light"><tr><th>日付</th><th>開始</th><th>終了</th><th>状態</th></tr></thead>
+      <tbody>
+        <tr v-for="s in shifts" :key="s.id">
+          <td>{{ s.date }}</td>
+          <td>{{ s.start_at }}</td>
+          <td>{{ s.end_at }}</td>
+          <td>
+            <span v-if="s.is_checked_in" class="badge bg-success">IN</span>
+            <span v-else class="badge bg-secondary">予定</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
 </div>
 </template>

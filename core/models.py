@@ -3,6 +3,8 @@ from django.contrib.auth.models import AbstractUser, Group
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from django.templatetags.static import static
+from django.utils import timezone
+
 
 # ---------- 共通 ──────────
 class TimeStamped(models.Model):
@@ -340,3 +342,98 @@ class CashFlow(TimeStamped):
 	type   = models.CharField(max_length=20, choices=Type.choices)
 	amount = models.IntegerField()
 	recorded_at = models.DateTimeField(auto_now_add=True)
+
+
+
+class ShiftPlan(models.Model):
+    """
+    出勤『予定』
+    1キャスト・1日につき1件想定（複数帯対応が要るなら Unique を外す）
+    """
+    cast_profile = models.ForeignKey(
+        "CastProfile", on_delete=models.CASCADE, related_name="shift_plans"
+    )
+    store = models.ForeignKey("Store", on_delete=models.CASCADE)
+    date  = models.DateField(db_index=True)
+    start_at = models.TimeField()
+    end_at   = models.TimeField()
+    memo     = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = ("cast_profile", "date")  # 予定は１日１本
+        ordering = ["date", "start_at"]
+
+    def __str__(self):
+        return f"{self.cast_profile} {self.date} {self.start_at}-{self.end_at}"
+
+
+class ShiftAttendance(models.Model):
+    """
+    出勤『実績』（打刻）
+    予定なしで当日飛び込み＝ shift_plan=NULL も許可
+    """
+    shift_plan = models.OneToOneField(
+        ShiftPlan, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="attendance"
+    )
+    cast_profile = models.ForeignKey(
+        "CastProfile", on_delete=models.CASCADE, related_name="attendances"
+    )
+    checked_in      = models.BooleanField(default=False)
+    checked_in_at   = models.DateTimeField(null=True, blank=True)
+    checked_out_at  = models.DateTimeField(null=True, blank=True)
+    note            = models.TextField(blank=True)
+
+    def checkin(self):
+        self.checked_in = True
+        self.checked_in_at = timezone.now()
+        self.save(update_fields=["checked_in", "checked_in_at"])
+
+    class Meta:
+        ordering = ["-checked_in_at"]
+
+    def __str__(self):
+        return f"{self.cast_profile} @ {self.checked_in_at or '---'}"
+
+
+
+
+
+# 既存 import 群のあとに追記
+class ReservationDriver(models.Model):
+    """予約 1 件に対して最大 2 行（PU / DO or BOTH）"""
+    class Role(models.TextChoices):
+        PICK_UP   = "PU", _("Pick-Up")
+        DROP_OFF  = "DO", _("Drop-Off")
+        BOTH      = "BO", _("Both")      # PU=DO 同一ドライバー用
+
+    class Status(models.TextChoices):
+        PLANNED      = "PL", _("Planned")
+        IN_PROGRESS  = "IP", _("In Progress")
+        DONE         = "DN", _("Done")
+
+    reservation   = models.ForeignKey(
+        "Reservation", related_name="drivers",
+        on_delete=models.CASCADE
+    )
+    driver        = models.ForeignKey(
+        "Driver", on_delete=models.PROTECT, related_name="reservations"
+    )
+    role          = models.CharField(
+        max_length=2, choices=Role.choices, default=Role.PICK_UP
+    )
+    start_at      = models.DateTimeField(null=True, blank=True)
+    end_at        = models.DateTimeField(null=True, blank=True)
+    collected_amount = models.PositiveIntegerField(
+        null=True, blank=True, help_text="DO 時の現金回収額"
+    )
+    status        = models.CharField(
+        max_length=2, choices=Status.choices, default=Status.PLANNED
+    )
+
+    class Meta:
+        unique_together = ("reservation", "role")  # PU は 1 行、DO は 1 行
+        ordering = ["start_at", "role"]
+
+    def __str__(self):
+        return f"{self.reservation_id}:{self.get_role_display()} by {self.driver}"

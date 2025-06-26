@@ -10,7 +10,15 @@ const casts	= ref([])
 const rows	 = ref([])
 const selected = ref(new Set())
 
-const form = ref({ store:'', cast:'', date:'' })
+// 親から “初期フィルタ” を受け取れるように
+const props = defineProps({
+  initFilters: { type: Object, default: () => ({}) }
+})
+
+const form = ref({
+  store:'', cast:'', date:'',
+  ...props.initFilters           // ここでマージ
+})
 
 /* ─── 日付ユーティリティ ─── */
 const today			= new Date()
@@ -188,6 +196,8 @@ onMounted(async () => {
           <th>顧客</th>
           <th>コース</th>        <!-- minutes のまま → 詳細表示用へ変更 -->
           <th>オプション</th>    <!-- ★追加 -->
+          <th>PU Driver</th>
+          <th>DO Driver</th>
           <th>ドライバー</th>
           <th>予約金</th>
           <th>受取金</th>
@@ -231,6 +241,8 @@ onMounted(async () => {
             </template>
             <template v-else>―</template>
           </td>
+          <td>{{ r.drivers.find(d=>d.role==='PU')?.driver_name || '―' }}</td>
+          <td>{{ r.drivers.find(d=>d.role==='DO')?.driver_name || '―' }}</td>
           <td>{{ r.driver_name || '―' }}</td>
           <td class="text-end">{{ (r.expected_amount??0).toLocaleString() }}円</td>
           <td class="text-end">{{ (r.received_amount??0).toLocaleString() }}円</td>

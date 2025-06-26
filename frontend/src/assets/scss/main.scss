@@ -16,6 +16,7 @@
   $table-bg: $table-bg,
   $table-striped-bg:$table-striped-bg,
   $table-striped-color:$table-striped-color,
+  $modal-content-bg: $modal-content-bg,
 );
 
 @use "settings/overrides";
@@ -27,5 +28,6 @@
 @use "parts/mypage";
 @use "parts/timeline";
 @use "parts/customer";
+@use "parts/dashboard";
 
 @use "parts/monolisk";

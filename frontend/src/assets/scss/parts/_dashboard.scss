@@ -1,0 +1,88 @@
+@use '../global/global' as *;
+
+.dashboard-admin{
+	padding: 80px 0px;
+
+	.gc-header{
+		.day{
+			font-weight: bold;
+			@include fs(20);
+		}
+		button{
+			white-space: nowrap;
+		}
+	}
+
+
+	/* ─── ラベル全体 ─── */
+	.g-gantt-bar,
+	.g-gantt-bar-label {
+	overflow: visible;        /* ← これが無いと外側が切られる */
+	}
+
+	/* ─── 中央 (#ID) ─── */
+	.bar-center {
+	z-index: 1;               /* 重なり順を明示しておくと安心 */
+	}
+
+	/* ─── PU / DO ─── */
+	.drv-label {
+	position: absolute;       /* ← “バー”を基準に張り付け */
+	top: 50%;
+	transform: translateY(-50%);
+	white-space: nowrap;
+	font-size: 11px;
+	font-weight: 600;
+	background-color: lightgray;
+	padding: 0px 4px;
+	border-radius: 4px;
+
+	&.left  {                  /* バーの左外に */
+		left: 0;
+		transform: translate(-16px, -50%);   /* ← 6px 分だけ外へ押し出す */
+		text-align: right;
+	}
+
+	&.right {                  /* バーの右外に */
+		right: 0;
+		transform: translate(16px, -50%);
+		text-align: left;
+	}
+	}
+
+	// :root { --label-width: 140px }
+
+	.gantt-board   { display: flex; }
+	.label-col     {
+		background-color: rgba(black,0.4);
+		overflow-y: auto;
+		margin-top: 82px;
+		height: fit-content;
+		position: absolute;
+		z-index: 999;
+		width: fit-content;
+		.label-row {
+			height: 40px;         /* rowHeight と同じ値 */
+			display: flex;
+			align-items: center;
+			padding-right: 8px;
+			border-bottom: 1px solid #f0f0f0;
+			white-space: nowrap;
+			.label-label{
+				@include fs(10);
+				font-weight: bold;
+				padding: 0px 8px;
+				color: white;
+			}
+		}
+
+	}
+
+	/* チャート領域 */
+	.chart-col {
+	flex: 1 1 auto;
+	overflow: auto;       /* X, Y どちらも OK */
+	position: relative;
+	}
+
+}

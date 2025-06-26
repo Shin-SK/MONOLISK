@@ -122,3 +122,37 @@ export const getCastOptions  = castId => api.get('cast-options/', { params: { ca
 export const patchCastOption = (id, p) => api.patch(`cast-options/${id}/`, p).then(r => r.data)
 
 
+/* ---------- シフト ---------- */
+// 予定
+export const getShiftPlans = (params={}) =>
+  api.get('shift-plans/', { params }).then(r=>r.data)
+export const createShiftPlan = payload =>
+  api.post('shift-plans/', payload).then(r => r.data);
+export const updateShiftPlan = (id, p) =>
+  api.patch(`shift-plans/${id}/`, p).then(r => r.data);
+export const deleteShiftPlan = id =>
+  api.delete(`shift-plans/${id}/`);
+
+// 実出勤（打刻）
+export const getShiftAttendance = params =>
+  api.get('shift-attendance/', { params }).then(r => r.data);
+export const postCheckIn = id =>
+  api.post(`shift-attendance/${id}/checkin/`).then(r => r.data);
+
+export const createShiftAttendance = payload =>
+  api.post('shift-attendances/', payload).then(r => r.data)
+
+export const checkIn  = (id, at) =>
+  api.post(`shift-attendances/${id}/checkin/`,  { at }).then(r => r.data);
+export const checkOut = (id, at) =>
+  api.post(`shift-attendances/${id}/checkout/`, { at }).then(r => r.data);
+
+
+// 予約―ドライバー取得
+export const getReservationDrivers = params =>
+  api.get('reservation-drivers/', { params }).then(r => r.data)
+
+// 追加・更新・削除
+export const createReservationDriver = p => api.post('reservation-drivers/', p)
+export const updateReservationDriver = (id, p) => api.patch(`reservation-drivers/${id}/`, p)
+export const deleteReservationDriver = id => api.delete(`reservation-drivers/${id}/`)

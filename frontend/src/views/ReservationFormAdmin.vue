@@ -4,7 +4,7 @@
  *  ・店舗選択後に [キャスト検索] ボタンを押すと所属キャストを取得
  *  ・取得したキャストは ReservationCastSelector.vue で選択
  * =============================================================== */
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, toRef } from 'vue'
 import { asyncComputed }            from '@vueuse/core'
 import { useRoute, useRouter }      from 'vue-router'
 import debounce                     from 'lodash.debounce'
@@ -17,11 +17,22 @@ import {
   getLatestReservation, getCustomerAddresses, createCustomerAddress
 } from '@/api'
 
+/* ---------- 受け取る prop ---------- */
+const props = defineProps({
+  reservationId: { type: [Number, String], default: null },
+  inModal      : { type: Boolean,            default: false }  // ★ 追加
+})
+
+const emit = defineEmits(['saved'])
+
 /* ---------- 基本 ---------- */
 const route   = useRoute()
 const router  = useRouter()
-const isEdit  = !!route.params.id
 const latest = ref(null)
+const currentId = computed(() =>
+  props.reservationId ?? route.params.id ?? null
+)
+const isEdit = computed(() => !!currentId.value)
 
 /* ---------- 読み取り専用 ---------- */
 const rsv = ref({ received_amount: 0 })
@@ -32,7 +43,8 @@ const form = ref({
   cast_profiles:   [],
   start_at:        '',
   course:          '',
-  driver:          '',
+  driver_PU:       '',          // ★Pick-Up 用
+  driver_DO:       '',
   customer:        '',
   deposited_amount: 0,
   manual_extra:    0,
@@ -87,8 +99,8 @@ async function fetchMasters () {
 
 /* ---------- 既存予約読み込み（編集時） ---------- */
 async function fetchReservation () {
-  if (!isEdit) return
-  const res = await getReservation(route.params.id)
+  if (!isEdit.value) return
+  const res = await getReservation(currentId.value)
   latest.value = await getLatestReservation(res.customer)
   rsv.value = res
   Object.assign(form.value, {
@@ -96,7 +108,10 @@ async function fetchReservation () {
     cast_profiles   : [],
     start_at        : res.start_at.slice(0,16),
     course          : res.casts[0]?.course ?? '',
-    driver          : res.driver,
+	driver_PU       : res.reservation_drivers
+						?.find(d => d.role === 'PU')?.driver || '',
+	driver_DO       : res.reservation_drivers
+						?.find(d => d.role === 'DO')?.driver || '',
     customer        : res.customer,
     deposited_amount: res.deposited_amount ?? 0,
   })
@@ -225,6 +240,12 @@ onMounted(async () => {
   if (!isEdit) await fetchCasts()   // ← 新規時は全店取得
 });
 
+/** ② モーダルを開いたまま別バーをクリックしたとき再取得 */
+watch(
+   () => props.reservationId,
+   fetchReservation
+)
+
 /* ---------- 保存（省略: 以前と同じ） ---------- */
 async function save () {
   const minutes =
@@ -281,7 +302,13 @@ async function save () {
 
   const payload = {
 	store  : storeId,
-	driver : toId(form.value.driver) || null,
+ /* --- ドライバー (中間テーブル) --- */
+	drivers: [
+	...(form.value.driver_PU
+		? [{ role:'PU',  driver:toId(form.value.driver_PU) }] : []),
+	...(form.value.driver_DO
+		? [{ role:'DO', driver:toId(form.value.driver_DO) }] : []),
+	],
 	customer  : form.value.customer || null,
 	start_at  : new Date(form.value.start_at).toISOString(),
 	total_time: minutes,
@@ -317,9 +344,11 @@ async function save () {
 
   try {
 	isEdit
-	  ? await updateReservation(route.params.id, payload)
+	  ? await updateReservation(currentId.value, payload)
 	  : await createReservation(payload)
-	router.push('/reservations')
+	emit('saved', { id: currentId.value })       // 親へ通知
+	// ルートで使うときだけ一覧へ戻したいなら props で ON/OFF
+	if (!props.inModal) router.push('/reservations')
   } catch (e) {
 	console.error(e.response?.data)
 	alert(e.response?.data?.detail || 'バリデーションエラー')
@@ -578,31 +607,49 @@ if (import.meta.env.DEV) {
 	</div>
 
 	<!-- ドライバー -->
-	<!-- ★ select を削除してボタン型ラジオへ -->
+	<!-- ▼ ドライバー選択 -->
 	<div class="area">
-	  <div class="h5">ドライバー</div>
-	  <div class="d-flex flex-wrap gap-3" role="group" aria-label="Drivers">
-		<!-- 未指定 -->
-		<input  class="btn-check" type="radio" id="driver-null"
-				value="" v-model="form.driver">
+	<div class="h5">ドライバー (Pick-Up)</div>
+	<div class="d-flex flex-wrap gap-3" role="group" aria-label="Drivers-PU">
+		<input  class="btn-check" type="radio" id="driverPU-null"
+				value="" v-model.number="form.driver_PU">
 		<label class="btn btn-outline-secondary"
-			  :class="{ active: form.driver === '' }"
-			  for="driver-null">未指定</label>
+			:class="{ active: form.driver_PU === '' }"
+			for="driverPU-null">未指定</label>
 
-		<!-- 候補 -->
 		<template v-for="d in opts.drivers" :key="d.id">
-		  <input  class="btn-check" type="radio"
-				  :id="`driver-${d.id}`"
-				  v-model="form.driver"
-				  :value="d.id">
-		  <label class="btn btn-outline-primary"
-				:class="{ active: form.driver === d.id }"
-				:for="`driver-${d.id}`">
-			{{ d.name }}
-		  </label>
+		<input  class="btn-check" type="radio"
+				:id="`driverPU-${d.id}`"
+				v-model.number="form.driver_PU"
+				:value="d.id">
+		<label class="btn btn-outline-primary"
+				:class="{ active: form.driver_PU === d.id }"
+				:for="`driverPU-${d.id}`">{{ d.name }}</label>
 		</template>
-	  </div>
 	</div>
+	</div>
+
+	<div class="area">
+	<div class="h5">ドライバー (Drop-Off)</div>
+	<div class="d-flex flex-wrap gap-3" role="group" aria-label="Drivers-DO">
+		<input  class="btn-check" type="radio" id="driverDO-null"
+				value="" v-model.number="form.driver_DO">
+		<label class="btn btn-outline-secondary"
+			:class="{ active: form.driver_DO === '' }"
+			for="driverDO-null">未指定</label>
+
+		<template v-for="d in opts.drivers" :key="d.id">
+		<input  class="btn-check" type="radio"
+				:id="`driverDO-${d.id}`"
+				v-model.number="form.driver_DO"
+				:value="d.id">
+		<label class="btn btn-outline-primary"
+				:class="{ active: form.driver_DO === d.id }"
+				:for="`driverDO-${d.id}`">{{ d.name }}</label>
+		</template>
+	</div>
+	</div>
+
 
 
 	<!-- 見積 -->
@@ -630,6 +677,3 @@ if (import.meta.env.DEV) {
 </div>
 </template>
 
-<style>
-@import "vue-multiselect/dist/vue-multiselect.css";
-</style>

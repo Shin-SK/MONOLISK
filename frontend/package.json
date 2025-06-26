@@ -13,6 +13,7 @@
     "@fullcalendar/interaction": "^6.1.17",
     "@fullcalendar/timegrid": "^6.1.17",
     "@fullcalendar/vue3": "^6.1.17",
+    "@infectoone/vue-ganttastic": "^2.3.2",
     "@popperjs/core": "^2.11.8",
     "@vueuse/core": "^13.4.0",
     "axios": "^1.9.0",

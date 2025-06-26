@@ -285,3 +285,26 @@ class ReservationAdmin(admin.ModelAdmin):
 
 
 
+
+
+# core/admin.py
+
+from django.contrib import admin
+from .models import ShiftPlan, ShiftAttendance
+
+@admin.register(ShiftPlan)
+class ShiftPlanAdmin(admin.ModelAdmin):
+    list_display  = ("date", "cast_profile", "store", "start_at", "end_at")
+    list_filter   = ("store", "date")
+    search_fields = ("cast_profile__stage_name",)
+
+@admin.register(ShiftAttendance)
+class ShiftAttendanceAdmin(admin.ModelAdmin):
+    list_display  = ("cast_profile", "checked_in", "checked_in_at", "shift_plan")
+    list_filter   = ("checked_in", "checked_in_at")
+    actions       = ["make_checkin"]
+
+    @admin.action(description="選択レコードを打刻済みにする")
+    def make_checkin(self, request, queryset):
+        for att in queryset:
+            att.checkin()
