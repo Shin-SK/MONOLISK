@@ -61,8 +61,9 @@ function handleSaved () {
 </script>
 
 <template>
-
+  <h1 class="h2 text-center mb-5">ダッシュボード</h1>
   <div class="dashboard-admin container-md">
+    
     <!-- ─── 日付ヘッダー ─── -->
     <header class="gc-header d-flex align-items-center justify-content-between gap-3 mb-2">
       <!-- ← ここは常に “今日” -->
