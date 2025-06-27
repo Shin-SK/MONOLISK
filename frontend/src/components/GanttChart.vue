@@ -28,6 +28,22 @@ const castMap  = ref({})      // { castId: stage_name }
 	  return d?.driver_name || d?.driver?.name || ''
 	}
 
+/* ───────── 色 ───────── */
+
+const PALETTE = [
+  { max:  60, color: '#2294F2' }, // blue
+  { max:  75, color: '#00D7D4' }, // cyan
+  { max:  90, color: '#4CAF50' }, // green
+  { max: 120, color: '#CDDC39' }, // yellow-lime
+  { max: 150, color: '#FF9800' }, // orange
+  { max: 180, color: '#FF4081' }, // pink
+  { max: Infinity, color: '#9C27B0' } // purple (pack)
+]
+
+function colorForMinutes(mins) {
+  return PALETTE.find(p => mins <= p.max).color
+}
+
 /* ───────── fetch rows ───────── */
 async function fetchRows () {
   const casts = await getCastProfiles({ store: props.storeId || undefined })
@@ -60,6 +76,7 @@ async function fetchBars () {
       const mins  = rc.course?.minutes ?? r.total_time ?? 60
       const ed    = st.add(mins,'minute')
 
+
       /* バッファ用幅を px に換算（例: 1 分 = 2px） */
       const puPx = props.beforeMinutes * 2
       const doPx = props.afterMinutes  * 2
@@ -74,7 +91,7 @@ async function fetchBars () {
           style: {
             '--pu-px': `${puPx}px`,
             '--do-px': `${doPx}px`,
-            background: mins >= 90 ? '#198754' : '#0d6efd'
+            background: colorForMinutes(mins)   // ←ここを差し替え
           }
         },
         reservationId: r.id,
