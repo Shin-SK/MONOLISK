@@ -7,6 +7,7 @@ import ReservationFormAdmin from '@/views/ReservationFormAdmin.vue'
 
 const selectedId = ref(null)
 const modal      = ref(null)
+const ganttRef   = ref(null)      // ⭐ 追加
 
 /* ───────── ガント表示日 ───────── */
 const selectedDate = ref(dayjs())                 // ← 任意に変わる
@@ -55,8 +56,9 @@ function handleHide () {
 }
 
 /* script setup 内に追加 */
-function handleSaved () {
+async function handleSaved () {
   modal.value?.hide()
+  await ganttRef.value?.reload?.()
 }
 </script>
 
@@ -94,17 +96,18 @@ function handleSaved () {
         >明日</button>
 
         <input type="date"
-              class="form-control form-control-sm ms-2"
+              class="form-control form-control-sm ms-2 bg-white"
               v-model="selectedDateStr"/>
       </div>
 
     </header>
     <div class="gantchart">
       <GanttChart
+        ref="ganttRef" 
         :date="selectedDateStr"
         @bar-click="handleBarClick"
-          :start-hour="10"
-          :hours-per-chart="24"
+        :start-hour="10"
+        :hours-per-chart="24"
       />
     </div>
   </div>

@@ -39,6 +39,7 @@ const rsv = ref({ received_amount: 0 })
 
 /* ---------- フォーム値 ---------- */
 const form = ref({
+  reservation_type: 'normal',
   stores:          [],
   cast_profiles:   [],
   start_at:        '',
@@ -47,8 +48,12 @@ const form = ref({
   driver_DO:       '',
   customer:        '',
   deposited_amount: 0,
-  manual_extra:    0,
-  extension_fee:   0,
+  /* 支払い */
+  pay_card: 0,
+  pay_cash: 0,
+  /* マニュアル売上 / 経費（複数行可）*/
+  revenues: [ { label:'', amount:0 } ],
+  expenses: [ { label:'', amount:0 } ],
 })
 
 /* ---------- マスタ ---------- */
@@ -114,7 +119,17 @@ async function fetchReservation () {
 						?.find(d => d.role === 'DO')?.driver || '',
     customer        : res.customer,
     deposited_amount: res.deposited_amount ?? 0,
+  reservation_type: res.reservation_type,
+  pay_card : res.payments.find(p => p.method === 'card')?.amount || 0,
+  pay_cash : res.payments.find(p => p.method === 'cash')?.amount || 0,
   })
+
+  form.value.revenues = res.manual_entries
+    .filter(e => e.entry_type === 'revenue')
+    .map(e => ({ label:e.label, amount:e.amount })) || [{label:'',amount:0}]
+  form.value.expenses = res.manual_entries
+    .filter(e => e.entry_type === 'expense')
+    .map(e => ({ label:e.label, amount:e.amount })) || [{label:'',amount:0}]
 
   // 顧客住所帳
   addresses.value = await getCustomerAddresses(res.customer)
@@ -225,12 +240,13 @@ const optionPriceSum = computed(() =>
 )
 
 /* 3. 手書き・延長など自由枠 */
-const manualSum	= computed(() => Number(form.value.manual_extra ) || 0)
-const extensionSum = computed(() => Number(form.value.extension_fee) || 0)
+const revenueSum = computed(() =>
+  form.value.revenues.reduce((t, r) => t + (+r.amount || 0), 0)
+)
 
 /* 4. 合計 */
-const price = computed(
-  () => castPriceSum.value + optionPriceSum.value + manualSum.value + extensionSum.value
+const price = computed(() =>
+  castPriceSum.value + optionPriceSum.value + revenueSum.value
 )
 
 /* ---------- 初期ロード ---------- */
@@ -283,23 +299,37 @@ async function save () {
   }
 
   /* ---------- payload ---------- */
-  const payload = {
-    store : storeId,
-    drivers: [
-      ...(form.value.driver_PU ? [{ role:'PU', driver:toId(form.value.driver_PU) }] : []),
-      ...(form.value.driver_DO ? [{ role:'DO', driver:toId(form.value.driver_DO) }] : []),
-    ],
-    customer        : form.value.customer || null,
-    start_at        : new Date(form.value.start_at).toISOString(),
-    total_time      : minutes,
-    deposited_amount: form.value.deposited_amount,
-    casts: castIds.map(id => ({ cast_profile:id, course:form.value.course })),
-    charges: [
-      ...selectedOptions.value.map(id => ({ kind:'OPTION', option:id, amount:null })),
-      ...(manualSum.value   ? [{ kind:'MANUAL', label:'手書き', amount:manualSum.value   }] : []),
-      ...(extensionSum.value? [{ kind:'EXTEND', label:'延長',   amount:extensionSum.value}] : []),
-    ],
-  }
+
+	const payments = [
+		...(form.value.pay_card ? [{ method:'card', amount:Number(form.value.pay_card) }] : []),
+		...(form.value.pay_cash ? [{ method:'cash', amount:Number(form.value.pay_cash) }] : []),
+	]
+	const manual_entries = [
+		...form.value.revenues
+			.filter(e => e.label && e.amount)
+			.map(e => ({ entry_type:'revenue', label:e.label, amount:Number(e.amount) })),
+		...form.value.expenses
+			.filter(e => e.label && e.amount)
+			.map(e => ({ entry_type:'expense', label:e.label, amount:Number(e.amount) })),
+	]
+
+	const payload = {
+		reservation_type: form.value.reservation_type,
+		store : storeId,
+		drivers: [
+		...(form.value.driver_PU ? [{ role:'PU', driver:toId(form.value.driver_PU) }] : []),
+		...(form.value.driver_DO ? [{ role:'DO', driver:toId(form.value.driver_DO) }] : []),
+		],
+		reservation_type : form.value.reservation_type,
+		store            : storeId,
+		customer        : form.value.customer || null,
+		start_at        : new Date(form.value.start_at).toISOString(),
+		total_time      : minutes,
+		deposited_amount: form.value.deposited_amount,
+		casts: castIds.map(id => ({ cast_profile:id, course:form.value.course })),
+		payments,
+		manual_entries,
+	}
 
   /* ---------- 住所帳 ---------- */
   if (selectedAddress.value === '__new__') {
@@ -314,25 +344,29 @@ async function save () {
 
   /* ---------- 保存 ---------- */
   try {
-    let id  // ← 確定した予約 ID
+    // ---- 登録 or 更新 ----------------------------------
+    const id = isEdit.value
+      ? (await updateReservation(currentId.value, payload), currentId.value)
+      : (await createReservation(payload)).id            // 新規
 
-    if (isEdit.value) {                       // 更新
-      await updateReservation(currentId.value, payload)
-      id = currentId.value
-    } else {                                  // 新規
-      const res = await createReservation(payload)
-      id = res.id
-    }
+    /* 親（モーダル側 or 画面側）に結果を通知 */
+    emit('saved', { id })          
 
-    emit('saved', { id })                     // 親へ通知
+    /* モーダルで使われている時はここで終了 ----------------*/
+    if (props.inModal) return
 
-    if (!props.inModal) router.push('/reservations')
+    /* 通常画面のときだけ遷移させる -------------------------*/
+    // 例: 詳細画面へ
+    await router.push(`/reservations/${id}`)
+    // もし「一覧で十分」なら ↓
+    // await router.push('/reservations')
+
   } catch (e) {
     console.error(e.response?.data)
     alert(e.response?.data?.detail || 'バリデーションエラー')
-  }
-}
+  }	
 
+}
 
 
 if (import.meta.env.DEV) {
@@ -343,7 +377,7 @@ if (import.meta.env.DEV) {
 </script>
 
 <template>
-<div class="form form-admin container">
+<div class="form form-admin container py-5">
   <h1 class="h3 mb-4">
     管理者用ページ&nbsp;
     {{ isEdit ? `予約 #${route.params.id} 編集` : '新規予約' }}
@@ -630,7 +664,84 @@ if (import.meta.env.DEV) {
 	</div>
 	</div>
 
+	<!-- ◆ 予約種類 ◆ -->
+	<div class="area">
+	<div class="h5">予約種類</div>
+	<div class="btn-group" role="group">
+		<input class="btn-check" type="radio" id="type-normal"
+			v-model="form.reservation_type" value="normal">
+		<label class="btn btn-outline-primary"
+			:class="{active: form.reservation_type==='normal'}"
+			for="type-normal">通常予約</label>
 
+		<input class="btn-check" type="radio" id="type-hime"
+			v-model="form.reservation_type" value="hime">
+		<label class="btn btn-outline-danger"
+			:class="{active: form.reservation_type==='hime'}"
+			for="type-hime">姫予約</label>
+	</div>
+	</div>
+
+
+	<!-- ◆ 支払い方法 ◆ -->
+	<div class="area">
+	<div class="h5">支払い</div>
+	<div class="row g-3">
+		<div class="col-md-3">
+		<label class="form-label">カード</label>
+		<input type="number" class="form-control"
+				v-model.number="form.pay_card" min="0" />
+		</div>
+		<div class="col-md-3">
+		<label class="form-label">現金</label>
+		<input type="number" class="form-control"
+				v-model.number="form.pay_cash" min="0" />
+		</div>
+	</div>
+	</div>
+
+
+	<!-- ◆ マニュアル売上 ◆ -->
+	<div class="area">
+	<div class="h5">マニュアル売上</div>
+	<div v-for="(row,i) in form.revenues" :key="i" class="row g-2 mb-2">
+		<div class="col">
+		<input v-model="row.label" placeholder="ラベル" class="form-control" />
+		</div>
+		<div class="col">
+		<input v-model.number="row.amount" type="number" min="0"
+				placeholder="金額" class="form-control" />
+		</div>
+		<div class="col-auto">
+		<button class="btn btn-outline-danger"
+				@click="form.revenues.splice(i,1)"
+				v-if="form.revenues.length>1">－</button>
+		</div>
+	</div>
+	<button class="btn btn-sm btn-outline-primary"
+			@click="form.revenues.push({label:'',amount:0})">＋ 行を追加</button>
+	</div>
+
+	<!-- ◆ マニュアル経費 ◆ -->
+	<div class="area">
+	<div class="h5">マニュアル経費</div>
+	<div v-for="(row,i) in form.expenses" :key="i" class="row g-2 mb-2">
+		<div class="col">
+		<input v-model="row.label" placeholder="ラベル" class="form-control" />
+		</div>
+		<div class="col">
+		<input v-model.number="row.amount" type="number" min="0"
+				placeholder="金額" class="form-control" />
+		</div>
+		<div class="col-auto">
+		<button class="btn btn-outline-danger"
+				@click="form.expenses.splice(i,1)"
+				v-if="form.expenses.length>1">－</button>
+		</div>
+	</div>
+	<button class="btn btn-sm btn-outline-primary"
+			@click="form.expenses.push({label:'',amount:0})">＋ 行を追加</button>
+	</div>
 
 	<!-- 見積 -->
 	<div class="area">
@@ -639,20 +750,28 @@ if (import.meta.env.DEV) {
 	  </div>
 	</div>
 
+
+
 	<!-- テンプレート：受取と入金の 2 つ表示 -->
 	<div class="area">
-	  <div class="h5">受取金額</div>
-	  <input type="number" class="form-control" v-model.number="rsv.received_amount" disabled />
-	</div>
-	<div class="area">
-	  <div class="h5">入金額</div>
-	  <input type="number" class="form-control" v-model.number="form.deposited_amount" />
+		<div class="h5">受取金額</div>
+		<input type="number" class="form-control" v-model.number="rsv.received_amount" disabled />
+		</div>
+		<div class="area">
+		<div class="h5">入金額</div>
+		<input type="number" class="form-control" v-model.number="form.deposited_amount" />
+		</div>
+
+		<div class="areatext-end">
+		<button class="btn btn-primary" @click="save">保存</button>
+		</div>
 	</div>
 
-	<div class="areatext-end">
-	  <button class="btn btn-primary" @click="save">保存</button>
-	</div>
-	</div>
+
+
+
+
+
 
 </div>
 </template>

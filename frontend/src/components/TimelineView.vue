@@ -8,6 +8,7 @@ import jaLocale                 from '@fullcalendar/core/locales/ja'
 import dayjs                    from 'dayjs'
 import { useRouter }            from 'vue-router'
 import { api }                  from '@/api'
+import { useUser } from '@/stores/useUser'
 
 /* ---------- props ---------- */
 const props = defineProps({
@@ -25,6 +26,24 @@ watch(() => props.selectedDate, d => { if (d) selectedDate.value = d })
 const events  = ref([])
 const calRef  = ref(null)
 const router  = useRouter()
+
+
+/* ----- 自分の driverId を取る --------------------------------- */
+const user = useUser().info
+// ① driver_id を優先。無ければユーザーIDを fallback に
+const myDriverId = user.driver_id ?? user.id
+if (!myDriverId) console.warn('driver_id がありません')
+
+/* ----- driver オブジェクト → id を吸い出すヘルパ ------------ */
+const drvId = d =>
+  typeof d.driver === 'object'
+    ? d.driver.id           // {driver:{id:…}}
+    : d.driver ?? d.driver_id ?? d.driverId ?? null
+function myRoles (rsv) {
+  return (rsv.reservation_drivers || rsv.drivers || [])
+           .filter(d => drvId(d) === myDriverId)
+           .map(d => d.role)         // 例 ['PU','DO']
+}
 
 /* ---------- FullCalendar オプション ---------- */
 const fcOptions = reactive({
@@ -55,12 +74,25 @@ async function loadEvents(){
   const { data } = await api.get(props.apiPath,{
     params:{ date:selectedDate.value.format('YYYY-MM-DD') }
   })
-  events.value = data.map(r => ({
-    title:`${r.customer_name} / ${r.status}`,
-    start:r.start_at,
-    end:  dayjs(r.start_at).add(r.total_time,'minute').toISOString(),
-    extendedProps:{ id:r.id }
-  }))
+  /* ② 自分が関与する予約だけ残す ---------------------------- */
+  const mine = data.filter(r =>
+    (r.reservation_drivers || r.drivers || [])
+      .some(d => drvId(d) === myDriverId)
+  )
+
+  events.value = 
+    /* ② タイトルにロールを付ける ---------------------------- */
+ events.value = mine.map(r => {
+   const roleTag = myRoles(r).join('/')   // 'PU' / 'DO' / 'PU/DO'
+   const prefix  = roleTag ? `[${roleTag}] ` : ''
+   const end     = dayjs(r.start_at).add(r.total_time ?? 60, 'minute')
+   return {
+     title: `${prefix}${r.customer_name} / ${r.status}`,
+     start: r.start_at,
+     end:   end.toISOString(),
+     extendedProps: { id: r.id, role: roleTag }
+   }
+ })
 }
 watch(selectedDate, loadEvents, { immediate:true })
 

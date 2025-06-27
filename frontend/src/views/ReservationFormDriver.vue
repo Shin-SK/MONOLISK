@@ -10,7 +10,13 @@ const router    = useRouter()
 const route     = useRoute()
 
 const rsv       = ref(null)
-const received  = ref(null)
+const form = ref({
+  received_amount : 0,   // 受取
+  pay_card        : 0,
+  pay_cash        : 0,
+  revenues        : [{ label:'', amount:0 }],
+  expenses        : [{ label:'', amount:0 }],
+})
 
 /* ▼ 追加： mini-nav の状態と画面遷移 */
 const mode = ref('timeline')		// 'timeline' | 'list'
@@ -23,13 +29,38 @@ watch(mode, v => {
 /* 予約取得 */
 async function reload () {
 	rsv.value      = await getReservation(route.params.id)
-	received.value = rsv.value.received_amount
+	form.value.received_amount = rsv.value.received_amount
+	form.value.pay_card = rsv.value.payments.find(p => p.method === 'card')?.amount || 0
+	form.value.pay_cash = res.payments.find(p => p.method==='cash')?.amount || 0
+	form.value.revenues = res.manual_entries
+	    .filter(e => e.entry_type==='revenue')
+	    .map(e => ({ label:e.label, amount:e.amount })) || [{label:'',amount:0}]
+	form.value.expenses = res.manual_entries
+	    .filter(e => e.entry_type==='expense')
+	    .map(e => ({ label:e.label, amount:e.amount })) || [{label:'',amount:0}]
 }
 onMounted(reload)
 
 /* 保存 */
 async function save () {
-	await updateReservation(rsv.value.id, { received_amount: received.value })
+	  const payments = [
+	    ...(form.value.pay_card ? [{ method:'card', amount:Number(form.value.pay_card) }] : []),
+	    ...(form.value.pay_cash ? [{ method:'cash', amount:Number(form.value.pay_cash) }] : []),
+	  ]
+	  const manual_entries = [
+	    ...form.value.revenues
+	        .filter(e => e.label && e.amount)
+	        .map(e => ({ entry_type:'revenue', label:e.label, amount:Number(e.amount) })),
+	    ...form.value.expenses
+	        .filter(e => e.label && e.amount)
+	        .map(e => ({ entry_type:'expense', label:e.label, amount:Number(e.amount) })),
+	  ]
+	
+	  await updateReservation(rsv.value.id, {
+	    received_amount : form.value.received_amount,
+	    payments,
+	    manual_entries,
+	  })
 	await reload()
 	alert('受取金額を更新しました')
 	router.push('/driver')
@@ -73,11 +104,70 @@ async function save () {
 			</td>
 		</tr>
 		<!-- ▲ ここまで -->
-
 		<tr><th>お客様名</th><td>{{ rsv.customer_name }}</td></tr>
 		<tr><th>見積</th><td>{{ rsv.expected_amount.toLocaleString() }} 円</td></tr>
 	</tbody>
 </table>
+
+	<!-- ◆ 支払い方法 ◆ -->
+	<div class="area">
+	<div class="h5">支払い</div>
+	<div class="row g-3">
+		<div class="col-md-3">
+		<label class="form-label">カード</label>
+		<input type="number" class="form-control"
+				v-model.number="form.pay_card" min="0" />
+		</div>
+		<div class="col-md-3">
+		<label class="form-label">現金</label>
+		<input type="number" class="form-control"
+				v-model.number="form.pay_cash" min="0" />
+		</div>
+	</div>
+	</div>
+
+
+	<!-- ◆ マニュアル売上 ◆ -->
+	<div class="area">
+	<div class="h5">マニュアル売上</div>
+	<div v-for="(row,i) in form.revenues" :key="i" class="row g-2 mb-2">
+		<div class="col">
+		<input v-model="row.label" placeholder="ラベル" class="form-control" />
+		</div>
+		<div class="col">
+		<input v-model.number="row.amount" type="number" min="0"
+				placeholder="金額" class="form-control" />
+		</div>
+		<div class="col-auto">
+		<button class="btn btn-outline-danger"
+				@click="form.revenues.splice(i,1)"
+				v-if="form.revenues.length>1">－</button>
+		</div>
+	</div>
+	<button class="btn btn-sm btn-outline-primary"
+			@click="form.revenues.push({label:'',amount:0})">＋ 行を追加</button>
+	</div>
+
+	<!-- ◆ マニュアル経費 ◆ -->
+	<div class="area">
+	<div class="h5">マニュアル経費</div>
+	<div v-for="(row,i) in form.expenses" :key="i" class="row g-2 mb-2">
+		<div class="col">
+		<input v-model="row.label" placeholder="ラベル" class="form-control" />
+		</div>
+		<div class="col">
+		<input v-model.number="row.amount" type="number" min="0"
+				placeholder="金額" class="form-control" />
+		</div>
+		<div class="col-auto">
+		<button class="btn btn-outline-danger"
+				@click="form.expenses.splice(i,1)"
+				v-if="form.expenses.length>1">－</button>
+		</div>
+	</div>
+	<button class="btn btn-sm btn-outline-primary"
+			@click="form.expenses.push({label:'',amount:0})">＋ 行を追加</button>
+	</div>
 
 
   <div class="mb-3">

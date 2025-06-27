@@ -7,7 +7,7 @@ from .filters import CustomerFilter
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from django.shortcuts import get_object_or_404
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Q
 
 from .models import (
     Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
@@ -196,7 +196,10 @@ class ReservationViewSet(viewsets.ModelViewSet):
             return Response(status=403)
 
         qs = self.filter_queryset(self.get_queryset())
-        qs = qs.filter(driver__user=request.user)
+        qs = qs.filter(
+            Q(drivers__driver__user=request.user) |   # ← PU / DO 中間テーブル
+            Q(driver__user=request.user)              # ← 旧 single FK (残していても OK)
+        ).distinct()
 
         # ① 期間フィルタを追加
         date_from = request.query_params.get('from')

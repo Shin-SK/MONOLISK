@@ -9,7 +9,7 @@ from .models import (
 	Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
 	CastProfile, CastCoursePrice, CastOption, Driver, Customer,
 	Reservation, ReservationCast, ReservationCharge, CashFlow, CustomerAddress, ShiftPlan, ShiftAttendance,
-	ReservationDriver
+	ReservationDriver, Payment, ManualEntry
 )
 
 # ---------- マスタ ----------
@@ -116,6 +116,16 @@ class CustomerSerializer(serializers.ModelSerializer):
 		return instance
 
 
+class PaymentSerializer(serializers.ModelSerializer):
+	class Meta:
+		model  = Payment
+		fields = ("id", "method", "amount")
+
+class ManualEntrySerializer(serializers.ModelSerializer):
+	class Meta:
+		model  = ManualEntry
+		fields = ("id", "entry_type", "label", "amount")
+
 
 
 
@@ -193,6 +203,8 @@ class ReservationSerializer(serializers.ModelSerializer):
 		queryset=CustomerAddress.objects.all(),
 		allow_null=True, required=False
 	)
+	payments	   = PaymentSerializer(many=True, required=False)
+	manual_entries = ManualEntrySerializer(many=True, required=False)
 
 	#送迎住所を１本化
 	pickup_address = serializers.SerializerMethodField()
@@ -239,7 +251,7 @@ class ReservationSerializer(serializers.ModelSerializer):
 		"""
 		first = obj.casts.first()
 		if not first:
-			return ''                       # キャスト自体が無い
+			return ''					   # キャスト自体が無い
 
 		# ① course 直指定があればそれ
 		if first.course_id:
@@ -364,6 +376,8 @@ class ReservationSerializer(serializers.ModelSerializer):
 		drivers_data = validated_data.pop("drivers", [])
 		casts_data   = validated_data.pop("casts",   [])
 		charges_data = validated_data.pop("charges", [])
+		payments_data = validated_data.pop("payments", [])
+		manual_data   = validated_data.pop("manual_entries", [])
 
 		# ① NG 系バリデーション（必要なら↓を有効に）
 		# self._check_ng(
@@ -388,6 +402,10 @@ class ReservationSerializer(serializers.ModelSerializer):
 
 		for ch in charges_data:
 			ReservationCharge.objects.create(reservation=reservation, **ch)
+		for p in payments_data:
+			Payment.objects.create(reservation=reservation, **p)
+		for m in manual_data:
+			ManualEntry.objects.create(reservation=reservation, **m)
 
 		return reservation
 
@@ -397,7 +415,8 @@ class ReservationSerializer(serializers.ModelSerializer):
 		casts_data   = validated_data.pop('casts',   None)
 		drivers_data = validated_data.pop('drivers', None)
 		charges_data = validated_data.pop('charges', None)
-
+		payments_data = validated_data.pop("payments", None)
+		manual_data   = validated_data.pop("manual_entries", None)
 		# ② 親モデルを更新
 		for attr, value in validated_data.items():
 			setattr(instance, attr, value)
@@ -421,6 +440,18 @@ class ReservationSerializer(serializers.ModelSerializer):
 			instance.charges.all().delete()
 			for ch in charges_data:
 				ReservationCharge.objects.create(reservation=instance, **ch)
+
+
+		if payments_data is not None:
+			instance.payments.all().delete()
+			for p in payments_data:
+				Payment.objects.create(reservation=instance, **p)
+
+		if manual_data is not None:
+			instance.manual_entries.all().delete()
+			for m in manual_data:
+				ManualEntry.objects.create(reservation=instance, **m)
+
 
 		return instance
 
@@ -491,7 +522,9 @@ class UserDetailSerializer(serializers.ModelSerializer):
 		many=True, read_only=True, slug_field='name'
 	)
 	avatar_url  = serializers.SerializerMethodField()
-
+	driver_id   = serializers.IntegerField(
+		source='driver.id', read_only=True
+	)
 	class Meta(UserDetailsSerializer.Meta):
 		model  = User
 		# UserDetailsSerializer.Meta.fields = ('pk','username','email',...) なので
@@ -500,6 +533,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
 			'display_name',
 			'groups',
 			'avatar_url',
+			'driver_id',
 		)
 
 	def get_avatar_url(self, obj):

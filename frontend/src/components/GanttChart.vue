@@ -122,6 +122,14 @@ function onBarClick({ bar }) {
   emit('bar-click', { reservationId: bar.reservationId })
 }
 
+/* ───────── リロード ───────── */
+
+async function reload () {
+  await refresh()      // rows と bars を一括生成
+}
+
+defineExpose({ reload })
+
 /* ───────── 描画 ───────── */
 
 const hoursPerViewport = 6                     // 例: 1画面に16h見せる

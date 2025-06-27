@@ -222,6 +222,24 @@ class Reservation(TimeStamped):
 		CustomerAddress, null=True, blank=True,
 		on_delete=models.SET_NULL, related_name='reservations'
 	)
+	TYPE_NORMAL, TYPE_PRINCESS = "normal", "hime"
+	RES_TYPE_CHOICES = [
+		(TYPE_NORMAL,   "通常予約"),
+		(TYPE_PRINCESS, "姫予約"),
+	]
+	reservation_type = models.CharField(
+		max_length=10, choices=RES_TYPE_CHOICES, default=TYPE_NORMAL
+	)
+
+	# ───────── 合計ヘルパ ─────────
+	def total_revenue(self) -> int:
+		return sum(e.amount for e in self.manual_entries.filter(entry_type=ManualEntry.REVENUE))
+
+	def total_expense(self) -> int:
+		return sum(e.amount for e in self.manual_entries.filter(entry_type=ManualEntry.EXPENSE))
+
+	def net_total(self) -> int:
+		return self.total_revenue() - self.total_expense() + sum(p.amount for p in self.payments.all())
 
 
 	# ──簡易プロパティ──
@@ -346,54 +364,54 @@ class CashFlow(TimeStamped):
 
 
 class ShiftPlan(models.Model):
-    """
-    出勤『予定』
-    1キャスト・1日につき1件想定（複数帯対応が要るなら Unique を外す）
-    """
-    cast_profile = models.ForeignKey(
-        "CastProfile", on_delete=models.CASCADE, related_name="shift_plans"
-    )
-    store = models.ForeignKey("Store", on_delete=models.CASCADE)
-    date  = models.DateField(db_index=True)
-    start_at = models.TimeField()
-    end_at   = models.TimeField()
-    memo     = models.TextField(blank=True)
+	"""
+	出勤『予定』
+	1キャスト・1日につき1件想定（複数帯対応が要るなら Unique を外す）
+	"""
+	cast_profile = models.ForeignKey(
+		"CastProfile", on_delete=models.CASCADE, related_name="shift_plans"
+	)
+	store = models.ForeignKey("Store", on_delete=models.CASCADE)
+	date  = models.DateField(db_index=True)
+	start_at = models.TimeField()
+	end_at   = models.TimeField()
+	memo	 = models.TextField(blank=True)
 
-    class Meta:
-        unique_together = ("cast_profile", "date")  # 予定は１日１本
-        ordering = ["date", "start_at"]
+	class Meta:
+		unique_together = ("cast_profile", "date")  # 予定は１日１本
+		ordering = ["date", "start_at"]
 
-    def __str__(self):
-        return f"{self.cast_profile} {self.date} {self.start_at}-{self.end_at}"
+	def __str__(self):
+		return f"{self.cast_profile} {self.date} {self.start_at}-{self.end_at}"
 
 
 class ShiftAttendance(models.Model):
-    """
-    出勤『実績』（打刻）
-    予定なしで当日飛び込み＝ shift_plan=NULL も許可
-    """
-    shift_plan = models.OneToOneField(
-        ShiftPlan, null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="attendance"
-    )
-    cast_profile = models.ForeignKey(
-        "CastProfile", on_delete=models.CASCADE, related_name="attendances"
-    )
-    checked_in      = models.BooleanField(default=False)
-    checked_in_at   = models.DateTimeField(null=True, blank=True)
-    checked_out_at  = models.DateTimeField(null=True, blank=True)
-    note            = models.TextField(blank=True)
+	"""
+	出勤『実績』（打刻）
+	予定なしで当日飛び込み＝ shift_plan=NULL も許可
+	"""
+	shift_plan = models.OneToOneField(
+		ShiftPlan, null=True, blank=True,
+		on_delete=models.SET_NULL, related_name="attendance"
+	)
+	cast_profile = models.ForeignKey(
+		"CastProfile", on_delete=models.CASCADE, related_name="attendances"
+	)
+	checked_in	  = models.BooleanField(default=False)
+	checked_in_at   = models.DateTimeField(null=True, blank=True)
+	checked_out_at  = models.DateTimeField(null=True, blank=True)
+	note			= models.TextField(blank=True)
 
-    def checkin(self):
-        self.checked_in = True
-        self.checked_in_at = timezone.now()
-        self.save(update_fields=["checked_in", "checked_in_at"])
+	def checkin(self):
+		self.checked_in = True
+		self.checked_in_at = timezone.now()
+		self.save(update_fields=["checked_in", "checked_in_at"])
 
-    class Meta:
-        ordering = ["-checked_in_at"]
+	class Meta:
+		ordering = ["-checked_in_at"]
 
-    def __str__(self):
-        return f"{self.cast_profile} @ {self.checked_in_at or '---'}"
+	def __str__(self):
+		return f"{self.cast_profile} @ {self.checked_in_at or '---'}"
 
 
 
@@ -401,39 +419,65 @@ class ShiftAttendance(models.Model):
 
 # 既存 import 群のあとに追記
 class ReservationDriver(models.Model):
-    """予約 1 件に対して最大 2 行（PU / DO or BOTH）"""
-    class Role(models.TextChoices):
-        PICK_UP   = "PU", _("Pick-Up")
-        DROP_OFF  = "DO", _("Drop-Off")
-        BOTH      = "BO", _("Both")      # PU=DO 同一ドライバー用
+	"""予約 1 件に対して最大 2 行（PU / DO or BOTH）"""
+	class Role(models.TextChoices):
+		PICK_UP   = "PU", _("Pick-Up")
+		DROP_OFF  = "DO", _("Drop-Off")
+		BOTH	  = "BO", _("Both")	  # PU=DO 同一ドライバー用
 
-    class Status(models.TextChoices):
-        PLANNED      = "PL", _("Planned")
-        IN_PROGRESS  = "IP", _("In Progress")
-        DONE         = "DN", _("Done")
+	class Status(models.TextChoices):
+		PLANNED	  = "PL", _("Planned")
+		IN_PROGRESS  = "IP", _("In Progress")
+		DONE		 = "DN", _("Done")
 
-    reservation   = models.ForeignKey(
-        "Reservation", related_name="drivers",
-        on_delete=models.CASCADE
-    )
-    driver        = models.ForeignKey(
-        "Driver", on_delete=models.PROTECT, related_name="reservations"
-    )
-    role          = models.CharField(
-        max_length=2, choices=Role.choices, default=Role.PICK_UP
-    )
-    start_at      = models.DateTimeField(null=True, blank=True)
-    end_at        = models.DateTimeField(null=True, blank=True)
-    collected_amount = models.PositiveIntegerField(
-        null=True, blank=True, help_text="DO 時の現金回収額"
-    )
-    status        = models.CharField(
-        max_length=2, choices=Status.choices, default=Status.PLANNED
-    )
+	reservation   = models.ForeignKey(
+		"Reservation", related_name="drivers",
+		on_delete=models.CASCADE
+	)
+	driver		= models.ForeignKey(
+		"Driver", on_delete=models.PROTECT, related_name="reservations"
+	)
+	role		  = models.CharField(
+		max_length=2, choices=Role.choices, default=Role.PICK_UP
+	)
+	start_at	  = models.DateTimeField(null=True, blank=True)
+	end_at		= models.DateTimeField(null=True, blank=True)
+	collected_amount = models.PositiveIntegerField(
+		null=True, blank=True, help_text="DO 時の現金回収額"
+	)
+	status		= models.CharField(
+		max_length=2, choices=Status.choices, default=Status.PLANNED
+	)
 
-    class Meta:
-        unique_together = ("reservation", "role")  # PU は 1 行、DO は 1 行
-        ordering = ["start_at", "role"]
+	class Meta:
+		unique_together = ("reservation", "role")  # PU は 1 行、DO は 1 行
+		ordering = ["start_at", "role"]
 
-    def __str__(self):
-        return f"{self.reservation_id}:{self.get_role_display()} by {self.driver}"
+	def __str__(self):
+		return f"{self.reservation_id}:{self.get_role_display()} by {self.driver}"
+
+
+
+class Payment(models.Model):
+	CARD, CASH = "card", "cash"
+	METHOD_CHOICES = [(CARD, "カード"), (CASH, "現金")]
+
+	reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name="payments")
+	method	  = models.CharField(max_length=5, choices=METHOD_CHOICES)
+	amount	  = models.PositiveIntegerField()
+
+
+class ManualEntry(models.Model):
+	REVENUE, EXPENSE = "revenue", "expense"
+	TYPE_CHOICES = [
+		(REVENUE, "売上"),   # 例: 延長料金・飛び込みオプションなど
+		(EXPENSE, "経費"),   # 例: 罰金・立替・雑費など
+	]
+
+	reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name="manual_entries")
+	entry_type  = models.CharField(max_length=7, choices=TYPE_CHOICES)
+	label	   = models.CharField(max_length=50)
+	amount	  = models.PositiveIntegerField()
+
+	class Meta:
+		ordering = ["id"]
