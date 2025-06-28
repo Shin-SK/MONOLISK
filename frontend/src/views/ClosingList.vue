@@ -65,7 +65,7 @@ function buildParams () {
 </script>
 
 <template>
-<div class="container py-4">
+<div class="container-md py-4">
   <!-- ① サマリー -->
   <div class="alert alert-primary d-flex justify-content-between">
     <div>本日の総売上：<strong>¥{{ (summary.today ?? 0).toLocaleString() }}</strong></div>
