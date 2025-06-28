@@ -59,50 +59,117 @@ async function fetchRows () {
 }
 
 /* ───────── fetch bars ───────── */
+// async function fetchBars () {
+//   const reservations = await getReservations({
+//     date    : props.date,
+//     store   : props.storeId || undefined,
+//     ordering: 'start_at'
+//   })
+
+//   const list = reservations.flatMap(r =>
+//     r.casts.map((rc, idx) => {
+//       const castId = typeof rc.cast_profile === 'object'
+//                      ? rc.cast_profile.id : rc.cast_profile
+
+//       const stage = castMap.value[castId] ?? 'CAST'
+//       const st    = dayjs(r.start_at)
+//       const mins  = rc.course?.minutes ?? r.total_time ?? 60
+//       const ed    = st.add(mins,'minute')
+
+
+//       /* バッファ用幅を px に換算（例: 1 分 = 2px） */
+//       const puPx = props.beforeMinutes * 2
+//       const doPx = props.afterMinutes  * 2
+
+//       return {
+//         rowId: castId,
+//         from : st.toDate(),
+//         to   : ed.toDate(),
+//         ganttBarConfig: {
+//           id   : `r${r.id}_${idx}_main`,
+//           label: `${stage} / #${r.id} (PU:${driverName(r,'PU')}, DO:${driverName(r,'DO')})`,
+//           style: {
+//             '--pu-px': `${puPx}px`,
+//             '--do-px': `${doPx}px`,
+//             background: colorForMinutes(mins)   // ←ここを差し替え
+//           }
+//         },
+//         reservationId: r.id,
+//         puName : driverName(r, 'PU')  || '',   // ←★
+//         doName : driverName(r, 'DO') || '',   // ←★
+//       }
+//     })
+//   )
+
+//   bars.value = list
+// }
+
+const EXTEND_COLOR = 'rgba(255,0,0,.65)'   // 半透明の赤
+
 async function fetchBars () {
   const reservations = await getReservations({
-    date    : props.date,
-    store   : props.storeId || undefined,
+    date   : props.date,
+    store  : props.storeId || undefined,
     ordering: 'start_at'
   })
 
   const list = reservations.flatMap(r =>
-    r.casts.map((rc, idx) => {
-      const castId = typeof rc.cast_profile === 'object'
-                     ? rc.cast_profile.id : rc.cast_profile
+    r.casts.flatMap((rc, idx) => {
+      const castId  = typeof rc.cast_profile === 'object'
+                      ? rc.cast_profile.id : rc.cast_profile
 
-      const stage = castMap.value[castId] ?? 'CAST'
-      const st    = dayjs(r.start_at)
-      const mins  = rc.course?.minutes ?? r.total_time ?? 60
-      const ed    = st.add(mins,'minute')
+      const baseMin  = rc.minutes           // minutes フィールド優先
+                    ?? rc.course?.minutes    // 念のため
+                    ?? r.total_time          // 最後の逃げ
+      const extMin  = Math.max(0, (r.total_time ?? baseMin) - baseMin)
 
+      const st  = dayjs(r.start_at)
+      const ed  = st.add(baseMin, 'minute')
+      const bars = []
 
-      /* バッファ用幅を px に換算（例: 1 分 = 2px） */
-      const puPx = props.beforeMinutes * 2
-      const doPx = props.afterMinutes  * 2
-
-      return {
-        rowId: castId,
-        from : st.toDate(),
-        to   : ed.toDate(),
+      // 元コース
+      bars.push({
+        rowId : castId,
+        from  : st.toDate(),
+        to    : ed.toDate(),
+        reservationId: r.id,
+        puName: driverName(r,'PU') || '',
+        doName: driverName(r,'DO') || '',
         ganttBarConfig: {
           id   : `r${r.id}_${idx}_main`,
-          label: `${stage} / #${r.id} (PU:${driverName(r,'PU')}, DO:${driverName(r,'DO')})`,
+          label: `${castMap.value[castId] || 'CAST'} / #${r.id}`,
           style: {
-            '--pu-px': `${puPx}px`,
-            '--do-px': `${doPx}px`,
-            background: colorForMinutes(mins)   // ←ここを差し替え
+            '--pu-px': `${props.beforeMinutes*2}px`,
+            '--do-px': `${props.afterMinutes*2}px`,
+            background: colorForMinutes(baseMin)
           }
-        },
-        reservationId: r.id,
-        puName : driverName(r, 'PU')  || '',   // ←★
-        doName : driverName(r, 'DO') || '',   // ←★
+        }
+      })
+
+      // 延長セグメント
+      if (extMin > 0) {
+        const extEnd = ed.add(extMin, 'minute')
+        bars.push({
+          rowId: castId,
+          from : ed.toDate(),
+          to   : extEnd.toDate(),
+          reservationId: r.id,
+          isExtend: true,
+          ganttBarConfig: {
+            id   : `r${r.id}_${idx}_ext`,
+            label: `延長 ${extMin}min`,
+            style: { background: EXTEND_COLOR }
+          }
+        })
       }
+
+      return bars
     })
   )
 
   bars.value = list
 }
+
 
 /* ───────── helper: まとめて更新 ───────── */
 async function refresh () {
@@ -234,5 +301,9 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
   /* 疑似要素を収めるため padding を確保しても OK */
 }
 
+/* scoped 内に追加 */
+.g-gantt-bar[style*="rgba(255,0,0"] {
+  opacity: .7;          /* 好みで */
+}
 
 </style>

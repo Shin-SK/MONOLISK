@@ -113,10 +113,8 @@ async function fetchReservation () {
     cast_profiles   : [],
     start_at        : res.start_at.slice(0,16),
     course          : res.casts[0]?.course ?? '',
-	driver_PU       : res.reservation_drivers
-						?.find(d => d.role === 'PU')?.driver || '',
-	driver_DO       : res.reservation_drivers
-						?.find(d => d.role === 'DO')?.driver || '',
+	driver_PU       : res.drivers?.find(d => d.role === 'PU')?.driver || '',
+	driver_DO       : res.drivers?.find(d => d.role === 'DO')?.driver || '',
     customer        : res.customer,
     deposited_amount: res.deposited_amount ?? 0,
   reservation_type: res.reservation_type,
@@ -206,11 +204,6 @@ watch(() => form.value.customer, async id => {
 const castPriceSum = asyncComputed(
   async () => {
 
-    console.log('[castPriceSum] fire', {
-      course : form.value.course,
-      casts  : [...form.value.cast_profiles],
-    })
-
     if (!form.value.course || !form.value.cast_profiles.length) return 0;
 
 	  /* どんな形で来ても最終的に純粋な ID 配列にする */
@@ -244,9 +237,20 @@ const revenueSum = computed(() =>
   form.value.revenues.reduce((t, r) => t + (+r.amount || 0), 0)
 )
 
+  /* ---------- 延長料金系 ---------- */
+const extendUnit = computed(() => {
+  const leader = visibleCasts.value.find(c => c.id === form.value.cast_profiles[0])
+  return leader?.extend_price_30 || 0     // ← rank をたどらず 1 発
+})
+
+/* 1. 延長料金 (30-min ブロック × 単価) */
+const extendPriceSum = computed(() =>
+	(form.value.extend_blocks || 0) * extendUnit.value
+)
+
 /* 4. 合計 */
 const price = computed(() =>
-  castPriceSum.value + optionPriceSum.value + revenueSum.value
+  castPriceSum.value + optionPriceSum.value + revenueSum.value + extendPriceSum.value
 )
 
 /* ---------- 初期ロード ---------- */
@@ -298,6 +302,8 @@ async function save () {
     alert('店舗またはキャストを選択してください'); return
   }
 
+
+
   /* ---------- payload ---------- */
 
 	const payments = [
@@ -329,6 +335,8 @@ async function save () {
 		casts: castIds.map(id => ({ cast_profile:id, course:form.value.course })),
 		payments,
 		manual_entries,
+		extend_blocks: form.value.extend_blocks || 0,
+		total_time: minutes + (form.value.extend_blocks||0)*30,
 	}
 
   /* ---------- 住所帳 ---------- */
@@ -684,7 +692,7 @@ if (import.meta.env.DEV) {
 
 
 	<!-- ◆ 支払い方法 ◆ -->
-	<div class="area">
+	<!-- <div class="area">
 	<div class="h5">支払い</div>
 	<div class="row g-3">
 		<div class="col-md-3">
@@ -698,7 +706,7 @@ if (import.meta.env.DEV) {
 				v-model.number="form.pay_cash" min="0" />
 		</div>
 	</div>
-	</div>
+	</div> -->
 
 
 	<!-- ◆ マニュアル売上 ◆ -->
@@ -741,6 +749,24 @@ if (import.meta.env.DEV) {
 	</div>
 	<button class="btn btn-sm btn-outline-primary"
 			@click="form.expenses.push({label:'',amount:0})">＋ 行を追加</button>
+	</div>
+
+	<!-- 延長 -->
+	<div class="area">
+	<div class="h5">延長</div>
+	<div class="btn-group" role="group">
+		<input type="radio" class="btn-check" id="ext0" value="0"
+			v-model.number="form.extend_blocks">
+		<label class="btn btn-outline-secondary" for="ext0">なし</label>
+
+		<template v-for="b in [1,2,3]" :key="b">
+		<input type="radio" class="btn-check"
+				:id="`ext${b}`" :value="b"
+				v-model.number="form.extend_blocks">
+		<label class="btn btn-outline-primary"
+				:for="`ext${b}`">{{ b*30 }} 分</label>
+		</template>
+	</div>
 	</div>
 
 	<!-- 見積 -->

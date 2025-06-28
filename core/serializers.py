@@ -37,7 +37,9 @@ class CastSerializer(serializers.ModelSerializer):
 		many=True, queryset=Customer.objects.all(), required=False
 	)
 	photo_url = serializers.SerializerMethodField()
-
+	extend_price_30 = serializers.IntegerField(
+		source='rank.extend_price_30', read_only=True
+	)
 	user = serializers.PrimaryKeyRelatedField(
 		queryset=get_user_model().objects.all(),
 		allow_null=True,
@@ -46,7 +48,7 @@ class CastSerializer(serializers.ModelSerializer):
 
 	class Meta:
 		model  = CastProfile
-		fields = '__all__'		  # memo, ng_customers も含まれる
+		fields = '__all__'
 
 	def get_photo_url(self, obj):
 		request = self.context.get("request")
@@ -205,9 +207,8 @@ class ReservationSerializer(serializers.ModelSerializer):
 	)
 	payments	   = PaymentSerializer(many=True, required=False)
 	manual_entries = ManualEntrySerializer(many=True, required=False)
+	pickup_address = serializers.SerializerMethodField() #送迎住所を１本化
 
-	#送迎住所を１本化
-	pickup_address = serializers.SerializerMethodField()
 
 	class Meta:
 		model  = Reservation
@@ -417,6 +418,7 @@ class ReservationSerializer(serializers.ModelSerializer):
 		charges_data = validated_data.pop('charges', None)
 		payments_data = validated_data.pop("payments", None)
 		manual_data   = validated_data.pop("manual_entries", None)
+		extend_blocks = validated_data.pop("extend_blocks", 0) #延長
 		# ② 親モデルを更新
 		for attr, value in validated_data.items():
 			setattr(instance, attr, value)
@@ -452,6 +454,17 @@ class ReservationSerializer(serializers.ModelSerializer):
 			for m in manual_data:
 				ManualEntry.objects.create(reservation=instance, **m)
 
+		if extend_blocks:
+			extend_minutes = extend_blocks * 30
+			validated_data["total_time"] = instance.total_time + extend_minutes
+			fee = calc_extend_fee(instance, extend_minutes)
+			ReservationCharge.objects.update_or_create(
+				reservation=instance,
+				kind=ReservationCharge.Kind.EXTEND,
+				defaults={"amount": fee, "extend_course": None}
+			)
+		else:
+			instance.charges.filter(kind=ReservationCharge.Kind.EXTEND).delete()
 
 		return instance
 
@@ -477,6 +490,15 @@ class ReservationSerializer(serializers.ModelSerializer):
 		"""
 		names = {c.cast_profile.stage_name for c in obj.casts.all()}
 		return sorted(names)
+
+
+	def calc_extend_fee(reservation: Reservation, extend_minutes: int) -> int:
+		if extend_minutes <= 0:
+			return 0
+		leader_cast = reservation.casts.select_related('cast_profile__rank').first()
+		rank = leader_cast.cast_profile.rank
+		blocks = extend_minutes // 30
+		return blocks * rank.extend_price_30
 
 
 class CustomerReservationSerializer(ReservationSerializer):

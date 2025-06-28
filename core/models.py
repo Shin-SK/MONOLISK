@@ -47,6 +47,7 @@ class Store(TimeStamped):
 
 class Rank(TimeStamped):
 	name = models.CharField(max_length=30)
+	extend_price_30 = models.PositiveIntegerField(default=15000)
 	def __str__(self):
 		return self.name
 
