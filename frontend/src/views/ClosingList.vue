@@ -55,8 +55,8 @@ function buildParams () {
       /* 期間条件なし → そのまま */
       break
     case 'range':
-      if (q.from) p.from = q.from
-      if (q.to)   p.to   = q.to
+      if (q.from) p.from_date = q.from;   // ← key を合わせる
+      if (q.to)   p.to_date   = q.to;
       break
   }
   return p
