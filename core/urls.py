@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_nested.routers import NestedDefaultRouter
 from . import views
 from .views_pricing import PricingAPIView
+from .views import SalesSummary
 
 router = DefaultRouter()
 router.register(r'stores',               views.StoreViewSet)
@@ -30,4 +31,5 @@ urlpatterns = [
 	*router.urls,
 	*addresses_router.urls,
 	path('pricing/', PricingAPIView.as_view(), name='pricing'),
+	path('sales/summary/', SalesSummary.as_view(), name='sales-summary'),
 ]

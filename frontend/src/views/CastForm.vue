@@ -197,5 +197,9 @@ onMounted(async () => {
     </table>
   </div>
 
+  <div class="btn btn-secondary disabled">
+    保存
+  </div>
+
 </div>
 </template>

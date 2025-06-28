@@ -7,7 +7,10 @@ from .filters import CustomerFilter
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from django.shortcuts import get_object_or_404
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q, Sum
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.utils import timezone
 
 from .models import (
     Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
@@ -156,7 +159,8 @@ class ReservationViewSet(viewsets.ModelViewSet):
     pagination_class    = None      # ← 必要なら外して OK
 
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_fields = ['customer']	
+    filterset_class   = ReservationFilter 
+    # filterset_fields = ['customer']	
     ordering_fields = ["start_at", "id"]      # 並び替え許可フィールド
     ordering = ["-start_at"]                  # ← デフォルトを新しい順に
 
@@ -352,3 +356,38 @@ class ReservationDriverViewSet(viewsets.ModelViewSet):
     serializer_class = ReservationDriverSerializer
     filterset_class  = ReservationDriverFilter
     permission_classes = [permissions.IsAuthenticated]
+
+
+class SalesSummary(APIView):
+    permission_classes = [IsStaff]          # 適宜
+
+    def get(self, request):
+        qs = Reservation.objects.filter(status=Reservation.Status.CLOSED)
+
+        store = request.GET.get('store')
+        if store:
+            qs = qs.filter(store_id=store)
+
+        date_from = request.GET.get('from')
+        date_to   = request.GET.get('to')
+
+        if date_from:
+            qs = qs.filter(start_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(start_at__date__lte=date_to)
+
+        total = qs.aggregate(total=Sum('received_amount'))['total'] or 0
+
+        # 今日 & 今月
+        today = timezone.localdate()
+        today_total = qs.filter(start_at__date=today)       \
+                        .aggregate(t=Sum('received_amount'))['t'] or 0
+        month_total = qs.filter(start_at__month=today.month,
+                                start_at__year=today.year)  \
+                        .aggregate(t=Sum('received_amount'))['t'] or 0
+
+        return Response({
+            'total': total,
+            'today_total': today_total,
+            'month_total': month_total
+        })

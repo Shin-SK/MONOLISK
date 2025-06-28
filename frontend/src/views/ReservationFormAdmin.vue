@@ -48,6 +48,7 @@ const form = ref({
   driver_DO:       '',
   customer:        '',
   deposited_amount: 0,
+  received_amount : 0,
   /* 支払い */
   pay_card: 0,
   pay_cash: 0,
@@ -117,6 +118,7 @@ async function fetchReservation () {
 	driver_DO       : res.drivers?.find(d => d.role === 'DO')?.driver || '',
     customer        : res.customer,
     deposited_amount: res.deposited_amount ?? 0,
+	received_amount : res.received_amount ?? 0,
   reservation_type: res.reservation_type,
   pay_card : res.payments.find(p => p.method === 'card')?.amount || 0,
   pay_cash : res.payments.find(p => p.method === 'cash')?.amount || 0,
@@ -266,8 +268,8 @@ watch(
    fetchReservation
 )
 
-/* ---------- 保存（省略: 以前と同じ） ---------- */
-// ───────── まるごと置き換え ─────────
+/* ---------- 保存 ---------- */
+
 async function save () {
   /* ---------- 前準備 ---------- */
   const minutes =
@@ -332,6 +334,7 @@ async function save () {
 		start_at        : new Date(form.value.start_at).toISOString(),
 		total_time      : minutes,
 		deposited_amount: form.value.deposited_amount,
+		received_amount : form.value.received_amount,
 		casts: castIds.map(id => ({ cast_profile:id, course:form.value.course })),
 		payments,
 		manual_entries,
@@ -365,9 +368,7 @@ async function save () {
 
     /* 通常画面のときだけ遷移させる -------------------------*/
     // 例: 詳細画面へ
-    await router.push(`/reservations/${id}`)
-    // もし「一覧で十分」なら ↓
-    // await router.push('/reservations')
+    await router.push('/reservations')
 
   } catch (e) {
     console.error(e.response?.data)
@@ -780,16 +781,28 @@ if (import.meta.env.DEV) {
 
 	<!-- テンプレート：受取と入金の 2 つ表示 -->
 	<div class="area">
+		<div class="area">
 		<div class="h5">受取金額</div>
-		<input type="number" class="form-control" v-model.number="rsv.received_amount" disabled />
+		<input
+			type="number"
+			class="form-control"
+			v-model.number="form.received_amount"
+			min="0"
+		/>
 		</div>
 		<div class="area">
-		<div class="h5">入金額</div>
-		<input type="number" class="form-control" v-model.number="form.deposited_amount" />
-		</div>
+			<div class="h5">入金額</div>
+			<input
+				type="number"
+				class="form-control"
+				v-model.number="form.deposited_amount"
+				min="0"
+			/>
+			</div>
 
-		<div class="areatext-end">
-		<button class="btn btn-primary" @click="save">保存</button>
+			<div class="areatext-end">
+			<button class="btn btn-primary" @click="save">保存</button>
+			</div>
 		</div>
 	</div>
 

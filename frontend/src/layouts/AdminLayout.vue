@@ -58,7 +58,7 @@ async function logout () {
           <RouterLink to="/casts"       >キャスト</RouterLink>
           <RouterLink to="/shifts">シフト管理</RouterLink>
           <RouterLink to="/closing"     >売上管理</RouterLink>
-          <RouterLink to="/timeline"    >タイムライン</RouterLink>
+          <!-- <RouterLink to="/timeline"    >タイムライン</RouterLink> -->
 
         </nav>
       </div>

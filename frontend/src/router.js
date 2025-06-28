@@ -38,6 +38,7 @@ const routes = [
       { path: 'reservations', component: ReservationList },
       { path: 'reservations/new',     component: ReservationFormAdmin },
       { path: 'reservations/:id',     component: ReservationFormAdmin, name: 'admin-reservation-detail' },
+      { path: 'reservations/:id(\\d+)', component: ReservationFormAdmin,},
       { path: 'timeline',             component: TimelineAdmin },
       { path: 'customers',            component: CustomerList },
       { path: 'customers/new',        component: CustomerForm },

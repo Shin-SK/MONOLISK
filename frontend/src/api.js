@@ -63,7 +63,7 @@ export const getReservations = (params = {}) => {
 
 
 export const getReservation    = id      => api.get(`reservations/${id}/`).then(r => r.data)
-export const createReservation = payload => api.post('reservations/', payload)
+export const createReservation = payload => api.post('reservations/', payload).then(r => r.data)
 export const updateReservation = (id, p) => api.patch(`reservations/${id}/`, p)
 export const deleteReservations = (ids) =>
   axios.delete('/api/reservations/bulk-delete/', { data: { ids } })
