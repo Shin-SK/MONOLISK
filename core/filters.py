@@ -28,10 +28,14 @@ class ReservationFilter(df.FilterSet):
 	customer  = filters.NumberFilter()					# ★ ここで filters を使用
 	# ↓↓↓ 追加分 ↓↓↓
 	from_date = df.DateFilter(
-		field_name='start_at', lookup_expr='date__gte'
+		field_name='start_at',
+		lookup_expr='date__gte',
+		label='from',	  # ← ここはあって OK（表示ラベル）
 	)
-	to_date   = df.DateFilter(
-		field_name='start_at', lookup_expr='date__lte'
+	to_date = df.DateFilter(
+		field_name='start_at',
+		lookup_expr='date__lte',
+		label='to',
 	)
 
 	def filter_store(self, qs, name, value):

@@ -1,120 +1,192 @@
 <!-- ClosingList.vue ※全文貼り替え -->
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch, computed } from 'vue'
 import dayjs from 'dayjs'
 import { api } from '@/api'
 
-/* ── state ── */
-const stores  = ref([])
-const rows    = ref([])
-const summary = reactive({ today: 0, month: 0 })
+/* ──────────────── state ──────────────── */
+const stores      = ref([])
+const rows        = ref([])
+const summary     = reactive({ period: 0, today: 0, month: 0 })
+const showFilter  = ref(false)
 
-/* ── 検索フォーム ── */
+/* 「指定期間」金額を表示するか（本日は非表示） */
+const showPeriod = computed(() =>
+  q.period !== 'today' || q.period === 'range'
+)
+
+/* ──────────────── 検索フォーム ──────────────── */
 const q = reactive({
-  period: 'today',      // today | yesterday | all | range
-  from  : '',
-  to    : '',
-  store : ''
+  period : 'today',      // today | yesterday | week | all | range
+  from   : '',
+  to     : '',
+  store  : ''
 })
 
-/* ── 初期ロード ── */
+/* ──────────────── 初期ロード ──────────────── */
 onMounted(async () => {
-  stores.value = await api.get('stores/').then(r => r.data)
-  q.store      = stores.value[0]?.id ?? ''
-  q.period = 'today';
-  await search()                      // 起動時＝今日
+  stores.value  = await api.get('stores/').then(r => r.data)
+  q.store       = stores.value[0]?.id ?? ''
+  await search()                            // デフォルト＝本日
 })
 
-/* ── 検索 ── */
+/* ──────────────── プリセット変更監視 ──────────────── */
+watch(() => q.period, newVal => {
+  if (['today', 'yesterday', 'week', 'all'].includes(newVal)) {
+    search()                                // range は手動検索
+  }
+})
+
+/* ──────────────── 検索メイン ──────────────── */
 async function search () {
-  const params = buildParams()
+  /* ① 予約一覧 */
+  const listParams = buildListParams()
+  rows.value = await api.get('reservations/', { params: listParams })
+                       .then(r => r.data)
 
-  rows.value = await api.get('reservations/', { params }).then(r => r.data)
+  /* ② 指定期間サマリー（total）*/
+  const sumParams  = buildSumParams()
+  if (showPeriod.value) {
+    const periodSum = await api.get('sales/summary/', { params: sumParams })
+                               .then(r => r.data)
+    summary.period = periodSum.total ?? 0
+  } else {
+    summary.period = 0                            // 表示しないときは 0
+  }
 
-  const s = await api.get('sales/summary/', { params }).then(r => r.data)
-  summary.today = s.today_total
-  summary.month = s.month_total
+  /* ③ 今日・今月サマリー（store のみ固定）*/
+  const storeSum = await api.get('sales/summary/', { params: { store: q.store } })
+                            .then(r => r.data)
+  summary.today = storeSum.today_total
+  summary.month = storeSum.month_total
 }
 
-/* ── パラメータ生成 ── */
-function buildParams () {
-  const today = dayjs().format('YYYY-MM-DD')
-  const p     = { store: q.store }
+/* ──────────────── 一覧用パラメータ ────────────────
+   （日付キー: from_date / to_date）*/
+function buildListParams () {
+  const today  = dayjs().format('YYYY-MM-DD')
+  const monday = dayjs().startOf('week').add(1, 'day')   // ISO 週始め
+  const p = { store: q.store }
 
   switch (q.period) {
-    case 'today': {
-      p.from = p.to = today
-      break
-    }
+    case 'today':
+      p.from_date = p.to_date = today; break
     case 'yesterday': {
       const y = dayjs().subtract(1, 'day').format('YYYY-MM-DD')
-      p.from = p.to = y
-      break
+      p.from_date = p.to_date = y; break
     }
-    case 'all':
-      /* 期間条件なし → そのまま */
-      break
+    case 'week':
+      p.from_date = monday.format('YYYY-MM-DD')
+      p.to_date   = today; break
     case 'range':
-      if (q.from) p.from_date = q.from;   // ← key を合わせる
-      if (q.to)   p.to_date   = q.to;
+      if (q.from) p.from_date = q.from
+      if (q.to)   p.to_date   = q.to
       break
+    /* all → 期間指定なし */
   }
   return p
 }
+
+/* ──────────────── サマリー用パラメータ ────────────────
+   （日付キー: from / to）*/
+function buildSumParams () {
+  const today  = dayjs().format('YYYY-MM-DD')
+  const monday = dayjs().startOf('week').add(1, 'day')
+  const base   = { store: q.store }
+
+  switch (q.period) {
+    case 'today':
+      return { ...base, from: today, to: today }
+    case 'yesterday': {
+      const y = dayjs().subtract(1, 'day').format('YYYY-MM-DD')
+      return { ...base, from: y, to: y }
+    }
+    case 'week':
+      return {
+        ...base,
+        from: monday.format('YYYY-MM-DD'),
+        to  : today
+      }
+    case 'range':
+      return {
+        ...base,
+        ...(q.from && { from: q.from }),
+        ...(q.to   && { to  : q.to   })
+      }
+    /* all → 日付指定なし */
+    default:
+      return base
+  }
+}
 </script>
+
+
+
 
 <template>
 <div class="container-md py-4">
-  <!-- ① サマリー -->
-  <div class="alert alert-primary d-flex justify-content-between">
-    <div>本日の総売上：<strong>¥{{ (summary.today ?? 0).toLocaleString() }}</strong></div>
-    <div>今月の総売上：<strong>¥{{ (summary.month ?? 0).toLocaleString() }}</strong></div>
+
+  <!-- ── サマリー ── -->
+<div class="alert alert-primary d-flex flex-column flex-md-row gap-2 justify-content-between">
+
+  <div>本日の総売上：<strong>¥{{ summary.today.toLocaleString() }}</strong></div>
+  <div>今月の総売上：<strong>¥{{ summary.month.toLocaleString() }}</strong></div>
+  <div>指定期間合計：<strong>¥{{ summary.period?.toLocaleString?.() || '–' }}</strong></div>
+
+</div>
+
+<!-- ── プリセット期間 & 絞り込みボタン ── -->
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+
+  
+  <!-- 左: プリセット期間 -->
+  <div class="btn-group flex-wrap">
+    <input class="btn-check" id="btn-today"     type="radio" value="today"     v-model="q.period">
+    <label class="btn btn-outline-primary" for="btn-today">本日</label>
+
+    <input class="btn-check" id="btn-yest"      type="radio" value="yesterday" v-model="q.period">
+    <label class="btn btn-outline-primary" for="btn-yest">昨日</label>
+
+    <input class="btn-check" id="btn-week"      type="radio" value="week"      v-model="q.period">
+    <label class="btn btn-outline-primary" for="btn-week">今週</label>
+
+    <input class="btn-check" id="btn-all"       type="radio" value="all"       v-model="q.period">
+    <label class="btn btn-outline-primary" for="btn-all">全期間</label>
   </div>
 
-  <!-- ② 検索フォーム -->
-  <form class="card p-3 mb-4" @submit.prevent="search">
-    <div class="row g-3 align-items-end">
+  <!-- 右: 絞り込みトグル -->
+  <button class="btn btn-secondary" @click="showFilter = !showFilter">
+    {{ showFilter ? '閉じる' : '絞り込み' }}
+  </button>
+</div>
 
-      <!-- 期間選択 -->
-      <div class="col-md-6">
-        <label class="form-label">期間</label>
-        <div class="btn-group d-block">
-          <input type="radio" class="btn-check" id="p-today" value="today"     v-model="q.period">
-          <label class="btn btn-outline-primary" for="p-today">本日</label>
 
-          <input type="radio" class="btn-check" id="p-yest"  value="yesterday" v-model="q.period">
-          <label class="btn btn-outline-primary" for="p-yest">昨日</label>
-
-          <input type="radio" class="btn-check" id="p-all"   value="all"       v-model="q.period">
-          <label class="btn btn-outline-primary" for="p-all">全期間</label>
-
-          <input type="radio" class="btn-check" id="p-range" value="range"     v-model="q.period">
-          <label class="btn btn-outline-primary" for="p-range">期間指定</label>
-        </div>
-
-        <!-- 手入力期間 -->
-        <div v-if="q.period==='range'" class="mt-2 d-flex gap-2">
-          <input type="date" v-model="q.from" class="form-control">
-          <span class="align-self-center">–</span>
-          <input type="date" v-model="q.to"   class="form-control">
-        </div>
-      </div>
-
-      <!-- 店舗 -->
-      <div class="col-md-3">
-        <label class="form-label">店舗</label>
-        <select v-model="q.store" class="form-select">
-          <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
-      </div>
-
-      <!-- ボタン -->
-      <div class="col-md-3 text-end">
-        <button class="btn btn-success px-5">検索</button>
+<!-- ── 詳細絞り込みパネル ── -->
+<form v-if="showFilter" class="card p-3 mb-3" @submit.prevent="search">
+  <div class="row g-3 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">期間指定</label>
+      <div class="d-flex gap-1">
+        <input type="date" v-model="q.from" class="form-control">
+        <span class="align-self-center">–</span>
+        <input type="date" v-model="q.to"   class="form-control">
       </div>
     </div>
-  </form>
+
+    <div class="col-md-3">
+      <label class="form-label">店舗</label>
+      <select v-model="q.store" class="form-select">
+        <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+      </select>
+    </div>
+
+    <div class="col-md-2 text-end">
+      <button class="btn btn-success px-4">検索</button>
+    </div>
+  </div>
+</form>
+
 
   <!-- ③ 一覧 -->
   <table class="table table-sm">

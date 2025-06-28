@@ -362,7 +362,8 @@ class SalesSummary(APIView):
     permission_classes = [IsStaff]          # 適宜
 
     def get(self, request):
-        qs = Reservation.objects.filter(status=Reservation.Status.CLOSED)
+        # qs = Reservation.objects.filter(status=Reservation.Status.CLOSED) もし締めボタン的なの作るなら使う
+        qs = Reservation.objects.all()
 
         store = request.GET.get('store')
         if store:

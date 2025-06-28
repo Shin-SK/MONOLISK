@@ -252,9 +252,13 @@ class Reservation(TimeStamped):
 
 	# 受取額が変更されたら差額フラグを更新
 	def save(self, *args, **kwargs):
-		if self.received_amount is not None:
-			self.discrepancy_flag = (self.received_amount != self.expected_amount)
+		# ❶ まず普通に保存して PK を確定
 		super().save(*args, **kwargs)
+
+		# ❷ 子テーブルが揃ってから差額フラグを再計算
+		self.discrepancy_flag = (self.received_amount != self.expected_amount)
+		super().save(update_fields=["discrepancy_flag"])
+
 
 	class Meta:
 		verbose_name = '予約'
