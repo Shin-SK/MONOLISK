@@ -22,6 +22,7 @@ const q = reactive({
 onMounted(async () => {
   stores.value = await api.get('stores/').then(r => r.data)
   q.store      = stores.value[0]?.id ?? ''
+  q.period = 'today';
   await search()                      // 起動時＝今日
 })
 
