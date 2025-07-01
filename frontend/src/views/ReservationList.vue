@@ -1,59 +1,103 @@
 <!-- src/views/ReservationList.vue -->
 <script setup>
 import { ref, watch, onMounted, computed } from 'vue'
-import { getStores, getCastProfiles, getReservations, deleteReservations } from '@/api'
+import {
+  getStores,
+  getCastProfiles,
+  getReservations,
+  deleteReservations
+} from '@/api'
 import { useRouter } from 'vue-router'
-const router = useRouter()
 
-const stores = ref([])
-const casts	= ref([])
-const rows	 = ref([])
-const selected = ref(new Set())
+/* ────────── 状態 ────────── */
+const router    = useRouter()
+const stores    = ref([])
+const casts     = ref([])
+const rows      = ref([])
+const selected  = ref(new Set())
 
-// 親から “初期フィルタ” を受け取れるように
+/* ────────── 親から初期フィルタ ────────── */
 const props = defineProps({
   initFilters: { type: Object, default: () => ({}) }
 })
-
 const form = ref({
   store:'', cast:'', date:'',
-  ...props.initFilters           // ここでマージ
+  ...props.initFilters
 })
 
-/* ─── 日付ユーティリティ ─── */
-const today			= new Date()
-const yyyy_mm_dd = d => d.toISOString().slice(0, 10)
-
-function setRelative(days) {
-	const d = new Date(today)
-	d.setDate(d.getDate() + days)
-	form.value.date = yyyy_mm_dd(d)
+/* ────────── 日付関係 ────────── */
+const today = new Date() 
+const yyyy_mm_dd = d => d.toISOString().slice(0,10)
+function setRelative (days) {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  form.value.date = yyyy_mm_dd(d)
 }
-function clearDate() { form.value.date = '' }
+function clearDate () { form.value.date = '' }
 
-/* date input を隠しておいて click() で開く */
 const dateInput = ref(null)
-function openPicker() { dateInput.value?.showPicker?.() || dateInput.value?.click() }
-
-/* 店舗変更→キャスト候補更新（未選択なら全キャスト） */
-watch(() => form.value.store, async s => {
-	form.value.cast = ''
-	casts.value = await getCastProfiles(s || undefined)
-})
-
-/* 検索実行 */
-async function search() {
-	rows.value = await getReservations({ ...form.value, ordering: '-start_at' })
+function openPicker () {
+  dateInput.value?.showPicker?.() || dateInput.value?.click()
 }
 
-async function resetForm() {
-  form.value = { store:'', cast:'', date:'' }
-  casts.value = await getCastProfiles()    // 全キャスト
+/* ────────── 店舗が変わったらキャストを再取得 ────────── */
+watch(() => form.value.store, async id => {
+  form.value.cast = ''
+  casts.value = await getCastProfiles(id || undefined)
+})
+
+/* ────────── 検索本体 ────────── */
+async function search () {
+  const raw = await getReservations({
+    ...form.value,
+    ordering     : '-start_at',
+    with_entries : 1,
+    with_options : 1,
+    with_charges : 1        // ←★ここが無いと課金金額が来ない
+  })
+
+  rows.value = raw.map(r => {
+    // ここで charges の内容を確認
+    console.group(`DEBUG id ${r.id}`)
+    console.table(r.charges)
+    console.table(r.options)
+    console.groupEnd()
+
+    /* 手入力売上／経費 */
+    const revenue = (r.manual_entries ?? [])
+      .filter(e => e.entry_type === 'revenue')
+      .reduce((t, e) => t + (+e.amount || 0), 0)
+
+    const expense = (r.manual_entries ?? [])
+      .filter(e => e.entry_type === 'expense')
+      .reduce((t, e) => t + (+e.amount || 0), 0)
+
+    /* オプション課金合計 */
+    let optionSum = (r.charges ?? [])
+      .filter(c => c.kind === 'OPTION')
+      .reduce((t, c) => t + Number(c.amount ?? c.price ?? 0), 0)
+
+    if (optionSum === 0 && Array.isArray(r.options)) {
+      optionSum = r.options
+        .reduce((t, o) => t + Number(o.amount ?? o.price ?? o.default_price ?? 0), 0)
+    }
+
+    return {
+      ...r,
+      expected_total: r.expected_total
+    }
+  })
+
+}
+
+/* ────────── 表操作 ────────── */
+async function resetForm () {
+  form.value  = { store:'', cast:'', date:'' }
+  casts.value = await getCastProfiles()
   await search()
 }
 
-// 削除
-function toggle(id) {
+function toggle (id) {
   selected.value.has(id)
     ? selected.value.delete(id)
     : selected.value.add(id)
@@ -61,18 +105,13 @@ function toggle(id) {
 
 const allChecked = computed({
   get: () => rows.value.length && selected.value.size === rows.value.length,
-  set: (val) => {
-    selected.value = val
-      ? new Set(rows.value.map(r => r.id))
-      : new Set()
-  }
+  set: v => { selected.value = v ? new Set(rows.value.map(r=>r.id)) : new Set() }
 })
 
-async function bulkDelete() {
+async function bulkDelete () {
   if (!confirm(`${selected.value.size} 件を削除します。よろしいですか？`)) return
   try {
     await deleteReservations([...selected.value])
-    // 削除済みを UI から除外
     rows.value = rows.value.filter(r => !selected.value.has(r.id))
     selected.value.clear()
   } catch (e) {
@@ -81,13 +120,15 @@ async function bulkDelete() {
   }
 }
 
-
+/* ────────── 初期化 ────────── */
 onMounted(async () => {
-	stores.value = await getStores()
-	casts.value	= await getCastProfiles()	 // 全キャスト
-	search()
+  stores.value = await getStores()
+  casts.value  = await getCastProfiles()
+  await search()
 })
 </script>
+
+
 
 
 
@@ -198,7 +239,6 @@ onMounted(async () => {
           <th>オプション</th>    <!-- ★追加 -->
           <th>PU Driver</th>
           <th>DO Driver</th>
-          <th>ドライバー</th>
           <th>予約金</th>
           <th>受取金</th>
           <th>入金</th>
@@ -243,8 +283,7 @@ onMounted(async () => {
           </td>
           <td>{{ r.drivers.find(d=>d.role==='PU')?.driver_name || '―' }}</td>
           <td>{{ r.drivers.find(d=>d.role==='DO')?.driver_name || '―' }}</td>
-          <td>{{ r.driver_name || '―' }}</td>
-          <td class="text-end">{{ (r.expected_amount??0).toLocaleString() }}円</td>
+          <td class="text-end">{{ (r.expected_total??r.expected_amount??0).toLocaleString() }}円</td>
           <td class="text-end">{{ (r.received_amount??0).toLocaleString() }}円</td>
           <td class="text-end">{{ (r.deposited_amount??0).toLocaleString() }}円</td>
           <td>{{ r.status }}</td>

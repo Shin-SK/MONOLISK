@@ -3,7 +3,7 @@
 /* ───────── 依存 ───────── */
 import { ref, watch, computed, nextTick, onMounted } from 'vue'
 import dayjs from 'dayjs'
-import { getCastProfiles, getReservations } from '@/api'
+import { getCastProfiles, getReservations, getDrivers } from '@/api'
 
 /* ───────── props ───────── */
 const props = defineProps({
@@ -19,14 +19,22 @@ const props = defineProps({
 const rows     = ref([])      // 行 [{id,label}]
 const bars     = ref([])      // バー
 const castMap  = ref({})      // { castId: stage_name }
+const driverMap = ref({}) 
 
 /* ───────── util ───────── */
-	const driverName = (r, role) => {
-	  // どちらのキーで来ても拾えるように両方見る
-	  const list = r.reservation_drivers ?? r.drivers ?? []
-	  const d    = list.find(dr => dr.role === role)
-	  return d?.driver_name || d?.driver?.name || ''
-	}
+const driverName = (r, role) => {
+  const list = r.reservation_drivers ?? r.drivers ?? []
+  const found = list.find(d => d.role === role)
+  if (!found) return ''
+
+  // ① 既にオブジェクトならそのまま
+  if (typeof found.driver === 'object') {
+    return found.driver.name || found.driver.driver_name || ''
+  }
+
+  // ② 数値 id なら driverMap で引く
+  return driverMap.value[found.driver] || ''
+}
 
 /* ───────── 色 ───────── */
 
@@ -170,6 +178,14 @@ async function fetchBars () {
   bars.value = list
 }
 
+/* ───────── ドライバー系 ───────── */
+async function fetchDrivers () {
+  const list = await getDrivers()
+  driverMap.value = Object.fromEntries(
+    list.map(d => [d.id, d.name || d.driver_name || 'DRV'])
+  )
+}
+onMounted(fetchDrivers)
 
 /* ───────── helper: まとめて更新 ───────── */
 async function refresh () {

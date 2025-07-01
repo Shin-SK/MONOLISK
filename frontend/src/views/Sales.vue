@@ -4,12 +4,15 @@
 import { ref, reactive, onMounted, watch, computed } from 'vue'
 import dayjs from 'dayjs'
 import { api } from '@/api'
+import { useRouter } from 'vue-router'
 
 /* ──────────────── state ──────────────── */
 const stores      = ref([])
 const rows        = ref([])
 const summary     = reactive({ period: 0, today: 0, month: 0 })
 const showFilter  = ref(false)
+
+const router = useRouter()
 
 /* 「指定期間」金額を表示するか（本日は非表示） */
 const showPeriod = computed(() =>
@@ -27,7 +30,6 @@ const q = reactive({
 /* ──────────────── 初期ロード ──────────────── */
 onMounted(async () => {
   stores.value  = await api.get('stores/').then(r => r.data)
-  q.store       = stores.value[0]?.id ?? ''
   await search()                            // デフォルト＝本日
 })
 
@@ -42,8 +44,13 @@ watch(() => q.period, newVal => {
 async function search () {
   /* ① 予約一覧 */
   const listParams = buildListParams()
-  rows.value = await api.get('reservations/', { params: listParams })
-                       .then(r => r.data)
+  rows.value = await api.get('reservations/', {
+    params: { ...listParams,
+      with_entries : 1,
+      with_options : 1,
+      with_charges : 1
+    }
+  }).then(r => r.data)
 
   /* ② 指定期間サマリー（total）*/
   const sumParams  = buildSumParams()
@@ -56,10 +63,9 @@ async function search () {
   }
 
   /* ③ 今日・今月サマリー（store のみ固定）*/
-  const storeSum = await api.get('sales/summary/', { params: { store: q.store } })
-                            .then(r => r.data)
-  summary.today = storeSum.today_total
-  summary.month = storeSum.month_total
+  const storeSum = await api.get('sales/summary/', { params: q.store ? { store: q.store } : {}})
+  summary.today = storeSum.today_total  ?? 0 
+  summary.month = storeSum.month_total ?? 0
 }
 
 /* ──────────────── 一覧用パラメータ ────────────────
@@ -67,7 +73,8 @@ async function search () {
 function buildListParams () {
   const today  = dayjs().format('YYYY-MM-DD')
   const monday = dayjs().startOf('week').add(1, 'day')   // ISO 週始め
-  const p = { store: q.store }
+  const p = {}
+    if (q.store) p.store = q.store
 
   switch (q.period) {
     case 'today':
@@ -125,14 +132,22 @@ function buildSumParams () {
 
 
 <template>
-<div class="container-md py-4">
+<div class="sales container-md py-4">
 
   <!-- ── サマリー ── -->
-<div class="alert alert-primary d-flex flex-column flex-md-row gap-2 justify-content-between">
-
-  <div>本日の総売上：<strong>¥{{ summary.today.toLocaleString() }}</strong></div>
-  <div>今月の総売上：<strong>¥{{ summary.month.toLocaleString() }}</strong></div>
-  <div>指定期間合計：<strong>¥{{ summary.period?.toLocaleString?.() || '–' }}</strong></div>
+<div class="d-flex gap-2 summary">
+  <div class="item">
+    <span class="head">本日の総売上</span>
+    <span class="cont">¥{{ (summary.today  ?? 0).toLocaleString() }}</span>
+  </div>
+  <div class="item">
+    <span class="head">今月の総売上</span>
+    <span class="cont">¥{{ (summary.month ?? 0).toLocaleString() }}</span>
+  </div>
+  <div class="item">
+    <span class="head">指定期間合計</span>
+    <span class="cont">¥{{ summary.period?.toLocaleString?.() || '–' }}</span>
+  </div>
 
 </div>
 
@@ -194,7 +209,7 @@ function buildSumParams () {
       <tr>
         <th>日付</th><th>開始</th><th>キャスト</th><th>顧客</th>
         <th class="text-end">見積</th><th class="text-end">受取</th>
-        <th class="text-end">差額</th>
+        <th class="text-end">差額</th><th>リンク</th>
       </tr>
     </thead>
     <tbody>
@@ -204,11 +219,12 @@ function buildSumParams () {
         <td>{{ r.cast_names?.join(', ') }}</td>
         <td>{{ r.customer_name }}</td>
 
-        <td class="text-end">{{ (r.expected_amount ?? 0).toLocaleString() }}</td>
+        <td class="text-end">{{ (r.expected_total  ?? r.expected_amount ?? 0).toLocaleString() }}</td>
         <td class="text-end">{{ (r.received_amount ?? 0).toLocaleString() }}</td>
         <td class="text-end">
-          {{ ((r.received_amount ?? 0) - (r.expected_amount ?? 0)).toLocaleString() }}
+          {{ ((r.received_amount ?? 0) - (r.expected_total  ?? r.expected_amount ?? 0)).toLocaleString() }}
         </td>
+        <td><button class="btn btn-link p-0" @click="router.push(`/reservations/${r.id}`)">詳細</button></td>
       </tr>
     </tbody>
   </table>

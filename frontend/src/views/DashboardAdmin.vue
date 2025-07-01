@@ -117,10 +117,9 @@ async function handleSaved () {
        class="modal fade"
        tabindex="-1"
        @hidden.bs.modal="handleHide">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-fullscreen p-4">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">予約詳細</h5>
           <button class="btn-close" data-bs-dismiss="modal"></button>
         </div>
 

@@ -4,6 +4,9 @@ from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from django.templatetags.static import static
 from django.utils import timezone
+from django.db.models import Sum
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
 
 
 # ---------- 共通 ──────────
@@ -250,14 +253,32 @@ class Reservation(TimeStamped):
 		charges	 = sum((c.amount		  or 0) for c  in self.charges.all())
 		return lines + charges + self.manual_extra_price
 
+	def expected_cash_on_hand(self) -> int:
+		"""
+		コース・オプション・延長  ＋ 手入力売上 － 手入力経費
+		(= お客さまから回収済みで、まだ店に入金していないはずの現金)
+		"""
+		return self.expected_amount + self.total_revenue() - self.total_expense()
+
 	# 受取額が変更されたら差額フラグを更新
 	def save(self, *args, **kwargs):
-		# ❶ まず普通に保存して PK を確定
-		super().save(*args, **kwargs)
+		super().save(*args, **kwargs)	# ❶ まず通常保存
 
-		# ❷ 子テーブルが揃ってから差額フラグを再計算
-		self.discrepancy_flag = (self.received_amount != self.expected_amount)
+		# ❷ ManualEntry を含めた「現金勘定」で照合
+		self.discrepancy_flag = (
+			self.received_amount != self.expected_cash_on_hand()
+		)
 		super().save(update_fields=["discrepancy_flag"])
+
+	@property
+	def expected_total(self):
+		option = self.charges.filter(kind='OPTION').aggregate(
+			s=Sum('amount'))['s'] or 0
+		revenue = self.manual_entries.filter(entry_type='revenue').aggregate(
+			s=Sum('amount'))['s'] or 0
+		expense = self.manual_entries.filter(entry_type='expense').aggregate(
+			s=Sum('amount'))['s'] or 0
+		return (self.expected_amount or 0) + revenue - expense
 
 
 	class Meta:
@@ -354,6 +375,11 @@ class ReservationCharge(TimeStamped):
 		if self.kind == 'EXTEND' and not self.extend_course_id:
 			raise ValidationError({'extend_course': '延長コースを選んでください'})
 
+	def save(self, *args, **kwargs):
+		# OPTION かつ amount 未入力ならデフォルト代入
+		if self.kind == self.Kind.OPTION and self.amount is None and self.option_id:
+			self.amount = self.option.default_price
+		super().save(*args, **kwargs)
 
 class CashFlow(TimeStamped):
 	class Type(models.TextChoices):
@@ -486,3 +512,11 @@ class ManualEntry(models.Model):
 
 	class Meta:
 		ordering = ["id"]
+
+
+
+@receiver([post_save, post_delete], sender=ManualEntry)
+def recalc_discrepancy_on_manual(sender, instance, **kwargs):
+	reservation = instance.reservation
+	# Reservation.save() 内で discrepancy_flag を自動更新
+	reservation.save(update_fields=[])   # フィールドは再計算のみ

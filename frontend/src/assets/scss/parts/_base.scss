@@ -1,6 +1,12 @@
 @use '../global/global' as *;
 
 
+button{
+	background:unset;
+	border: unset;
+	@include flex();
+}
+
 .cast-icon{
 	width: 24px;
 	height: 24px;
@@ -9,7 +15,9 @@
 	object-position: top center;
 }
 
-
+.multiselect__single{
+	@include fs(12);
+}
 
 .btn-new {
 	@include flex();

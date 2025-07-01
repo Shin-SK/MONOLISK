@@ -1,0 +1,22 @@
+@use '../global/global' as *;
+
+
+.sales{
+	.summary{
+		margin-bottom: 16px;
+		.item{
+			background-color: white;
+			border-radius: 16px;
+			padding: 16px;
+			.head{
+				display: block;
+				margin-bottom: 8px;
+				font-weight: bold;
+			}
+			.cont{
+				@include fs(20);
+				font-weight: bold;
+			}
+		}
+	}
+}

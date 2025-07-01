@@ -156,12 +156,34 @@ class ReservationCastSerializer(serializers.ModelSerializer):
 
 
 class ReservationChargeSerializer(serializers.ModelSerializer):
+	amount = serializers.IntegerField(allow_null=True, required=False)
+	price  = serializers.SerializerMethodField()  # 旧フロント互換
 	option_name = serializers.CharField(source='option.name', read_only=True)
+
+	def get_price(self, obj):
+		return obj.amount or obj.option.default_price
+
+
+	def _sync_charges(self, reservation, charges_data):
+		ReservationCharge.objects.filter(reservation=reservation).delete()
+		for ch in charges_data:
+			price = ch.get("amount")
+			if price is None and ch["kind"] == "OPTION" and ch.get("option"):
+				price = ch["option"].default_price		 # ここで補完
+			ReservationCharge.objects.create(
+				reservation=reservation,
+				kind=ch["kind"],
+				option=ch.get("option"),
+				extend_course=ch.get("extend_course"),
+				amount=price,
+			)
+
 
 	class Meta:
 		model  = ReservationCharge
-		read_only_fields = ('reservation',)
 		fields = '__all__'
+		read_only_fields = ('reservation',)
+
 
 class CashFlowSerializer(serializers.ModelSerializer):
 	class Meta: model = CashFlow; fields = '__all__'
@@ -208,6 +230,11 @@ class ReservationSerializer(serializers.ModelSerializer):
 	payments	   = PaymentSerializer(many=True, required=False)
 	manual_entries = ManualEntrySerializer(many=True, required=False)
 	pickup_address = serializers.SerializerMethodField() #送迎住所を１本化
+	customer_memo = serializers.CharField(		  # ★追加
+		source="customer.memo", read_only=True
+	)
+	expected_total = serializers.IntegerField(read_only=True)
+
 
 
 	class Meta:
@@ -216,7 +243,7 @@ class ReservationSerializer(serializers.ModelSerializer):
 		read_only_fields = (
 			"store_name", "customer_name", "driver_name",
 			"cast_names", "course_minutes", "expected_amount","customer_address",
-			"pickup_address",
+			"pickup_address", "customer_memo", 'store',
 		)
 
 	def get_pickup_address(self, obj):
@@ -365,6 +392,16 @@ class ReservationSerializer(serializers.ModelSerializer):
 			)
 
 
+	def _infer_store(self, casts_data):
+		"""キャストから店舗を推定（全員同一店舗なら OK）"""
+		store_ids = {c["cast_profile"].store_id for c in casts_data}
+		if len(store_ids) == 1:
+			return Store.objects.get(id=store_ids.pop())
+		raise serializers.ValidationError(
+			{"store": "店舗を指定してください（キャストが複数店舗に分かれています）"}
+		)
+
+
 	# --- ReservationSerializer の create() をまるっと差し替え ----------
 	@transaction.atomic
 	def create(self, validated_data):
@@ -376,6 +413,8 @@ class ReservationSerializer(serializers.ModelSerializer):
 		"""
 		drivers_data = validated_data.pop("drivers", [])
 		casts_data   = validated_data.pop("casts",   [])
+		if not validated_data.get("store"):
+			validated_data["store"] = self._infer_store(casts_data)
 		charges_data = validated_data.pop("charges", [])
 		payments_data = validated_data.pop("payments", [])
 		manual_data   = validated_data.pop("manual_entries", [])
@@ -499,6 +538,8 @@ class ReservationSerializer(serializers.ModelSerializer):
 		rank = leader_cast.cast_profile.rank
 		blocks = extend_minutes // 30
 		return blocks * rank.extend_price_30
+
+
 
 
 class CustomerReservationSerializer(ReservationSerializer):

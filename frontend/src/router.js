@@ -23,7 +23,7 @@ import CustomerForm          from '@/views/CustomerForm.vue'
 import CastList              from '@/views/CastList.vue'
 import CastForm              from '@/views/CastForm.vue'
 import UserProfileEdit              from '@/views/UserProfileEdit.vue'
-import ClosingList           from '@/views/ClosingList.vue'
+import Sales           from '@/views/Sales.vue'
 
 const routes = [
   { path: '/', redirect: '/dashboard' },
@@ -47,7 +47,7 @@ const routes = [
       { path: 'casts/new',            component: CastForm },
       { path: 'casts/:id',            component: CastForm },
       { path: 'shifts', component: () => import('@/views/ShiftPlanAdmin.vue') },
-      { path: 'closing',              component: ClosingList },
+      { path: 'sales',              component: Sales },
     ],
   },
 
