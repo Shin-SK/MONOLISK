@@ -51,7 +51,7 @@ watch([year, store], fetchYearly)
 
   <!-- 月別テーブル -->
   <div class="table-responsive">
-    <table class="table table-sm align-middle">
+    <table class="table table-sm align-middle table-striped">
       <thead class="table-dark">
         <tr>
           <th>月</th>

@@ -44,7 +44,7 @@ watch([date, store], fetchPL)
     </div>
 
     <!-- 表 -->
-    <table v-if="row" class="table table-bordered w-100">
+    <table v-if="row" class="table table-striped w-100">
       <thead class="table-dark text-center">
         <tr>
           <th width="130">項目</th>
@@ -60,7 +60,7 @@ watch([date, store], fetchPL)
       <tfoot>
         <tr class="fw-bold"
             :class="row.gross_profit < 0 ? 'text-danger' : ''">
-          <td class="text-center">粗利益</td>
+          <td class="">粗利益</td>
           <td class="text-end">{{ yen(row.gross_profit) }}</td>
         </tr>
       </tfoot>

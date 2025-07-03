@@ -1,0 +1,22 @@
+@use '../global/global' as *;
+
+
+.pl{
+	.summary-area{
+		display: flex;
+		gap: 16px;
+		align-items: center;
+		padding: 40px 0px 16px;
+		.box{
+			padding: 24px;
+			@include flex();
+			flex-direction: column;
+			border-radius: 16px;
+			background-color: white;
+			.number{
+				@include fs(20);
+				font-weight: bold;
+			}
+		}
+	}
+}

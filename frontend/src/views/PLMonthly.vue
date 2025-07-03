@@ -39,9 +39,38 @@ watch([yearMonth, store], fetchData)
 </script>
 
 <template>
-<div class="container-fluid py-4">
-  <h1 class="h4 mb-3">マンスリー P/L</h1>
+<div class="pl pl-monthly container-fluid py-4">
+  <h1 class="h4 mb-3">月次P/L</h1>
 
+
+  <div class="summary-area">
+
+    <div class="box">
+      <div class="head">粗利益</div>
+      <div class="number">{{ $yen(total.gross_profit) }}</div>
+    </div>
+
+    <div class="box">
+      <div class="head">売上</div>
+      <div class="number">{{ $yen(total.sales_total) }}</div>
+    </div>
+
+    <div class="box">
+      <div class="head">キャスト人件費</div>
+      <div class="number">{{ $yen(total.cast_labor) }}</div>
+    </div>
+
+    <div class="box">
+      <div class="head">ドライバー人件費</div>
+      <div class="number">{{ $yen(total.driver_labor) }}</div>
+    </div>
+
+    <div class="box">
+      <div class="head">カスタム経費</div>
+      <div class="number">{{ $yen(total.custom_expense) }}</div>
+    </div>
+
+  </div>
   <!-- フィルタ UI -->
   <div class="d-flex gap-3 mb-3 align-items-end">
     <div>
@@ -59,7 +88,7 @@ watch([yearMonth, store], fetchData)
 
   <!-- 明細テーブル -->
   <div class="table-responsive">
-    <table class="table table-sm align-middle">
+    <table class="table table-sm align-middle table-striped">
       <thead class="table-dark">
         <tr>
           <th class="text-nowrap">日付</th>
