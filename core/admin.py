@@ -9,7 +9,8 @@ from .models import (
 	Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
 	CastProfile, CastCoursePrice, CastOption,
 	Driver, Customer, Performer,
-	Reservation, ReservationCast, ReservationCharge, CashFlow
+	Reservation, ReservationCast, ReservationCharge, CashFlow, DriverShift,
+	ReservationDriver, CastRate ,DriverRate
 )
 
 from .resources import RankCourseRes
@@ -85,6 +86,12 @@ class CastProfileRes(resources.ModelResource):
 		model = CastProfile
 		import_id_fields = ("id",)
 
+# CastRate を Cast 内で編集する用インライン
+class CastRateInline(admin.TabularInline):
+    model = CastRate
+    extra = 0
+    fields = ("hourly_rate", "commission_pct", "effective_from")
+    ordering = ("-effective_from",)
 # ───────── 登録はこれ 1 つだけ ───────────
 @admin.register(CastProfile)
 class CastProfileAdmin(ImportExportModelAdmin):
@@ -96,7 +103,7 @@ class CastProfileAdmin(ImportExportModelAdmin):
 	)
 	readonly_fields = ('photo_tag',)
 	list_filter  = ("store", "rank", "price_mode")
-	inlines	  = [CastCourseInline, CastOptionInline]
+	inlines = [CastCourseInline, CastOptionInline, CastRateInline]
 
 
 	def photo_tag(self, obj):
@@ -137,10 +144,25 @@ class CashFlowAdmin(admin.ModelAdmin):
 
 
 # ---------- 顧客・ドライバー ----------
+
+
+class DriverRateInline(admin.TabularInline):
+    model = DriverRate
+    extra = 0
+    fields = ("hourly_rate", "effective_from")
+    ordering = ("-effective_from",)
+
+
 @admin.register(Driver)
 class DriverAdmin(admin.ModelAdmin):
 	list_display = ('id', 'driver_name', 'store')
 	list_filter  = ('store',)
+	search_fields = (		   # ← これを追加
+		'user__username',
+		'user__display_name',
+		'user__email',
+	)
+	inlines = [DriverRateInline]
 
 	@admin.display(description='Driver')
 	def driver_name(self, obj):
@@ -199,6 +221,7 @@ class ReservationCastInline(admin.TabularInline):
 	extra   = 0
 	# ↓ クラスを３つセット（collapse は折りたたみ表示を防ぐため無しでも可）
 	classes = ( "tab-reserve", "extrapretty", "wide")  # ★ tab-reserve に統一
+	
 
 class ReservationChargeInline(admin.TabularInline):
 	model   = ReservationCharge
@@ -215,13 +238,13 @@ class CashFlowInline(admin.TabularInline):
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
 	form = ReservationForm
-	inlines = []					  # ← インライン不要
-
-	jazzmin_form_tabs = [
-		("tab-reserve", _("予約")),   # ← インラインと同じ ID
-		("tab-money",   _("金額")),
-		("tab-extra",   _("その他")),
-	]
+	inlines = []
+	search_fields = (
+		'id',
+		'customer__name',
+		'customer__phone',
+		'store__name',
+	)
 
 	def get_form(self, request, obj=None, **kwargs):
 		form = super().get_form(request, obj, **kwargs)
@@ -239,17 +262,6 @@ class ReservationAdmin(admin.ModelAdmin):
 		('その他', {'classes': ('collapse',), 'fields': ('driver', 'status')}),
 	)
 
-
-
-	# 並び替え（タブ内の順序を保証）
-	jazzmin_section_order = (
-		'予約情報',		  # フィールドセット
-		'reservation charges', # インライン (verbose_name_plural)
-		'キャスト',			# インライン (verbose_name_plural)
-		'金額',
-		'cash flows',
-		'その他',
-	)
 
 	list_display	   = ('id', 'store', 'start_at', 'customer')
 	list_filter		= ('store', 'status')
@@ -280,31 +292,66 @@ class ReservationAdmin(admin.ModelAdmin):
 		return obj.driver  # Driver.__str__() でユーザー名を返している
 
 
-
-	admin.site.index_template = "admin/custom_index.html"
-
-
-
-
-
-# core/admin.py
-
 from django.contrib import admin
 from .models import ShiftPlan, ShiftAttendance
 
 @admin.register(ShiftPlan)
 class ShiftPlanAdmin(admin.ModelAdmin):
-    list_display  = ("date", "cast_profile", "store", "start_at", "end_at")
-    list_filter   = ("store", "date")
-    search_fields = ("cast_profile__stage_name",)
+	list_display  = ("date", "cast_profile", "store", "start_at", "end_at")
+	list_filter   = ("store", "date")
+	search_fields = ("cast_profile__stage_name",)
 
 @admin.register(ShiftAttendance)
 class ShiftAttendanceAdmin(admin.ModelAdmin):
-    list_display  = ("cast_profile", "checked_in", "checked_in_at", "shift_plan")
-    list_filter   = ("checked_in", "checked_in_at")
-    actions       = ["make_checkin"]
+	list_display  = ("cast_profile", "checked_in", "checked_in_at", "shift_plan")
+	list_filter   = ("checked_in", "checked_in_at")
+	actions	   = ["make_checkin"]
 
-    @admin.action(description="選択レコードを打刻済みにする")
-    def make_checkin(self, request, queryset):
-        for att in queryset:
-            att.checkin()
+	@admin.action(description="選択レコードを打刻済みにする")
+	def make_checkin(self, request, queryset):
+		for att in queryset:
+			att.checkin()
+
+
+
+@admin.register(DriverShift)
+class DriverShiftAdmin(admin.ModelAdmin):
+	list_display  = ('id', 'driver', 'date', 'clock_in_at', 'clock_out_at')
+	list_filter   = ('date', 'driver__store')
+	search_fields = ('driver__user__username', 'driver__user__display_name')
+
+
+
+@admin.register(ReservationDriver)
+class ReservationDriverAdmin(admin.ModelAdmin):
+    """PU/DO 中間テーブル（start_at / end_at は廃止済み）"""
+    list_display = (
+        'id', 'reservation', 'driver',      # 基本
+        'role', 'collected_amount', 'status',
+    )
+    list_filter  = ('role', 'status', 'driver__store')
+    autocomplete_fields = ('reservation', 'driver')
+    search_fields = (
+        'reservation__id',
+        'driver__user__username',
+        'driver__user__display_name',
+    )
+
+
+
+# core/admin.py  最後の方などに追記
+from .models import ExpenseCategory, ExpenseEntry
+
+@admin.register(ExpenseCategory)
+class ExpenseCategoryAdmin(admin.ModelAdmin):
+    list_display  = ('id', 'name', 'code', 'is_fixed', 'is_active')
+    list_filter   = ('is_fixed', 'is_active')
+    search_fields = ('name', 'code')
+    ordering      = ('code',)
+
+@admin.register(ExpenseEntry)
+class ExpenseEntryAdmin(admin.ModelAdmin):
+    list_display   = ('id', 'date', 'store', 'category', 'label', 'amount')
+    list_filter    = ('store', 'category')
+    search_fields  = ('label',)
+    date_hierarchy = 'date'

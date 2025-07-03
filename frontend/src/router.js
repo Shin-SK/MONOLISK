@@ -20,10 +20,16 @@ import CastSales          from '@/views/CastSales.vue'
 import DriverMypage        from '@/views/DriverMypage.vue'
 import CustomerList          from '@/views/CustomerList.vue'
 import CustomerForm          from '@/views/CustomerForm.vue'
-import CastList              from '@/views/CastList.vue'
-import CastForm              from '@/views/CastForm.vue'
+import AdminCastList              from '@/views/AdminCastList.vue'
+import AdminCastForm              from '@/views/AdminCastForm.vue'
+import AdminDriverList              from '@/views/AdminDriverList.vue'
+import AdminDriverForm              from '@/views/AdminDriverForm.vue'
 import UserProfileEdit              from '@/views/UserProfileEdit.vue'
 import Sales           from '@/views/Sales.vue'
+import PLMonthly           from '@/views/PLMonthly.vue'
+import PLDaily  from '@/views/PLDaily.vue'
+import PLYearly  from '@/views/PLYearly.vue'
+import ExpenseForm  from '@/views/ExpenseForm.vue'
 
 const routes = [
   { path: '/', redirect: '/dashboard' },
@@ -43,11 +49,36 @@ const routes = [
       { path: 'customers',            component: CustomerList },
       { path: 'customers/new',        component: CustomerForm },
       { path: 'customers/:id',        component: CustomerForm },
-      { path: 'casts',                component: CastList },
-      { path: 'casts/new',            component: CastForm },
-      { path: 'casts/:id',            component: CastForm },
-      { path: 'shifts', component: () => import('@/views/ShiftPlanAdmin.vue') },
-      { path: 'sales',              component: Sales },
+      { path: 'casts',                component: AdminCastList },
+      { path: 'casts/new',            component: AdminCastForm },
+      { path: 'casts/:id',            component: AdminCastForm },
+      { path: 'drivers',                component: AdminDriverList },
+      { path: 'drivers/new',            component: AdminDriverForm },
+      { path: 'drivers/:id',            component: AdminDriverForm },
+      {
+        path: '/driver-shifts',               // 一覧
+        name: 'driver-shift-list',
+        component: () => import('@/views/DriverShiftList.vue')
+      },
+      {
+        path: '/driver-shifts/driver/:driverId(\\d+)',   // ★NEW
+        name: 'driver-shift-by-driver',
+        component: () => import('@/views/DriverShift.vue'),
+        props: true   // → route.params.driverId で受け取れる
+      },
+      {
+        path: '/driver-shifts/:shiftId(\\d+)',   // id? → shiftId 固定
+        name: 'driver-shift-detail',
+        component: () => import('@/views/DriverShift.vue'),
+        props: true
+      },
+      { path: 'cast-shifts', component: () => import('@/views/CastShift.vue') },
+      { path: 'sales', component: Sales },
+      /* ---------- PL ---------- */
+      { path: '/pl/monthly', component: PLMonthly },
+      { path: '/pl/daily', component: PLDaily },
+      { path: '/pl/yearly', component: PLYearly },
+      { path: '/expense/form', component: ExpenseForm },
     ],
   },
 
@@ -93,12 +124,18 @@ const routes = [
 
   /* ---------- 認証 ---------- */
   { path: '/login', component: Login },
+
+
 ]
 
 const router = createRouter({
   history: createWebHistory(),
   routes,
 })
+
+
+
+
 
 /* ---- ルートガード（ほぼ元のまま／親メタを見るだけ） ---- */
 router.beforeEach(async (to, _from, next) => {

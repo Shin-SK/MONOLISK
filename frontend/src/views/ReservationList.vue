@@ -133,7 +133,7 @@ onMounted(async () => {
 
 
 <template>
-<div class="ReservationList container-md py-4">
+<div class="ReservationList container-fluid py-4">
 	<h1 class="h3">予約一覧</h1>
 
 <!-- ReservationList.vue ― 検索フォーム -->

@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_nested.routers import NestedDefaultRouter
 from . import views
 from .views_pricing import PricingAPIView
-from .views import SalesSummary
+from .views import SalesSummary, DriverShiftViewSet, ExpenseCategoryViewSet ,ExpenseEntryViewSet, DailyPLView, MonthlyPLView, CastRateViewSet, DriverRateViewSet, YearlyPLView
 
 router = DefaultRouter()
 router.register(r'stores',               views.StoreViewSet)
@@ -22,6 +22,11 @@ router.register(r'cast-profiles',        views.CastProfileViewSet, basename='cas
 router.register(r"shift-plans",       views.ShiftPlanViewSet)
 router.register(r"shift-attendances", views.ShiftAttendanceViewSet, basename="shiftattendance")
 router.register(r"reservation-drivers", views.ReservationDriverViewSet)
+router.register(r"driver-shifts",  views.DriverShiftViewSet, basename='driver-shift')
+router.register(r'expense-categories', ExpenseCategoryViewSet)
+router.register(r'expenses', ExpenseEntryViewSet)
+router.register(r'cast-rates',   views.CastRateViewSet,   basename='cast-rate')
+router.register(r'driver-rates', views.DriverRateViewSet, basename='driver-rate')
 
 # ── Customer → Addresses のネスト ──
 addresses_router = NestedDefaultRouter(router, r'customers', lookup='customer')
@@ -32,4 +37,8 @@ urlpatterns = [
 	*addresses_router.urls,
 	path('pricing/', PricingAPIView.as_view(), name='pricing'),
 	path('sales/summary/', SalesSummary.as_view(), name='sales-summary'),
+	path('pl/daily/',   DailyPLView.as_view()),
+    path('pl/monthly/', MonthlyPLView.as_view()),
+	path('pl/monthly/',  MonthlyPLView.as_view()),
+	 path('pl/yearly/',   YearlyPLView.as_view()),
 ]

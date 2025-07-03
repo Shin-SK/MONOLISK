@@ -53,7 +53,8 @@ const form = reactive({
   pay_card:0,  pay_cash:0,
   revenues:[{label:'',amount:0}],
   expenses:[{label:'',amount:0}],
-  extend_blocks:0
+  extend_blocks:0,
+  change_amount:''
 })
 
 /* ──────────────── マスタ ──────────────── */
@@ -110,6 +111,7 @@ async function fetchReservation () {
     driver_DO   : driverById(res.drivers?.find(d=>d.role==='DO')?.driver),
     deposited_amount: res.deposited_amount ?? 0,
     received_amount : res.received_amount  ?? 0,
+	change_amount    : res.change_amount ?? 0,
     reservation_type: res.reservation_type,
     pay_card: res.payments.find(p=>p.method==='card')?.amount || 0,
     pay_cash: res.payments.find(p=>p.method==='cash')?.amount || 0
@@ -285,6 +287,7 @@ const payload = {
   deposited_amount : form.deposited_amount,
   received_amount  : form.received_amount,
   extend_blocks    : form.extend_blocks,
+  change_amount    : form.change_amount || 0,
 
   /* キャスト × コース */
   casts   : castIds.map(id => ({ cast_profile: id, course: form.course })),
@@ -837,7 +840,6 @@ watch(
 			</div>
 
 			<div class="receive-area">
-				<!-- テンプレート：受取と入金の 2 つ表示 -->
 				<div class="wrap">
 					<div class="area">
 						<div class="h5">受取金</div>
@@ -846,6 +848,14 @@ watch(
 							class="form-control"
 							v-model.number="form.received_amount"
 							min="0"
+						/>
+					</div>
+					<div class="area">
+						<div class="h5">お釣り</div>
+						<input
+							v-model="form.change_amount"
+							type="number"
+							class="form-control"
 						/>
 					</div>
 					<div class="area">
@@ -866,20 +876,6 @@ watch(
 		</div><!-- form-area -->
 	</div><!-- from-admin__wrap -->
 	</div><!-- form-admin -->
-
-<!-- 顧客（電話検索） -->
-
-	<!-- ◆ 店舗選択 ◆ -->
-
-
-
-
-
-
-
-
-
-
 
 
 </div>

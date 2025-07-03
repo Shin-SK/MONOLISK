@@ -148,6 +148,67 @@ export const checkOut = (id, at) =>
   api.post(`shift-attendances/${id}/checkout/`, { at }).then(r => r.data);
 
 
+// ドライバー勤怠
+
+export const getDriver = (id) =>
+  api.get(`drivers/${id}/`).then(r => r.data)
+
+export const getDriverShift = shiftId =>
+  api.get(`driver-shifts/${shiftId}/`).then(r => r.data)
+
+/* ★ 一覧（STAFF 権限で全員分） */
+export const getAllDriverShifts = (params = {}) =>
+  api.get('driver-shifts/', { params }).then(r => r.data)
+
+export const clockIn  = (driverId, floatStart) =>
+  api.post(`drivers/${driverId}/clock_in/`, { float_start: floatStart })
+     .then(r => r.data)
+
+export const clockOut = (shiftId, payload) =>
+  api.patch(`driver-shifts/${shiftId}/clock_out/`, payload).then(r => r.data)
+
+
+
+// 経費
+export const createExpenseEntry  = payload      => api.post('expenses/',      payload).then(r => r.data);
+export const updateExpenseEntry  = (id, payload) => api.patch(`expenses/${id}/`, payload).then(r => r.data);
+
+export const deleteExpenseEntry  = id           => api.delete(`expenses/${id}/`);
+
+export const getExpenseEntries = params =>
+  api.get('expenses/', { params }).then(r => r.data);
+
+export const getExpenseCategories = (params = {}) =>
+  api.get('expense-categories/', { params }).then(r => r.data);
+
+
+/* ---------- P/L API（デイリー／マンスリー／イヤーリー） ---------- */
+
+/**
+ * デイリー P/L
+ *   date  : 'YYYY-MM-DD'
+ *   store : 店舗ID もしくは '' (全店)
+ */
+export const getDailyPL = (date, store = '') =>
+  api.get('pl/daily/', { params: { date, store } }).then(r => r.data)
+
+/**
+ * マンスリー P/L
+ *   month : 'YYYY-MM'
+ */
+export const getMonthlyPL = (month, store = '') =>
+  api.get('pl/monthly/', { params: { month, store } }).then(r => r.data)
+
+/**
+ * イヤーリー P/L（12ヶ月サマリ）
+ *   year : 2025 など数値
+ */
+export const getYearlyPL = (year, store = '') =>
+  api.get('pl/yearly/', { params: { year, store } }).then(r => r.data)
+
+
+
+
 // 予約―ドライバー取得
 export const getReservationDrivers = params =>
   api.get('reservation-drivers/', { params }).then(r => r.data)

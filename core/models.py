@@ -167,8 +167,92 @@ class CastOption(TimeStamped):
 class Driver(TimeStamped):
 	user  = models.OneToOneField(User, on_delete=models.CASCADE)
 	store = models.ForeignKey(Store, on_delete=models.CASCADE)
+
+	# ★追加ここから
+	phone	 = models.CharField(max_length=20, null=True, blank=True, verbose_name='電話番号')
+	car_type  = models.CharField(max_length=50, null=True, blank=True, verbose_name='車種')
+	number	= models.CharField(max_length=200, null=True, blank=True, verbose_name='ナンバー')
+	memo	  = models.TextField(null=True, blank=True, verbose_name='メモ')
+	ng_casts  = models.ManyToManyField(
+		CastProfile,
+		blank=True,
+		related_name='ng_drivers',
+		verbose_name='キャスト NG'
+	)
+	# ★追加ここまで
+
 	def __str__(self):
-		return str(self.user)
+		return f"{self.user} ({self.phone or '---'})"
+
+
+# ---------- ドライバー日報 ----------
+class DriverShift(TimeStamped):
+	"""
+	1 ドライバー / 1 勤務日 (= date) につき 1 レコード想定
+	- 出勤時: float_start・clock_in_at をセット
+	- 退勤時: それ以外の入力値を PUT しつつ、差分などを保存
+	"""
+	driver  = models.ForeignKey("Driver", on_delete=models.CASCADE, related_name="shifts")
+	date	= models.DateField(db_index=True)
+
+	# --- 出勤情報 ---
+	float_start = models.PositiveIntegerField(null=True, blank=True, verbose_name="出勤時釣り銭")
+	clock_in_at = models.DateTimeField(null=True, blank=True)
+
+	# --- 自動計算系（退勤直前にサーバ側で上書き保存しても OK） ---
+	total_received = models.PositiveIntegerField(default=0, verbose_name="総受取金")
+	used_float	 = models.PositiveIntegerField(default=0, verbose_name="使用釣り銭")
+	expenses	   = models.PositiveIntegerField(default=0, verbose_name="経費")
+
+	# --- 入力系（退勤フォーム） ---
+	actual_cash	= models.PositiveIntegerField(null=True, blank=True, verbose_name="実際の所持金")
+	actual_deposit = models.PositiveIntegerField(null=True, blank=True, verbose_name="店舗入金額")
+	float_end	  = models.PositiveIntegerField(null=True, blank=True, verbose_name="締め釣り銭")
+
+	diff_reason	= models.TextField(blank=True)
+	manager_checked= models.BooleanField(default=False)
+
+	clock_out_at   = models.DateTimeField(null=True, blank=True)
+
+	total_received = models.IntegerField(default=0)
+
+	# ── 計算プロパティ ────────────────────
+	@property
+	def expected_deposit(self) -> int:
+		return (self.total_received or 0) - (self.used_float or 0) - (self.expenses or 0)
+
+	@property
+	def expected_cash(self) -> int:
+		return self.expected_deposit + (self.float_end or 0)
+
+	@property
+	def diff(self) -> int:
+		"""実際の所持金との差額（プラス＝余り / マイナス＝不足）"""
+		if self.actual_cash is None:
+			return 0
+		return self.actual_cash - self.expected_cash
+
+	# ── 表示用 ────────────────────────────
+	def __str__(self):
+		return f"{self.driver} [{self.date}]"
+
+	def refresh_total(self):
+		from django.db.models import Sum
+		from .models import ReservationDriver
+
+		total = (ReservationDriver.objects
+				 .filter(driver=self.driver,
+						 start_at__date=self.date,
+						 role=ReservationDriver.Role.DO)
+				 .aggregate(s=Sum('collected_amount'))['s'] or 0)
+		self.total_received = total
+
+	class Meta:
+		unique_together = ("driver", "date")
+		verbose_name = "ドライバー日報"
+		verbose_name_plural = "ドライバー日報"
+
+
 
 # ---------- 顧客 ----------
 class Customer(TimeStamped):
@@ -219,6 +303,7 @@ class Reservation(TimeStamped):
 	status	= models.CharField(max_length=10, choices=Status.choices, default=Status.BOOKED , verbose_name='ステータス')
 	manual_extra_price = models.IntegerField(default=0, verbose_name='延長料金')
 	received_amount   = models.IntegerField(null=True, blank=True, verbose_name='受取金')
+	change_amount   = models.IntegerField(null=True, blank=True, verbose_name='お釣り')
 	discrepancy_flag  = models.BooleanField(default=False)
 	deposited_amount = models.PositiveIntegerField(default=0)
 	address_text	= models.CharField(max_length=255, null=True, blank=True,)
@@ -234,6 +319,7 @@ class Reservation(TimeStamped):
 	reservation_type = models.CharField(
 		max_length=10, choices=RES_TYPE_CHOICES, default=TYPE_NORMAL
 	)
+
 
 	# ───────── 合計ヘルパ ─────────
 	def total_revenue(self) -> int:
@@ -445,10 +531,6 @@ class ShiftAttendance(models.Model):
 		return f"{self.cast_profile} @ {self.checked_in_at or '---'}"
 
 
-
-
-
-# 既存 import 群のあとに追記
 class ReservationDriver(models.Model):
 	"""予約 1 件に対して最大 2 行（PU / DO or BOTH）"""
 	class Role(models.TextChoices):
@@ -471,8 +553,6 @@ class ReservationDriver(models.Model):
 	role		  = models.CharField(
 		max_length=2, choices=Role.choices, default=Role.PICK_UP
 	)
-	start_at	  = models.DateTimeField(null=True, blank=True)
-	end_at		= models.DateTimeField(null=True, blank=True)
 	collected_amount = models.PositiveIntegerField(
 		null=True, blank=True, help_text="DO 時の現金回収額"
 	)
@@ -481,8 +561,12 @@ class ReservationDriver(models.Model):
 	)
 
 	class Meta:
-		unique_together = ("reservation", "role")  # PU は 1 行、DO は 1 行
-		ordering = ["start_at", "role"]
+		constraints = [
+			models.UniqueConstraint(
+				fields=("reservation", "driver", "role"),
+				name="unique_reservation_driver_role",
+			)
+		]
 
 	def __str__(self):
 		return f"{self.reservation_id}:{self.get_role_display()} by {self.driver}"
@@ -520,3 +604,85 @@ def recalc_discrepancy_on_manual(sender, instance, **kwargs):
 	reservation = instance.reservation
 	# Reservation.save() 内で discrepancy_flag を自動更新
 	reservation.save(update_fields=[])   # フィールドは再計算のみ
+
+# ────────────────────────────────────────────────────────────
+# PL
+# ────────────────────────────────────────────────────────────
+
+
+# ────────────────────────────────────────────────────────────
+# 1) 時給履歴
+# ────────────────────────────────────────────────────────────
+
+class CastRate(models.Model):
+    cast_profile = models.ForeignKey(
+        'CastProfile', on_delete=models.CASCADE, related_name='rate_history'
+    )
+    hourly_rate   = models.PositiveIntegerField(null=True, blank=True)
+    commission_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='指名料に掛ける %'
+    )
+    effective_from = models.DateField(default=timezone.localdate)
+
+    class Meta:
+        ordering = ['cast_profile', 'effective_from']
+        unique_together = ('cast_profile', 'effective_from')
+        verbose_name = 'キャスト歩合'
+        verbose_name_plural = 'キャスト時給履歴'
+
+    def __str__(self):
+        return f"{self.cast_profile} ¥{self.hourly_rate or 0} from {self.effective_from}"
+
+
+class DriverRate(models.Model):
+    driver = models.ForeignKey('Driver', on_delete=models.CASCADE, related_name='rate_history')
+    hourly_rate   = models.PositiveIntegerField(null=True, blank=True)
+    effective_from = models.DateField(default=timezone.localdate)
+
+    class Meta:
+        ordering = ['driver', 'effective_from']
+        unique_together = ('driver', 'effective_from')
+        verbose_name = 'ドライバー時給'
+        verbose_name_plural = 'ドライバー時給履歴'
+
+    def __str__(self):
+        return f"{self.driver} ¥{self.hourly_rate or 0} from {self.effective_from}"
+
+
+# ────────────────────────────────────────────────────────────
+# 2) 経費マスタ + 個別レコード
+# ────────────────────────────────────────────────────────────
+
+class ExpenseCategory(models.Model):
+    code      = models.CharField(max_length=20, null=True, blank=True)
+    name      = models.CharField(max_length=50)
+    is_fixed  = models.BooleanField(default=True)   # ← 固定費かどうか
+    is_active = models.BooleanField(default=True)   # ← 入力候補に出すか
+
+    class Meta:
+        verbose_name = '経費科目'
+        verbose_name_plural = '経費科目'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class ExpenseEntry(models.Model):
+    date      = models.DateField()
+    store     = models.ForeignKey('Store', null=True, blank=True,
+                                  on_delete=models.SET_NULL,
+                                  help_text='NULL＝全店舗共通')
+    category  = models.ForeignKey('ExpenseCategory', on_delete=models.PROTECT)
+    label     = models.CharField(max_length=100, blank=True)
+    amount    = models.IntegerField()
+
+    class Meta:
+        verbose_name = '経費'
+        verbose_name_plural = '経費'
+        ordering = ['-date']
+
+    def __str__(self):
+        scope = self.store.name if self.store else 'ALL'
+        return f"{self.date} {scope} {self.category}: ¥{self.amount}"

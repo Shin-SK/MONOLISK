@@ -4,6 +4,8 @@ import { ref, computed, nextTick } from 'vue'
 import dayjs from 'dayjs'
 import GanttChart           from '@/components/GanttChart.vue'
 import ReservationFormAdmin from '@/views/ReservationFormAdmin.vue'
+import { Modal }   from 'bootstrap'
+import { closeSidebarThen } from '@/utils/offcanvas'
 
 const selectedId = ref(null)
 const modal      = ref(null)
@@ -25,30 +27,22 @@ const todayLabel = dayjs().format('YYYY.MM.DD (ddd)')
 
 /* ───────── モーダル  ───────── */
 async function openModal () {
-  if (!modal.value) {
-    const { Modal } = await import('bootstrap')
-    modal.value = new Modal(document.getElementById('reservationModal'))
-  }
-  modal.value.show()
+   closeSidebarThen(() => {
+     modal.value = Modal.getOrCreateInstance('#reservationModal') // ★ ここで保持
+     modal.value.show()
+   })
 }
 
 async function openNew () {
-  selectedId.value = null         // ← id を消して「新規」扱い
-  await nextTick()                // コンポーネントを差し替えてから
-  openModal()                     // モーダルを表示
+  selectedId.value = null
+  await nextTick()
+  openModal()
 }
 
-
-/* ★ async を付け、selectedId をセットしてから nextTick → show() */
 async function handleBarClick ({ reservationId }) {
-  selectedId.value = reservationId          // ① 値が入る
-  await nextTick()                           // ② DOM が updated
-
-  if (!modal.value) {                        // ③ 初回だけ import
-    const { Modal } = await import('bootstrap')
-    modal.value = new Modal(document.getElementById('reservationModal'))
-  }
-  modal.value.show()                         // ④ 表示
+  selectedId.value = reservationId
+  await nextTick()
+  openModal()
 }
 
 function handleHide () {
@@ -64,7 +58,7 @@ async function handleSaved () {
 
 <template>
   <h1 class="h2 text-center mb-5">ダッシュボード</h1>
-  <div class="dashboard-admin container-md">
+  <div class="dashboard-admin container-fluid">
     
     <!-- ─── 日付ヘッダー ─── -->
     <header class="gc-header d-flex align-items-center justify-content-between gap-3 mb-2">
@@ -128,7 +122,7 @@ async function handleSaved () {
               :key="selectedId ?? 'new'"
               :reservationId="selectedId"
               :in-modal="true"
-              @saved="handleSaved" />
+              @saved="handleSaved"/>
         </div>
       </div>
     </div>

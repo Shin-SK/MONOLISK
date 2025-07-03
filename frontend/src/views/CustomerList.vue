@@ -38,7 +38,7 @@ function primaryAddress(c) {
 </script>
 
 <template>
-<div class="customer customer-list container-md py-4">
+<div class="customer customer-list container-fluid py-4">
 	<h1 class="h4 mb-3">顧客検索 / 登録</h1>
 
 	<!-- 検索バー -->

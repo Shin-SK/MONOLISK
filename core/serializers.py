@@ -9,7 +9,8 @@ from .models import (
 	Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
 	CastProfile, CastCoursePrice, CastOption, Driver, Customer,
 	Reservation, ReservationCast, ReservationCharge, CashFlow, CustomerAddress, ShiftPlan, ShiftAttendance,
-	ReservationDriver, Payment, ManualEntry
+	ReservationDriver, Payment, ManualEntry, DriverShift, ExpenseCategory, ExpenseEntry,
+	CastRate, DriverRate
 )
 
 # ---------- マスタ ----------
@@ -71,16 +72,66 @@ class DriverListSerializer(serializers.ModelSerializer):
 
 	class Meta:
 		model  = Driver
-		fields = ('id', 'name')
+		fields = ('id', 'name', 'phone', 'car_type', 'number')
 
 	def get_name(self, obj):
 		return obj.user.display_name or obj.user.username
 
 
 class DriverSerializer(serializers.ModelSerializer):
-	class Meta:
-		model  = Driver
-		fields = '__all__'
+    ng_casts = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=CastProfile.objects.all(),
+        allow_null=True, required=False
+    )
+    name = serializers.SerializerMethodField()
+    user_name = serializers.CharField(
+        source='user.display_name', read_only=True)
+
+    def get_name(self, obj):
+        return obj.user.display_name or obj.user.username
+
+    class Meta:
+        model  = Driver
+        fields = (
+            'id', 'user', 'store',
+            'phone', 'car_type', 'number', 'memo',
+            'ng_casts',
+            'user_name', 'name',
+        )
+        read_only_fields = ('user_name',)
+
+
+
+class DriverShiftSerializer(serializers.ModelSerializer):
+    # サーバ側で算出 → read_only
+    expected_deposit = serializers.IntegerField(read_only=True)
+    expected_cash    = serializers.IntegerField(read_only=True)
+    diff             = serializers.IntegerField(read_only=True)
+    driver_name = serializers.CharField(          # ★追加
+        source='driver.user.display_name', read_only=True)
+    store_name = serializers.CharField(
+    source='driver.store.name', read_only=True)
+    total_received = serializers.SerializerMethodField()
+
+    def get_total_received(self, obj):
+        # DB に保存済みがあれば優先、なければ計算列
+        return obj.total_received or getattr(obj, "total_received_calc", 0)
+
+    class Meta:
+        model  = DriverShift
+        fields = (
+            'id', 'driver', 'date', 'driver_name', 'store_name',
+            'float_start', 'clock_in_at',
+            'total_received',           # ← SerializerMethodField に差し替え
+            'used_float', 'expenses',
+            'actual_cash', 'actual_deposit', 'float_end',
+            'diff_reason', 'manager_checked', 'clock_out_at',
+            'expected_deposit', 'expected_cash', 'diff',
+        )
+        read_only_fields = ('driver', 'date', 'clock_in_at', 'clock_out_at')
+
+
+
 
 # ---------- Customer ----------
 
@@ -198,7 +249,7 @@ class ReservationDriverSerializer(serializers.ModelSerializer):
 		model  = ReservationDriver
 		fields = (
 			"id", "driver", "driver_name",
-			"role", "start_at", "end_at",
+			"role",
 			"collected_amount", "status",
 		)
 		read_only_fields = ("status",)
@@ -234,6 +285,7 @@ class ReservationSerializer(serializers.ModelSerializer):
 		source="customer.memo", read_only=True
 	)
 	expected_total = serializers.IntegerField(read_only=True)
+	change_amount = serializers.IntegerField(allow_null=True, required=False)
 
 
 
@@ -371,13 +423,24 @@ class ReservationSerializer(serializers.ModelSerializer):
 		ReservationCharge.objects.filter(reservation=reservation).delete()
 
 		for ch in charges_data:
+			option_obj = None
+			if ch.get("kind") == "OPTION":
+				# int なら Option を引いてくる
+				if isinstance(ch.get("option"), int):
+					option_obj = Option.objects.get(id=ch["option"])
+				else:
+					option_obj = ch["option"]
+
+			amount = ch.get("amount")
+			if amount is None and ch["kind"] == "OPTION":
+				amount = option_obj.default_price
+
 			ReservationCharge.objects.create(
-				reservation	 = reservation,
-				kind			= ch["kind"],
-				# ★ オブジェクトを渡すように変更
-				option		  = ch.get("option"),		  # ← ここ！
-				extend_course   = ch.get("extend_course"),   # ← ここも同様
-				amount		  = ch.get("amount"),
+				reservation   = reservation,
+				kind          = ch["kind"],
+				option        = option_obj,
+				extend_course = ch.get("extend_course"),
+				amount        = amount,
 			)
 
 	def _sync_casts(self, reservation, casts_data):
@@ -608,8 +671,8 @@ class UserDetailSerializer(serializers.ModelSerializer):
 
 
 class ShiftPlanSerializer(serializers.ModelSerializer):
-	stage_name = serializers.CharField(source='cast_profile.stage_name')
-	store_name = serializers.CharField(source='cast_profile.store.name')
+	stage_name = serializers.CharField(source='cast_profile.stage_name', read_only=True)
+	store_name = serializers.CharField(source='cast_profile.store.name', read_only=True)
 	photo_url  = serializers.CharField(source='cast_profile.photo_url', read_only=True)  # ★追加
 
 	is_checked_in = serializers.BooleanField(read_only=True)
@@ -630,3 +693,66 @@ class ShiftAttendanceSerializer(serializers.ModelSerializer):
 
 
 
+
+
+
+class ExpenseCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = ExpenseCategory
+        fields = '__all__'
+
+
+class ExpenseEntrySerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    store_name    = serializers.CharField(source='store.name',   read_only=True)
+
+    class Meta:
+        model  = ExpenseEntry
+        fields = (
+            'id', 'date', 'store', 'store_name',
+            'category', 'category_name',
+            'label', 'amount',
+        )
+
+
+class DailyPLSerializer(serializers.Serializer):
+    date              = serializers.DateField()
+    sales_total       = serializers.IntegerField()
+    cast_labor        = serializers.IntegerField()
+    driver_labor      = serializers.IntegerField()
+    custom_expense    = serializers.IntegerField()
+    gross_profit      = serializers.IntegerField()
+
+class MonthlyPLSerializer(serializers.Serializer):
+    month             = serializers.CharField()      # "2025-07"
+    sales_total       = serializers.IntegerField()
+    cast_labor        = serializers.IntegerField()
+    driver_labor      = serializers.IntegerField()
+    fixed_expense     = serializers.IntegerField()
+    custom_expense    = serializers.IntegerField()
+    operating_profit  = serializers.IntegerField()
+
+
+
+
+class CastRateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = CastRate
+        fields = "__all__"
+
+class DriverRateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = DriverRate
+        fields = "__all__"
+
+class YearlyMonthSerializer(serializers.Serializer):
+    month             = serializers.CharField()   # "2025-01"
+    sales_total       = serializers.IntegerField()
+    cast_labor        = serializers.IntegerField()
+    driver_labor      = serializers.IntegerField()
+    fixed_expense     = serializers.IntegerField()
+    custom_expense    = serializers.IntegerField()
+    operating_profit  = serializers.IntegerField()
+    fixed_breakdown  = serializers.ListField(
+        child=serializers.DictField(), required=False
+    )

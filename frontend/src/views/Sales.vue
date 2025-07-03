@@ -132,7 +132,7 @@ function buildSumParams () {
 
 
 <template>
-<div class="sales container-md py-4">
+<div class="sales container-fluid py-4">
 
   <!-- ── サマリー ── -->
 <div class="d-flex gap-2 summary">

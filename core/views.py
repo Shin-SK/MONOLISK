@@ -1,5 +1,5 @@
 #veiws.py
-from rest_framework import viewsets, permissions ,filters, status
+from rest_framework import viewsets, permissions ,filters, status, mixins
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -7,27 +7,34 @@ from .filters import CustomerFilter
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from django.shortcuts import get_object_or_404
-from django.db.models import Exists, OuterRef, Q, Sum
+from django.db.models import Exists, OuterRef, Q, Sum, Subquery, IntegerField, Value, Case, When, F, DateField
+from django.db.models.functions import Coalesce
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from datetime import date, timedelta
+from calendar import monthrange
+from django.db.models.functions import TruncDate, TruncMonth
+from core.utils.pl import get_daily_pl, get_monthly_pl, get_yearly_pl
 
 from .models import (
     Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
     CastProfile, CastCoursePrice, CastOption, Driver, Customer,
-    Reservation, ReservationCast, CustomerAddress, ShiftPlan, ShiftAttendance, ReservationDriver
+    Reservation, ReservationCast, CustomerAddress, ShiftPlan, ShiftAttendance, ReservationDriver, DriverShift, ExpenseCategory, ExpenseEntry, CastRate, DriverRate
 )
 from .serializers import (
     StoreSerializer, RankSerializer, CourseSerializer, RankCourseSerializer,
     OptionSerializer, GroupOptionPriceSerializer,
     CastSerializer, CastCoursePriceSerializer, CastOptionSerializer,
     DriverSerializer, CustomerSerializer, ReservationSerializer, DriverListSerializer,
-    CustomerReservationSerializer,CustomerAddressSerializer, ShiftPlanSerializer, ShiftAttendanceSerializer, ReservationDriverSerializer
+    CustomerReservationSerializer,CustomerAddressSerializer, ShiftPlanSerializer, ShiftAttendanceSerializer, ReservationDriverSerializer ,DriverShiftSerializer,
+    ExpenseEntrySerializer, ExpenseCategorySerializer, DailyPLSerializer,
+    DriverRateSerializer, CastRateSerializer, YearlyMonthSerializer
 )
 from.filters import (
     ReservationFilter,CastProfileFilter, CustomerFilter, ShiftPlanFilter, ReservationDriverFilter
 )
-
 
 
 
@@ -87,14 +94,131 @@ class CastOptionViewSet(viewsets.ModelViewSet):
 
 
 # ---------- 顧客・ドライバー ----------
-class DriverViewSet(viewsets.ModelViewSet):
-    queryset = Driver.objects.select_related("user", "store")
-    permission_classes = [AllowAny]
 
-    def get_serializer_class(self):
-        if self.request.query_params.get("simple") == "1":
-            return DriverListSerializer
-        return DriverSerializer
+# ---------- ドライバー ----------
+class DriverViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    /api/drivers/<id>/
+        ├─ POST  clock_in/             … 出勤＆レコード新規作成
+        └─ GET   shifts/?date=2025-07-02 … その日の勤怠一覧（1件だけ想定）
+    """
+    queryset = Driver.objects.select_related('user', 'store')
+    serializer_class = DriverSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    # -- 出勤 -------------------------------------------------
+    @action(detail=True, methods=['post'])
+    def clock_in(self, request, pk=None):
+        driver = self.get_object()
+        today  = timezone.localdate()
+
+        shift, created = DriverShift.objects.get_or_create(
+            driver=driver, date=today,
+            defaults={
+                'float_start': request.data.get('float_start', 0),
+                'clock_in_at': timezone.now(),
+            }
+        )
+        ser = DriverShiftSerializer(shift)
+        return Response(ser.data, status=status.HTTP_201_CREATED)
+
+    # -- 勤怠一覧（1ドライバー分） ----------------------------
+    @action(detail=True, methods=['get'])
+    def shifts(self, request, pk=None):
+        driver = self.get_object()
+        qs = driver.shifts.all()
+        if date := request.query_params.get('date'):
+            qs = qs.filter(date=date)
+        return Response(DriverShiftSerializer(qs, many=True).data)
+
+
+
+class DriverShiftViewSet(
+        mixins.ListModelMixin,          # ★ 追加
+        mixins.RetrieveModelMixin,
+        viewsets.GenericViewSet):
+
+    """
+    /api/driver-shifts/<shift_id>/
+        └─ PATCH clock_out/ … 退勤
+    """
+    queryset = DriverShift.objects.select_related('driver__user')
+    serializer_class = DriverShiftSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends   = [DjangoFilterBackend]
+    filterset_fields  = ['date', 'driver__store', 'driver']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        # STAFF 絞り込みはそのまま
+        if not (self.request.user.is_superuser or
+                self.request.user.groups.filter(name='STAFF').exists()):
+            qs = qs.filter(driver__user=self.request.user)
+
+        # --- 集金額サブクエリ ---
+
+        rd_sub = (
+            ReservationDriver.objects
+            .filter(
+                driver_id=OuterRef("driver_id"),
+                reservation__start_at__date=OuterRef("date"),
+                role=ReservationDriver.Role.DROP_OFF,
+            )
+            .annotate(          # ★ collected_amount 優先／無ければ received_amount
+                effective_amount=Case(
+                    When(collected_amount__isnull=True,
+                        then=F("reservation__received_amount")),
+                    default=F("collected_amount"),
+                    output_field=IntegerField(),
+                )
+            )
+            .values("driver_id")
+            .annotate(s=Sum("effective_amount"))
+            .values("s")[:1]
+        )
+
+        # ★ 別名で注入
+        qs = qs.annotate(
+            total_received_calc=Coalesce(Subquery(rd_sub, output_field=IntegerField()), Value(0))
+        )
+
+        return qs.order_by('driver_id')
+
+    @action(detail=True, methods=['post'])
+    def clock_in(self, request, pk=None):
+        """
+        STAFF なら pk(=URL上の driver_id) で誰でも出勤させられる。
+        ドライバー本人は自分の pk でしか叩けない。
+        """
+        driver = self.get_object()
+
+        # 本人以外 & STAFF でない → 拒否
+        if driver.user != request.user \
+        and not (request.user.is_superuser or request.user.groups.filter(name='STAFF').exists()):
+            return Response({"detail": "権限がありません"}, status=403)
+
+        today = timezone.localdate()
+        shift, _ = DriverShift.objects.get_or_create(
+            driver=driver, date=today,
+            defaults={
+                "float_start": request.data.get("float_start", 0),
+                "clock_in_at": timezone.now(),
+            }
+        )
+        return Response(DriverShiftSerializer(shift).data, status=201)
+
+
+    @action(detail=True, methods=['patch'])
+    def clock_out(self, request, pk=None):
+        shift = self.get_object()
+        serializer = self.get_serializer(
+            shift, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(clock_out_at=timezone.now())
+
+        return Response(self.get_serializer(shift).data)
+
 
 
 class CustomerViewSet(viewsets.ModelViewSet):
@@ -392,3 +516,90 @@ class SalesSummary(APIView):
             'today_total': today_total,
             'month_total': month_total
         })
+
+
+
+
+class ExpenseCategoryViewSet(viewsets.ModelViewSet):
+    queryset = ExpenseCategory.objects.filter(is_active=True)
+    serializer_class = ExpenseCategorySerializer
+    permission_classes = [permissions.IsAuthenticated]  # 適宜
+
+class ExpenseEntryViewSet(viewsets.ModelViewSet):
+    """
+    /api/expenses/?date=2025-07-03&store=<id>
+    """
+    queryset = ExpenseEntry.objects.select_related('category', 'store')
+    serializer_class = ExpenseEntrySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends   = [DjangoFilterBackend]
+    filterset_fields  = ['date', 'store', 'category']
+
+
+class CastRateViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    /api/cast-rates/?cast_profile=<id>
+    """
+    queryset = CastRate.objects.all()
+    serializer_class = CastRateSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends   = [DjangoFilterBackend]
+    filterset_fields  = ['cast_profile']
+
+class DriverRateViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    /api/driver-rates/?driver=<id>
+    """
+    queryset = DriverRate.objects.all()
+    serializer_class = DriverRateSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends   = [DjangoFilterBackend]
+    filterset_fields  = ['driver']
+
+
+
+class DailyPLView(APIView):
+    """
+    /api/pl/daily/?date=2025-07-03&store=<id|null>
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+         target = request.GET.get("date") or date.today().isoformat()
+         store  = request.GET.get("store")
+         data   = get_daily_pl(date.fromisoformat(target),
+                               int(store) if store else None)
+         return Response(data)
+
+
+class MonthlyPLView(APIView):
+    """
+    /api/pl/monthly/?month=2025-07&store=<id|null>
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        month_str = request.GET.get("month") or date.today().strftime("%Y-%m")
+        yyyy, mm  = map(int, month_str.split("-"))
+        store     = request.GET.get("store")
+
+        # util で日次+月次集計
+        data = get_monthly_pl(yyyy, mm, int(store) if store else None)
+        return Response(data)
+
+
+
+class YearlyPLView(APIView):
+    """
+    /api/pl/yearly/?year=2025&store=<id|null>
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        year  = int(request.GET.get("year", timezone.localdate().year))
+        store = request.GET.get("store")
+        months = get_yearly_pl(year, int(store) if store else None)
+
+        # Serializer で月ごとに整形
+        data = YearlyMonthSerializer(months, many=True).data
+        return Response({"year": year, "store": store, "months": data})
