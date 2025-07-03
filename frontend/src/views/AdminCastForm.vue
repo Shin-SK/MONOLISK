@@ -1,103 +1,166 @@
+<!-- src/views/AdminCastForm.vue など --------------------------->
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, getCastOptions, patchCastOption } from '@/api'
-import { searchCustomers, createCustomer } from '@/api'   // ★ 追加
-import { getShiftPlans } from '@/api'
+import dayjs from 'dayjs'
+import {
+  api,
+  getCastOptions, patchCastOption,
+  searchCustomers, createCustomer,
+  getShiftPlans,
+} from '@/api'
 
-const route   = useRoute()
-const router  = useRouter()
-const isEdit  = !!route.params.id
+/* ---------- ルーティング ---------- */
+const route  = useRoute()
+const router = useRouter()
+const isEdit = !!route.params.id          // id があれば「編集」
 
+/* ---------- フォーム ---------- */
 const form = ref({
-  stage_name:'', rank:'', store:'', star_count:0,
-  memo:'', ng_customers:[], price_mode:'DEFAULT'
+  stage_name  : '',
+  rank        : '',
+  store       : '',
+  star_count  : 0,
+  memo        : '',
+  ng_customers: [],
+  price_mode  : 'DEFAULT',
 })
+
+/* 歩合 (%) —— null なら未設定 */
+const commission_pct = ref(null)
+
+/* ---------- マスター ---------- */
 const options   = ref([])
-const castOpts = ref([])
 const ranks     = ref([])
 const stores    = ref([])
 const customers = ref([])
-const shifts = ref([]) 
 
+/* ---------- キャスト固有 ---------- */
+const castOpts = ref([])   // option の ON / OFF
+const shifts   = ref([])   // シフト一覧
 
-/* ---------- NG顧客検索用 ---------- */
-const kwNg     = ref('')
-const candNg   = ref([])
+/* ---------- NG 顧客検索 ---------- */
+const kwNg   = ref('')
+const candNg = ref([])
 const showCand = ref(false)
 
 const findNg = async () => {
   if (kwNg.value.length < 2) { showCand.value = false; return }
-  candNg.value = await searchCustomers(kwNg.value)
+  candNg.value  = await searchCustomers(kwNg.value)
   showCand.value = candNg.value.length > 0
 }
-
-function addNg(c) {
+function addNg (c) {
   if (!form.value.ng_customers.includes(c.id))
     form.value.ng_customers.push(c.id)
-  kwNg.value = ''
-  showCand.value = false
+  kwNg.value = ''; showCand.value = false
 }
-
-function removeNg(id) {                     // ★ 追加
+function removeNg (id) {
   form.value.ng_customers =
     form.value.ng_customers.filter(x => x !== id)
 }
-
-async function addNgNew() {
-  const name  = prompt('顧客名');        if (!name)  return
-  const phone = prompt('電話番号');      if (!phone) return
+async function addNgNew () {
+  const name  = prompt('顧客名');   if (!name)  return
+  const phone = prompt('電話番号'); if (!phone) return
   const newC  = await createCustomer({ name, phone })
   addNg(newC)
 }
 
 
-/* 取得 */
-async function fetchMasters() {
+
+/* ---------- データ取得 ---------- */
+async function fetchMasters () {
   const [opt, rks, sts, cust] = await Promise.all([
-    api.get('options/').then(r=>r.data),
-    api.get('ranks/').then(r=>r.data),
-    api.get('stores/').then(r=>r.data),
-    api.get('customers/').then(r=>r.data)
+    api.get('options/').then(r => r.data),
+    api.get('ranks/').then(r => r.data),
+    api.get('stores/').then(r => r.data),
+    api.get('customers/').then(r => r.data),
   ])
   ;[options.value, ranks.value, stores.value, customers.value] = [opt, rks, sts, cust]
 }
 
-async function fetchCast() {
+async function loadRate () {
   if (!isEdit) return
-  Object.assign(form.value,
-    await api.get(`cast-profiles/${route.params.id}/`).then(r=>r.data))
-
-	castOpts.value = await getCastOptions(route.params.id)
-  /* そのキャストの全シフト */
-  shifts.value = await getShiftPlans({ cast_profile: route.params.id })
+  const latest = await api.get('cast-rates/', {
+    params: {
+      cast_profile: route.params.id,
+      ordering    : '-effective_from',
+      limit       : 1,
+    },
+  }).then(r => r.data[0])
+  commission_pct.value = latest?.commission_pct ?? null
 }
 
+async function fetchCast () {
+  if (!isEdit) return
 
-/* Option の ON/OFF を即保存 */
-async function toggleOpt(row) {
+  Object.assign(
+    form.value,
+    await api.get(`cast-profiles/${route.params.id}/`).then(r => r.data),
+  )
+
+  castOpts.value = await getCastOptions(route.params.id)
+  shifts.value   = await getShiftPlans({ cast_profile: route.params.id })
+  await loadRate()
+}
+
+/* ---------- Option トグル ---------- */
+async function toggleOpt (row) {
   row.is_enabled = !row.is_enabled
   await patchCastOption(row.id, { is_enabled: row.is_enabled })
 }
 
-/* 保存 */
-async function save() {
+/* ---------- 保存 ---------- */
+async function save () {
   try {
-    if (isEdit)
+    /* 1) CastProfile 保存 */
+    let castId
+    if (isEdit) {
       await api.put(`cast-profiles/${route.params.id}/`, form.value)
-    else
-      await api.post('cast-profiles/', form.value)
+      castId = route.params.id
+    } else {
+      const { data } = await api.post('cast-profiles/', form.value)
+      castId = data.id
+    }
+
+    /* 2) 歩合 (%) を upsert  */
+    if (commission_pct.value !== null) {
+      const today = dayjs().format('YYYY-MM-DD')
+
+      // ── 既存を探す ─────────────────
+      const latest = await api.get('cast-rates/', {
+        params: { cast_profile: castId,
+                  effective_from: today,        // ちょうど今日付
+                  limit: 1 }
+      }).then(r => r.data[0])
+
+      if (latest) {
+        // 既に「今日付」の行がある → PATCH
+        await api.patch(`cast-rates/${latest.id}/`, {
+          commission_pct: commission_pct.value
+        })
+      } else {
+        // 無ければ INSERT
+        await api.post('cast-rates/', {
+          cast_profile  : castId,
+          commission_pct: commission_pct.value,
+          effective_from: today
+        })
+      }
+    }
+
     router.push('/casts')
-  } catch(e) {
+  } catch (e) {
     alert(e.response?.data?.detail || '保存失敗')
   }
 }
 
+/* ---------- 初期化 ---------- */
 onMounted(async () => {
   await fetchMasters()
   await fetchCast()
 })
 </script>
+
 
 <template>
 <div class="container-fluid py-4" style="max-width:640px">
@@ -123,6 +186,18 @@ onMounted(async () => {
       </select>
     </div>
   </div>
+
+  <!-- 歩合 (%) 入力 -->
+<div class="mb-3 col-md-4">
+  <label class="form-label">歩合 (%)</label>
+  <input
+    type="number"
+    v-model.number="commission_pct"
+    class="form-control"
+    min="0"
+    max="100"
+  />
+</div>
 
   <div class="mb-3">
     <label class="form-label">メモ</label>
@@ -197,9 +272,13 @@ onMounted(async () => {
     </table>
   </div>
 
-  <div class="btn btn-secondary disabled">
-    保存
-  </div>
+<button
+  type="button"
+  class="btn btn-primary"
+  @click="save"
+>
+  保存
+</button>
 
 </div>
 </template>

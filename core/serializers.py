@@ -37,6 +37,9 @@ class CastSerializer(serializers.ModelSerializer):
 	ng_customers = serializers.PrimaryKeyRelatedField(
 		many=True, queryset=Customer.objects.all(), required=False
 	)
+	photo = serializers.ImageField(
+		required=False, allow_null=True, write_only=True
+	)
 	photo_url = serializers.SerializerMethodField()
 	extend_price_30 = serializers.IntegerField(
 		source='rank.extend_price_30', read_only=True
@@ -79,56 +82,56 @@ class DriverListSerializer(serializers.ModelSerializer):
 
 
 class DriverSerializer(serializers.ModelSerializer):
-    ng_casts = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=CastProfile.objects.all(),
-        allow_null=True, required=False
-    )
-    name = serializers.SerializerMethodField()
-    user_name = serializers.CharField(
-        source='user.display_name', read_only=True)
+	ng_casts = serializers.PrimaryKeyRelatedField(
+		many=True, queryset=CastProfile.objects.all(),
+		allow_null=True, required=False
+	)
+	name = serializers.SerializerMethodField()
+	user_name = serializers.CharField(
+		source='user.display_name', read_only=True)
 
-    def get_name(self, obj):
-        return obj.user.display_name or obj.user.username
+	def get_name(self, obj):
+		return obj.user.display_name or obj.user.username
 
-    class Meta:
-        model  = Driver
-        fields = (
-            'id', 'user', 'store',
-            'phone', 'car_type', 'number', 'memo',
-            'ng_casts',
-            'user_name', 'name',
-        )
-        read_only_fields = ('user_name',)
+	class Meta:
+		model  = Driver
+		fields = (
+			'id', 'user', 'store',
+			'phone', 'car_type', 'number', 'memo',
+			'ng_casts',
+			'user_name', 'name',
+		)
+		read_only_fields = ('user_name',)
 
 
 
 class DriverShiftSerializer(serializers.ModelSerializer):
-    # サーバ側で算出 → read_only
-    expected_deposit = serializers.IntegerField(read_only=True)
-    expected_cash    = serializers.IntegerField(read_only=True)
-    diff             = serializers.IntegerField(read_only=True)
-    driver_name = serializers.CharField(          # ★追加
-        source='driver.user.display_name', read_only=True)
-    store_name = serializers.CharField(
-    source='driver.store.name', read_only=True)
-    total_received = serializers.SerializerMethodField()
+	# サーバ側で算出 → read_only
+	expected_deposit = serializers.IntegerField(read_only=True)
+	expected_cash	= serializers.IntegerField(read_only=True)
+	diff			 = serializers.IntegerField(read_only=True)
+	driver_name = serializers.CharField(		  # ★追加
+		source='driver.user.display_name', read_only=True)
+	store_name = serializers.CharField(
+	source='driver.store.name', read_only=True)
+	total_received = serializers.SerializerMethodField()
 
-    def get_total_received(self, obj):
-        # DB に保存済みがあれば優先、なければ計算列
-        return obj.total_received or getattr(obj, "total_received_calc", 0)
+	def get_total_received(self, obj):
+		# DB に保存済みがあれば優先、なければ計算列
+		return obj.total_received or getattr(obj, "total_received_calc", 0)
 
-    class Meta:
-        model  = DriverShift
-        fields = (
-            'id', 'driver', 'date', 'driver_name', 'store_name',
-            'float_start', 'clock_in_at',
-            'total_received',           # ← SerializerMethodField に差し替え
-            'used_float', 'expenses',
-            'actual_cash', 'actual_deposit', 'float_end',
-            'diff_reason', 'manager_checked', 'clock_out_at',
-            'expected_deposit', 'expected_cash', 'diff',
-        )
-        read_only_fields = ('driver', 'date', 'clock_in_at', 'clock_out_at')
+	class Meta:
+		model  = DriverShift
+		fields = (
+			'id', 'driver', 'date', 'driver_name', 'store_name',
+			'float_start', 'clock_in_at',
+			'total_received',		   # ← SerializerMethodField に差し替え
+			'used_float', 'expenses',
+			'actual_cash', 'actual_deposit', 'float_end',
+			'diff_reason', 'manager_checked', 'clock_out_at',
+			'expected_deposit', 'expected_cash', 'diff',
+		)
+		read_only_fields = ('driver', 'date', 'clock_in_at', 'clock_out_at')
 
 
 
@@ -437,10 +440,10 @@ class ReservationSerializer(serializers.ModelSerializer):
 
 			ReservationCharge.objects.create(
 				reservation   = reservation,
-				kind          = ch["kind"],
-				option        = option_obj,
+				kind		  = ch["kind"],
+				option		= option_obj,
 				extend_course = ch.get("extend_course"),
-				amount        = amount,
+				amount		= amount,
 			)
 
 	def _sync_casts(self, reservation, casts_data):
@@ -697,62 +700,62 @@ class ShiftAttendanceSerializer(serializers.ModelSerializer):
 
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):
-    class Meta:
-        model  = ExpenseCategory
-        fields = '__all__'
+	class Meta:
+		model  = ExpenseCategory
+		fields = '__all__'
 
 
 class ExpenseEntrySerializer(serializers.ModelSerializer):
-    category_name = serializers.CharField(source='category.name', read_only=True)
-    store_name    = serializers.CharField(source='store.name',   read_only=True)
+	category_name = serializers.CharField(source='category.name', read_only=True)
+	store_name	= serializers.CharField(source='store.name',   read_only=True)
 
-    class Meta:
-        model  = ExpenseEntry
-        fields = (
-            'id', 'date', 'store', 'store_name',
-            'category', 'category_name',
-            'label', 'amount',
-        )
+	class Meta:
+		model  = ExpenseEntry
+		fields = (
+			'id', 'date', 'store', 'store_name',
+			'category', 'category_name',
+			'label', 'amount',
+		)
 
 
 class DailyPLSerializer(serializers.Serializer):
-    date              = serializers.DateField()
-    sales_total       = serializers.IntegerField()
-    cast_labor        = serializers.IntegerField()
-    driver_labor      = serializers.IntegerField()
-    custom_expense    = serializers.IntegerField()
-    gross_profit      = serializers.IntegerField()
+	date			  = serializers.DateField()
+	sales_total	   = serializers.IntegerField()
+	cast_labor		= serializers.IntegerField()
+	driver_labor	  = serializers.IntegerField()
+	custom_expense	= serializers.IntegerField()
+	gross_profit	  = serializers.IntegerField()
 
 class MonthlyPLSerializer(serializers.Serializer):
-    month             = serializers.CharField()      # "2025-07"
-    sales_total       = serializers.IntegerField()
-    cast_labor        = serializers.IntegerField()
-    driver_labor      = serializers.IntegerField()
-    fixed_expense     = serializers.IntegerField()
-    custom_expense    = serializers.IntegerField()
-    operating_profit  = serializers.IntegerField()
+	month			 = serializers.CharField()	  # "2025-07"
+	sales_total	   = serializers.IntegerField()
+	cast_labor		= serializers.IntegerField()
+	driver_labor	  = serializers.IntegerField()
+	fixed_expense	 = serializers.IntegerField()
+	custom_expense	= serializers.IntegerField()
+	operating_profit  = serializers.IntegerField()
 
 
 
 
 class CastRateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model  = CastRate
-        fields = "__all__"
+	class Meta:
+		model  = CastRate
+		fields = "__all__"
 
 class DriverRateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model  = DriverRate
-        fields = "__all__"
+	class Meta:
+		model  = DriverRate
+		fields = "__all__"
 
 class YearlyMonthSerializer(serializers.Serializer):
-    month             = serializers.CharField()   # "2025-01"
-    sales_total       = serializers.IntegerField()
-    cast_labor        = serializers.IntegerField()
-    driver_labor      = serializers.IntegerField()
-    fixed_expense     = serializers.IntegerField()
-    custom_expense    = serializers.IntegerField()
-    operating_profit  = serializers.IntegerField()
-    fixed_breakdown  = serializers.ListField(
-        child=serializers.DictField(), required=False
-    )
+	month			 = serializers.CharField()   # "2025-01"
+	sales_total	   = serializers.IntegerField()
+	cast_labor		= serializers.IntegerField()
+	driver_labor	  = serializers.IntegerField()
+	fixed_expense	 = serializers.IntegerField()
+	custom_expense	= serializers.IntegerField()
+	operating_profit  = serializers.IntegerField()
+	fixed_breakdown  = serializers.ListField(
+		child=serializers.DictField(), required=False
+	)

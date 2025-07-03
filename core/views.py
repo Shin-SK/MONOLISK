@@ -96,16 +96,10 @@ class CastOptionViewSet(viewsets.ModelViewSet):
 # ---------- 顧客・ドライバー ----------
 
 # ---------- ドライバー ----------
-class DriverViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    /api/drivers/<id>/
-        ├─ POST  clock_in/             … 出勤＆レコード新規作成
-        └─ GET   shifts/?date=2025-07-02 … その日の勤怠一覧（1件だけ想定）
-    """
-    queryset = Driver.objects.select_related('user', 'store')
+class DriverViewSet(viewsets.ModelViewSet):
+    queryset = Driver.objects.select_related('user','store')
     serializer_class = DriverSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
+    permission_classes = [IsAuthenticated]
     # -- 出勤 -------------------------------------------------
     @action(detail=True, methods=['post'])
     def clock_in(self, request, pk=None):
@@ -536,26 +530,29 @@ class ExpenseEntryViewSet(viewsets.ModelViewSet):
     filterset_fields  = ['date', 'store', 'category']
 
 
-class CastRateViewSet(viewsets.ReadOnlyModelViewSet):
+class CastRateViewSet(viewsets.ModelViewSet):          # ← 読み書き可
     """
-    /api/cast-rates/?cast_profile=<id>
+    /api/cast-rates/
+        GET  ?cast_profile=<id>         … 最新レート取得
+        POST {cast_profile, commission_pct, hourly_rate?, effective_from?}
     """
     queryset = CastRate.objects.all()
     serializer_class = CastRateSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends   = [DjangoFilterBackend]
-    filterset_fields  = ['cast_profile']
+    permission_classes = [IsStaff]      # STAFF 以上なら登録可
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['cast_profile']
 
-class DriverRateViewSet(viewsets.ReadOnlyModelViewSet):
+class DriverRateViewSet(viewsets.ModelViewSet):
     """
-    /api/driver-rates/?driver=<id>
+    /api/driver-rates/
+        GET  ?driver=<id>
+        POST {driver, hourly_rate, effective_from?}
     """
     queryset = DriverRate.objects.all()
     serializer_class = DriverRateSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends   = [DjangoFilterBackend]
-    filterset_fields  = ['driver']
-
+    permission_classes = [IsStaff]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['driver']
 
 
 class DailyPLView(APIView):
