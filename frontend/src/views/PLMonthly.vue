@@ -92,6 +92,8 @@ watch([yearMonth, store], fetchData)
       <thead class="table-dark">
         <tr>
           <th class="text-nowrap">日付</th>
+          <th class="text-end">現金</th>
+          <th class="text-end">カード</th> 
           <th class="text-end">売上</th>
           <th class="text-end">キャスト人件費</th>
           <th class="text-end">ドライバー人件費</th>
@@ -102,6 +104,8 @@ watch([yearMonth, store], fetchData)
       <tbody>
         <tr v-for="d in rows" :key="d.date">
           <td class="text-nowrap">{{ d.date }}</td>
+          <td class="text-end">{{ $yen(d.sales_cash) }}</td>   <!-- ★ -->
+          <td class="text-end">{{ $yen(d.sales_card) }}</td>   <!-- ★ -->
           <td class="text-end">{{ $yen(d.sales_total) }}</td>
           <td class="text-end">{{ $yen(d.cast_labor) }}</td>
           <td class="text-end">{{ $yen(d.driver_labor) }}</td>

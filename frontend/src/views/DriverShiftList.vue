@@ -123,9 +123,11 @@ onMounted(async () => {
           </td>
 
           <td>
-            <button class="btn btn-sm btn-outline-primary" @click="goDetail(r)">
-              詳細
-            </button>
+          <router-link
+            class="btn btn-sm btn-outline-primary"
+            :to="`/driver-shifts/driver/${r.driverId}`">
+            詳細
+          </router-link>
           </td>
         </tr>
       </tbody>

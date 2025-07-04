@@ -52,7 +52,18 @@ watch([date, store], fetchPL)
         </tr>
       </thead>
       <tbody>
-        <tr><th scope="row">売上</th>             <td class="text-end">{{ yen(row.sales_total) }}</td></tr>
+      <tr>
+        <th scope="row">売上（現金）</th>
+        <td class="text-end">{{ yen(row.sales_cash) }}</td>
+      </tr>
+      <tr>
+        <th scope="row">売上（カード）</th>
+        <td class="text-end">{{ yen(row.sales_card) }}</td>
+      </tr>
+      <tr>
+        <th scope="row">売上（計）</th>
+        <td class="text-end">{{ yen(row.sales_total) }}</td>
+      </tr>
         <tr><th scope="row">キャスト人件費</th>    <td class="text-end">{{ yen(row.cast_labor) }}</td></tr>
         <tr><th scope="row">ドライバー人件費</th> <td class="text-end">{{ yen(row.driver_labor) }}</td></tr>
         <tr><th scope="row">カスタム経費</th>      <td class="text-end">{{ yen(row.custom_expense) }}</td></tr>

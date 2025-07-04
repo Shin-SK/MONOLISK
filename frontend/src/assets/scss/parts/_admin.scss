@@ -3,6 +3,7 @@
 .admin{
 	.header{
 		padding: 16px;
+		min-width: fit-content;
 	}
 	.auth{
 		@include flex();

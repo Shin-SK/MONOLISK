@@ -1,7 +1,7 @@
 <!-- src/views/DriverShift.vue -->
 <script setup>
 import { reactive, ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   getDriverShift,
   getDriver,
@@ -14,6 +14,7 @@ import InputNumber from '@/components/InputNumber.vue'
 
 /* ----- ルート param  ----- */
 const route     = useRoute()
+const router    = useRouter()   
 const shiftId  = computed(() =>
   Number(route.params.shiftId ?? route.params.id) || null)
 const myDriverId = null               // ←ログイン中ドライバーIDを入れるならここ
@@ -28,7 +29,7 @@ const driverName = computed(() => shift.driver_name || '')
 
 /* ----- ドライバー情報 ----- */
 const driverInfo = ref(null)  
-
+const clockInAtInput = ref(dayjs().format('YYYY-MM-DDTHH:mm')) 
 
 
 /* ----- state ----- */
@@ -91,15 +92,20 @@ async function doClockIn () {
    // ① STAFF 画面なら driverParam（URL の /driver/123 部分）を使う
    const targetId =
          driverParam.value     // /driver-shifts/driver/<id>
+      || shift.driver
       || myDriverId           // ログイン中ドライバー本人
 
    if (!targetId) {
      return alert('ドライバーIDが特定できません')
    }
-
-   const data = await apiClockIn(targetId, shift.float_start)
+  const data = await apiClockIn(targetId, {
+    float_start: shift.float_start,
+    at:          clockInAtInput.value + ':00',  // ISO8601 に
+  })
    Object.assign(shift, data)
    driverInfo.value = await getDriver(data.driver)
+
+   router.push('/driver-shifts')
  }
 
 async function doClockOut () {
@@ -118,9 +124,16 @@ async function doClockOut () {
   })
   alert('退勤を登録しました')
   await fetchShift()
+  router.push('/driver-shifts')
 }
 
-onMounted(fetchShift)
+onMounted(async () => {
+  await fetchShift()
+  if (shift.clock_in_at) {
+    clockInAtInput.value = dayjs(shift.clock_in_at)
+                         .format('YYYY-MM-DDTHH:mm')
+  }
+})
 </script>
 
 <template>
@@ -135,6 +148,11 @@ onMounted(fetchShift)
     <div class="card mb-4">
       <div class="card-header bg-primary text-white">出勤</div>
       <div class="card-body">
+<label class="form-label">出勤時刻</label>
+<input type="datetime-local"
+       v-model="clockInAtInput"
+       class="form-control mb-3"
+       :disabled="isReadonly">
         <label class="form-label">釣り銭</label>
         <div class="input-group mb-2">
           <input v-model.number="shift.float_start" type="number"
@@ -150,13 +168,9 @@ onMounted(fetchShift)
           </button>
         </div>
         <button class="btn btn-success w-100"
-                :disabled="isReadonly || hasClockedIn"
+                :disabled="isReadonly"
                 @click="doClockIn">
-          出勤する
-
-          <small v-if="shift.clock_in_at && !shift.clock_out_at" class="text-success">
-            {{ new Date(shift.clock_in_at).toLocaleTimeString() }} 出勤済み
-          </small>
+          {{ hasClockedIn ? '保存' : '出勤する' }}
         </button>
       </div>
     </div>

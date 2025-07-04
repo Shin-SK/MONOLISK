@@ -1,15 +1,24 @@
 <!-- views/DashboardAdmin.vue -->
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import GanttChart           from '@/components/GanttChart.vue'
 import ReservationFormAdmin from '@/views/ReservationFormAdmin.vue'
 import { Modal }   from 'bootstrap'
 import { closeSidebarThen } from '@/utils/offcanvas'
+import { yen } from '@/utils/money'
+import { api }  from '@/api'
+import AlertBell from '@/components/AlertBell.vue'
+
 
 const selectedId = ref(null)
 const modal      = ref(null)
 const ganttRef   = ref(null)      // ⭐ 追加
+
+
+
+const cashAlerts = ref([])        // 全アラート履歴
+
 
 /* ───────── ガント表示日 ───────── */
 const selectedDate = ref(dayjs())                 // ← 任意に変わる
@@ -23,6 +32,27 @@ function setToday(){ selectedDate.value = dayjs() }
 
 /* ───────── ヘッダー用 “リアル今日” ───────── */
 const todayLabel = dayjs().format('YYYY.MM.DD (ddd)')
+
+
+/* --- LocalStorage 永続化用キー (日付別) --- */
+const STORAGE_KEY = `dismissedCash_${dayjs().format('YYYYMMDD')}`
+
+const dismissed  = ref(new Set())        // 既読 driver_id Set
+
+const visibleAlerts = computed(
+  () => cashAlerts.value.filter(a => !dismissed.value.has(a.driver_id))
+)
+/* 初期ロード */
+function loadDismissed () {
+  try {
+    dismissed.value = new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'))
+  } catch { /* 破損時は無視 */ }
+}
+
+/* 保存 */
+function saveDismissed () {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify([...dismissed.value]))
+}
 
 
 /* ───────── モーダル  ───────── */
@@ -49,22 +79,48 @@ function handleHide () {
   selectedId.value = null
 }
 
-/* script setup 内に追加 */
 async function handleSaved () {
   modal.value?.hide()
   await ganttRef.value?.reload?.()
 }
+
+onMounted(async () => {
+  loadDismissed()
+  const { data } = await api.get('/alerts/driver-cash/')
+  // 時刻を埋め込みつつ履歴化
+  cashAlerts.value = data.alerts.map(a => ({
+    ...a,
+    time: dayjs().format('HH:mm')
+  }))
+ })
+
+function dismiss (id) {            // × ボタン用
+  dismissed.value = new Set([...dismissed.value, id])
+  saveDismissed()
+}
+
 </script>
 
 <template>
   <h1 class="h2 text-center mb-5">ダッシュボード</h1>
+    <div class="bell d-flex">
+      <AlertBell :alerts="cashAlerts" :dismissed="dismissed" class="me-3" />
+    </div>
+        
   <div class="dashboard-admin container-fluid">
-    
+    <!-- ★ アラート -->
+    <div v-if="visibleAlerts.length" class="mb-5">
+      <div class="alert alert-danger alert-dismissible"
+           v-for="a in visibleAlerts" :key="a.driver_id">
+         {{ a.driver_name }} さんの所持金が
+         <b>{{ yen(a.cash) }}</b> 円を超えています
+        <button type="button" class="btn-close" @click="dismiss(a.driver_id)"></button>
+      </div>
+    </div>
     <!-- ─── 日付ヘッダー ─── -->
     <header class="gc-header d-flex align-items-center justify-content-between gap-3 mb-2">
       <!-- ← ここは常に “今日” -->
       <h5 class="mb-0">{{ todayLabel }}</h5>
-
       <button class="btn btn-success btn-nowrap" @click="openNew">
         ＋ 新規予約
       </button>

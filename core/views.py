@@ -7,7 +7,7 @@ from .filters import CustomerFilter
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from django.shortcuts import get_object_or_404
-from django.db.models import Exists, OuterRef, Q, Sum, Subquery, IntegerField, Value, Case, When, F, DateField
+from django.db.models import Exists, OuterRef, Q, Sum, Subquery, IntegerField, Value, Case, When, F, DateField, ExpressionWrapper
 from django.db.models.functions import Coalesce
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -17,6 +17,8 @@ from datetime import date, timedelta
 from calendar import monthrange
 from django.db.models.functions import TruncDate, TruncMonth
 from core.utils.pl import get_daily_pl, get_monthly_pl, get_yearly_pl
+from django.conf import settings
+from datetime import datetime
 
 from .models import (
     Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
@@ -182,25 +184,58 @@ class DriverShiftViewSet(
     @action(detail=True, methods=['post'])
     def clock_in(self, request, pk=None):
         """
-        STAFF なら pk(=URL上の driver_id) で誰でも出勤させられる。
-        ドライバー本人は自分の pk でしか叩けない。
+        ● STAFF  … /api/driver-shifts/<driver_id>/clock_in/
+        ● 本人   … 同上（permission で制御）
+        既に当日のシフトがあれば clock_in_at / float_start を上書き保存できる。
+        Body:
+            float_start : int     釣り銭（省略可）
+            at          : str     "YYYY-MM-DDTHH:MM:SS"（省略可 → now）
         """
-        driver = self.get_object()
+        driver = get_object_or_404(Driver, pk=pk)
 
-        # 本人以外 & STAFF でない → 拒否
-        if driver.user != request.user \
-        and not (request.user.is_superuser or request.user.groups.filter(name='STAFF').exists()):
+        # ── 権限チェック ───────────────────────────────────
+        if driver.user != request.user and not (
+            request.user.is_superuser or
+            request.user.groups.filter(name="STAFF").exists()
+        ):
             return Response({"detail": "権限がありません"}, status=403)
 
-        today = timezone.localdate()
-        shift, _ = DriverShift.objects.get_or_create(
-            driver=driver, date=today,
+        # ── 入力値パース ──────────────────────────────────
+        at_raw = request.data.get("at")         # ISO8601 文字列 or None
+        try:
+            clock_in_at = (
+                timezone.make_aware(datetime.fromisoformat(at_raw))
+                if at_raw else timezone.now()
+            )
+        except (TypeError, ValueError):
+            return Response({"at": "日時フォーマットが不正です"}, status=400)
+
+        float_start = request.data.get("float_start", None)
+
+        # ── シフト取得／生成 ───────────────────────────────
+        shift, created = DriverShift.objects.get_or_create(
+            driver=driver,
+            date=clock_in_at.date(),            # “その日” のシフト
             defaults={
-                "float_start": request.data.get("float_start", 0),
-                "clock_in_at": timezone.now(),
-            }
+                "float_start": float_start or 0,
+                "clock_in_at": clock_in_at,
+            },
         )
-        return Response(DriverShiftSerializer(shift).data, status=201)
+
+        # ── 既存シフトなら値を上書き保存 ───────────────────
+        if not created:
+            changed_fields = []
+            if at_raw:                          # 時刻を変更
+                shift.clock_in_at = clock_in_at
+                changed_fields.append("clock_in_at")
+            if float_start is not None:         # 釣銭を変更
+                shift.float_start = float_start
+                changed_fields.append("float_start")
+            if changed_fields:
+                shift.save(update_fields=changed_fields)
+
+        status_code = 201 if created else 200
+        return Response(DriverShiftSerializer(shift).data, status=status_code)
 
 
     @action(detail=True, methods=['patch'])
@@ -600,3 +635,63 @@ class YearlyPLView(APIView):
         # Serializer で月ごとに整形
         data = YearlyMonthSerializer(months, many=True).data
         return Response({"year": year, "store": store, "months": data})
+
+
+
+
+class DriverCashAlertView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        today = timezone.localdate()
+        TH = getattr(settings, "CASH_ALERT_THRESHOLD", 200_000)
+
+        # --- DO 集金額サブクエリ --------------------------
+        do_sub = (
+            ReservationDriver.objects
+            .filter(
+                driver_id=OuterRef("driver_id"),
+                reservation__start_at__date=today,
+                role=ReservationDriver.Role.DROP_OFF,
+            )
+            .annotate(
+                effective=Case(
+                    When(collected_amount__isnull=True,
+                         then=F("reservation__received_amount")),
+                    default=F("collected_amount"),
+                    output_field=IntegerField(),
+                )
+            )
+            .values("driver_id")
+            .annotate(s=Sum("effective"))
+            .values("s")[:1]
+        )
+
+        qs = (
+            DriverShift.objects
+            .filter(date=today)
+            .annotate(
+                today_received = Coalesce(Subquery(do_sub, output_field=IntegerField()), Value(0)),
+                cash_on_hand   = ExpressionWrapper(
+                    F("today_received")
+                    - Coalesce(F("actual_deposit"), Value(0))
+                    - Coalesce(F("used_float"),     Value(0))
+                    - Coalesce(F("expenses"),       Value(0)),
+                    output_field=IntegerField()
+                )
+            )
+            .filter(cash_on_hand__gt=TH)
+            .select_related("driver__user")
+        )
+
+        alerts = [
+            {
+                "driver_id"  : s.driver_id,
+                "driver_name": s.driver.user.display_name or s.driver.user.username,
+                "cash"       : s.cash_on_hand,
+            }
+            for s in qs
+        ]
+        return Response({"threshold": TH, "alerts": alerts})
+
+

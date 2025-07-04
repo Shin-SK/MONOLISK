@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.templatetags.static import static
 from django.db import transaction
 from rest_framework import serializers
+from rest_framework.fields import ChoiceField 
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.db.models import Q
 from .models import (
@@ -131,7 +132,7 @@ class DriverShiftSerializer(serializers.ModelSerializer):
 			'diff_reason', 'manager_checked', 'clock_out_at',
 			'expected_deposit', 'expected_cash', 'diff',
 		)
-		read_only_fields = ('driver', 'date', 'clock_in_at', 'clock_out_at')
+		read_only_fields = ('driver', 'date', 'clock_out_at')
 
 
 
@@ -264,6 +265,7 @@ class ReservationSerializer(serializers.ModelSerializer):
 	casts   = ReservationCastSerializer(many=True, required=False)
 	charges = ReservationChargeSerializer(many=True, required=False)
 	cast_photos = serializers.SerializerMethodField()
+	status = ChoiceField(choices=Reservation.Status.choices, required=False )
 	store_name	  = serializers.CharField(source="store.name", read_only=True)
 	customer_name   = serializers.CharField(source="customer.name", read_only=True)
 	customer_address = serializers.CharField(source='customer.address', read_only=True)
@@ -719,12 +721,17 @@ class ExpenseEntrySerializer(serializers.ModelSerializer):
 
 
 class DailyPLSerializer(serializers.Serializer):
-	date			  = serializers.DateField()
-	sales_total	   = serializers.IntegerField()
-	cast_labor		= serializers.IntegerField()
-	driver_labor	  = serializers.IntegerField()
-	custom_expense	= serializers.IntegerField()
-	gross_profit	  = serializers.IntegerField()
+    date           = serializers.DateField()
+    store_id       = serializers.IntegerField(allow_null=True)
+    sales_cash     = serializers.IntegerField()
+    sales_card     = serializers.IntegerField()
+    sales_total    = serializers.IntegerField()
+    cast_labor     = serializers.IntegerField()
+    driver_labor   = serializers.IntegerField()
+    custom_expense = serializers.IntegerField()
+    gross_profit   = serializers.IntegerField()
+
+
 
 class MonthlyPLSerializer(serializers.Serializer):
 	month			 = serializers.CharField()	  # "2025-07"
@@ -735,7 +742,16 @@ class MonthlyPLSerializer(serializers.Serializer):
 	custom_expense	= serializers.IntegerField()
 	operating_profit  = serializers.IntegerField()
 
-
+class YearlyMonthSerializer(serializers.Serializer):
+    month            = serializers.CharField()
+    sales_cash       = serializers.IntegerField()
+    sales_card       = serializers.IntegerField()
+    sales_total      = serializers.IntegerField()
+    cast_labor       = serializers.IntegerField()
+    driver_labor     = serializers.IntegerField()
+    fixed_breakdown  = serializers.ListField()
+    custom_expense   = serializers.IntegerField()
+    operating_profit = serializers.IntegerField()
 
 
 class CastRateSerializer(serializers.ModelSerializer):
@@ -748,14 +764,3 @@ class DriverRateSerializer(serializers.ModelSerializer):
 		model  = DriverRate
 		fields = "__all__"
 
-class YearlyMonthSerializer(serializers.Serializer):
-	month			 = serializers.CharField()   # "2025-01"
-	sales_total	   = serializers.IntegerField()
-	cast_labor		= serializers.IntegerField()
-	driver_labor	  = serializers.IntegerField()
-	fixed_expense	 = serializers.IntegerField()
-	custom_expense	= serializers.IntegerField()
-	operating_profit  = serializers.IntegerField()
-	fixed_breakdown  = serializers.ListField(
-		child=serializers.DictField(), required=False
-	)

@@ -55,6 +55,8 @@ watch([year, store], fetchYearly)
       <thead class="table-dark">
         <tr>
           <th>月</th>
+          <th class="text-end">現金</th>      <!-- ★ -->
+          <th class="text-end">カード</th>    <!-- ★ -->
           <th class="text-end">売上</th>
           <th class="text-end">キャスト人件費</th>
           <th class="text-end">ドライバー人件費</th>
@@ -70,6 +72,8 @@ watch([year, store], fetchYearly)
       <tbody>
         <tr v-for="m in months" :key="m.month">
           <td>{{ m.month.split('-')[1] }}月</td>
+          <td class="text-end">{{ yen(m.sales_cash) }}</td>   <!-- ★ -->
+          <td class="text-end">{{ yen(m.sales_card) }}</td>   <!-- ★ -->
           <td class="text-end">{{ yen(m.sales_total) }}</td>
           <td class="text-end">{{ yen(m.cast_labor) }}</td>
           <td class="text-end">{{ yen(m.driver_labor) }}</td>

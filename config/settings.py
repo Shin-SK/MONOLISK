@@ -245,3 +245,7 @@ LOGGING = {
         },
     },
 }
+
+
+
+CASH_ALERT_THRESHOLD = 200_000

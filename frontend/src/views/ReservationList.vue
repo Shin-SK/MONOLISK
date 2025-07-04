@@ -2,12 +2,10 @@
 <script setup>
 import { ref, watch, onMounted, computed } from 'vue'
 import {
-  getStores,
-  getCastProfiles,
-  getReservations,
-  deleteReservations
+  getStores,getCastProfiles,getReservations,deleteReservations, getReservationChoices,
 } from '@/api'
 import { useRouter } from 'vue-router'
+import dayjs from 'dayjs'
 
 /* ────────── 状態 ────────── */
 const router    = useRouter()
@@ -15,6 +13,7 @@ const stores    = ref([])
 const casts     = ref([])
 const rows      = ref([])
 const selected  = ref(new Set())
+const choices = ref({ status: [] })  
 
 /* ────────── 親から初期フィルタ ────────── */
 const props = defineProps({
@@ -39,6 +38,29 @@ const dateInput = ref(null)
 function openPicker () {
   dateInput.value?.showPicker?.() || dateInput.value?.click()
 }
+/* ① フォーマッタを用意 ------------- */
+const fmtDate = iso => dayjs(iso).format('YYYY/MM/DD')
+const fmtTime = iso => dayjs(iso).format('HH:mm')
+
+
+
+/* ────────── 終了時刻つくる ────────── */
+const calcEnd   = row => {
+  // ─ 合計分数を決定 ─
+  const minutes =
+    row.total_time                                   // ① total_time が来ていれば最優先
+    ?? (row.courses?.[0]?.minutes ?? 0)              // ② 先頭キャストのコース分
+       + ((row.extend_blocks ?? 0) * 30)             //    ＋延長 30 分ブロック
+  return dayjs(row.start_at).add(minutes, 'minute')  // dayjs インスタンス
+}
+
+const endDate = row => calcEnd(row).format('YYYY/MM/DD')
+const endTime = row => calcEnd(row).format('HH:mm')
+
+/* ピックアップ／ドロップオフ用に共通ヘルパ */
+const getDriver = (row, role) =>
+  row.drivers.find(d => d.role === role) || null
+
 
 /* ────────── 店舗が変わったらキャストを再取得 ────────── */
 watch(() => form.value.store, async id => {
@@ -90,6 +112,29 @@ async function search () {
 
 }
 
+/* ---------------------------------------------- *
+ * ステータス → ラベル／色
+ * ---------------------------------------------- */
+const statusLabel = s =>
+  choices.value.status.find(c => c[0] === s)?.[1] || s
+
+const statusColor = s => ({
+  CALL_PENDING : 'bg-secondary',
+  CALL_DONE    : 'bg-info',
+  BOOKED       : 'bg-warning',
+  IN_SERVICE   : 'bg-success',
+  CASH_COLLECT : 'bg-primary',
+}[s] || 'bg-light')
+
+
+const statusRowClass = s => ({
+  CALL_PENDING : 'table-secondary',  // 灰
+  CALL_DONE    : 'table-info',       // 水
+  BOOKED       : 'table-warning',    // 黄
+  IN_SERVICE   : 'table-success',    // 緑
+  CASH_COLLECT : 'table-primary',    // 青
+}[s] || '')
+
 /* ────────── 表操作 ────────── */
 async function resetForm () {
   form.value  = { store:'', cast:'', date:'' }
@@ -124,6 +169,7 @@ async function bulkDelete () {
 onMounted(async () => {
   stores.value = await getStores()
   casts.value  = await getCastProfiles()
+  choices.value  = await getReservationChoices()
   await search()
 })
 </script>
@@ -230,24 +276,21 @@ onMounted(async () => {
         <tr>
           <th><input type="checkbox" v-model="allChecked" /></th>
           <th>ID</th>
-          <th>店舗</th>
           <th>キャスト</th>
           <th>開始</th>
-          <th>コース</th>
           <th>顧客</th>
-          <th>コース</th>        <!-- minutes のまま → 詳細表示用へ変更 -->
-          <th>オプション</th>    <!-- ★追加 -->
-          <th>PU Driver</th>
-          <th>DO Driver</th>
-          <th>予約金</th>
+          <th>終了</th>
+          <th>オプション</th>
+          <th>迎え</th>
+          <th>送り</th>
+          <th>小計</th>
           <th>受取金</th>
-          <th>入金</th>
-          <th>状態</th><th>リンク</th>
+          <!-- <th>入金</th> -->
         </tr>
       </thead>
 
       <tbody>
-        <tr v-for="r in rows" :key="r.id">
+        <tr v-for="r in rows" :key="r.id" @click="router.push(`/reservations/${r.id}`)" style="cursor: pointer;">
           <td>
             <input
               type="checkbox"
@@ -255,44 +298,79 @@ onMounted(async () => {
               @change="toggle(r.id)"
             />
           </td>
-          <td>{{ r.id }}</td>
-          <td>{{ r.store_name }}</td>
-          <td class="cast">
+          <td>
+            <div><span class="badge bg-secondary">{{ r.id }}</span><span class="badge bg-secondary mx-2">{{ r.store_name }}</span></div>
+            <span :class="['badge',statusColor(r.status)]">{{ statusLabel(r.status) }}</span>
+          </td>
+          <td>
             <img v-for="(p,i) in r.cast_photos"
             :key="i"
             :src="p"
-            class="cast-icon">
+            class="cast-icon me-1">
             {{ r.cast_names.join(', ') }}
           </td>
-          <td>{{ new Date(r.start_at).toLocaleString() }}</td>
-          <td>{{ r.course_minutes }}min</td>
-          <td>{{ r.customer_name }}</td>
           <td>
-            <template v-if="r.courses && r.courses.length">
-              {{ r.courses.map(c => c.minutes + '分').join(', ') }}
-            </template>
-            <template v-else>―</template>
+            <span class="text-muted">
+              {{ fmtDate(r.start_at) }}      <!-- 1 行目 : 日付 -->
+            </span>
+            <span class="d-block fw-bold fs-4">
+              {{ fmtTime(r.start_at) }}      <!-- 2 行目 : 時刻 -->
+            </span>
           </td>
-
-          <!-- オプション列: 名前をカンマ区切りで -->
+          <td>
+            <div><span class="badge bg-secondary">{{ r.courses.map(c => c.minutes + '分').join(', ') }}</span></div>
+            {{ r.customer_name }}
+          </td>
+          <!-- ★ 新しい『終了』セル -->
+          <td class="end-cell">
+            <span class="text-muted">{{ endDate(r) }}</span>
+            <span class="fw-bold fs-4 d-block">{{ endTime(r) }}</span>
+          </td>
           <td>
             <template v-if="r.options && r.options.length">
-              {{ r.options.map(o => o.name || '(自由課金)').join(', ') }}
+              <span
+                v-for="(o, i) in r.options"
+                :key="i"
+                class="badge bg-success me-2"
+              >
+                {{ o.name || '(自由課金)' }}
+              </span>
             </template>
             <template v-else>―</template>
           </td>
-          <td>{{ r.drivers.find(d=>d.role==='PU')?.driver_name || '―' }}</td>
-          <td>{{ r.drivers.find(d=>d.role==='DO')?.driver_name || '―' }}</td>
-          <td class="text-end">{{ (r.expected_total??r.expected_amount??0).toLocaleString() }}円</td>
-          <td class="text-end">{{ (r.received_amount??0).toLocaleString() }}円</td>
-          <td class="text-end">{{ (r.deposited_amount??0).toLocaleString() }}円</td>
-          <td>{{ r.status }}</td>
           <td>
+            <!-- ① ドライバーがいればバッジで表示 -->
+            <span
+              v-if="getDriver(r, 'PU')"
+              class="badge bg-primary badge-lg"
+            >
+              {{ getDriver(r, 'PU').driver_name }}
+            </span>
+
+            <!-- ② いなければ従来のダッシュ -->
+            <template v-else>―</template>
+          </td>
+          <td>
+            <!-- ① ドライバーがいればバッジで表示 -->
+            <span
+              v-if="getDriver(r, 'PU')"
+              class="badge bg-primary badge-lg"
+            >
+              {{ getDriver(r, 'DO').driver_name }}
+            </span>
+
+            <!-- ② いなければ従来のダッシュ -->
+            <template v-else>―</template>
+          </td>
+          <td class="fw-bold">¥{{ (r.expected_total??r.expected_amount??0).toLocaleString() }}</td>
+          <td class="fw-bold">¥{{ (r.received_amount??0).toLocaleString() }}</td>
+          <!-- <td class="fw-bold">¥{{ (r.deposited_amount??0).toLocaleString() }}</td> -->
+          <!-- <td>
             <button class="btn btn-link p-0"
                     @click="router.push(`/reservations/${r.id}`)">
               詳細
             </button>
-          </td>
+          </td> -->
         </tr>
       </tbody>
     </table>

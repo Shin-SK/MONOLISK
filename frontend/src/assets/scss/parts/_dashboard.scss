@@ -22,7 +22,7 @@
 
 	/* ─── 中央 (#ID) ─── */
 	.bar-center {
-	z-index: 1;               /* 重なり順を明示しておくと安心 */
+	z-index: 1;        /* 重なり順を明示しておくと安心 */
 	}
 
 	/* ─── PU / DO ─── */
@@ -39,13 +39,13 @@
 
 	&.left  {                  /* バーの左外に */
 		left: 0;
-		transform: translate(-16px, -50%);   /* ← 6px 分だけ外へ押し出す */
+		transform: translate(-24px, -50%);   /* ← 6px 分だけ外へ押し出す */
 		text-align: right;
 	}
 
 	&.right {                  /* バーの右外に */
 		right: 0;
-		transform: translate(16px, -50%);
+		transform: translate(24px, -50%);
 		text-align: left;
 	}
 	}
@@ -76,6 +76,15 @@
 			}
 		}
 
+	}
+
+	/* ▼ 住所テキストをバーの残り幅いっぱいに */
+	.addr-text{
+	display: inline-block;
+	max-width: 80%;    /* ドット＋PU/DO を避ける buffer */
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 	}
 
 	/* チャート領域 */

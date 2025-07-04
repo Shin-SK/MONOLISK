@@ -289,18 +289,18 @@ class CustomerAddress(TimeStamped):
 class Reservation(TimeStamped):
 
 	class Status(models.TextChoices):
-		BOOKED	 = 'BOOKED', 'Booked'
-		CONFIRMED  = 'CONFIRMED','Confirmed'
-		INSERVICE  = 'INSERVICE','In Service'
-		CLOSED	 = 'CLOSED',  'Closed'
-		CANCELED   = 'CANCELED','Canceled'
+		CALL_PENDING  = 'CALL_PENDING',  '確認電話[未]'   # 電話確認まだ
+		CALL_DONE     = 'CALL_DONE',     '確認電話[済]'   # 電話確認済み
+		BOOKED   = 'BOOKED',   '仮予約'         # 仮押さえ
+		IN_SERVICE    = 'IN_SERVICE',    'スタート'       # 接客開始
+		CASH_COLLECT  = 'CASH_COLLECT',  '集金[済]'       # 集金済み
 
 	store	 = models.ForeignKey(Store,  on_delete=models.CASCADE, verbose_name='店舗',)
 	driver	= models.ForeignKey(Driver, on_delete=models.SET_NULL, verbose_name='ドライバー', null=True, blank=True,)
 	customer  = models.ForeignKey(Customer,on_delete=models.CASCADE, verbose_name='顧客')
 	start_at  = models.DateTimeField(verbose_name='開始時刻')
 	total_time= models.PositiveSmallIntegerField()  # 分
-	status	= models.CharField(max_length=10, choices=Status.choices, default=Status.BOOKED , verbose_name='ステータス')
+	status	= models.CharField(max_length=30, choices=Status.choices, default=Status.BOOKED , verbose_name='ステータス')
 	manual_extra_price = models.IntegerField(default=0, verbose_name='延長料金')
 	received_amount   = models.IntegerField(null=True, blank=True, verbose_name='受取金')
 	change_amount   = models.IntegerField(null=True, blank=True, verbose_name='お釣り')

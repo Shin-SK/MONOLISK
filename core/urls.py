@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_nested.routers import NestedDefaultRouter
 from . import views
 from .views_pricing import PricingAPIView
-from .views import SalesSummary, DriverShiftViewSet, ExpenseCategoryViewSet ,ExpenseEntryViewSet, DailyPLView, MonthlyPLView, CastRateViewSet, DriverRateViewSet, YearlyPLView
+from .views import SalesSummary, DriverShiftViewSet, ExpenseCategoryViewSet ,ExpenseEntryViewSet, DailyPLView, MonthlyPLView, CastRateViewSet, DriverRateViewSet, YearlyPLView, DriverCashAlertView
 
 router = DefaultRouter()
 router.register(r'stores',               views.StoreViewSet)
@@ -40,5 +40,6 @@ urlpatterns = [
 	path('pl/daily/',   DailyPLView.as_view()),
     path('pl/monthly/', MonthlyPLView.as_view()),
 	path('pl/monthly/',  MonthlyPLView.as_view()),
-	 path('pl/yearly/',   YearlyPLView.as_view()),
+	path('pl/yearly/',   YearlyPLView.as_view()),
+	path("alerts/driver-cash/", DriverCashAlertView.as_view()),
 ]

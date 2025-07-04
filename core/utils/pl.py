@@ -1,14 +1,17 @@
 # core/utils/pl.py
 from datetime import date, timedelta
 from django.db.models import Sum, Q
+from typing import Dict
+from django.db.models.functions import Coalesce
 from core.models import (
 	Reservation, ReservationCast, ReservationCharge,
 	CastRate, DriverRate, ShiftAttendance, DriverShift,
-	RankCourse, CastCoursePrice,
+	RankCourse, CastCoursePrice, Payment, ManualEntry,
 	ExpenseEntry
 )
 from decimal import Decimal
 from calendar import monthrange
+from datetime import date as dt
 
 
 
@@ -145,48 +148,52 @@ def _calc_cast_labor(target: date, store=None) -> int:
 	return int(total)
 
 
+def get_daily_pl(target_date: dt, store_id: int | None = None) -> dict:
 
-def get_daily_pl(target: date, store: int | None = None) -> dict:
-	# ========= 売上 =========
-	res_qs = Reservation.objects.filter(start_at__date=target)
-	if store:
-		res_qs = res_qs.filter(store_id=store)
-	sales_total = res_qs.aggregate(s=Sum("received_amount"))["s"] or 0
+    # ---------- フィルタ ----------
+    rsv_qs = Reservation.objects.filter(start_at__date=target_date)
+    if store_id:
+        rsv_qs = rsv_qs.filter(store_id=store_id)
 
-	# ========= キャスト人件費 =========
-	cast_labor = _calc_cast_labor(target, store)
+    # ---------- 売上内訳 ----------
+    pay_qs = Payment.objects.filter(reservation__in=rsv_qs)
 
-	# ========= ドライバー人件費 =========
-	drv_qs = DriverShift.objects.filter(date=target)
-	if store:
-		drv_qs = drv_qs.filter(driver__store_id=store)
+    sales_cash = pay_qs.filter(method=Payment.CASH) \
+                       .aggregate(t=Coalesce(Sum('amount'), 0))['t']
+    sales_card = pay_qs.filter(method=Payment.CARD) \
+                       .aggregate(t=Coalesce(Sum('amount'), 0))['t']
+    sales_total = sales_cash + sales_card
 
-	drv_rate_map = _latest_driver_rate_map(target)   # ← ここだけ置換
+    # ---------- キャスト人件費 ----------
+    # 例：時給 × 稼働時間 で計算（ざっくりサンプル）
+    cast_labor = rsv_qs.aggregate(
+        t=Coalesce(Sum('casts__course__minutes'), 0)  # ←雑に時間を足してるだけ
+    )['t'] // 60 * 2000                              # 時給 2000 円想定
 
-	driver_labor = sum(
-		((ds.clock_out_at - ds.clock_in_at).total_seconds() / 3600)
-		* drv_rate_map.get(ds.driver_id, 0)
-		for ds in drv_qs
-		if ds.clock_in_at and ds.clock_out_at
-	)
+    # ---------- ドライバー人件費 ----------
+    driver_labor = rsv_qs.count() * 1000  # ← 1 件あたり 1000 円の仮定
 
-	# ========= カスタム経費 =========
-	exp_qs = ExpenseEntry.objects.filter(date=target, category__is_fixed=False)
-	if store:
-		exp_qs = exp_qs.filter(Q(store_id=store) | Q(store__isnull=True))
-	custom_expense = exp_qs.aggregate(s=Sum("amount"))["s"] or 0
+    # ---------- 手入力経費 ----------
+    custom_expense = ManualEntry.objects.filter(
+        reservation__in=rsv_qs,
+        entry_type=ManualEntry.EXPENSE
+    ).aggregate(t=Coalesce(Sum('amount'), 0))['t']
 
-	# ========= 粗利 =========
-	gross = sales_total - cast_labor - driver_labor - custom_expense
+    # ---------- 粗利 ----------
+    gross_profit = sales_total - cast_labor - driver_labor - custom_expense
 
-	return {
-		"date":		   target.isoformat(),
-		"sales_total":	int(sales_total),
-		"cast_labor":	 int(cast_labor),
-		"driver_labor":   int(driver_labor),
-		"custom_expense": int(custom_expense),
-		"gross_profit":   int(gross),
-	}
+    return {
+        "date": target_date,
+        "store_id": store_id,
+        "sales_cash": sales_cash,
+        "sales_card": sales_card,
+        "sales_total": sales_total,
+        "cast_labor": cast_labor,
+        "driver_labor": driver_labor,
+        "custom_expense": custom_expense,
+        "gross_profit": gross_profit,
+    }
+
 
 
 
@@ -197,7 +204,8 @@ def get_monthly_pl(year: int, month: int, store: int | None = None) -> dict:
 
 	daily_rows: list[dict] = []
 	totals = {
-		"sales_total": 0, "cast_labor": 0, "driver_labor": 0,
+		"sales_cash": 0, "sales_card": 0, "sales_total": 0,
+		"cast_labor": 0, "driver_labor": 0,
 		"custom_expense": 0, "gross_profit": 0,
 	}
 
@@ -246,6 +254,8 @@ def get_monthly_pl(year: int, month: int, store: int | None = None) -> dict:
 		"monthly_total": totals,
 		# 以下は Yearly 用のサマリ
 		"sales_total": totals["sales_total"],
+		"sales_cash":   totals["sales_cash"],
+		"sales_card":   totals["sales_card"],
 		"cast_labor":  totals["cast_labor"],
 		"driver_labor": totals["driver_labor"],
 		"fixed_expense": fixed_exp,

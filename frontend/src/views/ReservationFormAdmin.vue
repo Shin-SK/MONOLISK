@@ -13,7 +13,7 @@ import {
   getOptions, getCastProfiles, getPrice,
   searchCustomers, createCustomer,
   createReservation, updateReservation, getReservation,
-  getLatestReservation, getCustomerAddresses, createCustomerAddress
+  getLatestReservation, getCustomerAddresses, createCustomerAddress, getReservationChoices
 } from '@/api'
 
 /* ──────────────── props / emit ──────────────── */
@@ -54,13 +54,19 @@ const form = reactive({
   revenues:[{label:'',amount:0}],
   expenses:[{label:'',amount:0}],
   extend_blocks:0,
-  change_amount:''
+  change_amount:'',
+  status:'',
+  pay_cash : 0,              // ← 現金受取額（＝旧 received_amount）
+  pay_card : 0,              // ← カード決済額
+  deposited_amount : 0,      // 店に入金した現金
+  change_amount   : '',      // 釣り銭
 })
 
 /* ──────────────── マスタ ──────────────── */
 const opts = reactive({ stores:[], customers:[], drivers:[], courses:[], options:[] })
 const styles = ['綺麗系','可愛い系','モデル']
 const cupSizes= ['A','B','C','D','E']
+const choices = ref({ status: [] })
 
 /* ──────────────── キャスト検索 ──────────────── */
 const castsByStore = ref({})
@@ -114,7 +120,8 @@ async function fetchReservation () {
 	change_amount    : res.change_amount ?? 0,
     reservation_type: res.reservation_type,
     pay_card: res.payments.find(p=>p.method==='card')?.amount || 0,
-    pay_cash: res.payments.find(p=>p.method==='cash')?.amount || 0
+    pay_cash: res.payments.find(p=>p.method==='cash')?.amount || 0,
+	status       : res.status,
   })
 
 	/* マニュアル売上・経費をフォームへ展開 ------------------------- */
@@ -256,6 +263,7 @@ const extendUnit = computed(() =>
 )
 const extendPriceSum = computed(() => form.extend_blocks * extendUnit.value)
 
+
  /** ───────── 見積金額 (粗利-経費) ───────── */
  const price = computed(() => {
    const gross =
@@ -271,6 +279,54 @@ const extendPriceSum = computed(() => form.extend_blocks * extendUnit.value)
  })
 
 
+ const paymentTotal = computed(() =>
+  (+form.pay_cash || 0) + (+form.pay_card || 0)
+)
+const paymentDiff = computed(() =>
+  paymentTotal.value - price.value
+)
+
+/* ─── data ─── */
+const isRecvManual = ref(false)      // 受取金欄を手入力したら true
+
+// 0) カード or 小計 が変わったら必ず現金を再計算
+watch([() => form.pay_card, price], () => {
+  // 現金 = 小計 – カード（マイナスにはさせない）
+  form.pay_cash = Math.max(0, price.value - (+form.pay_card || 0))
+
+  // 受取金をまだ手入力していなければコピー
+  if (!isRecvManual.value) {
+    form.received_amount = form.pay_cash
+  }
+
+  // 釣り銭を更新
+  form.change_amount = Math.max(
+    0,
+    (+form.received_amount || 0) - (+form.pay_cash || 0)
+  )
+})
+
+// ① pay_cash が変わったら、手入力していない限り受取金にコピー
+watch(() => form.pay_cash, () => {
+  if (!isRecvManual.value) {
+    form.received_amount = form.pay_cash
+  }
+  // 釣り銭も更新
+  form.change_amount = Math.max(
+    0,
+    (+form.received_amount || 0) - (+form.pay_cash || 0)
+  )
+})
+
+// ② 受取金をユーザが編集したときは釣り銭だけ計算
+watch(() => form.received_amount, () => {
+  isRecvManual.value = true         // 念のため保険
+  form.change_amount = Math.max(
+    0,
+    (+form.received_amount || 0) - (+form.pay_cash || 0)
+  )
+})
+
 /* ──────────────── 保存 ──────────────── */
 async function save () {
 const optionIds = selectedOptionIds.value
@@ -285,9 +341,10 @@ const payload = {
   start_at         : new Date(form.start_at).toISOString(),
   total_time       : minutes + form.extend_blocks * 30,
   deposited_amount : form.deposited_amount,
-  received_amount  : form.received_amount,
+  received_amount : form.received_amount,
   extend_blocks    : form.extend_blocks,
   change_amount    : form.change_amount || 0,
+  status           : form.status, 
 
   /* キャスト × コース */
   casts   : castIds.map(id => ({ cast_profile: id, course: form.course })),
@@ -300,8 +357,8 @@ const payload = {
 
   /* 支払い */
   payments : [
+    ...(form.pay_cash ? [{ method: 'cash', amount: +form.pay_cash }] : []),
     ...(form.pay_card ? [{ method: 'card', amount: +form.pay_card }] : []),
-    ...(form.pay_cash ? [{ method: 'cash', amount: +form.pay_cash }] : [])
   ],
 
   /* マニュアル売上／経費 */
@@ -358,6 +415,7 @@ onMounted(async () => {
   await fetchMasters()
   await fetchReservation()
   await fetchCasts()
+  choices.value = await getReservationChoices()
 })
 
 /* ──────────────── dev logs ──────────────── */
@@ -378,7 +436,7 @@ watch(
 <template>
 <div class="form form-admin container-fluid">
 	<h1 class="h3 mb-4">
-		{{ isEdit ? `予約 #${route.params.id} 編集` : '新規予約' }}
+		{{ isEdit ? `予約編集` : '新規予約' }}
 	</h1>
 
 	<div class="form-admin">
@@ -559,7 +617,24 @@ watch(
 		</div>
 		<div class="form-area outer">
 			<div class="form-area__wrap">
-
+				<div class="area status">
+					<div class="h5">ステータス</div>
+					<div class="wrap d-flex flex-wrap gap-3">
+						<template v-for="opt in choices.status" :key="opt[0]">
+						<!-- opt = ["BOOKED", "Booked"] -->
+						<input class="btn-check"
+								type="radio"
+								:id="`st-${opt[0]}`"
+								v-model="form.status"
+								:value="opt[0]"/>
+						<label class="btn btn-outline-primary"
+								:class="{active: form.status === opt[0]}"
+								:for="`st-${opt[0]}`">
+							{{ opt[1] }}
+						</label>
+						</template>
+					</div>
+				</div>
 				<!-- 送迎場所 -->
 				<div class="area">
 					<div class="h5">送迎場所</div>
@@ -834,41 +909,71 @@ watch(
 			<!-- 見積 -->
 			<div class="summary-area">
 				<div class="alert alert-warning">
-					<span class="head">見積金</span>
+					<span class="head">小計</span>
 					<span class="price">{{ price.toLocaleString() }}</span>
 				</div>
 			</div>
 
 			<div class="receive-area">
 				<div class="wrap">
+
+					<!-- カード -->
+					<div class="area">
+					<div class="h5">カード</div>
+					<input
+						type="number" min="0"
+						v-model.number="form.pay_card"
+						class="form-control"
+					/>
+					</div>
+
+					<!-- ▼ 現金（自動計算・上書き可） -->
+					<div class="area">
+					<div class="h5">現金</div>
+					<span class="form-control-plaintext fw-bold">
+						{{ form.pay_cash.toLocaleString() }} 円
+					</span>
+					</div>
+
+
+					<!-- ▼ 受取金 -->
 					<div class="area">
 						<div class="h5">受取金</div>
 						<input
-							type="number"
-							class="form-control"
+							type="number" min="0"
 							v-model.number="form.received_amount"
-							min="0"
+							class="form-control"
+							@input="isRecvManual = true"
 						/>
 					</div>
+
+					<!-- 釣り銭 -->
 					<div class="area">
 						<div class="h5">お釣り</div>
 						<input
-							v-model="form.change_amount"
-							type="number"
+							type="number" min="0"
+							v-model.number="form.change_amount"
 							class="form-control"
 						/>
 					</div>
-					<div class="area">
-						<div class="h5">入金額</div>
-						<input
-							type="number"
-							class="form-control"
-							v-model.number="form.deposited_amount"
-							min="0"
-						/>
+
+				</div>
+
+				<!-- ▼ バリデーションメッセージ -->
+				<!-- <div v-if="paymentDiff !== 0" class="mt-2">
+					<div
+					:class="[
+						'alert',
+						paymentDiff > 0 ? 'alert-danger' : 'alert-warning'
+					]"
+					>
+					受取合計と小計に
+					{{ Math.abs(paymentDiff).toLocaleString() }} 円の
+					{{ paymentDiff > 0 ? '超過' : '不足' }}があります
 					</div>
-				</div><!-- area -->
-			</div><!-- receive-area -->
+				</div> -->
+			</div>
+
 
 			<div class="save-area">
 				<button class="btn btn-primary" @click="save">保存</button>

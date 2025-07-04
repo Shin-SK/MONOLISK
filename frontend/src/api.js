@@ -89,19 +89,20 @@ export const getOptions   = () => api.get('options/').then(r => r.data)
 export const getCastProfiles = (params = {}) =>
   api.get('cast-profiles/', { params }).then(r => r.data);
 
-// export function getPrice (params) {
-//   return axios.get('/pricing/', {
-//     params,
-//     paramsSerializer: p => qs.stringify(p, { arrayFormat: 'repeat' })
-//   }).then(res => res.data.total_price)   // ← 返り値はお好みで
-// }
-
 	export function getPrice(params) {
 	  return api.get('pricing/', {            // ← api インスタンスで /api/pricing/
 	    params,
 	    paramsSerializer: p => qs.stringify(p, { arrayFormat: 'repeat' }),
 	  }).then(r => r.data.price)
 	}
+
+/* ---------- ステータス ----------*/
+export async function getReservationChoices() {
+  const res = await api.options('reservations/');
+  return {
+   status: res.data.actions.POST.status.choices.map(c => [c.value, c.display_name])
+  };
+}
 
 /* ---------- 顧客 ---------- */
 export const searchCustomers = q =>
@@ -160,9 +161,13 @@ export const getDriverShift = shiftId =>
 export const getAllDriverShifts = (params = {}) =>
   api.get('driver-shifts/', { params }).then(r => r.data)
 
-export const clockIn  = (driverId, floatStart) =>
-  api.post(`drivers/${driverId}/clock_in/`, { float_start: floatStart })
-     .then(r => r.data)
+export function clockIn(driverId, { float_start = 0, at = null }) {
+  // 共通の api インスタンスを使う！（token も baseURL も自動付与）
+  return api.post(
+    `driver-shifts/${driverId}/clock_in/`,
+    { float_start, at }
+  ).then(r => r.data)
+}
 
 export const clockOut = (shiftId, payload) =>
   api.patch(`driver-shifts/${shiftId}/clock_out/`, payload).then(r => r.data)

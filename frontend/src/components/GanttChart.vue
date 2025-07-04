@@ -39,7 +39,7 @@ const driverName = (r, role) => {
 /* ───────── 色 ───────── */
 
 const PALETTE = [
-  { max:  60, color: '#2294F2' }, // blue
+  { max:  60, color: '#7bbef5' }, // blue
   { max:  75, color: '#00D7D4' }, // cyan
   { max:  90, color: '#4CAF50' }, // green
   { max: 120, color: '#CDDC39' }, // yellow-lime
@@ -66,54 +66,29 @@ async function fetchRows () {
   )
 }
 
-/* ───────── fetch bars ───────── */
-// async function fetchBars () {
-//   const reservations = await getReservations({
-//     date    : props.date,
-//     store   : props.storeId || undefined,
-//     ordering: 'start_at'
-//   })
-
-//   const list = reservations.flatMap(r =>
-//     r.casts.map((rc, idx) => {
-//       const castId = typeof rc.cast_profile === 'object'
-//                      ? rc.cast_profile.id : rc.cast_profile
-
-//       const stage = castMap.value[castId] ?? 'CAST'
-//       const st    = dayjs(r.start_at)
-//       const mins  = rc.course?.minutes ?? r.total_time ?? 60
-//       const ed    = st.add(mins,'minute')
-
-
-//       /* バッファ用幅を px に換算（例: 1 分 = 2px） */
-//       const puPx = props.beforeMinutes * 2
-//       const doPx = props.afterMinutes  * 2
-
-//       return {
-//         rowId: castId,
-//         from : st.toDate(),
-//         to   : ed.toDate(),
-//         ganttBarConfig: {
-//           id   : `r${r.id}_${idx}_main`,
-//           label: `${stage} / #${r.id} (PU:${driverName(r,'PU')}, DO:${driverName(r,'DO')})`,
-//           style: {
-//             '--pu-px': `${puPx}px`,
-//             '--do-px': `${doPx}px`,
-//             background: colorForMinutes(mins)   // ←ここを差し替え
-//           }
-//         },
-//         reservationId: r.id,
-//         puName : driverName(r, 'PU')  || '',   // ←★
-//         doName : driverName(r, 'DO') || '',   // ←★
-//       }
-//     })
-//   )
-
-//   bars.value = list
-// }
-
 const EXTEND_COLOR = 'rgba(255,0,0,.65)'   // 半透明の赤
 
+
+/* ───────── ステータス辞書 ───────── */
+const STATUS_META = {
+  CALL_PENDING : { short:'確未',  color:'#6c757d' }, // secondary
+  CALL_DONE    : { short:'確済',  color:'#0dcaf0' }, // info
+  BOOKED       : { short:'仮予',  color:'#ffc107' }, // warning
+  IN_SERVICE   : { short:'接中',  color:'#198754' }, // success
+  CASH_COLLECT : { short:'集済',  color:'#0d6efd' }, // primary
+}
+const statusColorHex = s => STATUS_META[s]?.color || '#ced4da' /* fallback */
+
+const statusShort = s => STATUS_META[s]?.short || s
+const statusColor = s => STATUS_META[s]?.color || 'bg-light'
+
+const statusBorder = s =>
+  (STATUS_META[s]?.color || 'bg-light')      // 例) bg-warning
+    .replace('bg-', 'border-')               // → border-warning
+
+
+
+/* ───────── Bars ───────── */
 async function fetchBars () {
   const reservations = await getReservations({
     date   : props.date,
@@ -143,12 +118,15 @@ async function fetchBars () {
         reservationId: r.id,
         puName: driverName(r,'PU') || '',
         doName: driverName(r,'DO') || '',
+        status: r.status, 
+        address: r.pickup_address || '', 
         ganttBarConfig: {
           id   : `r${r.id}_${idx}_main`,
-          label: `${castMap.value[castId] || 'CAST'} / #${r.id}`,
+          label: `${statusShort(r.status)} ${r.pickup_address||''}`,
           style: {
             '--pu-px': `${props.beforeMinutes*2}px`,
             '--do-px': `${props.afterMinutes*2}px`,
+            borderBottom  : `3px solid ${statusColorHex(r.status)}`,
             background: colorForMinutes(baseMin)
           }
         }
@@ -175,8 +153,10 @@ async function fetchBars () {
     })
   )
 
+  // 生成した配列を reactive 変数へ流し込む
   bars.value = list
-}
+  }
+
 
 /* ───────── ドライバー系 ───────── */
 async function fetchDrivers () {
@@ -294,11 +274,16 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
           :key="row.id"
           :bars="bars.filter(b => b.rowId === row.id)"
         >
-          <template #bar-label="{ bar }">
-            <span v-if="bar.puName" class="drv-label left">{{ bar.puName }}</span>
-            <span class="bar-center">#{{ bar.reservationId }}</span>
-            <span v-if="bar.doName" class="drv-label right">{{ bar.doName }}</span>
-          </template>
+        <template #bar-label="{ bar }">
+          <span v-if="bar.puName" class="drv-label left">{{ bar.puName }}</span>
+
+          <!-- 住所：幅制限＆ellipsis、hover で全文 -->
+          <span class="addr-text" :title="bar.address">
+            {{ bar.address }}
+          </span>
+
+          <span v-if="bar.doName" class="drv-label right">{{ bar.doName }}</span>
+        </template>
         </g-gantt-row>
       </g-gantt-chart>
     </div>
@@ -321,5 +306,6 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
 .g-gantt-bar[style*="rgba(255,0,0"] {
   opacity: .7;          /* 好みで */
 }
+
 
 </style>
