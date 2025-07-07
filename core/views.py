@@ -19,6 +19,7 @@ from django.db.models.functions import TruncDate, TruncMonth
 from core.utils.pl import get_daily_pl, get_monthly_pl, get_yearly_pl
 from django.conf import settings
 from datetime import datetime
+from rest_framework.pagination import LimitOffsetPagination
 
 from .models import (
     Store, Rank, Course, RankCourse, Option, GroupOptionPrice,
@@ -309,7 +310,7 @@ class ReservationViewSet(viewsets.ModelViewSet):
     )
     serializer_class    = ReservationSerializer
     permission_classes  = [AllowAny]
-    pagination_class    = None      # ← 必要なら外して OK
+    pagination_class    = LimitOffsetPagination      # ← 必要なら外して OK
 
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class   = ReservationFilter 
@@ -419,7 +420,7 @@ class CastProfileViewSet(viewsets.ModelViewSet):
     permission_classes = [IsStaff]
     filter_backends   = [DjangoFilterBackend]
     filterset_class   = CastProfileFilter
-    
+    pagination_class  = None
     # --- これだけ ---
     def get_queryset(self):
         qs = super().get_queryset()

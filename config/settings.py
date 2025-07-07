@@ -109,6 +109,8 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': (
         'django_filters.rest_framework.DjangoFilterBackend',   # ★ 追加
     ),
+    # "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
+    # "PAGE_SIZE": 30,           # お好みで
 }
 REST_SESSION_LOGIN = False 
 

@@ -127,8 +127,9 @@ export const getOptions   = () => api.get('options/').then(r => r.data)
 
 /* ---------- キャスト & 料金 ---------- */
 export const getCastProfiles = (params = {}) =>
-  api.get('cast-profiles/', { params }).then(r => r.data);
-
+  // api.get('cast-profiles/', { params }).then(r => r.data);
+  api.get('cast-profiles/', { params })
+     .then(r => r.data.results ?? r.data)   // ← ここだけ
 	export function getPrice(params) {
 	  return api.get('pricing/', {            // ← api インスタンスで /api/pricing/
 	    params,

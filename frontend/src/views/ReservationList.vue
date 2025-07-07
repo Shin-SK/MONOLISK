@@ -13,7 +13,20 @@ const stores    = ref([])
 const casts     = ref([])
 const rows      = ref([])
 const selected  = ref(new Set())
-const choices = ref({ status: [] })  
+const choices = ref({ status: [] })
+
+// util: API → 常に配列へ整形
+const normalizeCasts = (raw) =>
+  (Array.isArray(raw) ? raw : raw?.results ?? []).filter(c => c && c.id);
+
+
+// ---------------- ページネーション ----------------
+const perPage     = 30
+const page        = ref(1)
+const totalCount  = ref(0)
+const maxPage     = computed(() => Math.ceil(totalCount.value / perPage) || 1)
+const canPrev     = computed(() => page.value > 1)
+const canNext     = computed(() => page.value < maxPage.value)
 
 /* ────────── 親から初期フィルタ ────────── */
 const props = defineProps({
@@ -59,13 +72,14 @@ const endTime = row => calcEnd(row).format('HH:mm')
 
 /* ピックアップ／ドロップオフ用に共通ヘルパ */
 const getDriver = (row, role) =>
-  row.drivers.find(d => d.role === role) || null
+  (row.drivers ?? []).find(d => d.role === role) || null
 
 
 /* ────────── 店舗が変わったらキャストを再取得 ────────── */
 watch(() => form.value.store, async id => {
   form.value.cast = ''
-  casts.value = await getCastProfiles(id || undefined)
+  // casts.value = await getCastProfiles(id || undefined)
+  casts.value = normalizeCasts(await getCastProfiles({ store: id }))
 })
 
 /* ────────── 検索本体 ────────── */
@@ -73,17 +87,19 @@ async function search () {
   const raw = await getReservations({
     ...form.value,
     ordering     : '-start_at',
+    limit        : perPage,
+    offset       : perPage * (page.value - 1),
     with_entries : 1,
     with_options : 1,
     with_charges : 1        // ←★ここが無いと課金金額が来ない
   })
 
-  rows.value = raw.map(r => {
-    // ここで charges の内容を確認
-    console.group(`DEBUG id ${r.id}`)
-    console.table(r.charges)
-    console.table(r.options)
-    console.groupEnd()
+  const list = raw.results ?? raw            // ← pages でも旧配列でも対応
+  totalCount.value = raw.count ?? list.length
+
+  rows.value = list
+    .filter(Boolean)
+    .map(r => {
 
     /* 手入力売上／経費 */
     const revenue = (r.manual_entries ?? [])
@@ -151,11 +167,11 @@ const diffCellClass = flag => (flag ? 'text-danger fw-bold' : '')
 
 /* ────────── 表操作 ────────── */
 async function resetForm () {
-  form.value  = { store:'', cast:'', date:'' }
-  casts.value = await getCastProfiles()
-  await search()
+  form.value  = { store:'', cast:'', date:'' };
+  casts.value = normalizeCasts(await getCastProfiles());
+  page.value  = 1;
+  await search();
 }
-
 function toggle (id) {
   selected.value.has(id)
     ? selected.value.delete(id)
@@ -181,11 +197,11 @@ async function bulkDelete () {
 
 /* ────────── 初期化 ────────── */
 onMounted(async () => {
-  stores.value = await getStores()
-  casts.value  = await getCastProfiles()
-  choices.value  = await getReservationChoices()
-  await search()
-})
+  stores.value  = await getStores();
+  casts.value   = normalizeCasts(await getCastProfiles());
+  choices.value = await getReservationChoices();
+  await search();
+});
 </script>
 
 
@@ -306,7 +322,7 @@ onMounted(async () => {
       </thead>
 
       <tbody>
-        <tr v-for="r in rows"
+        <tr v-for="r in rows.filter(Boolean)"
           :key="r.id"
           @click="router.push(`/reservations/${r.id}`)"
           style="cursor: pointer;"
@@ -408,9 +424,33 @@ onMounted(async () => {
     </table>
   </div>
 
-    <button class="btn btn-danger mb-3" :disabled="!selected.size" @click="bulkDelete" >
-      選択を削除
-    </button>
+    <div class="list-footer d-flex align-items-center justify-content-between">
+      <button class="btn btn-danger mb-3" :disabled="!selected.size" @click="bulkDelete" >
+        選択を削除
+      </button>
+      <div class="pagenation">
+        <nav class="my-3 d-flex justify-content-center align-items-center gap-3">
+          <button
+            class="btn btn-outline-secondary"
+            :disabled="!canPrev"
+            @click="page-- ; search()"
+          >
+            ‹ Prev
+          </button>
+
+          <span>{{ page }} / {{ maxPage }}</span>
+
+          <button
+            class="btn btn-outline-secondary"
+            :disabled="!canNext"
+            @click="page++ ; search()"
+          >
+            Next ›
+          </button>
+        </nav>
+      </div>
+    </div>
+
 
 </div>
 </template>
