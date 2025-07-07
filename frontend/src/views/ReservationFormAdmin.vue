@@ -411,6 +411,10 @@ onMounted(async () => {
   await fetchReservation()
   await fetchCasts()
   choices.value = await getReservationChoices()
+  if (import.meta.env.DEV) {
+    // ブラウザ Console から window.rows で参照できる
+    window.rows = rows;
+  }
 })
 
 /* ──────────────── dev logs ──────────────── */
