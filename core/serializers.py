@@ -11,7 +11,7 @@ from .models import (
 	CastProfile, CastCoursePrice, CastOption, Driver, Customer,
 	Reservation, ReservationCast, ReservationCharge, CashFlow, CustomerAddress, ShiftPlan, ShiftAttendance,
 	ReservationDriver, Payment, ManualEntry, DriverShift, ExpenseCategory, ExpenseEntry,
-	CastRate, DriverRate
+	CastRate, DriverRate, CastStandbyPlace
 )
 
 # ---------- マスタ ----------
@@ -34,6 +34,13 @@ class GroupOptionPriceSerializer(serializers.ModelSerializer):
 	class Meta: model = GroupOptionPrice; fields = '__all__'
 
 # ---------- キャスト ----------
+
+class CastStandbyPlaceSerializer(serializers.ModelSerializer):
+	class Meta:
+		model  = CastStandbyPlace
+		fields = ('id', 'label', 'address', 'is_primary', 'zipcode')
+
+
 class CastSerializer(serializers.ModelSerializer):
 	ng_customers = serializers.PrimaryKeyRelatedField(
 		many=True, queryset=Customer.objects.all(), required=False
@@ -50,6 +57,9 @@ class CastSerializer(serializers.ModelSerializer):
 		allow_null=True,
 		required=False
 	)
+	standby_places = CastStandbyPlaceSerializer(
+		many=True, required=False
+	)
 
 	class Meta:
 		model  = CastProfile
@@ -59,6 +69,24 @@ class CastSerializer(serializers.ModelSerializer):
 		request = self.context.get("request")
 		url = obj.photo_url					   # property で既に絶対 or static
 		return request.build_absolute_uri(url) if request else url
+
+	def _sync_standby(self, instance, places):
+		instance.standby_places.all().delete()
+		for p in places:
+			CastStandbyPlace.objects.create(cast_profile=instance, **p)
+
+	def create(self, validated_data):
+		places = validated_data.pop('standby_places', [])
+		cast   = super().create(validated_data)
+		self._sync_standby(cast, places)
+		return cast
+
+	def update(self, instance, validated_data):
+		places = validated_data.pop('standby_places', None)
+		instance = super().update(instance, validated_data)
+		if places is not None:
+			self._sync_standby(instance, places)
+		return instance
 
 class CastCoursePriceSerializer(serializers.ModelSerializer):
 	class Meta: model = CastCoursePrice; fields = '__all__'
@@ -721,15 +749,15 @@ class ExpenseEntrySerializer(serializers.ModelSerializer):
 
 
 class DailyPLSerializer(serializers.Serializer):
-    date           = serializers.DateField()
-    store_id       = serializers.IntegerField(allow_null=True)
-    sales_cash     = serializers.IntegerField()
-    sales_card     = serializers.IntegerField()
-    sales_total    = serializers.IntegerField()
-    cast_labor     = serializers.IntegerField()
-    driver_labor   = serializers.IntegerField()
-    custom_expense = serializers.IntegerField()
-    gross_profit   = serializers.IntegerField()
+	date		   = serializers.DateField()
+	store_id	   = serializers.IntegerField(allow_null=True)
+	sales_cash	 = serializers.IntegerField()
+	sales_card	 = serializers.IntegerField()
+	sales_total	= serializers.IntegerField()
+	cast_labor	 = serializers.IntegerField()
+	driver_labor   = serializers.IntegerField()
+	custom_expense = serializers.IntegerField()
+	gross_profit   = serializers.IntegerField()
 
 
 
@@ -743,15 +771,15 @@ class MonthlyPLSerializer(serializers.Serializer):
 	operating_profit  = serializers.IntegerField()
 
 class YearlyMonthSerializer(serializers.Serializer):
-    month            = serializers.CharField()
-    sales_cash       = serializers.IntegerField()
-    sales_card       = serializers.IntegerField()
-    sales_total      = serializers.IntegerField()
-    cast_labor       = serializers.IntegerField()
-    driver_labor     = serializers.IntegerField()
-    fixed_breakdown  = serializers.ListField()
-    custom_expense   = serializers.IntegerField()
-    operating_profit = serializers.IntegerField()
+	month			= serializers.CharField()
+	sales_cash	   = serializers.IntegerField()
+	sales_card	   = serializers.IntegerField()
+	sales_total	  = serializers.IntegerField()
+	cast_labor	   = serializers.IntegerField()
+	driver_labor	 = serializers.IntegerField()
+	fixed_breakdown  = serializers.ListField()
+	custom_expense   = serializers.IntegerField()
+	operating_profit = serializers.IntegerField()
 
 
 class CastRateSerializer(serializers.ModelSerializer):

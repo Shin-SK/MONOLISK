@@ -56,10 +56,16 @@ function colorForMinutes(mins) {
 async function fetchRows () {
   const casts = await getCastProfiles({ store: props.storeId || undefined })
 
-  rows.value = casts.map(c => ({
-    id   : c.id,
-    label: c.stage_name || c.name || 'CAST'
-  }))
+  rows.value = casts.map(c => {
+   // 既定があればそれ、なければ 1 件目
+   const primary = c.standby_places?.find(p => p.is_primary) ?? c.standby_places?.[0]
+
+    return {
+      id   : c.id,
+      label: c.stage_name || c.name || 'CAST',
+      place: primary?.label || ''        // ← ★ ここを追加 ★
+    }
+  })
 
   castMap.value = Object.fromEntries(
     casts.map(c => [c.id, c.stage_name || c.name || 'CAST'])
@@ -248,7 +254,8 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
         class="label-row"
       >
       <span class="label-label">
-          {{ row.label }}
+          <span class="d-block">{{ row.label }}</span>
+          <span v-if="row.place" class="badge bg-secondary">{{ row.place }}</span>
       </span>
       </div>
     </div>

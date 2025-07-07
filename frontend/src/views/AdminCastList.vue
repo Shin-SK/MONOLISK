@@ -9,18 +9,25 @@ const stores   = ref([])
 const results  = ref([])
 
 async function fetchStores() {
-  stores.value = await api.get('stores/').then(r => r.data)
-  store.value  = stores.value[0]?.id ?? ''
+  const list = await api.get('stores/').then(r => r.data)
+  stores.value = [{ id: '', name: '全店舗' }, ...list]
+  store.value = ''
 }
 async function fetch() {
 	/* 1) キャスト一覧 */
 	const { data: casts } = await api.get('cast-profiles/', {
-	  params:{ store:store.value, stage_name:keyword.value }
+    params: {
+      store      : store.value || undefined,  // ← ここ
+      stage_name : keyword.value
+    }
 	})
 
 	/* 2) 今日の出勤予定（同店舗に絞る） */
 	const today   = new Date().toISOString().slice(0,10)
-	const shifts  = await getShiftPlans({ store:store.value, date: today })
+  const shifts = await getShiftPlans({
+    store: store.value || undefined,          // ← 同上
+    date : today
+  })
 	const byCast  = Object.fromEntries(shifts.map(s => [s.cast_profile, s]))
 
 	/* 3) マージしてテーブル描画用へ */

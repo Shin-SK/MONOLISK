@@ -163,6 +163,30 @@ class CastOption(TimeStamped):
 	is_enabled   = models.BooleanField(default=True)
 
 
+class CastStandbyPlace(TimeStamped):
+    cast_profile = models.ForeignKey(
+        CastProfile, on_delete=models.CASCADE,
+        related_name='standby_places'
+    )
+    label       = models.CharField(max_length=30, blank=True)
+    address     = models.CharField(max_length=255)
+    zipcode    = models.CharField(max_length=7, blank=True, null=True)
+    is_primary  = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = '待機場所'
+        verbose_name_plural = '待機場所'
+        unique_together = ('cast_profile', 'address')
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # primary が立ったら同キャストの他レコードを倒す
+        if self.is_primary:
+            self.cast_profile.standby_places.exclude(id=self.id)\
+                                            .update(is_primary=False)
+
+
+
 # ---------- 顧客・ドライバー ----------
 class Driver(TimeStamped):
 	user  = models.OneToOneField(User, on_delete=models.CASCADE)
