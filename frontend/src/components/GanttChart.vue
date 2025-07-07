@@ -4,6 +4,7 @@
 import { ref, watch, computed, nextTick, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import { getCastProfiles, getReservations, getDrivers } from '@/api'
+import { Tooltip } from 'bootstrap'
 
 /* ───────── props ───────── */
 const props = defineProps({
@@ -36,6 +37,7 @@ const driverName = (r, role) => {
   return driverMap.value[found.driver] || ''
 }
 
+
 /* ───────── 色 ───────── */
 
 const PALETTE = [
@@ -63,7 +65,8 @@ async function fetchRows () {
     return {
       id   : c.id,
       label: c.stage_name || c.name || 'CAST',
-      place: primary?.label || ''        // ← ★ ここを追加 ★
+      place: primary?.label || '' ,
+      placeAddr: primary?.address || ''
     }
   })
 
@@ -173,6 +176,21 @@ async function fetchDrivers () {
 }
 onMounted(fetchDrivers)
 
+/* Tooltip を毎回張り直す util */
+function enableTooltips () {
+  nextTick(() => {
+    document
+      .querySelectorAll('[data-bs-toggle="tooltip"]')
+      .forEach(el => {
+        // 既にある場合は再利用
+        Tooltip.getOrCreateInstance(el, {
+          container : 'body',   // ← 親の overflow を無視して body に
+          trigger   : 'hover',
+        })
+      })
+  })
+}
+
 /* ───────── helper: まとめて更新 ───────── */
 async function refresh () {
   await fetchRows()   // キャスト → 行 / map
@@ -235,7 +253,11 @@ function centerNow () {
   const ratio   = Math.min(1, Math.max(0, elapsed / total))
   el.scrollLeft = ratio * el.scrollWidth - el.clientWidth / 2
 }
-onMounted(() => nextTick(centerNow))
+
+
+onMounted(enableTooltips)
+/* rows / address が変わるたびに再初期化 */
+watch(rows, enableTooltips, { deep: true })
 watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
 </script>
 
@@ -254,8 +276,20 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
         class="label-row"
       >
       <span class="label-label">
-          <span class="d-block">{{ row.label }}</span>
-          <span v-if="row.place" class="badge bg-white text-black">{{ row.place }}</span>
+        <span class="d-block">{{ row.label }}</span>
+
+        <!-- ① data-bs-title に住所、② data-bs-toggle="tooltip" -->
+        <span
+          v-if="row.place"
+          class="badge bg-light text-dark"
+          data-bs-toggle="tooltip"
+          data-bs-placement="right"
+          data-bs-container="body"
+          data-bs-boundary="window"
+          data-bs-custom-class="tp-light"
+        >
+          {{ row.place }}
+        </span>
       </span>
       </div>
     </div>
@@ -285,7 +319,7 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
           <span v-if="bar.puName" class="drv-label left">{{ bar.puName }}</span>
 
           <!-- 住所：幅制限＆ellipsis、hover で全文 -->
-          <span class="addr-text" :title="bar.address">
+          <span class="addr-text">
             {{ bar.address }}
           </span>
 
@@ -314,5 +348,20 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
   opacity: .7;          /* 好みで */
 }
 
+/* light style のツールチップ本体 */
+.tp-light .tooltip-inner {
+  background-color: var(--bs-light);
+  color: var(--bs-dark);
+  border: 1px solid var(--bs-border-color-translucent);
+}
 
+/* 矢印部分 */
+.tp-light .tooltip-arrow::before {
+  background-color: var(--bs-light);
+  /* ↑ “::after” になる場合もあるので環境に合わせて調整 */
+}
+
+.tooltip.show{
+  color: white !important;
+}
 </style>
