@@ -255,7 +255,7 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
       >
       <span class="label-label">
           <span class="d-block">{{ row.label }}</span>
-          <span v-if="row.place" class="badge bg-secondary">{{ row.place }}</span>
+          <span v-if="row.place" class="badge bg-white text-black">{{ row.place }}</span>
       </span>
       </div>
     </div>
