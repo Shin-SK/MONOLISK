@@ -268,7 +268,7 @@ class Customer(TimeStamped):
 
 class CustomerAddress(TimeStamped):
 	customer		= models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='addresses')
-	label			= models.CharField(max_length=30, blank=True)
+	label			= models.CharField(max_length=30, blank=True, default="初回住所")
 	address			= models.CharField(max_length=255)
 	is_primary		= models.BooleanField(default=False)
 
