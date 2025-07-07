@@ -99,6 +99,16 @@ async function search () {
       .filter(c => c.kind === 'OPTION')
       .reduce((t, c) => t + Number(c.amount ?? c.price ?? 0), 0)
 
+    const card_amount = (r.payments ?? [])
+      .filter(p => p.method === 'card')
+      .reduce((t, p) => t + Number(p.amount || 0), 0)
+
+    const net_cash   = (r.received_amount ?? 0) - (r.change_amount ?? 0)
+    const expected = r.expected_total ?? r.expected_amount ?? 0
+    const totalPaid  = card_amount + net_cash 
+    const diff      = totalPaid - expected     
+    const isDiffAlert = diff !== 0 && r.status === 'CASH_COLLECT'
+
     if (optionSum === 0 && Array.isArray(r.options)) {
       optionSum = r.options
         .reduce((t, o) => t + Number(o.amount ?? o.price ?? o.default_price ?? 0), 0)
@@ -106,7 +116,8 @@ async function search () {
 
     return {
       ...r,
-      expected_total: r.expected_total
+      expected_total: r.expected_total,
+      card_amount, diff, isDiffAlert,
     }
   })
 
@@ -126,7 +137,6 @@ const statusColor = s => ({
   CASH_COLLECT : 'bg-primary',
 }[s] || 'bg-light')
 
-
 const statusRowClass = s => ({
   CALL_PENDING : 'table-secondary',  // 灰
   CALL_DONE    : 'table-info',       // 水
@@ -134,6 +144,10 @@ const statusRowClass = s => ({
   IN_SERVICE   : 'table-success',    // 緑
   CASH_COLLECT : 'table-primary',    // 青
 }[s] || '')
+
+
+const diffRowClass  = flag => (flag ? 'table-danger' : '')
+const diffCellClass = flag => (flag ? 'text-danger fw-bold' : '')
 
 /* ────────── 表操作 ────────── */
 async function resetForm () {
@@ -284,13 +298,19 @@ onMounted(async () => {
           <th>迎え</th>
           <th>送り</th>
           <th>小計</th>
+          <th>カード</th>
           <th>受取金</th>
+          <th>お釣り</th>
           <!-- <th>入金</th> -->
         </tr>
       </thead>
 
       <tbody>
-        <tr v-for="r in rows" :key="r.id" @click="router.push(`/reservations/${r.id}`)" style="cursor: pointer;">
+        <tr v-for="r in rows"
+          :key="r.id"
+          @click="router.push(`/reservations/${r.id}`)"
+          style="cursor: pointer;"
+          :class="diffRowClass(r.isDiffAlert)">
           <td>
             <input
               type="checkbox"
@@ -363,7 +383,19 @@ onMounted(async () => {
             <template v-else>―</template>
           </td>
           <td class="fw-bold">¥{{ (r.expected_total??r.expected_amount??0).toLocaleString() }}</td>
+          <td class="fw-bold">¥{{ (r.card_amount ?? 0).toLocaleString() }}</td>
           <td class="fw-bold">¥{{ (r.received_amount??0).toLocaleString() }}</td>
+          <td class="fw-bold position-relative">
+            ¥{{ (r.change_amount ?? 0).toLocaleString() }}
+
+            <!-- 普段は透明 / hover でフェードイン -->
+            <span
+              v-if="r.isDiffAlert"
+              class="diff-badge badge bg-danger position-absolute top-0 end-0 translate-middle-y"
+            >
+              差額{{ r.diff > 0 ? '+' : '' }}¥{{ Math.abs(r.diff).toLocaleString() }}
+            </span>
+          </td>
           <!-- <td class="fw-bold">¥{{ (r.deposited_amount??0).toLocaleString() }}</td> -->
           <!-- <td>
             <button class="btn btn-link p-0"
@@ -382,3 +414,18 @@ onMounted(async () => {
 
 </div>
 </template>
+
+
+
+<style scoped>
+/* 通常は非表示 → 行 or セルに hover すると 0.9 までフェードイン */
+.diff-badge {
+  opacity: 0;
+  transition: opacity .15s ease;
+  pointer-events: none;   /* マウスイベントを透過 */
+}
+tr:hover .diff-badge,
+td:hover .diff-badge {
+  opacity: .9;
+}
+</style>

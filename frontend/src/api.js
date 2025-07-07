@@ -5,6 +5,46 @@ export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
 })
 
+
+/* ---------------------------------------- */
+/* 共通レスポンスインターセプタ & パーサ     */
+/* ---------------------------------------- */
+
+function parseApiError(err){
+	if(!err.response) return 'ネットワークエラー'
+
+	const data = err.response.data
+	if(typeof data === 'string') return data
+	if(data.detail) return data.detail
+	if(typeof data === 'object'){
+		return Object.entries(data)
+			.map(([k,v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+			.join('\n')
+	}
+	return '不明なエラー'
+}
+
+/* ❶ 401 専用（壊れたトークン掃除のみ） */
+api.interceptors.response.use(
+	res => res,
+	err => {
+		if (err.response?.status === 401) localStorage.removeItem('token')
+		return Promise.reject(err)	// → 次(❷)へ
+	}
+)
+
+/* ❷ 全エラー共通（alert で内容表示） */
+api.interceptors.response.use(
+	res => res,
+	err => {
+		alert(parseApiError(err))
+		return Promise.reject(err)	// → 呼び出し元の catch へ
+	}
+)
+
+
+
+
 /* ------------------------------------------------------------------ */
 /* 1. interceptor: “ログイン系 URL には token を付けない”            */
 /* ------------------------------------------------------------------ */
@@ -66,7 +106,7 @@ export const getReservation    = id      => api.get(`reservations/${id}/`).then(
 export const createReservation = payload => api.post('reservations/', payload).then(r => r.data)
 export const updateReservation = (id, p) => api.patch(`reservations/${id}/`, p)
 export const deleteReservations = (ids) =>
-  axios.delete('/api/reservations/bulk-delete/', { data: { ids } })
+  axios.delete('/reservations/bulk-delete/', { data: { ids } })
 
 export const getLatestReservation = id =>
   api.get(`customers/${id}/latest_reservation/`).then(r => r.data)

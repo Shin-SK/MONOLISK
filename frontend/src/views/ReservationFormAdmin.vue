@@ -55,7 +55,7 @@ const form = reactive({
   expenses:[{label:'',amount:0}],
   extend_blocks:0,
   change_amount:'',
-  status:'',
+  status: null,
   pay_cash : 0,              // ← 現金受取額（＝旧 received_amount）
   pay_card : 0,              // ← カード決済額
   deposited_amount : 0,      // 店に入金した現金
@@ -286,18 +286,20 @@ const paymentDiff = computed(() =>
   paymentTotal.value - price.value
 )
 
+
+/* ── お釣りのヒント ── */
+const suggestedChange = computed(() =>
+  Math.max(0, (+form.received_amount || 0) - (+form.pay_cash || 0))
+)
+
+
 /* ─── data ─── */
-const isRecvManual = ref(false)      // 受取金欄を手入力したら true
+const isRecvManual = ref(true)
 
 // 0) カード or 小計 が変わったら必ず現金を再計算
 watch([() => form.pay_card, price], () => {
   // 現金 = 小計 – カード（マイナスにはさせない）
   form.pay_cash = Math.max(0, price.value - (+form.pay_card || 0))
-
-  // 受取金をまだ手入力していなければコピー
-  if (!isRecvManual.value) {
-    form.received_amount = form.pay_cash
-  }
 
   // 釣り銭を更新
   form.change_amount = Math.max(
@@ -308,9 +310,6 @@ watch([() => form.pay_card, price], () => {
 
 // ① pay_cash が変わったら、手入力していない限り受取金にコピー
 watch(() => form.pay_cash, () => {
-  if (!isRecvManual.value) {
-    form.received_amount = form.pay_cash
-  }
   // 釣り銭も更新
   form.change_amount = Math.max(
     0,
@@ -318,13 +317,11 @@ watch(() => form.pay_cash, () => {
   )
 })
 
-// ② 受取金をユーザが編集したときは釣り銭だけ計算
+// ② 受取金が変わっても「入力済みなら」触らない
 watch(() => form.received_amount, () => {
-  isRecvManual.value = true         // 念のため保険
-  form.change_amount = Math.max(
-    0,
-    (+form.received_amount || 0) - (+form.pay_cash || 0)
-  )
+  if (form.change_amount === '' || form.change_amount == null) {
+    form.change_amount = suggestedChange.value      // ← 初期入力を補完したいなら
+  }
 })
 
 /* ──────────────── 保存 ──────────────── */
@@ -344,7 +341,7 @@ const payload = {
   received_amount : form.received_amount,
   extend_blocks    : form.extend_blocks,
   change_amount    : form.change_amount || 0,
-  status           : form.status, 
+...(form.status ? { status: form.status } : {}),
 
   /* キャスト × コース */
   casts   : castIds.map(id => ({ cast_profile: id, course: form.course })),
@@ -404,10 +401,8 @@ const payload = {
 
 	if (!props.inModal) await router.push('/reservations')
 	} catch (e) {
-	console.error(e.response?.data)
-	alert(e.response?.data?.detail || 'バリデーションエラー')
+		console.error(e.response?.data)          // ← ここだけで十分
 	}
-
 }
 
 /* ──────────────── 初期化 ──────────────── */
@@ -455,7 +450,7 @@ watch(
 				</div>
 
 				<div class="list-area"><!-- 候補 -->
-					<ul v-if="showList" class="d-flex gap-4 mt-4">
+					<ul v-if="showList" class="d-flex gap-4 mt-4 flex-wrap">
 						<li v-for="c in candidates" :key="c.id"
 							class="btn btn-outline-primary"
 							@click="choose(c)">
@@ -954,6 +949,7 @@ watch(
 							type="number" min="0"
 							v-model.number="form.change_amount"
 							class="form-control"
+							:placeholder="suggestedChange.toLocaleString()"
 						/>
 					</div>
 

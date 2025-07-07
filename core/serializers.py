@@ -265,7 +265,7 @@ class ReservationSerializer(serializers.ModelSerializer):
 	casts   = ReservationCastSerializer(many=True, required=False)
 	charges = ReservationChargeSerializer(many=True, required=False)
 	cast_photos = serializers.SerializerMethodField()
-	status = ChoiceField(choices=Reservation.Status.choices, required=False )
+	status = ChoiceField(choices=Reservation.Status.choices, required=False, allow_blank=True )
 	store_name	  = serializers.CharField(source="store.name", read_only=True)
 	customer_name   = serializers.CharField(source="customer.name", read_only=True)
 	customer_address = serializers.CharField(source='customer.address', read_only=True)
