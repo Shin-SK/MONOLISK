@@ -129,7 +129,8 @@ async function search () {
       optionSum = r.options
         .reduce((t, o) => t + Number(o.amount ?? o.price ?? o.default_price ?? 0), 0)
     }
-
+    console.log(r.id, r.status, diff);
+    
     return {
       ...r,
       expected_total: r.expected_total,

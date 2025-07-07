@@ -17,6 +17,8 @@ import {
   getLatestReservation, getCustomerAddresses, createCustomerAddress, getReservationChoices
 } from '@/api'
 
+
+
 /* ──────────────── props / emit ──────────────── */
 const props = defineProps({
   reservationId : { type:[Number,String], default:null },
@@ -43,6 +45,8 @@ const route  = useRoute()
 const router = useRouter()
 const currentId = computed(() => props.reservationId ?? route.params.id ?? null)
 const isEdit    = computed(() => !!currentId.value)
+
+let loaded = false;
 
 /* ──────────────── フォーム値 ──────────────── */
 const form = reactive({
@@ -285,6 +289,7 @@ async function submitNewCustomer () {
 
 
 /* ──────────────── 金額計算 ──────────────── */
+
 const castPriceSum = asyncComputed(async () => {
   if (!form.course || !form.cast_profiles.length) return 0
   return await getPrice({
@@ -336,7 +341,13 @@ const paymentDiff = computed(() =>
 )
 
 
-/* ── お釣りのヒント ── */
+const isChangeManual = ref(false)
+
+watch(() => form.change_amount, () => {
+  isChangeManual.value = true          // ユーザが何か入力したら手動フラグ
+})
+
+// 現金が変わったら placeholder 用の suggestedChange だけ作る
 const suggestedChange = computed(() =>
   Math.max(0, (+form.received_amount || 0) - (+form.pay_cash || 0))
 )
@@ -347,6 +358,7 @@ const isRecvManual = ref(true)
 
 // 0) カード or 小計 が変わったら必ず現金を再計算
 watch([() => form.pay_card, price], () => {
+  if (!loaded) return
   // 現金 = 小計 – カード（マイナスにはさせない）
   form.pay_cash = Math.max(0, price.value - (+form.pay_card || 0))
 
@@ -355,10 +367,12 @@ watch([() => form.pay_card, price], () => {
     0,
     (+form.received_amount || 0) - (+form.pay_cash || 0)
   )
+
 })
 
 // ① pay_cash が変わったら、手入力していない限り受取金にコピー
 watch(() => form.pay_cash, () => {
+if (!loaded) return
   // 釣り銭も更新
   form.change_amount = Math.max(
     0,
@@ -368,8 +382,8 @@ watch(() => form.pay_cash, () => {
 
 // ② 受取金が変わっても「入力済みなら」触らない
 watch(() => form.received_amount, () => {
-  if (form.change_amount === '' || form.change_amount == null) {
-    form.change_amount = suggestedChange.value      // ← 初期入力を補完したいなら
+  if (!isChangeManual.value && (form.change_amount === '' || form.change_amount == null)) {
+    form.change_amount = suggestedChange.value
   }
 })
 
@@ -460,6 +474,16 @@ onMounted(async () => {
   await fetchReservation()
   await fetchCasts()
   choices.value = await getReservationChoices()
+  loaded = true      // ここでロード完了マーク
+})
+
+watch([() => form.pay_card, price], () => {
+  if (!loaded) return          // ① 初期ロード中は無視
+  form.pay_cash = Math.max(0, price.value - (+form.pay_card || 0))
+  form.change_amount = Math.max(
+    0,
+    (+form.received_amount || 0) - (+form.pay_cash || 0)
+  )
 })
 
 /* ──────────────── dev logs ──────────────── */
