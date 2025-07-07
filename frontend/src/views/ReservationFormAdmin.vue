@@ -8,6 +8,7 @@ import { useRoute, useRouter }  from 'vue-router'
 import debounce                 from 'lodash.debounce'
 import dayjs                    from 'dayjs'
 import ReservationCastSelector  from '@/components/ReservationCastSelector.vue'
+import useZipcode from '@/utils/zipcode'
 import {
   getStores, getCustomers, getDrivers, getCourses,
   getOptions, getCastProfiles, getPrice,
@@ -157,7 +158,7 @@ async function fetchReservation () {
   } else if (res.address_text) {
     // テキスト直書きで保存されていた
     selectedAddress.value = '__new__'
-    newAddress.value      = { label: '', address_text: res.address_text }
+    newAddress.value      = { label: '', address: '' }
   } else {
     // 何も選ばれていなかった
     selectedAddress.value = ''
@@ -220,7 +221,12 @@ function clearCustomer (){
 const latest           = ref(null)
 const addresses        = ref([])
 const selectedAddress  = ref('')
-const newAddress       = ref({ label:'', address_text:'' })
+const newAddress       = ref({ label:'', address:'' })
+
+/* ──────────────── 郵便番号検索 ──────────────── */
+
+ const { zipcode, zipErr } = useZipcode(selectedAddress, newAddress)
+
 
 /* 顧客が決まるたびに取得 */
 watch(() => form.customer, async id => {
@@ -233,6 +239,49 @@ watch(() => form.customer, async id => {
   latest.value     = await getLatestReservation(id)
   addresses.value  = await getCustomerAddresses(id)
 })
+
+/* ──────────────── よく使うホテル ──────────────── */
+
+const hotels = ref([
+  { label: 'ホテルYES', address: '東京都渋谷区道玄坂1-1-1' },
+  { label: 'ホテルタカス', address: '東京都港区六本木3-3-3' },
+  { label: 'ホテルクリニック', address: '川崎市川崎区駅前本町4-4-4' },
+  // …よく使う順に並べておくと UX↑
+])
+
+const selectedHotel = ref(null)
+
+/* 選択されたら newAddress を自動入力して
+   ラジオを「__new__」に倒すだけで既存ロジックが動く */
+watch(selectedHotel, h => {
+  if (!h) return
+  selectedAddress.value = '__new__'
+  newAddress.value      = { label: h.label, address: h.address }
+})
+
+
+/* ─────────── 新規顧客追加 UI 用 ─────────── */
+const isAddingCustomer   = ref(false)               // 追加フォームを出すか
+const newCustomer        = reactive({ name: '' })   // phone は既入力の phone を使う
+
+/** フォーム送信 */
+async function submitNewCustomer () {
+  if (!newCustomer.name.trim() || !phone.value.trim()) return
+  try {
+    const cust = await createCustomer({
+      name : newCustomer.name.trim(),
+      phone: phone.value.trim()
+    })
+    choose(cust)               // 既存ロジックで選択状態へ
+    // 後片付け
+    isAddingCustomer.value = false
+    newCustomer.name = ''
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+
 
 
 /* ──────────────── 金額計算 ──────────────── */
@@ -383,7 +432,7 @@ const payload = {
 
 	/* 住所帳を組み込む */
 	if (selectedAddress.value === '__new__') {
-	if (!newAddress.value.address_text.trim()) {
+	if (!newAddress.value.address.trim()) {
 		alert('住所を入力してください'); return
 	}
 	const created = await createCustomerAddress(form.customer, newAddress.value)
@@ -411,10 +460,6 @@ onMounted(async () => {
   await fetchReservation()
   await fetchCasts()
   choices.value = await getReservationChoices()
-  if (import.meta.env.DEV) {
-    // ブラウザ Console から window.rows で参照できる
-    window.rows = rows;
-  }
 })
 
 /* ──────────────── dev logs ──────────────── */
@@ -449,9 +494,29 @@ watch(
 						class="form-control" placeholder="090…" />
 
 					<div class="add">
-						<button @click="registerNew"><span class="material-symbols-outlined">add_circle</span></button>
+						<button @click="isAddingCustomer = !isAddingCustomer">
+						<span class="material-symbols-outlined">add_circle</span>
+						</button>
 					</div>
 				</div>
+
+				<!-- ▼ ここが新規顧客入力フォーム -->
+				<div v-if="isAddingCustomer" class="mt-3">
+
+				<input v-model="newCustomer.name"
+						class="form-control mb-2"
+						placeholder="顧客名" />
+
+				<!-- 電話番号は phone をそのまま使うが、修正できるように別 input にしても可 -->
+				<input v-model="phone"
+						class="form-control mb-2"
+						placeholder="電話番号" />
+
+				<button class="btn btn-primary w-100" @click="submitNewCustomer">
+					登録
+				</button>
+				</div>
+
 
 				<div class="list-area"><!-- 候補 -->
 					<ul v-if="showList" class="d-flex gap-4 mt-4 flex-wrap">
@@ -638,52 +703,78 @@ watch(
 				<div class="area">
 					<div class="h5">送迎場所</div>
 					<div class="wrap">
-					<div class="d-flex flex-wrap gap-3" role="group">
-						<!-- 既存 -->
-						<label
-							v-for="a in addresses"
-							:key="a.id"
-							class="btn btn-outline-primary"
-							:class="{ active: selectedAddress === a.id }"
-						>
-							<input
-								type="radio"
-								class="btn-check"
-								v-model="selectedAddress"
-								:value="a.id"
-							/>
-							{{ a.label }} / {{ a.address_text }}
-						</label>
+						<div class="d-flex flex-wrap gap-3" role="group">
+							<!-- 既存 -->
+							<label
+								v-for="a in addresses"
+								:key="a.id"
+								class="btn btn-outline-primary"
+								:class="{ active: selectedAddress === a.id }"
+							>
+								<input
+									type="radio"
+									class="btn-check"
+									v-model="selectedAddress"
+									:value="a.id"
+								/>
+								{{ a.label }} / {{ a.address }}
+							</label>
 
-						<!-- 新規 -->
-						<label
-							class="btn btn-outline-success"
-							:class="{ active: selectedAddress === '__new__' }"
-						>
-							<input
-								type="radio"
-								class="btn-check"
-								v-model="selectedAddress"
-								value="__new__"
-							/>
-							＋ 新規住所
-						</label>
-					</div>
-					<!-- 新規入力フォーム -->
-					<div v-if="selectedAddress === '__new__'" class="mt-3">
-						<input
-							v-model="newAddress.label"
-							class="form-control mb-2"
-							placeholder="例）ホテルA"
-						/>
-						<textarea
-							v-model="newAddress.address_text"
-							class="form-control"
-							placeholder="住所を入力"
-							rows="3"
-						></textarea>
-					</div>
-					</div>
+							<div class="wrap d-grid gap-3 w-100 align-items-center" style="grid-template-columns:repeat(2,1fr);">
+								<!-- 新規 -->
+								<label
+									class="btn btn-outline-success d-flex justify-content-center align-items-center"
+									style="min-height: 40px;"
+									:class="{ active: selectedAddress === '__new__' }"
+								>
+									<input
+										type="radio"
+										class="btn-check"
+										v-model="selectedAddress"
+										value="__new__"
+									/>
+									＋ 新規住所
+								</label>
+
+								<!-- ☆ホテルセレクト☆ -->
+								<Multiselect
+								v-model="selectedHotel"
+								:options="hotels"
+								label="label"
+								track-by="label"
+								placeholder="いつものホテル"
+								/>
+							</div>
+
+
+						</div>
+						<!-- 新規入力フォーム -->
+						<div v-if="selectedAddress === '__new__'" class="mt-3">
+							<div class="row g-2 mb-2 align-items-center">
+								<div class="col-auto">
+									<input
+										v-model="zipcode"
+										class="form-control"
+										placeholder="郵便番号 例 1500041"
+										maxlength="8" />
+								</div>
+								<div class="col text-danger small">{{ zipErr }}</div>
+							</div>
+
+								<textarea
+									v-model="newAddress.address"
+									class="form-control"
+									rows="2"
+									placeholder="番地・建物名まで入力"
+									style="height: 80px;"></textarea>
+
+								<input
+									v-model="newAddress.label"
+									class="form-control mt-2"
+									placeholder="場所の名前" />
+
+						</div><!-- newaddress -->
+					</div><!-- wrap -->
 				</div> <!-- area -->
 
 				<!-- 開始日時 -->
@@ -792,7 +883,7 @@ watch(
 				</div>
 
 				<!-- ◆ マニュアル売上 ◆ -->
-				<div class="area">
+				<div class="area d-none"><!-- 今はなしにしておく。必要だってなったら復活させる -->
 					<div class="h5">マニュアル売上</div>
 					<div class="wrap">
 						<div
@@ -839,7 +930,7 @@ watch(
 				</div>
 
 				<!-- ◆ マニュアル経費 ◆ -->
-				<div class="area">
+				<div class="area d-none"><!-- 今はなしにしておく。必要だってなったら復活させる -->
 					<div class="h5">マニュアル経費</div>
 					<div class="wrap">
 						<div
