@@ -279,14 +279,11 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
         <span class="d-block">{{ row.label }}</span>
 
         <!-- ① data-bs-title に住所、② data-bs-toggle="tooltip" -->
+        <!-- ★ data-addr に住所を入れておくだけ -->
         <span
           v-if="row.place"
-          class="badge bg-light text-dark"
-          data-bs-toggle="tooltip"
-          data-bs-placement="right"
-          data-bs-container="body"
-          data-bs-boundary="window"
-          data-bs-custom-class="tp-light"
+          class="badge badge-tip bg-light text-dark"
+          :data-addr="row.placeAddr"
         >
           {{ row.place }}
         </span>
@@ -348,20 +345,4 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
   opacity: .7;          /* 好みで */
 }
 
-/* light style のツールチップ本体 */
-.tp-light .tooltip-inner {
-  background-color: var(--bs-light);
-  color: var(--bs-dark);
-  border: 1px solid var(--bs-border-color-translucent);
-}
-
-/* 矢印部分 */
-.tp-light .tooltip-arrow::before {
-  background-color: var(--bs-light);
-  /* ↑ “::after” になる場合もあるので環境に合わせて調整 */
-}
-
-.tooltip.show{
-  color: white !important;
-}
 </style>

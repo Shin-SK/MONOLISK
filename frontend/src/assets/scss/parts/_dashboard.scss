@@ -60,6 +60,7 @@
 		position: absolute;
 		z-index: 999;
 		width: fit-content;
+		overflow: visible;
 		.label-row {
 			height: 40px;
 			display: flex;
@@ -92,5 +93,8 @@
 	overflow: auto;       /* X, Y どちらも OK */
 	position: relative;
 	}
+
+
+
 
 }
