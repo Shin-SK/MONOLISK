@@ -108,7 +108,7 @@ watch(date, load)
 
 <template>
 <div class="container-fluid">
-  <h2 class="h4 mb-3">経費入力</h2>
+  <!-- <h2 class="h4 mb-3">経費入力</h2> -->
 
   <!-- 日付 -->
   <div class="d-flex align-items-center gap-3 mb-3">

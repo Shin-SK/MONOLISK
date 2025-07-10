@@ -40,26 +40,22 @@ const routes = [
     component: AdminLayout,
     meta: { requiresAuth: true, adminOnly: true },
     children: [
-      { path: 'dashboard',   component: () => import('@/views/DashboardAdmin.vue') },          // /admin
-      { path: 'reservations', component: ReservationList },
-      { path: 'reservations/new',     component: ReservationFormAdmin },
-      { path: 'reservations/:id',     component: ReservationFormAdmin, name: 'admin-reservation-detail' },
-      { path: 'reservations/:id(\\d+)', component: ReservationFormAdmin,},
+      { path: 'dashboard',   component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'DASHBOARD' }},          // /admin
+      { path: 'reservations', component: ReservationList, meta: { title: '予約一覧' } },
+      { path: 'reservations/new',     component: ReservationFormAdmin, meta: { title: '新規予約' } },
+      { path: 'reservations/:id',     component: ReservationFormAdmin, name: 'admin-reservation-detail', meta: { title: '予約詳細' } },
+      { path: 'reservations/:id(\\d+)', component: ReservationFormAdmin, meta: { title: '予約詳細' }},
       { path: 'timeline',             component: TimelineAdmin },
-      { path: 'customers',            component: CustomerList },
-      { path: 'customers/new',        component: CustomerForm },
-      { path: 'customers/:id',        component: CustomerForm },
-      { path: 'casts',                component: AdminCastList },
-      { path: 'casts/new',            component: AdminCastForm },
-      { path: 'casts/:id',            component: AdminCastForm },
-      { path: 'drivers',                component: AdminDriverList },
-      { path: 'drivers/new',            component: AdminDriverForm },
-      { path: 'drivers/:id',            component: AdminDriverForm },
-      {
-        path: '/driver-shifts',               // 一覧
-        name: 'driver-shift-list',
-        component: () => import('@/views/DriverShiftList.vue')
-      },
+      { path: 'customers',            component: CustomerList, meta: { title: '顧客情報' }},
+      { path: 'customers/new',        component: CustomerForm, meta: { title: '新規顧客' }},
+      { path: 'customers/:id',        component: CustomerForm, meta: { title: '顧客編集' } },
+      { path: 'casts',                component: AdminCastList, meta: { title: 'キャスト情報' } },
+      { path: 'casts/new',            component: AdminCastForm, meta: { title: '新規キャスト' } },
+      { path: 'casts/:id',            component: AdminCastForm, meta: { title: 'キャスト編集' } },
+      { path: 'drivers',                component: AdminDriverList, meta: { title: 'ドライバー情報' } },
+      { path: 'drivers/new',            component: AdminDriverForm, meta: { title: '新規ドライバー' } },
+      { path: 'drivers/:id',            component: AdminDriverForm, meta: { title: 'ドライバー編集' } },
+      { path: '/driver-shifts', name: 'driver-shift-list', component: () => import('@/views/DriverShiftList.vue')},
       {
         path: '/driver-shifts/driver/:driverId(\\d+)',   // ★NEW
         name: 'driver-shift-by-driver',

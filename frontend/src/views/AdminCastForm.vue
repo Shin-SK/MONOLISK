@@ -307,7 +307,7 @@ onMounted(async () => {
 <template>
 <div class="container-fluid py-4">
 	
-	<h1 class="h4 mb-3">{{ isEdit ? 'キャスト編集' : 'キャスト登録' }}</h1>
+	<!-- <h1 class="h4 mb-3">{{ isEdit ? 'キャスト編集' : 'キャスト登録' }}</h1> -->
 
 	<div class="d-grid gap-4" style="grid-template-columns: 1fr 1fr;">
 		<div class="form-table-grid casts-area">

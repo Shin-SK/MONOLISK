@@ -113,11 +113,7 @@ function dismiss (id) {            // × ボタン用
 </script>
 
 <template>
-  <h1 class="h2 text-center mb-5">ダッシュボード</h1>
-    <div class="bell d-flex">
-      <AlertBell :alerts="cashAlerts" :dismissed="dismissed" class="me-3" />
-    </div>
-        
+  <!-- <h1 class="h2 text-center mb-5">ダッシュボード</h1> -->
   <div class="dashboard-admin container-fluid">
     <!-- ★ アラート -->
     <div v-if="visibleAlerts.length" class="mb-5">
@@ -130,35 +126,42 @@ function dismiss (id) {            // × ボタン用
     </div>
     <!-- ─── 日付ヘッダー ─── -->
     <header class="gc-header d-flex align-items-center justify-content-between gap-3 mb-2">
-      <!-- ← ここは常に “今日” -->
-      <h5 class="mb-0">{{ todayLabel }}</h5>
-      <button class="btn btn-success btn-nowrap" @click="openNew">
-        ＋ 新規予約
-      </button>
 
-      <div class="wrap d-flex align-center gap-4">
-      <!-- コントロール -->
+      <div class="area d-flex align-center gap-4">
+      <!-- ☆このボタン３つを変更したい -->
+        <!-- ☆ひとつめのボタンは今日を基準に１クリックずつ前日へ -->
         <button
           class="btn btn-outline-secondary btn-nowrap"
-          :class="{ active: isSame(selectedDate.subtract(1,'day')) }"
+          :class="{ active: selectedDate.isSame(dayjs().subtract(1, 'day'), 'day') }"
           @click="go(-1)"
-        >昨日</button>
-
+        >
+          <i class="bi bi-arrow-left"></i>
+        </button>
+       
         <button
           class="btn btn-outline-primary btn-nowrap"
           :class="{ active: isSame(dayjs()) }"
           @click="setToday"
         >今日</button>
 
+        <!-- ☆みっつめのボタンは今日を基準に１クリックずつ明日へ -->
         <button
           class="btn btn-outline-secondary btn-nowrap"
-          :class="{ active: isSame(selectedDate.add(1,'day')) }"
+          :class="{ active: selectedDate.isSame(dayjs().add(1, 'day'), 'day') }"
           @click="go(1)"
-        >明日</button>
+        >
+          <i class="bi bi-arrow-right"></i>
+        </button>
 
         <input type="date"
               class="form-control form-control-sm ms-2 bg-white"
               v-model="selectedDateStr"/>
+      </div>
+
+      <div class="area">
+        <button class="btn btn-success btn-nowrap" @click="openNew">
+          ＋ 新規予約
+        </button>
       </div>
 
     </header>

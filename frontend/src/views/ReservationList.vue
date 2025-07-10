@@ -209,7 +209,7 @@ onMounted(async () => {
 
 <template>
 <div class="ReservationList container-fluid py-4">
-	<h1 class="h3">予約一覧</h1>
+	<!-- <h1 class="h3">予約一覧</h1> -->
 
 <!-- ReservationList.vue ― 検索フォーム -->
   <div class="search">

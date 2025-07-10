@@ -1,7 +1,7 @@
 @use '../global/global' as *;
 
 .admin{
-	.header{
+	.sidebar{
 		padding: 16px;
 		min-width: fit-content;
 	}
@@ -42,40 +42,49 @@
 			}
 		}
 	}
-}
-
-	.aside{
-		padding: 40px 8px;
-		color: black;
-		background-color: white;
-		position: relative;
-		height: 100vh;
-		h1{
-			@include fs(16);
-			font-weight: bold;
-			margin-bottom: 40px;
-		}
-		.nav{
-			gap: 16px;
-			a{
-				color: rgba($mc, 0.5);
-				padding: 8px;
-			}
-			.router-link-active{
-				color: $mc;
-				background-color: rgba($mc, 0.1);
-				position: relative;
-				font-weight: bold;
-				border-radius: 16px;
-				&::before{
-					content: '';
-					position: absolute;
-					width: 4px;
-					height: 100%;
-					background-color: $mc;
-					top: 0;
-					left: -8px;
-				}
+	.main{
+		.wrapper{
+			.header{
+				height: 40px;
+				width: 100%;
 			}
 		}
 	}
+
+}
+
+.aside{
+	padding: 40px 8px;
+	color: black;
+	background-color: white;
+	position: relative;
+	height: 100vh;
+	h1{
+		@include fs(16);
+		font-weight: bold;
+		margin-bottom: 40px;
+	}
+	.nav{
+		gap: 16px;
+		a{
+			color: rgba($mc, 0.5);
+			padding: 8px;
+		}
+		.router-link-active{
+			color: $mc;
+			background-color: rgba($mc, 0.1);
+			position: relative;
+			font-weight: bold;
+			border-radius: 16px;
+			&::before{
+				content: '';
+				position: absolute;
+				width: 4px;
+				height: 100%;
+				background-color: $mc;
+				top: 0;
+				left: -8px;
+			}
+		}
+	}
+}

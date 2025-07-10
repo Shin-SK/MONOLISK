@@ -40,7 +40,7 @@ watch([yearMonth, store], fetchData)
 
 <template>
 <div class="pl pl-monthly container-fluid py-4">
-  <h1 class="h4 mb-3">月次P/L</h1>
+  <!-- <h1 class="h4 mb-3">月次P/L</h1> -->
 
 
   <div class="summary-area">

@@ -1,5 +1,9 @@
 @use '../global/global' as *;
 
+h2{
+  @include monsttera;
+}
+
 
 button{
 	background:unset;

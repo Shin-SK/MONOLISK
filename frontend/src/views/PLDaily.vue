@@ -32,7 +32,7 @@ watch([date, store], fetchPL)
 
 <template>
   <div class="container py-4">
-    <h1 class="h4 mb-3">デイリー P/L</h1>
+    <!-- <h1 class="h4 mb-3">デイリー P/L</h1> -->
 
     <!-- フィルタ -->
     <div class="d-flex gap-3 mb-4">

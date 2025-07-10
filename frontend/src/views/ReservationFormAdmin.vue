@@ -531,9 +531,9 @@ watch(
 
 <template>
 <div class="form form-admin container-fluid">
-	<h1 class="h3 mb-4">
+	<!-- <h1 class="h3 mb-4">
 		{{ isEdit ? `予約編集` : '新規予約' }}
-	</h1>
+	</h1> -->
 
 	<div class="form-admin">
 	<div class="form-admin__wrap">

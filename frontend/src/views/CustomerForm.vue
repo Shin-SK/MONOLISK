@@ -49,7 +49,7 @@ async function remove() {
 
 <template>
 <div class="customer customer-form container py-4">
-	<h1 class="h4 mb-3">{{ isEdit ? '顧客編集' : '顧客登録' }}</h1>
+	<!-- <h1 class="h4 mb-3">{{ isEdit ? '顧客編集' : '顧客登録' }}</h1> -->
 
 	<div class="mb-3">
 		<label class="form-label">名前</label>

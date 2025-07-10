@@ -31,7 +31,7 @@ watch([year, store], fetchYearly)
 
 <template>
 <div class="container-fluid py-4">
-  <h1 class="h4 mb-3">{{ year }}年 P/L</h1>
+  <!-- <h1 class="h4 mb-3">{{ year }}年 P/L</h1> -->
 
   <!-- フィルタ -->
   <div class="d-flex gap-3 mb-3 align-items-end">

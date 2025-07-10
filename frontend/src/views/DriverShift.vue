@@ -138,11 +138,11 @@ onMounted(async () => {
 
 <template>
   <div class="container-fluid py-4" style="max-width:720px">
-    <h3 class="mb-4">
+    <!-- <h3 class="mb-4">
       {{ driverName ? `${driverName} 日報` : 'ドライバー日報' }}
       <template v-if="!driverName && driverId">#{{ driverId }}</template>
       <template v-else-if="!driverName">（今日・自分）</template>
-    </h3>
+    </h3> -->
 
     <!-- 出勤カード -->
     <div class="card mb-4">
