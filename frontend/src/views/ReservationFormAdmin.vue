@@ -22,9 +22,36 @@ import {
 /* ──────────────── props / emit ──────────────── */
 const props = defineProps({
   reservationId : { type:[Number,String], default:null },
-  inModal       : { type:Boolean, default:false }
+  inModal       : { type:Boolean, default:false },
+  initialData   : {
+	type : Object,
+	default : () => ({ start_at:'', cast_id:null })
+  }
 })
 const emit = defineEmits(['saved'])
+
+/* ★★★ ここに入れる ★★★ */
+if (import.meta.env.DEV) {
+  console.log('[init]', JSON.stringify(props.initialData))
+}
+
+/* ★ 初期値をフォームへ流し込む関数 ------------------- */
+function applyInitial () {
+  if (!props.initialData) return
+
+  /* 日時 */
+  if (props.initialData.start_at) {
+    const dt = dayjs(props.initialData.start_at)
+    startDate.value = dt.format('YYYY-MM-DD')
+    startTime.value = dt.format('HH:mm')
+  }
+
+  /* キャスト */
+  if (props.initialData.cast_id) {
+    // 一度 visibleCasts が揃ってから代入しないとフィルタに弾かれる
+    form.cast_profiles = [props.initialData.cast_id]
+  }
+}
 
 /* ──────────────── helpers ──────────────── */
 const toId = v => (v && typeof v === 'object') ? v.id : v
@@ -473,6 +500,7 @@ onMounted(async () => {
   await fetchMasters()
   await fetchReservation()
   await fetchCasts()
+  applyInitial()
   choices.value = await getReservationChoices()
   loaded = true      // ここでロード完了マーク
 })

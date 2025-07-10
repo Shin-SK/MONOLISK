@@ -242,7 +242,7 @@ watch(() => [props.date, props.storeId], refresh, { immediate:true })
 onMounted(refresh)
 
 /* ───────── emit ───────── */
-const emit = defineEmits(['update','bar-click'])
+const emit = defineEmits(['update','bar-click','request-new'])
 
 function onDragEnd({ bar }) {
   emit('update', {
@@ -253,6 +253,22 @@ function onDragEnd({ bar }) {
 
 function onBarClick({ bar }) {
   emit('bar-click', { reservationId: bar.reservationId })
+}
+
+/* ───────── タイムラインクリックで予約 ───────── */
+function onRowClick(e, castId) {
+  if (e.target.closest('.g-gantt-bar')) return   // バー上は無視
+
+  const rect    = wrapperRef.value.getBoundingClientRect()
+  const x       = e.clientX - rect.left + wrapperRef.value.scrollLeft
+  const mins    = x / pxPerMinute.value
+  const snapped = Math.floor(mins / 10) * 10     // 10 分スナップ
+
+  const startISO = dayjs(chartStart.value)
+                    .add(snapped, 'minute')
+                    .toISOString()
+
+  emit('request-new', { castId, startISO })
 }
 
 /* ───────── リロード ───────── */
@@ -307,13 +323,11 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
       <span class="label-label">
         <span class="d-block">{{ row.label }}</span>
 
-        <!-- ① data-bs-title に住所、② data-bs-toggle="tooltip" -->
-        <!-- ★ data-addr に住所を入れておくだけ -->
-        <span
-          v-if="row.place"
-          class="badge badge-tip bg-light text-dark"
-          :data-addr="row.placeAddr"
-        >
+          <span
+            v-if="row.place"
+            class="badge badge-tip bg-light text-dark"
+            :data-addr="row.placeAddr"
+          >
           {{ row.place }}
         </span>
       </span>
@@ -323,7 +337,6 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
     <!-- チャート側（横だけスクロール） -->
 <div class="chart-col" ref="wrapperRef" :style="{'--grid-step': gridStep + 'px'}">
       <div class="now-line" :style="{ left: nowX + 'px' }"></div>
-
       <!-- ★ g-gantt-chart はそのまま -->
       <g-gantt-chart
         :chart-start="chartStart"
@@ -343,6 +356,7 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
           v-for="row in rows"
           :key="row.id"
           :bars="bars.filter(b => b.rowId === row.id)"
+          @click="e => onRowClick(e, row.id)"
         >
         <template #bar-label="{ bar }">
           <span v-if="bar.puName" class="drv-label left">{{ bar.puName }}</span>
@@ -415,6 +429,18 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
 /* ③ g-gantt-chart を透過にしておくと一層安全 */
 :deep(.g-gantt-chart) {
   background: transparent;
+}
+
+/* deep で g-gantt-row 本体を relative にしておく */
+:deep(.g-gantt-row) { position: relative; }
+
+/* ヒットエリア */
+.row-hitarea {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: transparent;
+  /* 好みで hover 色を付けても良い */
 }
 
 </style>

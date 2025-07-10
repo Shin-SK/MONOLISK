@@ -1,6 +1,6 @@
 <!-- views/DashboardAdmin.vue -->
 <script setup>
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted, reactive } from 'vue'
 import dayjs from 'dayjs'
 import GanttChart           from '@/components/GanttChart.vue'
 import ReservationFormAdmin from '@/views/ReservationFormAdmin.vue'
@@ -33,6 +33,17 @@ function setToday(){ selectedDate.value = dayjs() }
 /* ───────── ヘッダー用 “リアル今日” ───────── */
 const todayLabel = dayjs().format('YYYY.MM.DD (ddd)')
 
+/* ───────── クリック予約 ───────── */
+const formData   = reactive({ start_at: '', cast_id: null })
+
+function handleRequestNew ({ castId, startISO }) {
+  selectedId.value = null          // ref をここで触る
+  nextTick(() => {
+    formData.start_at = startISO
+    formData.cast_id  = castId
+    openModal()
+  })
+}
 
 /* --- LocalStorage 永続化用キー (日付別) --- */
 const STORAGE_KEY = `dismissedCash_${dayjs().format('YYYYMMDD')}`
@@ -158,6 +169,7 @@ function dismiss (id) {            // × ボタン用
         @bar-click="handleBarClick"
         :start-hour="10"
         :hours-per-chart="24"
+        @request-new="handleRequestNew"
       />
     </div>
   </div>
@@ -175,8 +187,9 @@ function dismiss (id) {            // × ボタン用
 
         <div class="modal-body p-0">
           <ReservationFormAdmin
-              :key="selectedId ?? 'new'"
+              :key="selectedId ?? `${formData.start_at}_${formData.cast_id}`" 
               :reservationId="selectedId"
+              :initial-data="formData"
               :in-modal="true"
               @saved="handleSaved"/>
         </div>
