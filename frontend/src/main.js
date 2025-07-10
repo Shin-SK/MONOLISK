@@ -19,6 +19,8 @@ import '@/plugins/dayjs'
 
 import { yen } from '@/utils/money'
 
+
+
 // import '@syncfusion/ej2-vue-gantt/styles/material.css'
 // import { registerLicense } from '@syncfusion/ej2-base'
 // registerLicense('Ngo9BigBOggjHTQxAR8/V1JEaF5cXmRCdkxxWmFZfVtgdVVMZFhbRH5PIiBoS35Rc0VkWXZedHdUQ2BeU0FxVEFd')

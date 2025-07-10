@@ -3,8 +3,9 @@
 /* ───────── 依存 ───────── */
 import { ref, watch, computed, nextTick, onMounted } from 'vue'
 import dayjs from 'dayjs'
-import { getCastProfiles, getReservations, getDrivers } from '@/api'
+import { getCastProfiles, getReservations, getDrivers, getShiftPlans } from '@/api'
 import { Tooltip } from 'bootstrap'
+
 
 /* ───────── props ───────── */
 const props = defineProps({
@@ -70,6 +71,9 @@ const PALETTE = [
 function colorForMinutes(mins) {
   return PALETTE.find(p => mins <= p.max).color
 }
+
+const SHIFT_COLOR = 'rgba(111, 222, 111, .25)'   // 薄い緑（好みで）
+
 
 /* ───────── fetch rows ───────── */
 async function fetchRows () {
@@ -202,9 +206,42 @@ async function fetchBars () {
     })
   )
 
-  // 生成した配列を reactive 変数へ流し込む
-  bars.value = list
-  }
+  const attends = await getShiftPlans({
+    date  : props.date,
+    store : props.storeId || undefined
+  })
+  console.table(attends)
+
+const shiftBars = attends.map(a => {
+  // 行 ID → rows の id と必ず揃える
+  const castId = a.cast_profile ?? a.cast_id;
+
+  // a.start_at / end_at は "HH:MM:SS"
+  const st = dayjs(`${a.date}T${a.start_at}`);
+  const ed = dayjs(`${a.date}T${a.end_at}`);
+
+  return {
+    rowId : castId,
+    from  : st.toDate(),
+    to    : ed.toDate(),
+    isShift : true,
+    ganttBarConfig : {
+      id   : `shift_${a.id}`,
+      label: '',               // シフト帯はラベル不要なら空で OK
+      style: {
+        background : SHIFT_COLOR,
+        border     : 'none',
+        zIndex     : 0          // 予約バーの背面
+      }
+    }
+  };
+});
+
+
+
+  bars.value = [...list, ...shiftBars]
+ 
+}
 
 
 /* ───────── ドライバー系 ───────── */

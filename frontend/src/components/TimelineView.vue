@@ -1,157 +1,153 @@
 <!-- src/components/TimelineView.vue -->
 <script setup>
-import { ref, watch, reactive, computed } from 'vue'
-import FullCalendar             from '@fullcalendar/vue3'
-import timeGridPlugin           from '@fullcalendar/timegrid'
-import interactionPlugin        from '@fullcalendar/interaction'
-import jaLocale                 from '@fullcalendar/core/locales/ja'
-import dayjs                    from 'dayjs'
-import { useRouter }            from 'vue-router'
-import { api }                  from '@/api'
+import { ref, watch, computed, onMounted } from 'vue'
+import dayjs from 'dayjs'
+import VueCal from 'vue-cal'
+import 'vue-cal/dist/vuecal.css'
+import { useRouter } from 'vue-router'
+import { api } from '@/api'
 import { useUser } from '@/stores/useUser'
 
-/* ---------- props ---------- */
+/* ---------- props / emit ---------- */
 const props = defineProps({
-  apiPath:      { type:String, required:true },   // 例 'reservations/mine-driver/'
-  detailRoute:  { type:String, required:true },   // 例 '/driver/reservations'
-  selectedDate: Object                            // 親 ⇔ 子 同期用
+  apiPath     : { type: String, required: true },
+  detailRoute : { type: String, required: true },
+  selectedDate: { type: [Date, String], default: undefined }   // 親→子 Date or ISO
 })
-const emit = defineEmits(['date-change'])         // 親へ日付変更通知
+const emit = defineEmits(['date-change'])
 
-/* ---------- 基本状態 ---------- */
-const view          = ref('timeGridDay')
-const selectedDate  = ref(props.selectedDate ?? dayjs())   // 内部でも保持
-watch(() => props.selectedDate, d => { if (d) selectedDate.value = d })
+/* ---------- 日付 ---------- */
+const selectedDay = ref(dayjs(props.selectedDate).isValid()
+                       ? dayjs(props.selectedDate)
+                       : dayjs())                       // 常に dayjs
 
-const events  = ref([])
-const calRef  = ref(null)
-const router  = useRouter()
-
-
-/* ----- 自分の driverId を取る --------------------------------- */
-const user = useUser().info
-// ① driver_id を優先。無ければユーザーIDを fallback に
-const myDriverId = user.driver_id ?? user.id
-if (!myDriverId) console.warn('driver_id がありません')
-
-/* ----- driver オブジェクト → id を吸い出すヘルパ ------------ */
-const drvId = d =>
-  typeof d.driver === 'object'
-    ? d.driver.id           // {driver:{id:…}}
-    : d.driver ?? d.driver_id ?? d.driverId ?? null
-function myRoles (rsv) {
-  return (rsv.reservation_drivers || rsv.drivers || [])
-           .filter(d => drvId(d) === myDriverId)
-           .map(d => d.role)         // 例 ['PU','DO']
-}
-
-/* ---------- FullCalendar オプション ---------- */
-const fcOptions = reactive({
-  plugins:          [timeGridPlugin, interactionPlugin],
-  initialView:      view.value,
-  locale:           jaLocale,
-  headerToolbar:    false,
-  slotMinTime:      '08:00:00',
-  slotMaxTime:      '32:00:00',
-  dayHeaders:       false,
-  nowIndicator:     true,
-  firstDay:         1,
-  slotLabelFormat:  { hour:'numeric', minute:'2-digit', hour12:false },
-  events,
-  eventClick: handleEventClick,
-  dayCellClassNames: arg =>
-    arg.date.toISOString().slice(0,10) === selectedDate.value.format('YYYY-MM-DD')
-      ? ['fc-selected-day'] : [],
+/* props で日付が変わった時同期 */
+watch(() => props.selectedDate, d=>{
+  if (d && !dayjs(d).isSame(selectedDay.value,'day')){
+    selectedDay.value = dayjs(d)
+  }
 })
 
-/* ---------- 週ヘッダー ---------- */
-const monday = () => selectedDate.value.startOf('week').add(1,'day')
-function makeWeek(){ return Array.from({length:7},(_,i)=>monday().add(i,'day')) }
-const weekDays = ref(makeWeek())
+/* VueCal ↔ アプリ橋渡し (Date) */
+const calDate = computed({
+  get: () => selectedDay.value.toDate(),
+  set: d  => {
+    const next = dayjs(d)
+    if (!next.isSame(selectedDay.value,'day')){
+      selectedDay.value = next
+      emit('date-change', next)           // 親へ dayjs で戻す
+    }
+  }
+})
 
-/* ---------- API  ---------- */
-async function loadEvents(){
+/* ---------- ★ビューを week で初期化 ---------- */
+const view = ref('day')                  // ← ここを 'week' に
+
+/* ---------- ユーザー/ロール判定 ---------- */
+const user        = useUser().info
+const myDriverId  = user.driver_id ?? user.id
+const drvId = d => typeof d.driver==='object' ? d.driver.id : d.driver ?? d.driver_id
+const myRoles = rsv =>
+  (rsv.reservation_drivers||rsv.drivers||[])
+    .filter(d=>drvId(d)===myDriverId).map(d=>d.role)
+
+/* ---------- イベント取得 ---------- */
+const events = ref([])
+const router = useRouter()
+
+async function loadEvents () {
+  let from, to
+  if (view.value === 'week') {
+    const monday = selectedDay.value.startOf('week').add(1,'day')
+    from = monday
+    to   = monday.clone().add(6,'day').endOf('day')
+  } else {
+    from = selectedDay.value.startOf('day')
+    to   = from.clone().endOf('day')
+  }
+
   const { data } = await api.get(props.apiPath,{
-    params:{ date:selectedDate.value.format('YYYY-MM-DD') }
+    params:{ from: from.format('YYYY-MM-DD'), to: to.format('YYYY-MM-DD') }
   })
-  /* ② 自分が関与する予約だけ残す ---------------------------- */
+
   const mine = data.filter(r =>
-    (r.reservation_drivers || r.drivers || [])
-      .some(d => drvId(d) === myDriverId)
+    (r.reservation_drivers||r.drivers||[]).some(d=>drvId(d)===myDriverId)
   )
 
-  events.value = 
-    /* ② タイトルにロールを付ける ---------------------------- */
- events.value = mine.map(r => {
-   const roleTag = myRoles(r).join('/')   // 'PU' / 'DO' / 'PU/DO'
-   const prefix  = roleTag ? `[${roleTag}] ` : ''
-   const end     = dayjs(r.start_at).add(r.total_time ?? 60, 'minute')
-   return {
-     title: `${prefix}${r.customer_name} / ${r.status}`,
-     start: r.start_at,
-     end:   end.toISOString(),
-     extendedProps: { id: r.id, role: roleTag }
-   }
- })
-}
-watch(selectedDate, loadEvents, { immediate:true })
-
-/* ---------- クリック ---------- */
-function handleEventClick(info){
-  router.push(`${props.detailRoute}/${info.event.extendedProps.id}`)
+  events.value = mine.map(r=>{
+    const startISO = r.start_at ?? r.start
+    if (!startISO) return null
+    const minutes  = r.total_time ?? r.courses?.[0]?.minutes ?? 60
+    return {
+      start : new Date(startISO),
+      end   : dayjs(startISO).add(minutes,'minute').toDate(),
+      title : `${myRoles(r).join('/') ? `[${myRoles(r).join('/')}] ` : ''}${r.customer_name} / ${r.status}`,
+      id    : r.id,
+      class : r.status.toLowerCase()
+    }
+  }).filter(Boolean)
 }
 
-/* ---------- ビュー切替 / 週送り ---------- */
+onMounted(loadEvents)                      // 初回
+watch([selectedDay, view], loadEvents)     // 日付 or ビュー変更時
+
+/* ---------- ナビ操作 ---------- */
 function changeView(v){
-  view.value = v
-  calRef.value?.getApi().changeView(v, selectedDate.value.format('YYYY-MM-DD'))
+  if (view.value !== v){
+    view.value = v        // :active-view.sync が入っているので UI も即反映
+  }
 }
-function prevWeek(){ moveWeek(-7) }
-function nextWeek(){ moveWeek( 7) }
-function moveWeek(days){
-  selectedDate.value = selectedDate.value.add(days,'day')
-  weekDays.value = makeWeek()
-  emit('date-change', selectedDate.value)     // 親にも通知
-}
-
-/* ---------- 日付クリック / Today ---------- */
-function setDate(d){
-  selectedDate.value = d
-  calRef.value?.getApi().gotoDate(d.format('YYYY-MM-DD'))
-  emit('date-change', d)
+function moveWeek(delta){
+  selectedDay.value = selectedDay.value.add(delta,'day')
+  emit('date-change', selectedDay.value)
 }
 function goToday(){
-  const t = dayjs()
-  selectedDate.value = t
-  weekDays.value     = makeWeek()
-  calRef.value?.getApi().gotoDate(t.format('YYYY-MM-DD'))
-  emit('date-change', t)
+  selectedDay.value = dayjs()
+  emit('date-change', selectedDay.value)
+}
+function pickDay(d){                      // 週ヘッダークリック用
+  selectedDay.value = d
+  emit('date-change', d)
+}
+
+/* ---------- 週ヘッダー ---------- */
+const weekDays = computed(()=>{
+  const monday = selectedDay.value.startOf('week').add(1,'day')
+  return [...Array(7)].map((_,i)=>monday.add(i,'day'))
+})
+
+function handleEventClick({ event }){
+  router.push(`${props.detailRoute}/${event.id}`)
 }
 </script>
 
+
 <template>
   <div class="timeline d-flex flex-column flex-grow-1">
-    <!-- ▼ mini nav & 週ナビ -->
+    <!-- ナビ -->
     <div class="mb-2 d-flex align-items-center gap-2 justify-content-end">
       <button class="btn btn-sm me-1"
-        :class="view==='timeGridDay' ? 'btn-primary' : 'btn-outline-primary'"
-        @click="changeView('timeGridDay')">Day</button>
-
+              :class="view==='day' ? 'btn-primary':'btn-outline-primary'"
+              @click="changeView('day')">Day</button>
       <button class="btn btn-sm me-3"
-        :class="view==='timeGridWeek' ? 'btn-primary' : 'btn-outline-primary'"
-        @click="changeView('timeGridWeek')">Week</button>
+              :class="view==='week' ? 'btn-primary':'btn-outline-primary'"
+              @click="changeView('week')">Week</button>
 
-      <button class="btn btn-sm btn-outline-secondary" @click="prevWeek">‹</button>
+      <button class="btn btn-sm btn-outline-secondary" @click="moveWeek(-7)">‹</button>
       <button class="btn btn-sm btn-outline-primary"  @click="goToday">Today</button>
-      <button class="btn btn-sm btn-outline-secondary" @click="nextWeek">›</button>
+      <button class="btn btn-sm btn-outline-secondary" @click="moveWeek( 7)">›</button>
     </div>
 
-    <!-- ▼ カスタム週ヘッダー -->
+    <!-- カスタム週ヘッダー -->
     <div class="timeline-header mb-2">
       <div class="wrap">
-        <div v-for="d in weekDays" :key="d.format('YYYY-MM-DD')" class="weekday"
-             @click="setDate(d)">
-          <div class="weekday__wrap" :class="{ active:d.isSame(selectedDate,'day') }">
+          <div
+            v-for="d in weekDays" :key="d.format('YYYY-MM-DD')"
+            class="weekday"
+            @click="pickDay(d)"
+          >
+          <div class="weekday__wrap"
+               :class="{ active: d.isSame(selectedDay,'day') }">
             <div class="date">{{ d.format('ddd') }}</div>
             <div class="day">{{ d.format('D') }}</div>
           </div>
@@ -159,7 +155,25 @@ function goToday(){
       </div>
     </div>
 
-    <!-- ▼ FullCalendar -->
-    <FullCalendar ref="calRef" :options="fcOptions" class="fc-height flex-grow-1"/>
+    <!-- VueCal 本体 -->
+    <VueCal
+      v-model:selected-date="calDate"
+      :events="events"
+      :disable-views="['years','year','month']"
+      :active-view.sync="view" 
+      :time="true"  
+      :time-step="30"
+      :on-event-click="handleEventClick"
+      hide-view-selector
+      now-indicator
+      class="flex-grow-1"
+    />
   </div>
 </template>
+
+<style scoped>
+
+.weekday{cursor:pointer;width:36px;text-align:center}
+.weekday__wrap{padding:4px 0;border-radius:4px}
+.weekday__wrap.active{background:#0d6efd;color:#fff}
+</style>

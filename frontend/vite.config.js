@@ -2,9 +2,20 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
+import { visualizer } from 'rollup-plugin-visualizer'
+
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // 👇 filename を指定しておく
+    visualizer({
+      filename: 'report.html',   // デフォは stats.html
+      open    : true,            // 最初のビルド後に自動でブラウザを開く
+      gzipSize: true,
+      brotliSize: true,
+    }),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -23,7 +34,7 @@ export default defineConfig({
     devSourcemap: true,
     preprocessorOptions: {
       scss: {
-        quietDeps: true       // Bootstrap 内の deprecation 警告を少し静かに
+        quietDeps: true
       }
     }
   }

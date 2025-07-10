@@ -177,7 +177,7 @@ export const deleteShiftPlan = id =>
 
 // 実出勤（打刻）
 export const getShiftAttendance = params =>
-  api.get('shift-attendance/', { params }).then(r => r.data);
+  api.get('shift-attendances/', { params }).then(r => r.data);
 export const postCheckIn = id =>
   api.post(`shift-attendance/${id}/checkin/`).then(r => r.data);
 
