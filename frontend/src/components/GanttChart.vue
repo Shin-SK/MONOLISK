@@ -16,6 +16,14 @@ const props = defineProps({
   hoursPerChart   : { type:Number,  default: 24 },
 })
 
+/* ───────── chart 範囲（※最優先で宣言） ───────── */
+const chartStart = computed(() =>
+  dayjs(props.date).hour(props.startHour).minute(0).second(0).toDate()
+)
+const chartEnd = computed(() =>
+  dayjs(chartStart.value).add(props.hoursPerChart, 'hour').toDate()
+)
+
 /* ───────── state ───────── */
 const rows     = ref([])      // 行 [{id,label}]
 const bars     = ref([])      // バー
@@ -36,6 +44,15 @@ const driverName = (r, role) => {
   // ② 数値 id なら driverMap で引く
   return driverMap.value[found.driver] || ''
 }
+
+/* ───────── なう線 ───────── */
+
+const nowX = ref(0)
+function updateNow(){
+  const total = chartEnd.value - chartStart.value
+  nowX.value = ((Date.now()-chartStart.value)/total)*wrapperRef.value.scrollWidth
+}
+onMounted(()=>{ updateNow(); setInterval(updateNow,60000) })
 
 
 /* ───────── 色 ───────── */
@@ -95,6 +112,29 @@ const statusBorder = s =>
   (STATUS_META[s]?.color || 'bg-light')      // 例) bg-warning
     .replace('bg-', 'border-')               // → border-warning
 
+
+/* ───────── グリッド線 ───────── */
+
+// ▼ チャート DOM 幅から算出する可変値
+const pxPerMinute = ref(6)     // 初期値はダミー
+const gridStep    = computed(() => pxPerMinute.value * 10)   // 10 分
+
+function recalcPxPerMinute () {
+  // g-gantt-chart 全体の実幅
+  const el = wrapperRef.value
+  if (!el) return
+  const totalMin = props.hoursPerChart * 60
+  pxPerMinute.value = el.scrollWidth / totalMin
+}
+
+onMounted(() => {
+  // 初回計算
+  nextTick(recalcPxPerMinute)
+  // 画面リサイズや時間帯変更でも再計算
+  window.addEventListener('resize', recalcPxPerMinute)
+})
+
+watch([chartStart, chartEnd], () => nextTick(recalcPxPerMinute))
 
 
 /* ───────── Bars ───────── */
@@ -201,17 +241,6 @@ async function refresh () {
 watch(() => [props.date, props.storeId], refresh, { immediate:true })
 onMounted(refresh)
 
-/* ───────── chart 範囲 ───────── */
-const chartStart = computed(() =>
-  dayjs(props.date)
-    .hour(props.startHour).minute(0).second(0).toDate()
-)
-
-const chartEnd = computed(() =>
-  dayjs(chartStart.value)
-    .add(props.hoursPerChart, 'hour').toDate()
-)
-
 /* ───────── emit ───────── */
 const emit = defineEmits(['update','bar-click'])
 
@@ -292,20 +321,23 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
     </div>
 
     <!-- チャート側（横だけスクロール） -->
-    <div class="chart-col" ref="wrapperRef">
+<div class="chart-col" ref="wrapperRef" :style="{'--grid-step': gridStep + 'px'}">
+      <div class="now-line" :style="{ left: nowX + 'px' }"></div>
+
       <!-- ★ g-gantt-chart はそのまま -->
       <g-gantt-chart
         :chart-start="chartStart"
         :chart-end="chartEnd"
         :row-height="rowHeight"
         :width="chartWidth"
+        precision="hour"
+        :precision-step="10" 
         bar-start="from"
         bar-end="to"
-        precision="hour"
-        :precision-step="5"
         push-on-overlap
         @dragend-bar="onDragEnd"
         @click-bar="onBarClick"
+        :style="{ '--grid-step': gridStep + 'px' }"
       >
         <g-gantt-row
           v-for="row in rows"
@@ -343,6 +375,46 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
 /* scoped 内に追加 */
 .g-gantt-bar[style*="rgba(255,0,0"] {
   opacity: .7;          /* 好みで */
+}
+
+/* グリッド線 */
+:deep(.g-gantt-chart) {
+  position: relative;          /* 擬似要素の基準 */
+  background: transparent;     /* 元の背景は不要 */
+}
+
+:deep(.g-gantt-chart)::before {
+  content: '';
+  position: absolute;
+  inset: 0;                    /* 全面に展開 */
+  background-image: linear-gradient(
+    to right,
+    rgba(0,0,0,.1) 1px,
+    transparent 1px
+  );
+  background-size: var(--grid-step) 100%;
+  pointer-events: none;
+  z-index: 0;                  /* バーより下、now-line より下 */
+}
+
+.chart-col{
+    position: relative;
+}
+/* ② now-line はグリッドより前面へ */
+.now-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: red;
+  opacity: .5;
+  pointer-events: none;
+  z-index: 2;                   /* ← 重要：grid より大きく */
+}
+
+/* ③ g-gantt-chart を透過にしておくと一層安全 */
+:deep(.g-gantt-chart) {
+  background: transparent;
 }
 
 </style>

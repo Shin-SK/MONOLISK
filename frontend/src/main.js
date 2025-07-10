@@ -19,6 +19,9 @@ import '@/plugins/dayjs'
 
 import { yen } from '@/utils/money'
 
+// import '@syncfusion/ej2-vue-gantt/styles/material.css'
+// import { registerLicense } from '@syncfusion/ej2-base'
+// registerLicense('Ngo9BigBOggjHTQxAR8/V1JEaF5cXmRCdkxxWmFZfVtgdVVMZFhbRH5PIiBoS35Rc0VkWXZedHdUQ2BeU0FxVEFd')
 
 const app = createApp(App)
   .use(router)
@@ -27,4 +30,5 @@ const app = createApp(App)
   app.config.globalProperties.$yen = yen
   app.component('Multiselect', Multiselect)  // グローバル登録
   app.component('DatePicker', DatePicker)
+  
 app.mount('#app')
