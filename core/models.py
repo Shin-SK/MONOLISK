@@ -316,7 +316,7 @@ class Reservation(TimeStamped):
 		CALL_PENDING  = 'CALL_PENDING',  '確認電話[未]'   # 電話確認まだ
 		CALL_DONE     = 'CALL_DONE',     '確認電話[済]'   # 電話確認済み
 		BOOKED   = 'BOOKED',   '仮予約'         # 仮押さえ
-		IN_SERVICE    = 'IN_SERVICE',    'スタート'       # 接客開始
+		IN_SERVICE    = 'IN_SERVICE',    '接客中'       # 接客開始
 		CASH_COLLECT  = 'CASH_COLLECT',  '集金[済]'       # 集金済み
 
 	store	 = models.ForeignKey(Store,  on_delete=models.CASCADE, verbose_name='店舗',)

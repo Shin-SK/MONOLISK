@@ -77,44 +77,67 @@ const SHIFT_COLOR = 'rgba(111, 222, 111, .25)'   // 薄い緑（好みで）
 
 /* ───────── fetch rows ───────── */
 async function fetchRows () {
-  const casts = await getCastProfiles({ store: props.storeId || undefined })
+  // ① プロフィール & シフトを並列取得
+  const [casts, shifts] = await Promise.all([
+    getCastProfiles({ store: props.storeId || undefined }),
+    getShiftPlans({ date: props.date, store: props.storeId || undefined })
+  ])
 
-  rows.value = casts.map(c => {
-   // 既定があればそれ、なければ 1 件目
-   const primary = c.standby_places?.find(p => p.is_primary) ?? c.standby_places?.[0]
+  /* ---- シフト開始時刻を castId → dayjs インスタンスで保持 ---- */
+  const shiftStartMap = Object.fromEntries(
+    shifts.map(s => {
+      const id   = s.cast_profile ?? s.cast_id        // 一応両方対応
+      const from = dayjs(`${s.date}T${s.start_at}`)
+      return [id, from]
+    })
+  )
 
-    return {
-      id   : c.id,
-      label: c.stage_name || c.name || 'CAST',
-      place: primary?.label || '' ,
-      placeAddr: primary?.address || ''
-    }
-  })
+  /* ---- rows を組み立て＋ソート ---- */
+  rows.value = casts
+    .map(c => {
+      const primary = c.standby_places?.find(p => p.is_primary) ?? c.standby_places?.[0]
+      return {
+        id   : c.id,
+        label: c.stage_name || c.name || 'CAST',
+        place: primary?.label,
+        placeAddr: primary?.address
+      }
+    })
+    .sort((a, b) => {
+      const sa = shiftStartMap[a.id]
+      const sb = shiftStartMap[b.id]
 
+      // ―― 両者ともシフトあり：開始時刻の早い順
+      if (sa && sb) return sa - sb
+      // ―― どちらかだけシフトあり：シフト有りを先頭に
+      if (sa) return -1
+      if (sb) return  1
+      // ―― どちらもシフト無し：名前順（お好みで）
+      return a.label.localeCompare(b.label, 'ja')
+    })
+
+  /* ---- castMap もそのまま保持 ---- */
   castMap.value = Object.fromEntries(
     casts.map(c => [c.id, c.stage_name || c.name || 'CAST'])
   )
 }
+
 
 const EXTEND_COLOR = 'rgba(255,0,0,.65)'   // 半透明の赤
 
 
 /* ───────── ステータス辞書 ───────── */
 const STATUS_META = {
-  CALL_PENDING : { short:'確未',  color:'#6c757d' }, // secondary
-  CALL_DONE    : { short:'確済',  color:'#0dcaf0' }, // info
-  BOOKED       : { short:'仮予',  color:'#ffc107' }, // warning
-  IN_SERVICE   : { short:'接中',  color:'#198754' }, // success
-  CASH_COLLECT : { short:'集済',  color:'#0d6efd' }, // primary
+  CALL_PENDING : { long:'電話確認[未]', short:'確未',  color:'#6c757d', badge : 'secondary' }, // secondary
+  CALL_DONE    : { long:'電話確認[済]', short:'確済',  color:'#0dcaf0', badge : 'info'  }, // info
+  BOOKED       : { long:'仮予約', short:'仮予',  color:'#ffc107', badge : 'warning' }, // warning
+  IN_SERVICE   : { long:'接客中', short:'接中',  color:'#dc3545', badge : 'danger' }, // danger
+  CASH_COLLECT : { long:'集金済', short:'集済',  color:'#0d6efd', badge : 'primary' }, // primary
 }
 const statusColorHex = s => STATUS_META[s]?.color || '#ced4da' /* fallback */
 
 const statusShort = s => STATUS_META[s]?.short || s
-const statusColor = s => STATUS_META[s]?.color || 'bg-light'
 
-const statusBorder = s =>
-  (STATUS_META[s]?.color || 'bg-light')      // 例) bg-warning
-    .replace('bg-', 'border-')               // → border-warning
 
 
 /* ───────── グリッド線 ───────── */
@@ -179,8 +202,7 @@ async function fetchBars () {
           style: {
             '--pu-px': `${props.beforeMinutes*2}px`,
             '--do-px': `${props.afterMinutes*2}px`,
-            borderBottom  : `3px solid ${statusColorHex(r.status)}`,
-            background: colorForMinutes(baseMin)
+            background: statusColorHex(r.status)
           }
         }
       })
@@ -225,13 +247,15 @@ const shiftBars = attends.map(a => {
     from  : st.toDate(),
     to    : ed.toDate(),
     isShift : true,
+    
     ganttBarConfig : {
       id   : `shift_${a.id}`,
-      label: '',               // シフト帯はラベル不要なら空で OK
+      label: '',
+      classes: ['shift-bar'],
       style: {
         background : SHIFT_COLOR,
         border     : 'none',
-        zIndex     : 0,
+        // zIndex     : 0,
         pointerEvents: 'none',
       }
     }
@@ -348,6 +372,12 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
 
 
 <template>
+
+  <ul class="list-inline mb-3">
+    <li v-for="(m, key) in STATUS_META" :key="key" class="list-inline-item me-3">
+      <span class="badge" :class="`bg-${m.badge}`">{{ m.long }}</span>
+    </li>
+  </ul>
   <div class="gc-wrapper" style="overflow-x:auto;">
 
   <div class="gantt-board">
@@ -494,5 +524,7 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
   background: transparent;
   /* 好みで hover 色を付けても良い */
 }
+
+:deep([id^="shift_"]) { z-index: 0 !important; }
 
 </style>

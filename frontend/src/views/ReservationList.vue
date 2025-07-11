@@ -148,7 +148,7 @@ const statusColor = s => ({
   CALL_PENDING : 'bg-secondary',
   CALL_DONE    : 'bg-info',
   BOOKED       : 'bg-warning',
-  IN_SERVICE   : 'bg-success',
+  IN_SERVICE   : 'bg-danger',
   CASH_COLLECT : 'bg-primary',
 }[s] || 'bg-light')
 
@@ -156,7 +156,7 @@ const statusRowClass = s => ({
   CALL_PENDING : 'table-secondary',  // 灰
   CALL_DONE    : 'table-info',       // 水
   BOOKED       : 'table-warning',    // 黄
-  IN_SERVICE   : 'table-success',    // 緑
+  IN_SERVICE   : 'table-danger',    // 赤
   CASH_COLLECT : 'table-primary',    // 青
 }[s] || '')
 
