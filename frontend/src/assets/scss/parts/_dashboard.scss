@@ -3,6 +3,7 @@
 .dashboard-admin{
 	padding-bottom: 40px;
 	.gc-header{
+		margin-bottom: 16px;
 		.day{
 			font-weight: bold;
 			@include fs(20);
@@ -55,7 +56,7 @@
 	.label-col     {
 		background-color: rgba(black,0.8);
 		overflow-y: auto;
-		margin-top: 82px;
+		margin-top: 42px;
 		height: fit-content;
 		position: absolute;
 		z-index: 999;

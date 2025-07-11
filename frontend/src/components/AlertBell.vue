@@ -30,7 +30,7 @@ const unread = computed(() =>
     </button>
 
     <!-- 一覧ドロップダウン -->
-    <ul class="dropdown-menu">
+    <ul class="dropdown-menu bg-white">
       <li v-if="!alerts.length" class="dropdown-item text-muted">
         アラートはありません
       </li>

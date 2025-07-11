@@ -472,6 +472,20 @@ watch([rows, bars, chartStart, chartEnd], () => nextTick(centerNow))
 /* deep で g-gantt-row 本体を relative にしておく */
 :deep(.g-gantt-row) { position: relative; }
 
+
+/* ① 上段の日付セルだけ消す */
+:deep(.g-upper-timeunit) {
+  display: none;
+}
+
+/* ② 高さが 24px 分だけ詰まるので、チャート全体を下げる */
+:deep(.g-gantt-chart) {
+  margin-top: -40px;   /* ← 上段セルの高さに合わせて調整 */
+}
+
+.g-timeunits-container:first-of-type{
+  display: none;
+}
 /* ヒットエリア */
 .row-hitarea {
   position: absolute;

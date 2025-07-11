@@ -46,7 +46,7 @@ async function logout () {
             <h2>{{ pageTitle }}</h2>
             <span class="today text-muted">{{ today }}</span>
           </div><!-- area -->
-          <div class="area">
+          <div class=" bell">
             <AlertBell :alerts="cashAlerts" :dismissed="dismissed" class="me-3" />
           </div><!-- area -->
         </header>

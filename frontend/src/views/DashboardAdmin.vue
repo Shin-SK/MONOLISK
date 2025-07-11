@@ -19,6 +19,10 @@ const ganttRef   = ref(null)      // ⭐ 追加
 
 const cashAlerts = ref([])        // 全アラート履歴
 
+const headerLabel = computed(() =>
+  selectedDate.value.format('M月D日(ddd)')
+)
+
 
 /* ───────── ガント表示日 ───────── */
 const selectedDate = ref(dayjs())                 // ← 任意に変わる
@@ -125,11 +129,9 @@ function dismiss (id) {            // × ボタン用
       </div>
     </div>
     <!-- ─── 日付ヘッダー ─── -->
-    <header class="gc-header d-flex align-items-center justify-content-between gap-3 mb-2">
+    <header class="gc-header d-flex align-items-center justify-content-between gap-3 position-relative">
 
       <div class="area d-flex align-center gap-4">
-      <!-- ☆このボタン３つを変更したい -->
-        <!-- ☆ひとつめのボタンは今日を基準に１クリックずつ前日へ -->
         <button
           class="btn btn-outline-secondary btn-nowrap"
           :class="{ active: selectedDate.isSame(dayjs().subtract(1, 'day'), 'day') }"
@@ -144,7 +146,6 @@ function dismiss (id) {            // × ボタン用
           @click="setToday"
         >今日</button>
 
-        <!-- ☆みっつめのボタンは今日を基準に１クリックずつ明日へ -->
         <button
           class="btn btn-outline-secondary btn-nowrap"
           :class="{ active: selectedDate.isSame(dayjs().add(1, 'day'), 'day') }"
@@ -156,6 +157,10 @@ function dismiss (id) {            // × ボタン用
         <input type="date"
               class="form-control form-control-sm ms-2 bg-white"
               v-model="selectedDateStr"/>
+      </div>
+
+      <div class="area position-absolute top-50 start-50 translate-middle">
+        {{ headerLabel }}
       </div>
 
       <div class="area">
