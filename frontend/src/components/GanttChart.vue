@@ -231,7 +231,8 @@ const shiftBars = attends.map(a => {
       style: {
         background : SHIFT_COLOR,
         border     : 'none',
-        zIndex     : 0          // 予約バーの背面
+        zIndex     : 0,
+        pointerEvents: 'none',
       }
     }
   };
