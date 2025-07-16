@@ -8,6 +8,11 @@ import { useRouter } from 'vue-router'
 import { api } from '@/api'
 import { useUser } from '@/stores/useUser'
 
+/* ---------- 色辞書 ---------- */
+import { STATUS_META, bstrapBg, textColor } from '@/utils/statusColor'
+
+
+
 /* ---------- props / emit ---------- */
 const props = defineProps({
   apiPath     : { type: String, required: true },
@@ -40,6 +45,7 @@ const calDate = computed({
   }
 })
 
+
 /* ---------- ★ビューを week で初期化 ---------- */
 const view = ref('day')                  // ← ここを 'week' に
 
@@ -55,37 +61,70 @@ const myRoles = rsv =>
 const events = ref([])
 const router = useRouter()
 
+/* ---------- ドライバー名ユーティリティ ---------- */
+function driverName (r, role) {
+	// reservation_drivers または drivers 配列の中から role が合う要素を取得
+	const list  = r.reservation_drivers ?? r.drivers ?? []
+	const found = list.find(d => d.role === role)
+	if (!found) return ''
+
+	// driver がオブジェクトなら name、数値 ID なら driver_name（API に合わせて）
+	if (typeof found.driver === 'object') return found.driver.name || ''
+	return found.driver_name || found.driver || ''
+}
+
+/* ---------- イベント取得 ---------- */
 async function loadEvents () {
-  let from, to
-  if (view.value === 'week') {
-    const monday = selectedDay.value.startOf('week').add(1,'day')
-    from = monday
-    to   = monday.clone().add(6,'day').endOf('day')
-  } else {
-    from = selectedDay.value.startOf('day')
-    to   = from.clone().endOf('day')
-  }
+	let from, to
+	if (view.value === 'week') {
+		const monday = selectedDay.value.startOf('week').add(1, 'day')
+		from = monday
+		to   = monday.clone().add(6, 'day').endOf('day')
+	} else {
+		from = selectedDay.value.startOf('day')
+		to   = from.clone().endOf('day')
+	}
 
-  const { data } = await api.get(props.apiPath,{
-    params:{ from: from.format('YYYY-MM-DD'), to: to.format('YYYY-MM-DD') }
-  })
+	const { data } = await api.get(props.apiPath, {
+		params: { from: from.format('YYYY-MM-DD'), to: to.format('YYYY-MM-DD') }
+	})
 
-  const mine = data.filter(r =>
-    (r.reservation_drivers||r.drivers||[]).some(d=>drvId(d)===myDriverId)
-  )
+	// 自分が関わる予約だけ抽出
+	const mine = data.filter(r =>
+		(r.reservation_drivers || r.drivers || [])
+			.some(d => drvId(d) === myDriverId)
+	)
 
-  events.value = mine.map(r=>{
-    const startISO = r.start_at ?? r.start
-    if (!startISO) return null
-    const minutes  = r.total_time ?? r.courses?.[0]?.minutes ?? 60
-    return {
-      start : new Date(startISO),
-      end   : dayjs(startISO).add(minutes,'minute').toDate(),
-      title : `${myRoles(r).join('/') ? `[${myRoles(r).join('/')}] ` : ''}${r.customer_name} / ${r.status}`,
-      id    : r.id,
-      class : r.status.toLowerCase()
-    }
-  }).filter(Boolean)
+	events.value = mine.map(r => {
+		const startISO = r.start_at ?? r.start
+		if (!startISO) return null								// 念のため null ガード
+
+		const minutes  = r.total_time ?? r.courses?.[0]?.minutes ?? 60
+
+		/* PU / DO 情報と住所 */
+		const puName   = driverName(r, 'PU')
+		const doName   = driverName(r, 'DO')
+		const addr     = r.pickup_address || ''
+
+		return {
+			start : new Date(startISO),
+			end   : dayjs(startISO).add(minutes, 'minute').toDate(),
+			title : '',										// event-content スロットで描画する
+			id    : r.id,
+
+			/* Bootstrap ユーティリティで色付け */
+			class : [
+				r.status.toLowerCase(),							// booked / call_pending …
+				bstrapBg(r.status),							// bg-warning / bg-primary …
+				textColor(r.status),						// text-dark など
+			].join(' '),
+
+			/* スロット用メタデータ */
+			puName,
+			doName,
+			addr,
+		}
+	}).filter(Boolean)		// null を除外
 }
 
 onMounted(loadEvents)                      // 初回
@@ -160,14 +199,39 @@ function handleEventClick({ event }){
       v-model:selected-date="calDate"
       :events="events"
       :disable-views="['years','year','month']"
-      :active-view.sync="view" 
-      :time="true"  
+      :active-view.sync="view"
+      :time="true"
       :time-step="30"
+      :time-from="10 * 60"
+      :time-to  ="33 * 60"
       :on-event-click="handleEventClick"
       hide-view-selector
       now-indicator
       class="flex-grow-1"
-    />
+    >
+
+	<template #event-content="{ event }">
+		<div class="h-100 w-100 position-relative">
+			<!-- 左上：PU -->
+			<div class="position-absolute top-0 start-0 p-1">
+				<span class="badge bg-success">迎</span>
+				<span class="ms-1">{{ event.puName }}</span><br>
+				<small>{{ event.addr }}</small>
+			</div>
+
+			<!-- 右下：DO -->
+			<div class="position-absolute bottom-0 end-0 p-1 text-end">
+				<span class="badge bg-info">送</span>
+				<span class="ms-1">{{ event.doName }}</span><br>
+				<small>{{ event.addr }}</small>
+			</div>
+		</div>
+	</template>
+      <!-- ★ 時間セルを独自フォーマットで描画 -->
+      <template #timeCell="{ hour, minutes }">
+        {{ String(hour % 24).padStart(2, '0') }}:{{ String(minutes).padStart(2, '0') }}
+      </template>
+    </VueCal>
   </div>
 </template>
 

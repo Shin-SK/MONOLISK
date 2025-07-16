@@ -57,16 +57,16 @@ const displayName = computed(() =>
 
       <!-- ページ切替ミニナビ -->
       <div class="mini-nav">
-        <button class="btn btn-sm"
+        <button class="btn rounded-circle"
                 :class="mode==='list' ? 'btn-primary':'btn-outline-primary'"
                 @click="goList">
-          <span class="material-symbols-outlined">list</span>
+          <i class="bi bi-list-nested"></i>
         </button>
 
-        <button class="btn btn-sm"
+        <button class="btn rounded-circle"
                 :class="mode==='timeline' ? 'btn-primary':'btn-outline-primary'"
                 @click="goTimeline">
-          <span class="material-symbols-outlined">view_timeline</span>
+          <i class="bi bi-calendar-range"></i>
         </button>
       </div>
     </div>
