@@ -52,8 +52,10 @@ INSTALLED_APPS = [
     "django_extensions",
 
     'core.apps.CoreConfig',
+    'billing',
 
 ]
+
 
 DJ_REST_AUTH = {
     "USER_DETAILS_SERIALIZER": "core.serializers.UserDetailSerializer",
@@ -81,7 +83,7 @@ SITE_ID = 1
 AUTH_USER_MODEL = 'core.User'
 
 REST_AUTH_SERIALIZERS = {
-    'USER_DETAILS_SERIALIZER': 'core.serializers.UserDetailSerializer',
+    'USER_DETAILS_SERIALIZER': 'core.serializers.MyUserDetailsSerializer',
 }
 
 REST_AUTH = {
@@ -136,6 +138,7 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 MIDDLEWARE = [
+    'billing.middleware.store_slug.StoreFromPathMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     "django_htmx.middleware.HtmxMiddleware",
     'allauth.account.middleware.AccountMiddleware',
@@ -251,3 +254,8 @@ LOGGING = {
 
 
 CASH_ALERT_THRESHOLD = 200_000
+
+DEFAULT_STORE_ID = 1
+STORE_MODEL = 'billing.Store'
+
+BILL_PL_DEFAULT_STORE = 1

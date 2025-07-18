@@ -25,6 +25,12 @@ class User(AbstractUser):
 		verbose_name=_('Display name')
 	)
 	avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)  # ★追加
+	store = models.ForeignKey(
+        'billing.Store',          # ← 'app_label.ModelName'
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='users',
+    )
 
 	@property
 	def avatar_url(self) -> str:
@@ -36,6 +42,15 @@ class User(AbstractUser):
 	def add_role(self, role_name: str):
 		g, _ = Group.objects.get_or_create(name=role_name.upper())
 		self.groups.add(g)
+
+	# 便利プロパティ
+	@property
+	def service_rate(self):
+		return self.store.service_rate if self.store else 0
+
+	@property
+	def tax_rate(self):
+		return self.store.tax_rate if self.store else 0
 
 	# 管理画面などで分かりやすくq
 	def __str__(self):
@@ -164,26 +179,26 @@ class CastOption(TimeStamped):
 
 
 class CastStandbyPlace(TimeStamped):
-    cast_profile = models.ForeignKey(
-        CastProfile, on_delete=models.CASCADE,
-        related_name='standby_places'
-    )
-    label       = models.CharField(max_length=30, blank=True)
-    address     = models.CharField(max_length=255)
-    zipcode    = models.CharField(max_length=7, blank=True, null=True)
-    is_primary  = models.BooleanField(default=False)
+	cast_profile = models.ForeignKey(
+		CastProfile, on_delete=models.CASCADE,
+		related_name='standby_places'
+	)
+	label	   = models.CharField(max_length=30, blank=True)
+	address	 = models.CharField(max_length=255)
+	zipcode	= models.CharField(max_length=7, blank=True, null=True)
+	is_primary  = models.BooleanField(default=False)
 
-    class Meta:
-        verbose_name = '待機場所'
-        verbose_name_plural = '待機場所'
-        unique_together = ('cast_profile', 'address')
+	class Meta:
+		verbose_name = '待機場所'
+		verbose_name_plural = '待機場所'
+		unique_together = ('cast_profile', 'address')
 
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        # primary が立ったら同キャストの他レコードを倒す
-        if self.is_primary:
-            self.cast_profile.standby_places.exclude(id=self.id)\
-                                            .update(is_primary=False)
+	def save(self, *args, **kwargs):
+		super().save(*args, **kwargs)
+		# primary が立ったら同キャストの他レコードを倒す
+		if self.is_primary:
+			self.cast_profile.standby_places.exclude(id=self.id)\
+											.update(is_primary=False)
 
 
 
@@ -314,10 +329,10 @@ class Reservation(TimeStamped):
 
 	class Status(models.TextChoices):
 		CALL_PENDING  = 'CALL_PENDING',  '確認電話[未]'   # 電話確認まだ
-		CALL_DONE     = 'CALL_DONE',     '確認電話[済]'   # 電話確認済み
-		BOOKED   = 'BOOKED',   '仮予約'         # 仮押さえ
-		IN_SERVICE    = 'IN_SERVICE',    '接客中'       # 接客開始
-		CASH_COLLECT  = 'CASH_COLLECT',  '集金[済]'       # 集金済み
+		CALL_DONE	 = 'CALL_DONE',	 '確認電話[済]'   # 電話確認済み
+		BOOKED   = 'BOOKED',   '仮予約'		 # 仮押さえ
+		IN_SERVICE	= 'IN_SERVICE',	'接客中'	   # 接客開始
+		CASH_COLLECT  = 'CASH_COLLECT',  '集金[済]'	   # 集金済み
 
 	store	 = models.ForeignKey(Store,  on_delete=models.CASCADE, verbose_name='店舗',)
 	driver	= models.ForeignKey(Driver, on_delete=models.SET_NULL, verbose_name='ドライバー', null=True, blank=True,)
@@ -639,39 +654,39 @@ def recalc_discrepancy_on_manual(sender, instance, **kwargs):
 # ────────────────────────────────────────────────────────────
 
 class CastRate(models.Model):
-    cast_profile = models.ForeignKey(
-        'CastProfile', on_delete=models.CASCADE, related_name='rate_history'
-    )
-    hourly_rate   = models.PositiveIntegerField(null=True, blank=True)
-    commission_pct = models.DecimalField(
-        max_digits=5, decimal_places=2, null=True, blank=True,
-        help_text='指名料に掛ける %'
-    )
-    effective_from = models.DateField(default=timezone.localdate)
+	cast_profile = models.ForeignKey(
+		'CastProfile', on_delete=models.CASCADE, related_name='rate_history'
+	)
+	hourly_rate   = models.PositiveIntegerField(null=True, blank=True)
+	commission_pct = models.DecimalField(
+		max_digits=5, decimal_places=2, null=True, blank=True,
+		help_text='指名料に掛ける %'
+	)
+	effective_from = models.DateField(default=timezone.localdate)
 
-    class Meta:
-        ordering = ['cast_profile', 'effective_from']
-        unique_together = ('cast_profile', 'effective_from')
-        verbose_name = 'キャスト歩合'
-        verbose_name_plural = 'キャスト時給履歴'
+	class Meta:
+		ordering = ['cast_profile', 'effective_from']
+		unique_together = ('cast_profile', 'effective_from')
+		verbose_name = 'キャスト歩合'
+		verbose_name_plural = 'キャスト時給履歴'
 
-    def __str__(self):
-        return f"{self.cast_profile} ¥{self.hourly_rate or 0} from {self.effective_from}"
+	def __str__(self):
+		return f"{self.cast_profile} ¥{self.hourly_rate or 0} from {self.effective_from}"
 
 
 class DriverRate(models.Model):
-    driver = models.ForeignKey('Driver', on_delete=models.CASCADE, related_name='rate_history')
-    hourly_rate   = models.PositiveIntegerField(null=True, blank=True)
-    effective_from = models.DateField(default=timezone.localdate)
+	driver = models.ForeignKey('Driver', on_delete=models.CASCADE, related_name='rate_history')
+	hourly_rate   = models.PositiveIntegerField(null=True, blank=True)
+	effective_from = models.DateField(default=timezone.localdate)
 
-    class Meta:
-        ordering = ['driver', 'effective_from']
-        unique_together = ('driver', 'effective_from')
-        verbose_name = 'ドライバー時給'
-        verbose_name_plural = 'ドライバー時給履歴'
+	class Meta:
+		ordering = ['driver', 'effective_from']
+		unique_together = ('driver', 'effective_from')
+		verbose_name = 'ドライバー時給'
+		verbose_name_plural = 'ドライバー時給履歴'
 
-    def __str__(self):
-        return f"{self.driver} ¥{self.hourly_rate or 0} from {self.effective_from}"
+	def __str__(self):
+		return f"{self.driver} ¥{self.hourly_rate or 0} from {self.effective_from}"
 
 
 # ────────────────────────────────────────────────────────────
@@ -679,34 +694,34 @@ class DriverRate(models.Model):
 # ────────────────────────────────────────────────────────────
 
 class ExpenseCategory(models.Model):
-    code      = models.CharField(max_length=20, null=True, blank=True)
-    name      = models.CharField(max_length=50)
-    is_fixed  = models.BooleanField(default=True)   # ← 固定費かどうか
-    is_active = models.BooleanField(default=True)   # ← 入力候補に出すか
+	code	  = models.CharField(max_length=20, null=True, blank=True)
+	name	  = models.CharField(max_length=50)
+	is_fixed  = models.BooleanField(default=True)   # ← 固定費かどうか
+	is_active = models.BooleanField(default=True)   # ← 入力候補に出すか
 
-    class Meta:
-        verbose_name = '経費科目'
-        verbose_name_plural = '経費科目'
-        ordering = ['name']
+	class Meta:
+		verbose_name = '経費科目'
+		verbose_name_plural = '経費科目'
+		ordering = ['name']
 
-    def __str__(self):
-        return self.name
+	def __str__(self):
+		return self.name
 
 
 class ExpenseEntry(models.Model):
-    date      = models.DateField()
-    store     = models.ForeignKey('Store', null=True, blank=True,
-                                  on_delete=models.SET_NULL,
-                                  help_text='NULL＝全店舗共通')
-    category  = models.ForeignKey('ExpenseCategory', on_delete=models.PROTECT)
-    label     = models.CharField(max_length=100, blank=True)
-    amount    = models.IntegerField()
+	date	  = models.DateField()
+	store	 = models.ForeignKey('Store', null=True, blank=True,
+								  on_delete=models.SET_NULL,
+								  help_text='NULL＝全店舗共通')
+	category  = models.ForeignKey('ExpenseCategory', on_delete=models.PROTECT)
+	label	 = models.CharField(max_length=100, blank=True)
+	amount	= models.IntegerField()
 
-    class Meta:
-        verbose_name = '経費'
-        verbose_name_plural = '経費'
-        ordering = ['-date']
+	class Meta:
+		verbose_name = '経費'
+		verbose_name_plural = '経費'
+		ordering = ['-date']
 
-    def __str__(self):
-        scope = self.store.name if self.store else 'ALL'
-        return f"{self.date} {scope} {self.category}: ¥{self.amount}"
+	def __str__(self):
+		scope = self.store.name if self.store else 'ALL'
+		return f"{self.date} {scope} {self.category}: ¥{self.amount}"

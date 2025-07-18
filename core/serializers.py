@@ -14,6 +14,16 @@ from .models import (
 	CastRate, DriverRate, CastStandbyPlace
 )
 
+from dj_rest_auth.serializers import UserDetailsSerializer
+from rest_framework import serializers
+from .models import User
+
+class MyUserDetailsSerializer(UserDetailsSerializer):
+    class Meta(UserDetailsSerializer.Meta):
+        model  = User
+        fields = UserDetailsSerializer.Meta.fields + ('store',)
+
+
 # ---------- マスタ ----------
 class StoreSerializer(serializers.ModelSerializer):
 	class Meta: model = Store; fields = '__all__'

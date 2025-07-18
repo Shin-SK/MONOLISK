@@ -263,3 +263,51 @@ export const getReservationDrivers = params =>
 export const createReservationDriver = p => api.post('reservation-drivers/', p)
 export const updateReservationDriver = (id, p) => api.patch(`reservation-drivers/${id}/`, p)
 export const deleteReservationDriver = id => api.delete(`reservation-drivers/${id}/`)
+
+
+
+
+/* ---------- Bills ---------- */
+// すでに baseURL が `/api/` なので “billing/...” を付ける
+
+export const fetchBills   = ()      => api.get('billing/bills/').then(r=>r.data)
+export const fetchBill    = id      => api.get(`billing/bills/${id}/`).then(r=>r.data)
+export const createBill   = p       => api.post('billing/bills/', p ).then(r=>r.data)
+export const addBillItem  = (id,p)  => api.post(`billing/bills/${id}/items/`, p)
+export const closeBill    = id      => api.post(`billing/bills/${id}/close/`)
+export const fetchMasters = storeId => api.get('billing/item-masters/', { params:{store:storeId} }).then(r=>r.data)
+export const fetchCasts = storeId =>
+  api.get('billing/casts/', { params:{store:storeId} })
+     .then(r => r.data.results ?? r.data)
+
+export const updateBill = (id, payload) =>
+  api.patch(`billing/bills/${id}/`, payload).then(r => r.data)
+
+export const setInhouseStatus = (billId, castIds) =>
+  api.patch(`billing/bills/${billId}/`, { inhouse_casts_w: castIds })
+
+export const fetchTables = storeId =>
+  api.get('billing/tables/', { params:{ store:storeId } }).then(r=>r.data)
+
+export const deleteBillItem = (billId, itemId) =>
+  api.delete(`billing/bills/${billId}/items/${itemId}/`)
+
+export const getStore  = id => api.get(`billing/stores/${id}/`).then(r => r.data)
+
+
+
+export const getBillDailyPL = (date, storeId = '') =>
+  api.get('billing/pl/daily/', { params: { date, store_id: storeId } }).then(r => r.data)
+
+
+export const getBillMonthlyPL = (monthStr, storeId = '') => {
+  const [year, month] = monthStr.split('-').map(Number)
+  return api.get('billing/pl/monthly/', {
+    params: { year, month, store_id: storeId }
+  }).then(r => r.data)
+}
+
+export const getBillYearlyPL = (year, storeId = '') =>
+  api.get('billing/pl/yearly/', {
+    params: { year, store_id: storeId }
+  }).then(r => r.data)

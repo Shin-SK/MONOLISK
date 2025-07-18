@@ -1,0 +1,27 @@
+@use '../global/global' as *;
+
+.modal-body{
+	.tab-item{
+		position: relative;
+		&.active{
+			&:after{
+				content: '';
+				height: 2px;
+				width: 100%;
+				background-color: $mc;
+				position: absolute;
+				bottom: 0;
+				left: 0;
+				right: 0;
+				margin: auto;
+			}
+		}
+	}
+	.order-form{
+		select{
+			min-height: 43px;
+			background: transparent;
+			border: #e8e8e8 1px solid;
+		}
+	}
+}

@@ -122,6 +122,20 @@ const routes = [
   { path: '/login', component: Login },
 
 
+
+  /* ---------- キャバクラ編 伝票 ---------- */
+  {
+  path: '/bills',
+    component: AdminLayout,
+    meta: { requiresAuth: true, adminOnly: true },
+    children: [
+          { path: '', component: () => import('@/views/BillList.vue'), meta: { title: '伝票' }},
+          { path: 'pl/daily', component: () => import('@/views/BillPLDaily.vue'), meta: { title: '売上-日次' }},
+          { path: 'pl/Monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次' }},
+          { path: 'pl/yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次' } },
+    ]
+  },
+
 ]
 
 const router = createRouter({
@@ -161,3 +175,6 @@ router.beforeEach(async (to, _from, next) => {
 })
 
 export default router
+
+
+
