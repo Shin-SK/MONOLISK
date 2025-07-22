@@ -20,8 +20,32 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="pl-yearly p-4">
-    <h3 class="mb-3">年次 P/L</h3>
+  <div class="pl pl-yearly">
+
+    <div class="summary-area">
+      <div class="box">
+        <div class="head">年間売上</div>
+        <div class="number">{{ yen(pl.totals.sales_total) }}</div>
+      </div>
+
+      <div class="box">
+        <div class="head">総来客数</div>
+        <div class="number">{{ pl.totals.guest_count }}</div>
+      </div>
+      <div class="box">
+        <div class="head">平均客単価</div>
+        <div class="number">{{ yen(pl.totals.avg_spend) }}</div>
+      </div>
+
+      <div class="box">
+        <div class="head">ドリンク売上</div>
+        <div class="number">{{ yen(pl.totals.drink_sales) }}</div>
+      </div>
+      <div class="box">
+        <div class="head">延長回数</div>
+        <div class="number">{{ pl.totals.extension_qty }}</div>
+      </div>
+    </div>
 
     <div class="d-flex gap-2 mb-3">
       <input type="number" v-model="year" class="form-control w-auto" min="2000" max="2100" />
@@ -33,7 +57,7 @@ onMounted(async () => {
     </div>
 
     <!-- 年間サマリ -->
-    <table v-if="pl" class="table table-bordered mb-4">
+    <!-- <table v-if="pl" class="table table-bordered mb-4">
       <tbody>
         <tr><th class="w-50">対象年</th><td>{{ pl.year }}</td></tr>
         <tr><th>店舗</th><td>{{ pl.store_id || '全店舗' }}</td></tr>
@@ -45,7 +69,7 @@ onMounted(async () => {
         <tr><th>ドリンク単価</th><td>{{ yen(pl.totals.drink_unit_price) }}</td></tr>
         <tr><th>延長回数</th><td>{{ pl.totals.extension_qty }}</td></tr>
       </tbody>
-    </table>
+    </table> -->
 
     <!-- 月次一覧 -->
     <table v-if="pl" class="table table-sm table-bordered">

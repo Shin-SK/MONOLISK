@@ -1,101 +1,128 @@
 <!-- views/BillList.vue -->
 <script setup>
+/* ───── Imports ───── */
 import { ref, onMounted } from 'vue'
-import dayjs              from 'dayjs'
+import dayjs              from 'dayjs'          // ← 忘れずに
 import { useBills }       from '@/stores/useBills'
 import BillModal          from '@/components/BillModal.vue'
+import { fetchBill, createBill, deleteBill } from '@/api'
 
-const bills     = useBills()
-const showModal = ref(false)
+/* ───── reactive state ───── */
+const bills       = useBills()
+const showModal   = ref(false)          // モーダル開閉フラグ
+const currentBill = ref(null)          // モーダルに渡す 1 伝票
+const selectedIds = ref(new Set())     // 一覧チェック用
+
+/* ───── 初回ロード ───── */
 onMounted(() => bills.loadAll())
 
-function open(id){ bills.open(id).then(() => (showModal.value = true)) }
-
-/* ======== 一覧表示ヘルパ ========== */
-
-/** ① セット(コース)名を返す（アイテム名で判定） */
-function setName(b){
-  const it = (b.items || []).find(i => /^セット\d+分/.test(i.name))
-  return it ? it.name : '‑'
+/* ───── 一覧クリック → 1件取得してモーダル ───── */
+async function open(id) {
+  currentBill.value = await fetchBill(id)
+  showModal.value   = true
 }
 
-/* === ① テーブル全体の OUT 時間 ============================= */
+/* ───── モーダル側から emit('saved') を受ける ───── */
+function handleSaved() {
+  showModal.value = false
+  bills.loadAll()
+}
+
+/* ───── 新規伝票 ───── */
+async function newBill () {
+  const bill = await createBill({ table_id: 1, nominated_casts: [], inhouse_casts_w: [] })
+  currentBill.value = bill
+  showModal.value   = true
+}
+
+/* ───── 一覧チェック & 削除 ───── */
+function toggle(id){
+  const set = selectedIds.value
+  set.has(id) ? set.delete(id) : set.add(id)
+}
+
+async function bulkDelete () {
+  if (!selectedIds.value.size) return
+  if (!window.confirm(`${selectedIds.value.size} 件を削除しますか？`)) return
+  for (const id of selectedIds.value) await deleteBill(id)
+  selectedIds.value.clear()
+  bills.loadAll()
+}
+
+/* ───── 一覧ヘルパ関数（テンプレートから呼ぶ） ───── */
+function setName(b){
+  for (const it of (b.items || [])) {
+    /* 日本語パターン「セット60分」 */
+    if (/^セット\d+分/.test(it.name)) return it.name
+    /* ラテン表記「set60」「SET60」など → 60 を抜き出して整形 */
+    const m = it.name.match(/^set(\d+)/i)
+    if (m) return `セット${m[1]}分`
+  }
+  return '‑'
+}
+
 function calcOut(b){
   if (!b.opened_at) return '‑'
-
   let minutes = 0
   ;(b.items || []).forEach(it => {
-    /* ─ セット: 「セット60分」「セット90分VIP」など ─ */
-    const mSet = it.name.match(/^セット(\d+)分/)
-    if (mSet){
-      minutes += Number(mSet[1])      // ← qty は掛けない
-      return
-    }
+    /* セット */
+    let m = it.name.match(/^セット(\d+)分/) || it.name.match(/^set(\d+)/i)
+    if (m) { minutes += +m[1]; return }
 
-    /* ─ 延長: 「延長30分」「セット延長」など ─ */
-    if (/延長/.test(it.name)){
-      const mExt = it.name.match(/(\d+)分/)
-      minutes += mExt ? Number(mExt[1]) : 30   // 数字が無ければ 30 固定
+    /* 延長 */
+    if (/延長/.test(it.name) || /^ext\d+/i.test(it.name)){
+      const mExt = it.name.match(/(\d+)分/) || it.name.match(/^ext(\d+)/i)
+      minutes += mExt ? +mExt[1] : 30   // 分数不明なら既定 30 分
     }
   })
-
   return minutes
-         ? dayjs(b.opened_at).add(minutes,'minute').format('HH:mm')
-         : '‑'
+    ? dayjs(b.opened_at).add(minutes,'minute').format('HH:mm')
+    : '‑'
 }
 
-/* === ② 延長の “回数” と “分数” を知りたい場合 =============== */
 function extStats(b){
   let count = 0, totalMin = 0
   ;(b.items || []).forEach(it => {
-    if (/延長/.test(it.name)){
+    if (/延長/.test(it.name) || /^ext\d+/i.test(it.name)){
       count++
-      const m = it.name.match(/(\d+)分/)
-      totalMin += m ? Number(m[1]) : 30
+      const m = it.name.match(/(\d+)分/) || it.name.match(/^ext(\d+)/i)
+      totalMin += m ? +m[1] : 30
     }
   })
-  return { count, totalMin }   // 例: {count:2, totalMin:60}
+  return { count, totalMin }
 }
-
 
 function liveCasts(b){
   return (b.stays||[])
-    .filter(s=>!s.left_at)        // ← serializer で left_at に合わせました
+    .filter(s=>!s.left_at)
     .map(s=>{
-      const c = s.cast || {}
-      const cid = c.id
+      const cid = s.cast?.id
       let tag='', color=''
-      if(cid === (b.nominated_casts?.[0]||null)){ tag='本指名' ; color='danger'}
-      else if((b.inhouse_casts||[]).includes(cid)){ tag='場内' ; color='success'}
-
+      if(cid === (b.nominated_casts?.[0]||null)){ tag='本指名'; color='danger'}
+      else if((b.inhouse_casts||[]).includes(cid)){ tag='場内'; color='success'}
       return {
-        id   : cid,
-        name : c.stage_name || 'N/A',
-        avatar: c.avatar_url || '/img/user-default.png',
-        tag,
-        color,
+        id:cid,
+        name:s.cast?.stage_name||'N/A',
+        avatar:s.cast?.avatar_url||'/img/user-default.png',
+        tag, color
       }
     })
 }
-/* avatar URL を拾う簡易関数（無ければデフォルト）*/
-function castAvatar(id){
-  // ① items から探す
-  const it = (bills.current?.items||[]).find(i => i.served_by_cast===id && i.cast_avatar_url)
-  if(it) return it.cast_avatar_url
-  // ② プリロード済み辞書があればそちら
-  return '/img/user-default.png'
-}
-
 
 </script>
 
 
 
+
 <template>
+    <button class="btn btn-primary d-flex align-items-center gap-1 mb-3"
+            @click="newBill">
+      <i class="bi bi-plus-lg"></i> 新規追加
+    </button>
   <table class="table table-bordered table-hover align-middle table-striped">
     <thead>
       <tr>
-        <th>ID</th><th>卓</th><th>in</th>
+        <th></th><th>ID</th><th>卓</th><th>in</th>
         <th>out</th><th>キャスト</th><th class="text-end">小計</th>
         <th class="text-end">合計</th>
       </tr>
@@ -103,8 +130,14 @@ function castAvatar(id){
     <tbody>
       <tr v-for="b in bills.list" :key="b.id"
           @click="open(b.id)" style="cursor:pointer">
+        <td class="text-center">
+          <input type="checkbox"
+                 :value="b.id"
+                 :checked="selectedIds.has(b.id)"
+                 @click.stop="toggle(b.id)">
+        </td>
         <td>{{ b.id }}</td>
-        <td>{{ b.table.number }}</td>
+        <td>{{ b.table?.number ?? '‑' }}</td>
         <td>
 			<span class="badge bg-dark text-light">{{ setName(b) }}</span>
 			<span class="fs-3 fw-bold d-block">{{ dayjs(b.opened_at).format('HH:mm') }}</span>
@@ -131,13 +164,23 @@ function castAvatar(id){
 			</div>
 		</div>
 		</td>
-                      <!-- キャスト -->
         <td class="text-end">{{ b.subtotal.toLocaleString() }}</td>
-        <td class="text-end">{{ (b.closed_at ? b.total : b.grand_total).toLocaleString() }}</td>
+        <td class="text-end">{{ (b.settled_total ?? (b.closed_at ? b.total : b.grand_total)).toLocaleString() }}</td>
       </tr>
     </tbody>
   </table>
 
-  <BillModal v-model="showModal" :bill="bills.current" />
+    <!-- ★ 削除ボタン -->
+    <button class="btn btn-danger"
+            :disabled="!selectedIds.size"
+            @click="bulkDelete">
+      <i class="bi bi-trash-fill"></i> 削除
+    </button>
+
+    <BillModal
+      v-model="showModal"
+      :bill="currentBill"
+      @saved="handleSaved"
+    />
 </template>
 

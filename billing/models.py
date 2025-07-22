@@ -1,11 +1,12 @@
 # billing/models.py  ※TAB インデント
 from django.conf import settings
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from collections import defaultdict
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from cloudinary.models import CloudinaryField
+from django.db.models import Sum 
 
 User = get_user_model()
 
@@ -101,11 +102,49 @@ class ItemStock(models.Model):
 
 # ───────── 伝票 ─────────
 class Bill(models.Model):
-	table			= models.ForeignKey(Table, on_delete=models.CASCADE)
+	table			= models.ForeignKey(Table, on_delete=models.CASCADE, null=True, blank=True,)
 	opened_at		= models.DateTimeField(default=timezone.now)
 	closed_at		= models.DateTimeField(null=True, blank=True)
 	nominated_casts  = models.ManyToManyField(Cast, blank=True, related_name='nominated_bills')
-	total			= models.PositiveIntegerField(default=0)  # 締め時に確定
+
+	subtotal		= models.PositiveIntegerField(default=0)
+	service_charge  = models.PositiveIntegerField(default=0)
+	tax			 = models.PositiveIntegerField(default=0)
+	grand_total	 = models.PositiveIntegerField(default=0)
+
+	total		   = models.PositiveIntegerField(default=0)  # → close 時に確定
+
+	settled_total  = models.PositiveIntegerField( null=True, blank=True, default=None)  # None＝未入力
+
+	# -------------------------------------------------
+	# ★ 計算ロジックを 1 箇所に集約
+	# -------------------------------------------------
+	def recalc(self, save=False):
+		"""Items を集計して金額3点 + grand_total を更新  
+		   `save=True` を渡すとこの場で保存まで行う
+		"""
+		sub = sum(it.subtotal for it in self.items.all())
+
+		# 店舗ごとの料率を Decimal(0‑1) で取得
+		store = self.table.store if self.table_id else None
+		sr = Decimal(store.service_rate) if store else Decimal('0')
+		tr = Decimal(store.tax_rate)	  if store else Decimal('0')
+		sr = sr/100 if sr >= 1 else sr	# 1 以上なら “％” 表示とみなし÷100
+		tr = tr/100 if tr >= 1 else tr
+
+		svc = int( (Decimal(sub) * sr).quantize(Decimal('1'),
+												ROUND_HALF_UP) )
+		tax = int( (Decimal(sub + svc) * tr).quantize(Decimal('1'),
+													  ROUND_HALF_UP) )
+		self.subtotal	   = sub
+		self.service_charge = svc
+		self.tax			= tax
+		self.grand_total	= sub + svc + tax
+		if save:
+			self.save(update_fields=['subtotal', 'service_charge',
+									 'tax', 'grand_total'])
+		return self.grand_total
+
 	def close(self):
 		from .services import calc_bill_totals
 		res			= calc_bill_totals(self)
@@ -155,9 +194,6 @@ class BillItem(models.Model):
 		ordering = ['id']
 
 	@property
-	def subtotal(self):  return (self.price or 0) * (self.qty or 0)
-
-	@property
 	def back_rate(self):
 		cat = self.item_master.category
 		# 優先順: キャスト個別→カテゴリ既定
@@ -177,14 +213,23 @@ class BillItem(models.Model):
 				or cat.back_rate_free
 			)
 
+	def __str__(self): return f'{self.name} ×{self.qty}'
+
+	@property
+	def subtotal(self):
+		return (self.price or 0) * (self.qty or 0)
+
 	def save(self, *args, **kwargs):
 		if self.item_master:
-			if not self.name:  self.name  = self.item_master.name
-			if not self.price: self.price = self.item_master.price_regular
+			if not self.name:
+				self.name = self.item_master.name
+			if not self.price:
+				self.price = self.item_master.price_regular
 			if self.item_master.exclude_from_payout:
 				self.exclude_from_payout = True
+		# ↓ ここを消す（プロパティには代入できない）
+		# self.subtotal = (self.price or 0) * (self.qty or 0)
 		super().save(*args, **kwargs)
-	def __str__(self): return f'{self.name} ×{self.qty}'
 
 
 class CastPayout(models.Model):

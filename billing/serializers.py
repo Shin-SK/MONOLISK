@@ -46,20 +46,47 @@ class BillCastStayMini(serializers.ModelSerializer):
 		model  = BillCastStay
 		fields = ('cast',)		   # cast は {id, stage_name} で返る
 
+
+
+class CastMiniSerializer(serializers.ModelSerializer):
+	avatar_url = serializers.SerializerMethodField()
+	class Meta:
+		model  = Cast
+		fields = ("id", "stage_name", "avatar_url")
+
+	def get_avatar_url(self, obj):
+		# CloudinaryField/FileField は .url でフル URL が取れる
+		return obj.avatar.url if obj.avatar else None
+
+
 class BillItemSerializer(serializers.ModelSerializer):
-	bill = serializers.PrimaryKeyRelatedField(read_only=True)
-	payouts = CastPayoutSerializer(read_only=True, many=True)
-	subtotal = serializers.SerializerMethodField()
-	served_by_cast_name = serializers.CharField(
-		source='served_by_cast.stage_name',
-		read_only=True
+	# --------------------<<  WRITE 用  >>--------------------
+	# 送信時は ID だけ受け取るフィールド
+	served_by_cast_id = serializers.PrimaryKeyRelatedField(
+		source='served_by_cast',			 # ← Model フィールド名
+		queryset=Cast.objects.all(),
+		write_only=True,					 # ← 書き込み専用
+		required=False,
+		allow_null=True,	# ← null を許容
 	)
+
+	# --------------------<<  READ 用  >>---------------------
+	# 取得時はミニキャストオブジェクトを返す
+	served_by_cast = CastMiniSerializer(read_only=True)
+
+	# 小計はサーバ側で算出するだけ
+	subtotal = serializers.SerializerMethodField()
+
+	bill = serializers.PrimaryKeyRelatedField(read_only=True)
+
 	class Meta:
 		model  = BillItem
 		fields = '__all__'
+		read_only_fields = ('bill', 'subtotal')
 
 	def get_subtotal(self, obj):
-		return obj.price * obj.qty
+		return obj.subtotal
+
 
 
 class CastSerializer(serializers.ModelSerializer):
@@ -75,15 +102,6 @@ class CastSerializer(serializers.ModelSerializer):
 		return obj.avatar.url if obj.avatar else None
 
 
-class CastMiniSerializer(serializers.ModelSerializer):
-	avatar_url = serializers.SerializerMethodField()
-	class Meta:
-		model  = Cast
-		fields = ("id", "stage_name", "avatar_url")
-
-	def get_avatar_url(self, obj):
-		# CloudinaryField/FileField は .url でフル URL が取れる
-		return obj.avatar.url if obj.avatar else None
 
 
 class BillCastStaySerializer(serializers.ModelSerializer):
@@ -93,121 +111,133 @@ class BillCastStaySerializer(serializers.ModelSerializer):
 		model  = BillCastStay
 		fields = ("cast", "entered_at", "left_at", "stay_type")
 
-# serializers.py ------------------------
+
 class BillSerializer(serializers.ModelSerializer):
-	table  = TableMiniSerializer(read_only=True)
-	items  = BillItemSerializer(read_only=True, many=True)
-	stays = BillCastStaySerializer(many=True)
-	total  = serializers.IntegerField(read_only=True)
-	nominated_casts = serializers.PrimaryKeyRelatedField(
-		many=True, queryset=Cast.objects.all()
-	)
-	# READ
-	inhouse_casts = serializers.SerializerMethodField()
-	def get_inhouse_casts(self, obj):
-		return list(obj.stays.filter(stay_type='in').values_list('cast_id', flat=True))
+    # ---------- READ ----------
+    table        = TableMiniSerializer(read_only=True)     # ネスト表示用
+    items        = BillItemSerializer(read_only=True, many=True)
+    stays        = BillCastStaySerializer(read_only=True, many=True)
+    subtotal     = serializers.SerializerMethodField()
+    service_charge = serializers.SerializerMethodField()
+    tax          = serializers.SerializerMethodField()
+    grand_total  = serializers.SerializerMethodField()
+    inhouse_casts = serializers.SerializerMethodField()
 
-	# WRITE
-	inhouse_casts = serializers.SerializerMethodField()
-	inhouse_casts_w = serializers.PrimaryKeyRelatedField(		# ★別名
-		many=True, queryset=Cast.objects.all(), write_only=True, required=False
-	)
+    # ---------- WRITE ----------
+    # “卓番号” を受け取る専用フィールド
+    table_id = serializers.PrimaryKeyRelatedField(
+        source='table',                # ← Bill.table へマッピング
+        queryset=Table.objects.all(),
+        allow_null=True,
+        required=False,
+        write_only=True,
+    )
 
-	# ─ 追加フィールド ──────────────────
-	subtotal	   = serializers.SerializerMethodField()
-	service_charge = serializers.SerializerMethodField()
-	tax			= serializers.SerializerMethodField()
-	grand_total	= serializers.SerializerMethodField()
+    nominated_casts = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Cast.objects.all(), required=False
+    )
+    inhouse_casts_w = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Cast.objects.all(), write_only=True, required=False
+    )
 
-	class Meta:
-		model  = Bill
-		fields = (
-			'id', 'table', 'opened_at', 'closed_at',
-			'subtotal', 'service_charge', 'tax', 'grand_total',
-			'total',
-			'items', 'stays',
-			'nominated_casts',
-			'inhouse_casts',	 # ← READ
-			'inhouse_casts_w',   # ← ★ WRITE も忘れず列挙
-		)
-		depth = 2
+    class Meta:
+        model = Bill
+        fields = (
+            # ---- 基本 ----
+            "id", "table", "table_id", "opened_at", "closed_at",
+            # ---- 金額 ----
+            "subtotal", "service_charge", "tax", "grand_total", "total",
+            # ---- 関連 ----
+            "items", "stays",
+            "nominated_casts", "settled_total",
+            "inhouse_casts",        # READ
+            "inhouse_casts_w",      # WRITE
+        )
+        read_only_fields = (
+            "subtotal", "service_charge", "tax", "grand_total", "total",
+            "opened_at", "closed_at", "settled_total",
+        )
+        depth = 2
 
-	def update(self, instance, validated_data):
-		nominated_ids = validated_data.pop('nominated_casts',  None)
-		inhouse_objs  = validated_data.pop('inhouse_casts_w', None)   # ← Cast の list
-		inhouse_ids   = [c.id if isinstance(c, Cast) else c		  # ★PK の list に変換
-						 for c in (inhouse_objs or [])]
+    # ───────── READ helpers ──────────
+    def get_inhouse_casts(self, obj):
+        return list(
+            obj.stays.filter(stay_type="in")
+               .values_list("cast_id", flat=True)
+        )
 
-		# ---------- 通常フィールド ----------
-		for k, v in validated_data.items():
-			setattr(instance, k, v)
-		instance.save()
+    # --------------------------------------------------
+    #                 CREATE
+    # --------------------------------------------------
+    def create(self, validated_data):
+        nominated = validated_data.pop("nominated_casts", [])
+        bill = Bill.objects.create(**validated_data)   # table もここでセットされる
+        if nominated:
+            bill.nominated_casts.set(nominated)
+        return bill
 
-		# ---------- nominated ----------
-		if nominated_ids is not None:
-			instance.nominated_casts.set(nominated_ids)
+    # --------------------------------------------------
+    #                 UPDATE
+    # --------------------------------------------------
+    def update(self, instance, validated_data):
+        nominated_ids = validated_data.pop("nominated_casts", None)
+        inhouse_objs  = validated_data.pop("inhouse_casts_w", None)
 
-		# ---------- inhouse ----------
-		if inhouse_objs is not None:		  # None＝キーが無かった時はスキップ
-			stay_map = {s.cast_id: s for s in instance.stays.all()}
+        # table, settled_total など通常フィールドは DRF に任せる
+        instance = super().update(instance, validated_data)
 
-			# ① 指定キャストを in に／新規 stay も作成
-			for cid in inhouse_ids:
-				stay = stay_map.get(cid)
-				if stay:
-					if stay.stay_type != 'in':
-						stay.stay_type = 'in'
-						stay.save()
-				else:
-					BillCastStay.objects.create(
-						bill	   = instance,
-						cast_id	= cid,
-						entered_at = timezone.now(),
-						stay_type  = 'in',
-					)
+        # nominated
+        if nominated_ids is not None:
+            instance.nominated_casts.set(nominated_ids)
 
-			# ② それ以外の in→free へ戻す
-			for cid, stay in stay_map.items():
-				if cid not in inhouse_ids and stay.stay_type == 'in':
-					stay.stay_type = 'free'
-					stay.save()
+        # in‑house（元ロジック）
+        if inhouse_objs is not None:
+            stay_map = {s.cast_id: s for s in instance.stays.all()}
+            ids = [c.id if isinstance(c, Cast) else c for c in inhouse_objs]
 
-		return instance
+            for cid in ids:                         # ① 指定を in に
+                stay = stay_map.get(cid)
+                if stay and stay.stay_type != "in":
+                    stay.stay_type = "in"; stay.save()
+                elif not stay:
+                    BillCastStay.objects.create(
+                        bill=instance, cast_id=cid,
+                        entered_at=timezone.now(), stay_type="in"
+                    )
 
-	def get_items(self, obj):
-		# 既存ロジックそのまま
-		return BillItemSerializer(obj.items.all(), many=True).data
+            for cid, stay in stay_map.items():      # ② その他を free に
+                if cid not in ids and stay.stay_type == "in":
+                    stay.stay_type = "free"; stay.save()
 
-	# ── 共通計算ロジック ─────────────────
-	def _store_rates(self, obj):
-		store = obj.table.store
-		sr = Decimal(store.service_rate)
-		tr = Decimal(store.tax_rate)
-		# 1 以上なら “％” 扱いにして ÷100
-		sr = sr / 100 if sr >= 1 else sr
-		tr = tr / 100 if tr >= 1 else tr
-		return sr, tr
+        return instance
 
-	def get_subtotal(self, obj):
-		return sum(i.subtotal for i in obj.items.all())
+    # ── 共通計算ロジック ─────────────────
+    def _store_rates(self, obj):
+        if not obj.table_id:
+            return Decimal("0"), Decimal("0")
+        store = obj.table.store
+        sr = Decimal(store.service_rate)
+        tr = Decimal(store.tax_rate)
+        sr = sr / 100 if sr >= 1 else sr
+        tr = tr / 100 if tr >= 1 else tr
+        return sr, tr
 
-	def get_service_charge(self, obj):
-		subtotal = self.get_subtotal(obj)
-		sr, _ = self._store_rates(obj)
-		return round(subtotal * sr)
+    def get_subtotal(self, obj):
+        return sum(i.subtotal for i in obj.items.all())
 
-	def get_tax(self, obj):
-		subtotal		  = self.get_subtotal(obj)
-		service_charge	= self.get_service_charge(obj)
-		_, tr			 = self._store_rates(obj)
-		return round((subtotal + service_charge) * tr)
+    def get_service_charge(self, obj):
+        subtotal, (sr, _) = self.get_subtotal(obj), self._store_rates(obj)
+        return round(subtotal * sr)
 
-	def get_grand_total(self, obj):
-		# Bill が「締め済み」なら確定値を優先
-		if obj.total:
-			return obj.total
-		return (
-			self.get_subtotal(obj)
-			+ self.get_service_charge(obj)
-			+ self.get_tax(obj)
-		)
+    def get_tax(self, obj):
+        subtotal = self.get_subtotal(obj)
+        svc      = self.get_service_charge(obj)
+        _, tr    = self._store_rates(obj)
+        return round((subtotal + svc) * tr)
+
+    def get_grand_total(self, obj):
+        return obj.total or (
+            self.get_subtotal(obj) +
+            self.get_service_charge(obj) +
+            self.get_tax(obj)
+        )

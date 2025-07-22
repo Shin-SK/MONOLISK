@@ -272,10 +272,21 @@ export const deleteReservationDriver = id => api.delete(`reservation-drivers/${i
 
 export const fetchBills   = ()      => api.get('billing/bills/').then(r=>r.data)
 export const fetchBill    = id      => api.get(`billing/bills/${id}/`).then(r=>r.data)
-export const createBill   = p       => api.post('billing/bills/', p ).then(r=>r.data)
-export const addBillItem  = (id,p)  => api.post(`billing/bills/${id}/items/`, p)
-export const closeBill    = id      => api.post(`billing/bills/${id}/close/`)
+
+export const createBill = (tableId = 1) =>
+  api.post('billing/bills/', { table: tableId }).then(r => r.data)
+
+ export const deleteBill = id =>
+   api.delete(`billing/bills/${id}/`)
+ 
+export const addBillItem  = (id,p)  => 
+  api.post(`billing/bills/${id}/items/`, p).then(r => r.data)
+
+ export const closeBill = (id, payload = {}) =>
+   api.post(`billing/bills/${id}/close/`, payload).then(r => r.data)
+ 
 export const fetchMasters = storeId => api.get('billing/item-masters/', { params:{store:storeId} }).then(r=>r.data)
+
 export const fetchCasts = storeId =>
   api.get('billing/casts/', { params:{store:storeId} })
      .then(r => r.data.results ?? r.data)
@@ -311,3 +322,11 @@ export const getBillYearlyPL = (year, storeId = '') =>
   api.get('billing/pl/yearly/', {
     params: { year, store_id: storeId }
   }).then(r => r.data)
+
+
+// await api.post(`billing/bills/${bill.id}/items/`, {
+//   item_master: draftMasterId.value,
+//   qty: draftQty.value,
+//   served_by_cast: draftCastId.value || null
+// })
+// Object.assign(bill, response.data)

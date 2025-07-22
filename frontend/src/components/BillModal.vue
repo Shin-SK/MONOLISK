@@ -1,703 +1,588 @@
-<!-- src/components/BillModal.vue -->
 <script setup>
-/* -------------------------------------------------- *
- *  Imports                                           *
- * -------------------------------------------------- */
-import { ref, computed, watch }   from 'vue'
-import BaseModal                  from '@/components/BaseModal.vue'
-import { useBills }               from '@/stores/useBills'
-import { fetchMasters, fetchCasts, fetchTables, updateBill, deleteBillItem, getStore } from '@/api'
+/* ── 必要最小限のインポート ───────────────────── */
+import { reactive, ref, watch, computed, onMounted } from 'vue'
+import BaseModal      from '@/components/BaseModal.vue'
+import { updateBill, fetchCasts, fetchMasters, addBillItem, deleteBillItem, closeBill } from '@/api'
 
-/* -------------------------------------------------- *
- *  Props / Emits / v‑model binding                   *
- * -------------------------------------------------- */
-const props  = defineProps({ modelValue:Boolean, bill:Object })
-const emit   = defineEmits(['update:modelValue'])
+/* ── props / emit ─────────────────────────────── */
+const props = defineProps({
+  modelValue  : Boolean,
+  bill        : Object,
+  serviceRate : { type: Number, default: 0.3 },
+  taxRate     : { type: Number, default: 0.1 },
+})
+const emit  = defineEmits(['update:modelValue','saved'])
 
+/* ── v‑model（開閉） ─────────────────────────── */
 const visible = computed({
   get : () => props.modelValue,
-  set : v => emit('update:modelValue', v),
+  set : v  => emit('update:modelValue', v)
 })
 
-/* bill が null の瞬間を安全に吸収 ------------------- */
-const bill = computed(() => props.bill || {
-  id: '',
-  table : { id:null, number:'' },
-  items : [],
-  nominated_casts: [],
+/* ── キャスト一覧を API からロード ─────────────── */
+const casts = ref([])               // [{id, stage_name, …}]
+const masters = ref([])
+
+onMounted(async () => {
+  try {
+    const storeId = props.bill?.table?.store ?? ''   // ← 無ければ全店
+    casts.value   = await fetchCasts(storeId)
+	masters.value   = await fetchMasters(storeId)
+  } catch (e) {
+    console.error('casts fetch failed', e)
+  }
 })
 
-/* -------------------------------------------------- *
- *  Stores & local state                              *
- * -------------------------------------------------- */
-const bills = useBills()
+/* ---------- state ---------- */
+const mainCastIds  = ref([])
+const freeCastIds  = ref([])
+const inhouseSet   = ref(new Set())
 
-/* ------------------ テーブル一覧 ------------------- */
-const tables  = ref([])              // 同一店舗の Table マスタ
-const tableId = ref(null)            // v‑model 用（null = 未選択）
-const tableLabel = computed(() => {
-  const t = tables.value.find(t => t.id === tableId.value)
-  return t ? t.number : ''
+
+/* コース用マップ（読み取り専用） */
+const courseMap = computed(() => Object.fromEntries(
+  courseOptions.value.map(o => [o.code, { id:o.id, label:o.label }])
+))
+
+
+function toggleInhouse(cid) {
+  const s = inhouseSet.value
+  s.has(cid) ? s.delete(cid) : s.add(cid)
+}
+
+const activeTab = ref('main')
+
+const drinkMasters = computed(() =>
+  masters.value.filter(m => m.category === 'drink')
+)
+
+const settleAmount = ref(null)
+
+/* --- 会計確定処理 --- */
+async function settleBill () {
+	if (!settleAmount.value || settleAmount.value <= 0) return
+	try{
+		/* ★ バックエンド側で settled_total と closed_at を確定させる */
+		await closeBill(props.bill.id, { settled_total: settleAmount.value })
+		emit('saved', props.bill.id)       // 親に再フェッチさせる
+	}catch(e){
+		console.error('settle failed', e)
+		alert('会計に失敗しました')
+	}
+}
+
+/* ------- draft ------- */
+const draftCode = ref('')   // 'set60' など
+const pax       = ref(1)    // 人数
+const draftMasterId = ref(null)   // 品名
+const draftCastId   = ref(null)   // 誰が注文したか（任意）
+const draftQty      = ref(1)      // 数量
+
+/* ── 編集フォーム（卓番号 & nominated_casts だけ） ─ */
+const form = reactive({
+  table_id        : null,
+  nominated_casts : [],
+  inhouse_casts   : []  
 })
 
-/* ------------------ キャスト関連 ------------------- */
-const masters      = ref([])
-const casts        = ref([])
 
-const orderCasts = computed(() =>
-  casts.value.filter(c => nominatedCasts.value.includes(c.id))
-)
+async function cancelItem(idx, item){
+  if(!confirm('この注文をキャンセルしますか？')) return
 
-const searchHonshi = ref('')
-const searchFree   = ref('')
-
-const filteredHonshi = computed(() =>
-  casts.value.filter(c =>
-    c.stage_name.toLowerCase().includes(searchHonshi.value.toLowerCase()),
-  ),
-)
-const filteredFree = computed(() =>
-  casts.value.filter(c =>
-    c.stage_name.toLowerCase().includes(searchFree.value.toLowerCase()) &&
-    (nominationType.value === 'honshi' ? c.id !== mainCastId.value : true),
-  ),
-)
-
-/* ------------------ 指名ステート ------------------- */
-const mainCastId   = ref('')          // 本指名（単一）
-const freeCastIds  = ref([])          // フリー（複数）
-const inhouseSet   = ref(new Set())   // 場内
-
-const nominationType = ref('')        // 'honshi' | 'free'
-const activeTab      = ref('free')
-watch(nominationType, v => { activeTab.value = v==='honshi'?'honshi':'free' })
-
-const nominatedCasts = computed(() => {
-  const ids = new Set([ mainCastId.value, ...freeCastIds.value ])
-  return [...ids].filter(Boolean)
-})
-const hasChoice = computed(() => nominatedCasts.value.length > 0)
-
-/* bill <‑> 指名同期 ------------------------------- */
-watch(nominatedCasts, ids => { bill.value.nominated_casts = ids })
-
-/* ------------------ Draft / Pending --------------- */
-const draft = ref({ master_id:'', qty:1, cast_id:'' })
-const pendingItems = ref([])          // 未確定注文プレビュー
-
-function addDraftToPending () {
-  if (!draft.value.master_id || draft.value.qty <= 0) return
-
-  // master_id を数値化
-  const mid = typeof draft.value.master_id === 'object'
-                ? draft.value.master_id.id
-                : Number(draft.value.master_id)
-
-  const cid = typeof draft.value.cast_id === 'object'
-                ? draft.value.cast_id.id
-                : draft.value.cast_id || null
-
-  pendingItems.value.push({
-    master_id : mid,
-    qty       : draft.value.qty,
-    cast_id   : cid
-  })
-  Object.assign(draft.value, { master_id:'', qty:1, cast_id:'' })
+  try{
+    await deleteBillItem(props.bill.id, item.id)   // ← billId も渡す
+    props.bill.items.splice(idx, 1)                // UI から即時削除
+  }catch(e){
+    console.error('cancel failed', e)
+    alert('キャンセルに失敗しました')
+  }
 }
 
-/* ------------------ 料金レート ------------------- */
-const serviceRate = ref(0.10)   // 初期値 (万一失敗しても 10%)
-const taxRate     = ref(0.10)
+/* ------- コースとか ------- */
+/* ボタン表示順とラベル */
+const labelMap = { set60:'SET60', set60_vip:'VIP60', ext30:'延長30', ext30_vip:'VIP延30' }
+const courseOrder = ['set60','set60_vip','ext30','ext30_vip']
 
-// 金額フォーマッタ
-const yen = n => `¥${n.toLocaleString()}`
-
-// ★ 明細集計 (確定 + pending)
-const confirmedSubtotal = computed(() =>
-  bill.value.items.reduce((s, it) => s + it.subtotal, 0)
-)
-const pendingSubtotal = computed(() =>
-  pendingItems.value.reduce((s, it) => {
-    const m = masters.value.find(m => m.id === it.master_id)
-    return s + (m ? m.price_regular * it.qty : 0)
-  }, 0)
-)
-const subTotal       = computed(() => confirmedSubtotal.value + pendingSubtotal.value)
-const serviceCharge  = computed(() => Math.round(subTotal.value * serviceRate.value))
-const tax            = computed(() => Math.round((subTotal.value + serviceCharge.value) * taxRate.value))
-const grandTotal     = computed(() => subTotal.value + serviceCharge.value + tax.value)
-
-/* ------------ セット時間 ------------- */
-const setMasters = computed(() =>
-	masters.value.filter(m => m.category==='set').sort((a,b)=>a.duration_min-b.duration_min)
-)
-const extMaster  = computed(() => masters.value.find(m => m.category==='ext' && m.duration_min===30))
-
-/* ----- Toggle ----- */
-const showCustom	= ref(false)			// ← 追加：入力欄の表示フラグ
-const customDur		= ref('')				// 数値を入れるだけ
-
-function toggleCustom(){
-	showCustom.value = !showCustom.value	// ON/OFF
-	if(!showCustom.value) customDur.value = ''
-}
-
-/* ---------------- テーブル編集トグル ---------------- */
-const editingTable = ref(false)        // ← pencil 押下で true
-const draftTableId = ref(null)         // select 用一時バッファ
-
-function startEditTable () {
-  draftTableId.value = tableId.value   // 現在値をコピー
-  editingTable.value = true
-}
-
-function cancelEditTable () {          // × or Esc 用
-  editingTable.value = false
-}
-
-function applyTable () {               // ✔️ 保存
-  tableId.value       = draftTableId.value
-  editingTable.value  = false
-}
-
-/* ------------ コースマスタ ------------- */
-const courseMap = computed(() => {
-	const map = {}
-	masters.value.forEach(m => { map[m.code] = m })   // code は自由に合わせて
-	return map
-})
-
-/* ------------ コース選択 ------------- */
-
-/* ==== コース表示名マッピング ========================= */
-const labelMap = {
-  set60      : 'SET60',
-  set60_vip  : 'VIP60',
-  ext30      : '延長30',
-  ext30_vip  : 'VIP延長30',
-}
-
-/* ==== 並び順を固定したオプション ===================== */
-const courseOrder = ['set60', 'set60_vip', 'ext30', 'ext30_vip']
 const courseOptions = computed(() =>
-  courseOrder
-    .map(code => {
-      const m = masters.value.find(v => v.code === code)
-      return m ? { ...m, label: labelMap[code] || m.name } : null
+  courseOrder.map(code => {
+    const m = masters.value.find(v => v.code === code)
+    return m ? { id:m.id, code, label:labelMap[code]||m.name } : null
+  }).filter(Boolean)
+)
+
+/* ------- 注文とか ------- */
+function addSingle () {
+  if (!draftMasterId.value) { alert('品名を選択'); return }
+  if (draftQty.value <= 0)  { alert('数量を入力'); return }
+
+  pending.value.push({
+    master_id : draftMasterId.value,
+    qty       : draftQty.value,
+    cast_id   : draftCastId.value || null
+  })
+
+  // リセット
+  draftMasterId.value = null
+  draftCastId.value   = null
+  draftQty.value      = 1
+}
+
+
+
+const currentCasts = computed(() => {
+  // mainCast が先頭、それ以外は freeCastIds の順
+  const list = mainCastIds.value
+    .map(id => {
+      const mc = casts.value.find(c => c.id === id)
+      return mc ? { ...mc, role: 'main' } : null
     })
     .filter(Boolean)
-)
-
-
-/* ▼ プルダウンに並べるコース一覧 */
-const courseMasters = computed(() =>
-  masters.value
-    .filter(m => ['set', 'ext'].includes(m.category))
-    .sort((a, b) =>        // 並べ替えはご自由に
-      (a.category === b.category)
-        ? a.duration_min - b.duration_min      // 例: 60→90→30…
-        : a.category.localeCompare(b.category) // set → ext
-    )
-)
-
-/* ▼ v‑model 用ステート */
-const selectedCode = ref('')   // <select> で選ばれた code
-const pax          = ref(1)    // 人数入力（qty に相当）
-
-/* ▼ 追加処理（人数 × コース＝1行） */
-async function addSelectedCourse () {
-  const m = courseMasters.value.find(v => v.code === selectedCode.value)
-  if (!m)  { alert('コースを選択してください'); return }
-  if (pax.value <= 0) { alert('人数を入力してください'); return }
-
-  await bills.addItem({
-    item_master : m.id,
-    name        : m.name,
-    price       : m.price_regular,
-    qty         : pax.value,
-  })
-  // 入力リセット
-  selectedCode.value = ''
-  pax.value = 1
-  await bills.reload()
-}
-
-
- /* ----- 追加（EXT） ----- */
- async function addExtension () {              // ← ここはそのまま
-	if (!extMaster.value) return alert('延長マスタがありません')
-	await bills.addItem({
-		item_master : extMaster.value.id,
-		name        : extMaster.value.name,
-		price       : extMaster.value.price_regular,
-		qty         : 1,
-	})
-	await bills.reload()
- }
-/* -------------------------------------------------- *
- *  Bill 読込時の初期化                               *
- * -------------------------------------------------- */
-watch(
-  () => bill.value.id,
-  async id => {
-    if (!id) return
-    const storeId = bill.value.table.store
-    // ★ 追加: 店舗レート取得
-    try {
-      const store = await getStore(storeId)
-      const sr = Number(store.service_rate)
-      const tr = Number(store.tax_rate)
-
-	  serviceRate.value = sr >= 1 ? sr / 100 : sr
-	  taxRate.value     = tr >= 1 ? tr / 100 : tr
-    } catch (_) {
-      console.warn('store rate fetch failed; fallback 10%')
+  freeCastIds.value.forEach(fid => {
+    const fc = casts.value.find(c => c.id === fid)
+    if (fc) {
+      list.push({
+        ...fc,
+        role : 'free',
+        inhouse: inhouseSet.value.has(fid)
+      })
     }
+  })
+  return list
+})
 
-    ;[masters.value, casts.value, tables.value] = await Promise.all([
-      fetchMasters(storeId),
-      fetchCasts(storeId),
-      fetchTables(storeId),
-    ])
+/* ── 追加：コースを即時 pending へ載せる ── */
+function chooseCourse(code) {
+  if (!code) return                           // safety
+  const c = courseMap.value[code]             // { id, label }
+  if (!c) { alert('コースを選択'); return }
 
-    tableId.value        = bill.value.table.id ?? null
-    mainCastId.value     = bill.value.nominated_casts?.[0] || ''
-    freeCastIds.value    = bill.value.nominated_casts?.slice(1) || []
-    inhouseSet.value     = new Set(bill.value.inhouse_casts || [])
-  },
-  { immediate:true },
+  pending.value.push({                        // ★ 常に新行を追加
+    master_id : c.id,
+    qty       : pax.value,
+    cast_id   : null                          // コースなのでキャスト不要
+  })
+
+  // UI リセット
+  draftCode.value = ''
+  pax.value       = 1
+}
+
+
+/* ------- 現状（確定済み）計算 ------------------- */
+const current = computed(() => {
+  const sub = props.bill.items.reduce(
+    (s, it) => s + it.qty *
+      (masters.value.find(m => m.id === it.item_master)?.price_regular || it.price || 0),
+    0
+  )
+  const svc = Math.round(sub * props.serviceRate)
+  const tax = Math.round((sub + svc) * props.taxRate)
+  return { sub, svc, tax, total: sub + svc + tax }
+})
+
+/* ------- draft を pending に載せる ---------- */
+const pending = ref([])   // [{ master_id, qty }]
+
+function addDraft () {
+  const m = courseOptions.value.find(o => o.code === draftCode.value)
+  if (!m)           { alert('コースを選択'); return }
+  if (pax.value<=0) { alert('人数を入力');  return }
+
+  pending.value.push({ master_id:m.id, qty:pax.value })
+  draftCode.value = '';  pax.value = 1
+}
+
+/* ------- 仮計算 本計算はバックエンドで ---------- */
+
+const preview = computed(() => {
+  const sub = pending.value.reduce(
+    (s, i) =>
+      s + i.qty * (masters.value.find(m => m.id === i.master_id)?.price_regular || 0),
+    0
+  )
+  const svc = Math.round(sub * props.serviceRate)  // ← 追加した prop を参照
+  const tax = Math.round((sub + svc) * props.taxRate)
+  return { sub, svc, tax, total: sub + svc + tax }
+})
+
+/* ---------- 伝票読み込み時 ---------- */
+watch(() => props.bill, b => {
+  if (!b) return
+/* ---- ① stays から状態を取り出す ---- */
+const stayFree = b.stays
+                  ?.filter(s => s.stay_type === 'free')
+                  .map(s => s.cast.id) ?? []
+const stayIn   = b.stays
+                  ?.filter(s => s.stay_type === 'in')
+                  .map(s => s.cast.id) ?? []
+
+/* ---- ② 本指名は “nominated の先頭” を採用 ---- */
+const nominated = b.nominated_casts ?? []
+mainCastIds.value = nominated.length ? [nominated[0]] : []
+
+/* ---- ③ フリー = 先頭以外の nominated ＋ stayFree − 本指名 ---- */
+const tmpFree = [...nominated.slice(1), ...stayFree]
+freeCastIds.value = Array.from(
+  new Set(tmpFree.filter(id => !mainCastIds.value.includes(id)))
 )
 
-/* ------------------ 場内トグル -------------------- */
-async function toggleInhouse (cid) {
-  const set = inhouseSet.value
-  set.has(cid) ? set.delete(cid) : set.add(cid)
-  await bills.setInhouseStatus([...set])
-}
+/* ---- ④ 場内セット ---- */
+inhouseSet.value = new Set(stayIn)
 
-/* ------------------ 削除モード ------------------ */
-const deleteMode   = ref(false)
-const selectedIds  = ref(new Set())
+form.table_id = b.table?.id ?? null
+}, { immediate:true })
 
-function toggleDeleteMode () {
-  deleteMode.value = !deleteMode.value
-  selectedIds.value.clear()
-}
-
-function toggleSelect (id) {
-  const set = selectedIds.value
-  set.has(id) ? set.delete(id) : set.add(id)
-}
-
-async function confirmDelete () {
-  if (!selectedIds.value.size) return
-  if (!confirm('選択した注文を削除しますか？')) return
-
-  for (const id of selectedIds.value) {
-    await deleteBillItem(bill.value.id, id)
+/* ---------- ウォッチャー ---------- */
+/* main が変わったら free から除去 */
+watch(mainCastIds, list => {
+  const filtered = freeCastIds.value.filter(id => !list.includes(id))
+  if (filtered.length !== freeCastIds.value.length) {
+    freeCastIds.value = filtered
   }
-  selectedIds.value.clear()
-  deleteMode.value = false
-  await bills.reload()
+})
+
+watch(freeCastIds, list => {
+  // ① main と重複を排除（必要なときだけ代入）
+  const deduped = list.filter(id => !mainCastIds.value.includes(id))
+  if (deduped.length !== list.length) {
+    freeCastIds.value = deduped      // 変化がある時だけ再代入
+    return                           // ここで終われば再トリガは 1 回で済む
+  }
+  // ② 場内セットを同期
+  inhouseSet.value = new Set([...inhouseSet.value]
+                              .filter(id => freeCastIds.value.includes(id)))
+})
+
+
+/* キャストをリストから外すだけの共通関数（JSのみ） */
+function removeCast(id) {
+  // 本指名だったら解除
+  mainCastIds.value = mainCastIds.value.filter(c => c !== id)
+  // フリー配列から除外
+  freeCastIds.value = freeCastIds.value.filter(c => c !== id)
+
+  // 場内セットからも除外
+  inhouseSet.value.delete(id)
 }
 
-/* ------------------ 閉じるボタン ------------------ */
-
-function close () {
-  // v‑model を介して親へ false を返すだけで OK
-  visible.value = false         // → emit('update:modelValue', false)
-}
-
-/* -------------------------------------------------- *
- *  保存                                              *
- * -------------------------------------------------- */
+/* ── 保存ボタン ─────────────────────────────── */
 async function save () {
-  /* ① pendingItems → 確定品目へ */
-  for (const it of pendingItems.value) {
-    const m = masters.value.find(m => m.id == it.master_id)
-    await bills.addItem({
-      item_master    : m.id,
-      name           : m.name,
-      price          : m.price_regular,
-      qty            : it.qty,
-      back_rate      : m.default_back_rate,
-      served_by_cast : it.cast_id || null,
-    })
-  }
-  pendingItems.value = []
 
-  /* ② ヘッダ / 指名 PATCH */
-  const payload = {
-    nominated_casts : nominatedCasts.value,
-    inhouse_casts_w : [...inhouseSet.value],
-  }
-  if (tableId.value) payload.table_id = tableId.value
-  await updateBill(bill.value.id, payload)
+  /* ----------------------------------------------------
+   * 1.  pending の注文を確定登録
+   *     addBillItem が “最新 Bill 全体” を返す想定なので、
+   *     返ってきたオブジェクトで props.bill を即時更新する
+   * -------------------------------------------------- */
+  for (const it of pending.value) {
+    try {
+    const payload = {
+      item_master : it.master_id,
+      qty         : it.qty,
+    }
+    if (it.cast_id != null) payload.served_by_cast_id = it.cast_id
 
-  alert('保存しました')
-  await bills.reload()
+    const newItem = await addBillItem(props.bill.id, payload)
+      props.bill.items.push(newItem)
+      
+    } catch (e) {
+      console.error('add item failed', e)
+    }
+  }
+  pending.value = []   // クリア（UI からも消す）
+
+  /* ----------------------------------------------------
+   * 2.  Bill 本体の更新（卓 / 指名 / 場内）
+   * -------------------------------------------------- */
+  try {
+
+    const payload = {
+      nominated_casts :
+        mainCastIds.value.length               // 本指名が 1 人以上いるときだけ
+       ? [...mainCastIds.value, ...freeCastIds.value]
+       : [],  
+      inhouse_casts_w : [...inhouseSet.value],
+      table_id        : form.table_id
+    }
+      
+  await updateBill(props.bill.id, payload)
+  
+  } catch (e) {
+    console.error('update bill failed', e)
+  }
+
+  /* ----------------------------------------------------
+   * 3.  親コンポーネントへ通知してモーダル閉じ
+   * -------------------------------------------------- */
+  emit('saved', props.bill.id)
 }
+
 </script>
 
 <template>
-  <BaseModal v-model="visible">
-	<div class="modal-header d-flex justify-content-between align-items-center">
-		<div class="table-number-area text-center">
-			<div class="head d-flex gap-4 ">
-				<span class="d-flex align-items-center me-2 bg-light px-4">
-					<i class="bi bi-sticky-fill me-2"></i>{{ bill.id }}
-				</span>
+  <!-- 伝票がまだ無い瞬間は描画しない -->
+  <BaseModal v-if="props.bill" v-model="visible">
+    <div class="position-relative p-4 d-grid gap-4 h-100" style="grid-template-columns: 1fr 1fr;">
+      <div class="outer d-flex flex-column gap-4">
+        <!-- 卓番号 -->
+        <div class="d-flex gap-4">
+          <div class="d-flex align-items-center gap-2">
+            <span><i class="bi bi-journal fs-5"></i></span>
+            <span>{{ props.bill.id }}</span>
+          </div>
+          <div class="wrap d-flex align-items-center">
+            <div class="d-flex align-items-center me-2"><i class="bi bi-fork-knife fs-5"></i></div>
+            <input type="number"
+              class="form-control text-end"
+              style="width: 62px;"
+              v-model.number="form.table_id"
+              >
+          </div>
+          <div class="d-flex gap-2 flex-wrap">
+            <template v-for="c in courseOptions" :key="c.code">
+            <input class="btn-check" type="radio" :id="`c-${c.code}`"
+                :value="c.code" v-model="draftCode">
+            <label class="btn d-flex align-items-center"
+                :class="draftCode===c.code ? 'btn-dark':'btn-outline-dark'"
+                :for="`c-${c.code}`">{{ c.label }}</label>
+            </template>
+          </div>
 
-				<div class="d-flex align-items-center bg-light px-4">
+          <div class="d-flex align-items-center" style="max-width:160px;">
+            <div class="me-2"><i class="bi bi-people-fill fs-3"></i></div>
+            <input type="number" min="1" class="form-control text-end" style="width: 62px;" v-model.number="pax">
+          </div>
+        <button class="ms-auto"
+                :disabled="!draftCode"
+                @click="chooseCourse(draftCode)">
+          <i class="bi bi-cart-plus-fill btn btn-dark text-light"></i>
+        </button>
 
-					<!-- ───── 表示モード ───── -->
-					<template v-if="!editingTable">
-						<span class="me-2 d-flex gap-2">
-							<i class="bi bi-fork-knife"></i>{{ tableLabel || '未選択' }}
-						</span>
+        </div>
 
-						<!-- 編集アイコン -->
-						<button class="btn btn-sm btn-outline-secondary"
-								@click="startEditTable" title="テーブルを変更">
-						<i class="bi bi-pencil"></i>
-						</button>
-					</template>
+      <!-- ★ 現在ついているキャストエリア ------------------------------- -->
+      <div class="mb-3">
 
-					<!-- ───── 編集モード ───── -->
-					<template v-else>
-						<select class="form-select me-2"
-								v-model="draftTableId" style="width:8rem;">
-							<option v-for="t in tables" :key="t.id" :value="t.id">
-								{{ t.number }}
-							</option>
-						</select>
+        <!-- (D) 誰もいない時 -->
+        <div v-if="!currentCasts.length"
+            class="border border‑2 rounded p‑4 text-center text-muted">
+          キャストを選択してください
+        </div>
 
-						<!-- 決定 / キャンセル -->
-						<button class="btn btn-sm btn-primary me-1" @click="applyTable">
-							<i class="bi bi-check-lg"></i>
-						</button>
-						<button class="btn btn-sm btn-outline-secondary" @click="cancelEditTable">
-							<i class="bi bi-x-lg"></i>
-						</button>
-					</template>
+        <!-- (A,B,C) 一覧 -->
+        <div v-else class="d-flex flex-wrap gap-2 bg-light px-3 py-5 rounded">
+          <template v-for="c in currentCasts" :key="c.id">
+            <!-- 本指名 -->
+            <div v-if="c.role==='main'"
+                  class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
+                  role="button">
+              <!-- ✕ボタン：単なるアイコンに click を付与 -->
+              <i class="bi bi-x me-2"
+                  role="button"
+                  @click.stop="removeCast(c.id)"></i>
+              <span>{{ c.stage_name }}</span>
+              <span class="badge bg-danger text-white ms-1 d-flex align-items-center">
+                本指名
+              </span>
+            </div>
 
-				</div>
-							
-				<!-- コース -->
-				<div class="d-flex gap-2 me-2" role="group">
-				<template v-for="m in courseOptions" :key="m.code">
-					<input  class="btn-check"
-							type="checkbox"
-							:id="`c-${m.code}`"
-							:value="m.code"
-							v-model="selectedCode">
-					<label class="d-flex align-items-center btn btn-outline-primary"
-						:for="`c-${m.code}`">
-					{{ m.label }}
-					</label>
-				</template>
-				</div>
+            <!-- フリー -->
+            <div v-else
+                  class="btn rounded border-secondary fw-bold bg-white py-3 px-3 d-flex align-items-center gap-1"
+                  role="button"
+                  @click="toggleInhouse(c.id)">
+              <!-- ✕アイコン -->
+              <i class="bi bi-x me-2"
+                  role="button"
+                  @click.stop="removeCast(c.id)"></i>
+              <span>{{ c.stage_name }}</span>
+              <span class="badge"
+                    :class="c.inhouse ? 'bg-success' : 'bg-secondary'">
+                {{ c.inhouse ? '場内' : 'フリー' }}
+              </span>
+            </div>
+          </template>
+        </div>
+      </div>
 
-				<!-- 人数 -->
-				<input type="number" min="1" v-model.number="pax"
-						class="form-control text-end" style="width:60px;" placeholder="人数">
+        <!-- ★ 指名タブ -->
+        <nav class="nav nav-tabs mb-3">
+          <button class="nav-link"
+                  :class="{ active: activeTab==='main' }"
+                  @click="activeTab='main'">本指名</button>
+          <button class="nav-link"
+                  :class="{ active: activeTab==='free' }"
+                  @click="activeTab='free'">フリー</button>
+        </nav>
 
-				<!-- 追加ボタン -->
-				<button class="btn btn-dark" @click="addSelectedCourse">
-					<i class="bi bi-cart-plus-fill"></i>
-				</button>
-			</div>
-		</div>
-		<button class="btn-close mb-auto" @click="close"></button>
-	</div>
+        <!-- ===================== 本指名タブ ===================== -->
+        <div v-if="activeTab==='main'" class="mb-3">
+          <div class="d-flex flex-wrap gap-2">
+            <template v-for="c in casts" :key="c.id">
+              <!-- mainCastIds は配列 -->
+              <input  class="btn-check"
+                      type="checkbox"
+                      :id="`main-${c.id}`"
+                      :value="c.id"
+                      v-model="mainCastIds">
+              <label  class="btn"
+                      :class="mainCastIds.includes(c.id)
+                              ? 'btn-danger'
+                              : 'btn-outline-danger'"
+                      :for="`main-${c.id}`">
+                {{ c.stage_name }}
+              </label>
+            </template>
+          </div>
+        </div>
 
-	<div class="modal-body">
-		<div class="wrapper d-grid h-100" style="grid-template-columns: 1fr 1fr;">
-			<div class="outer p-3 d-flex flex-column">
+        <!-- ===================== フリータブ ===================== -->
+        <div v-else class="mb-3">
+          <div class="d-flex flex-wrap gap-2">
+            <template v-for="c in casts" :key="c.id">
+              <!-- 本指名と重複しないよう disabled -->
+              <input  class="btn-check"
+                      type="checkbox"
+                      :id="`free-${c.id}`"
+                      :value="c.id"
+                      v-model="freeCastIds"
+                      :disabled="mainCastIds.includes(c.id)">
+              <label  class="btn"
+                      :class="freeCastIds.includes(c.id)
+                              ? 'btn-primary'
+                              : 'btn-outline-primary'"
+                      :for="`free-${c.id}`">
+                {{ c.stage_name }}
+              </label>
+            </template>
+          </div>
+        </div>
 
+      <button class="btn btn-primary w-100 mt-auto" @click="save">保存</button>
+    </div>
+    <div class="outer">
 
+      <!-- ── 単品注文フォーム ───────────────────────── -->
+      <div class="mb-3 border-top pt-3">
+        <label class="form-label fw-bold">単品注文</label>
 
+        <div class="d-grid align-items-stretch gap-2 mb-2"
+            style="grid-template-columns: 40% 40% 10% auto;">
 
+          <!-- ① 注文キャスト -->
+          <select class="form-select" v-model="draftCastId">
+            <option :value="null">‑ CAST ‑</option>
+            <option v-for="c in casts" :key="c.id" :value="c.id">{{ c.stage_name }}</option>
+          </select>
 
-				<!-- 選択結果エリア -->
-				<div class="choiced-area mb-5">
-					<!-- 選択結果エリア -->
-					<div class="d-flex flex-wrap gap-2 justify-content-center p-3 bg-light">
-					<template v-if="hasChoice">
-						<template v-for="cid in nominatedCasts" :key="cid">
-						<!-- 本指名：表示だけ -->
-						<div v-if="cid === mainCastId"
-							class="bg-white rounded px-4 py-3 position-relative border border-warning">
-							{{ casts.find(c => c.id === cid)?.stage_name || 'N/A' }}
-							<span class="badge bg-warning text-dark ms-1">本指名</span>
-						</div>
+          <!-- ② 品名 -->
+          <select class="form-select" v-model="draftMasterId">
+            <option :value="null">‑ ITEM ‑</option>
+            <option v-for="m in drinkMasters" :key="m.id" :value="m.id">{{ m.name }}</option>
+          </select>
 
-						<!-- フリー：カード全体がトグル -->
-							<template v-else>
-							<div  class="bg-white rounded px-4 py-3 position-relative border border-primary text-primary"
-									:class="inhouseSet.has(cid)"
-									style="cursor:pointer;"
-									@click="toggleInhouse(cid)">
-								{{ casts.find(c => c.id === cid)?.stage_name }}
+          <!-- ③ 数量 -->
+          <input type="number" min="1"
+                class="form-control text-end"
+                v-model.number="draftQty">
 
-								<span class="badge ms-2"
-									:class="inhouseSet.has(cid)
-											? 'bg-primary text-light'
-											: 'bg-light text-primary'">
-								場内
-								</span>
-							</div>
-							</template>
-						</template>
-					</template>
+          <!-- ④ 追加ボタン -->
+          <button class="btn btn-dark text-light" @click="addSingle">
+            <i class="bi bi-cart-plus-fill"></i>
+          </button>
+        </div>
+      </div>
+      <!-- 🛒 ここが「仮確定」カート ----------------------------- -->
+      <ul v-if="pending.length" class="list-group mb-3">
+        <li v-for="(it,i) in pending" :key="i"
+            class="list-group-item d-flex justify-content-between align-items-center">
 
-					<span v-else class="text-muted">キャストを選択してください</span>
-					</div>
+          <span>
+            <!-- ★ masters で検索に変更 -->
+            {{ masters.find(m => m.id === it.master_id)?.name }}
+            <small class="text-muted ms-2">
+              {{ casts.find(c => c.id === it.cast_id)?.stage_name || '‑' }}
+            </small>
+          </span>
 
-				</div>
+          <span class="d-flex align-items-center gap-2">
+            <span class="badge bg-secondary">{{ it.qty }}</span>
+            <i class="bi bi-trash text-danger" role="button"
+              @click="pending.splice(i,1)"></i>
+          </span>
+        </li>
+      </ul>
 
-				<!-- ───────── キャスト選択 ───────── -->
-				<div class="cast-area mb-5">
-					<!-- タブ見出し -->
-					<div class="d-flex tab-menu mb-2">
-						<div class="flex-fill d-flex justify-content-center">
-							<button class="tab-item px-2"
-									:class="{active: activeTab==='honshi'}"
-									@click="activeTab='honshi'">本指名</button>
-							</div>
-						<div class="flex-fill d-flex justify-content-center">
-							<button class="tab-item px-2"
-									:class="{active: activeTab==='free'}"
-									@click="activeTab='free'">フリー</button>
-						</div>
-					</div>
+<!-- ▼pending がある時だけ：追加後の仮計算 ------- -->
+<table v-if="pending.length"
+       class="table table-sm mb-3 text-end border-top">
+  <tbody>
+    <tr><th class="text-start">小計(仮)</th>      <td>{{ preview.sub.toLocaleString() }}</td></tr>
+    <tr><th class="text-start">サービス料(仮)</th><td>{{ preview.svc.toLocaleString() }}</td></tr>
+    <tr><th class="text-start">消費税(仮)</th>    <td>{{ preview.tax.toLocaleString() }}</td></tr>
+    <tr class="fw-bold">
+      <th class="text-start">合計(仮)</th>
+      <td>{{ preview.total.toLocaleString() }}</td>
+    </tr>
+  </tbody>
+</table>
 
-					<!-- タブ中身 -->
-					<div class="tab-area">
-						<!-- 本指名（単一） -->
-						<div v-if="activeTab==='honshi'">
-						<!-- 検索 -->
-						<input type="text" v-model="searchHonshi" placeholder="本指名キャスト検索"
-								class="form-control w-100 mb-4 text-center">
-						<div class="d-flex flex-wrap gap-4 justify-content-center" role="group">
-							<template v-for="c in filteredHonshi" :key="c.id">
-							<input class="btn-check" type="radio"
-									:id="'main-'+c.id" :value="c.id" v-model="mainCastId">
-							<label class="btn"
-									:class="mainCastId===c.id ? 'btn-primary' : 'btn-outline-primary'"
-									:for="'main-'+c.id">{{ c.stage_name }}</label>
-							</template>
-						</div>
-						</div>
-
-						<!-- フリー（複数） -->
-						<div v-if="activeTab==='free'">
-						<input type="text" v-model="searchFree" placeholder="フリーキャスト検索"
-								class="form-control w-100 mb-4 text-center">
-						<div class="d-flex flex-wrap gap-4 justify-content-center" role="group">
-							<template v-for="c in filteredFree" :key="c.id">
-							<input class="btn-check" type="checkbox"
-									:id="'free-'+c.id" :value="c.id" v-model="freeCastIds">
-							<label class="btn"
-									:class="freeCastIds.includes(c.id)
-											? 'btn-primary':'btn-outline-primary'"
-									:for="'free-'+c.id">{{ c.stage_name }}</label>
-							</template>
-						</div>
-						</div>
-					</div>
-				</div><!-- /cast-area -->
-
-
-			</div><!-- /outer -->
-			<div class="outer p-3 d-flex flex-column">
-
-				<!-- ───────── 注文フォーム ───────── -->
-				<div class="order-form mb-4 d-flex flex-column" style="min-height: 50%;">
-					<!-- <h5 class="text-center mb-3">注文</h5> -->
-
-					<div class="d-grid align-items-stretch gap-2 mb-4" style="grid-template-columns: 40% 40% 10% auto;">
-
-						<Multiselect
-						v-model="draft.cast_id"
-						:options="casts"
-						:disabled="!orderCasts.length"
-						value-prop="id"
-						track-by="id"
-						label="stage_name"
-						placeholder="- CAST -"
-						:searchable="true"
-						:close-on-select="true"
-						:show-labels="false"
-						:select-label="''"
-						:selected-label="''"
-						:deselect-label="''"
-						class="w-auto"
-						/>
-
-							<!-- メニュー選択 -->
-						<Multiselect
-						v-model="draft.master_id"
-						:options="masters"
-						value-prop="id"
-						track-by="id"
-						label="name"
-						placeholder="- ITEM -"
-						:searchable="true"
-						:close-on-select="true"
-						:show-labels="false"
-						:select-label="''"
-						:selected-label="''"
-						:deselect-label="''"
-						class="w-auto"
-						/>
-
-						<!-- 数量 -->
-						<input type="number" min="1"
-							v-model.number="draft.qty"
-							class="form-control text-end flex-grow-1"
-							style="min-width: 30px;"
-							>
-						<!-- 仮追加 -->
-						<button class="btn btn-dark text-light"
-								@click="addDraftToPending">
-							<i class="bi bi-cart-plus-fill"></i>
-						</button>
-
-					</div>
-					<!-- 未確定注文プレビュー（テーブル表示） -->
-					<table class="table table-bordered table-hover align-middle table-striped">
-						<thead>
-							<tr>
-							<th>品名</th>
-							<th style="width:70px;">個数</th>
-							<th>注文キャスト</th>
-							<th style="width:56px;">操作</th>
-							</tr>
-						</thead>
-						<tbody v-if="pendingItems.length">
-							<tr v-for="(it, i) in pendingItems" :key="i">
-							<!-- 品名 -->
-							<td>
-								{{ masters.find(m => m.id === it.master_id)?.name || '??' }}
-							</td>
-
-							<!-- 数量 -->
-							<td class="text-end">{{ it.qty }}</td>
-
-							<!-- キャスト -->
-							<td>
-								<span v-if="it.cast_id">
-								{{ casts.find(c => c.id === it.cast_id)?.stage_name || '-' }}
-								</span>
-								<span v-else>-</span>
-							</td>
-
-							<!-- 削除 -->
-							<td class="text-center">
-								<button class="btn text-danger"
-										title="この行を削除"
-										@click="pendingItems.splice(i, 1)">
-								<i class="bi bi-dash-circle"></i>
-								</button>
-							</td>
-							</tr>
-						</tbody>
-					</table>
-					<button class="btn btn-primary me-2 w-100 mt-auto" @click="save">保存</button>
-				</div>
+      <div class="d-flex my-5">
+        <button class="btn btn-warning flex-fill" @click="save">注文</button>
+      </div>
 
 
-				<div class="order-list mt-5 mt-auto">
+      <table class="table table-sm table-striped">
+        <thead>
+          <tr><th></th><th>品名</th><th>キャスト</th><th class="text-end">Qty</th><th class="text-end">小計</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="(it, idx) in props.bill.items" :key="it.id">
+            <!-- キャンセル -->
+            <td class="text-center">
+              <i class="bi bi-x text-danger" role="button"
+               @click="cancelItem(idx, it)"></i>
+            </td>
+            <td>{{ it.name }}</td>
+            <td>{{ it.served_by_cast?.stage_name || '‑' }}</td>
+            <td class="text-end">{{ it.qty }}</td>
+            <td class="text-end">{{ it.subtotal.toLocaleString() }}</td>
+          </tr>
+        </tbody>
+      </table>
 
-					<!-- ───────── 明細テーブル ───────── -->
-					<h4 class="text-center">注文一覧</h4>
-					
-					<table class="table table-bordered table-hover align-middle table-striped">
-					<thead>
-						<tr>
-							<th v-if="deleteMode" style="width:32px;"></th>
-							<th>品名</th>
-							<th>個数</th>
-							<th>注文キャスト</th>
-							<th>単価</th>
-						</tr>
-					</thead>
-					<tbody>
-						<tr v-for="it in bill.items" :key="it.id">
-							<td v-if="deleteMode" class="text-center">
-								<input type="checkbox"
-									:value="it.id"
-									:checked="selectedIds.has(it.id)"
-									@change="toggleSelect(it.id)" />
-							</td>
-							<td>{{ it.name }}</td>
-							<td>{{ it.qty }}</td>
-							<td>{{ it.served_by_cast_name || '-' }}</td>
-							<td>{{ it.subtotal.toLocaleString() }}</td>
-						</tr>
-					</tbody>
-					</table>
+<!-- ▼いつも出す：現状確定分 -------------------- -->
+<table class="table table-sm mb-3 text-end">
+  <tbody>
+    <tr><th class="text-start">小計</th>      <td>{{ current.sub.toLocaleString() }}</td></tr>
+    <tr><th class="text-start">サービス料</th><td>{{ current.svc.toLocaleString() }}</td></tr>
+    <tr><th class="text-start">消費税</th>    <td>{{ current.tax.toLocaleString() }}</td></tr>
+    <tr class="fw-bold">
+      <th class="text-start">合計</th>
+      <td>{{ current.total.toLocaleString() }}</td>
+    </tr>
+  </tbody>
+</table>
 
-
-					<div class="d-flex gap-4">
-						<!-- 削除確定ボタン（モード中のみ表示）-->
-						<div v-if="deleteMode" class="text-end mb-3">
-						<button class="btn btn-danger"
-								:disabled="!selectedIds.size"
-								@click="confirmDelete">
-							選択した注文を削除
-						</button>
-						</div>
-						<button  class="btn btn-sm"
-								:class="deleteMode ? 'btn-outline-secondary' : 'btn-outline-secondary'"
-								@click="toggleDeleteMode">
-								<!-- :disabled="bill.closed_at"これ追加すると「締め後は削除できない」にできる -->
-							{{ deleteMode ? 'キャンセル' : '削除' }}
-						</button>
-					</div>	
-
-					<!-- 料金サマリ -->
-					<div class="total-sum mt-auto">
-						<table class="table table-sm mb-0">
-							<tbody>
-							<tr>
-								<th class="w-50">小計</th>
-								<td class="text-end">{{ yen(subTotal) }}</td>
-							</tr>
-							<tr>
-								<th>サービス料 ({{ (serviceRate*100).toFixed(0) }}%)</th>
-								<td class="text-end">{{ yen(serviceCharge) }}</td>
-							</tr>
-							<tr>
-								<th>消費税 ({{ (taxRate*100).toFixed(0) }}%)</th>
-								<td class="text-end">{{ yen(tax) }}</td>
-							</tr>
-							<tr class="table-primary fw-bold">
-								<th>合計</th>
-								<td class="text-end">{{ yen(grandTotal) }}</td>
-							</tr>
-							</tbody>
-						</table>
-					</div>
-					
-					<button class="btn btn-success mt-5 w-100"
-							@click="bills.closeCurrent()"
-							:disabled="bill.closed_at">
-						締める
-					</button>
-
-				</div>
+<div class="d-flex align-items-center gap-2 mt-4">
+	<label class="fw-bold mb-0">会計金額</label>
+	<input type="number"
+		   class="form-control text-end"
+		   style="max-width:120px;"
+		   v-model.number="settleAmount">
+	<button class="btn btn-info"
+			:disabled="!settleAmount"
+			@click="settleBill">
+		会計
+	</button>
+</div>
 
 
-			</div><!-- /outer -->
-		</div>
-	</div>
+    </div>
 
-	<!-- フッター -->
-	<template #footer>
+    </div>
 
-	</template>
+
+
   </BaseModal>
 </template>
 

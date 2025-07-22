@@ -1,28 +1,31 @@
-# settings
-import os
+# config/settings.py 先頭付近
 from pathlib import Path
-import dj_database_url
+import environ, cloudinary, dj_database_url, os
 
+BASE_DIR = Path(__file__).resolve().parent.parent     # ★ 先に定義
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
-DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"   # ← .env で切替
+env = environ.Env()
+env.read_env(BASE_DIR / ".env")                      # ★ 絶対パス指定
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+DEBUG = env.bool("DJANGO_DEBUG", default=True)
 
-# SECURITY WARNING: keep the secret key used in production secret!
+cloudinary.config(
+	cloud_name = env("CLOUDINARY_CLOUD_NAME"),
+	api_key    = env("CLOUDINARY_API_KEY"),
+	api_secret = env("CLOUDINARY_API_SECRET"),
+	secure     = True,
+)
+
+# DEBUG=True なら localhost 系を保証
+if DEBUG:
+	# 開発は何でも通す（セキュリティは本番で担保）
+	ALLOWED_HOSTS = ["*"]
+else:
+	# 本番は .env で明示
+	ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
+
 SECRET_KEY = 'django-insecure-^7unv9!08vya=%@1%&&+5hk)*8)-a_5!3&90s09=lncdd5@hwl'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-
-ALLOWED_HOSTS = [
-    'monolisk-98ae20a1c14b.herokuapp.com',
-    'monolisk.netlify.app',
-    'localhost', '127.0.0.1',
-]
-
-# Application definition
 
 INSTALLED_APPS = [
     # "jazzmin",
@@ -68,11 +71,13 @@ LOGIN_REDIRECT_URL = "/admin/"
 
 DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
-CLOUDINARY_STORAGE = {
-    "CLOUD_NAME": os.getenv("CLOUDINARY_CLOUD_NAME"),
-    "API_KEY":    os.getenv("CLOUDINARY_API_KEY"),
-    "API_SECRET": os.getenv("CLOUDINARY_API_SECRET"),
-}
+cloudinary.config(
+    cloud_name = env('CLOUDINARY_CLOUD_NAME'),
+    api_key    = env('CLOUDINARY_API_KEY'),
+    api_secret = env('CLOUDINARY_API_SECRET'),
+    secure     = True,
+)
+
 
 STORAGES = {
     "default": {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"},

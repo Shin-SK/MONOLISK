@@ -10,6 +10,8 @@ from .serializers import (
 	StoreSerializer, TableSerializer, BillSerializer,
 	ItemMasterSerializer, BillItemSerializer,CastSerializer
 )
+from django.utils import timezone
+from decimal import Decimal
 
 
 class StoreViewSet(StoreScopedModelViewSet):
@@ -63,10 +65,21 @@ class BillViewSet(viewsets.ModelViewSet):
 		締め処理：サービス料・税・キャストバック計算
 		"""
 		session = self.get_object()
-		if session.closed_at:
-			return Response({'detail': 'already closed'}, status=400)
 
 		with transaction.atomic():
+			# ① 最新集計
+			session.recalc(save=True)		# subtotal / service / tax / grand_total を更新
+	
+			# ② スタッフ入力
+			settled = request.data.get('settled_total')
+			if settled:
+				settled = int(settled)
+				session.settled_total = settled
+				session.total = settled
+			else:
+				session.total = session.grand_total
+	
+			# ③ 日付と保存
 			session.closed_at = timezone.now()
 			session.save()
 
@@ -85,7 +98,7 @@ class BillViewSet(viewsets.ModelViewSet):
 						amount	  = per_cast
 					)
 
-		return Response({'detail': 'closed'}, status=status.HTTP_200_OK)
+		return Response(self.get_serializer(session).data, status=200)
 
 
 class BillItemViewSet(viewsets.ModelViewSet):
