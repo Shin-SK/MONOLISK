@@ -3,6 +3,8 @@
 from django.contrib import admin
 from .models import Store, Table, ItemCategory, ItemMaster, Bill, BillItem, BillCastStay, Cast, CastPayout, ItemStock, UserStore
 from django.utils.safestring import mark_safe
+from django.contrib.auth import get_user_model
+from django.utils.html import format_html
 
 # ───────── マスター ─────────
 @admin.register(Store)
@@ -20,17 +22,60 @@ class TableAdmin(admin.ModelAdmin):
 
 @admin.register(Cast)
 class CastAdmin(admin.ModelAdmin):
-    list_display = ("stage_name", "store", "avatar_thumb")
-    search_fields   = ("stage_name", "user__username")
-    readonly_fields = ("avatar_thumb",)
-    fields = ("stage_name", "store", "avatar", "avatar_thumb",
-              "back_rate_free_override", "back_rate_nomination_override",
-              "back_rate_inhouse_override")
+    # ───────── 一覧表示 ─────────
+    list_display       = ("stage_name", "user_link", "store", "avatar_thumb")
+    list_select_related = ("user", "store")
+    search_fields      = ("stage_name", "user__username", "user__email")
+    list_filter        = ("store",)
 
+    # ───────── フォーム構成 ───────
+    # ① 大量ユーザーでも軽い raw_id   ② “＋”ボタンでユーザー新規作成
+    raw_id_fields = ("user",)
+
+    readonly_fields = ("avatar_thumb",)
+
+    fieldsets = (
+        (None, {
+            "fields": (
+                "user",          # ← ここにプルダウン＋＋ボタン
+                "stage_name",
+                "store",
+            )
+        }),
+        ("Back‑rate overrides", {
+            "classes": ("collapse",),
+            "fields": (
+                "back_rate_free_override",
+                "back_rate_nomination_override",
+                "back_rate_inhouse_override",
+            ),
+        }),
+        ("Avatar", {
+            "fields": ("avatar", "avatar_thumb"),
+        }),
+    )
+
+    # ───────── 便利表示 ───────────
     def avatar_thumb(self, obj):
+        """Cloudinary / FileField サムネ (readonly)"""
         if obj.avatar:
-            return mark_safe(f'<img src="{obj.avatar.url}" width="80">')
-        return "―"
+            return mark_safe(
+                f'<img src="{obj.avatar.url}" width="80" '
+                'style="border-radius:4px;" />'
+            )
+        return "—"
+    avatar_thumb.short_description = "Avatar"
+
+    def user_link(self, obj):
+        """ユーザー編集画面へのリンク付き表示"""
+        if not obj.user_id:
+            return "—"
+        url = (
+            f"/admin/{User._meta.app_label}/"
+            f"{User._meta.model_name}/{obj.user_id}/change/"
+        )
+        return format_html('<a href="{}">{}</a>', url, obj.user.username)
+    user_link.short_description = "User"
 
 
 # ★ 追加：カテゴリ ──────────────────────
