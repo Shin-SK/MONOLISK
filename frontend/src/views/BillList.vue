@@ -49,30 +49,34 @@ async function bulkDelete () {
   bills.loadAll()
 }
 
-/* ───── 一覧ヘルパ関数（テンプレートから呼ぶ） ───── */
+/* ---------- 伝票内ユーティリティ ---------- */
+
+/* 1) その卓で最初に出た SET を返す */
 function setName(b){
-  for (const it of (b.items || [])) {
-    /* 日本語パターン「セット60分」 */
-    if (/^セット\d+分/.test(it.name)) return it.name
-    /* ラテン表記「set60」「SET60」など → 60 を抜き出して整形 */
-    const m = it.name.match(/^set(\d+)/i)
-    if (m) return `セット${m[1]}分`
+  for (const it of (b.items||[])){
+    if (it.code?.startsWith('set')) {
+      // duration_min が来ていれば優先、無ければコードごとに既定値
+      const min =
+        it.duration_min ??
+        { setVIP:60, setMale:60, setFemale:60 }[it.code] ?? 60
+      return `セット${min}分`
+    }
   }
   return '‑'
 }
 
+/* 2) 退店予定時刻 (in + セット + 延長) */
 function calcOut(b){
   if (!b.opened_at) return '‑'
   let minutes = 0
-  ;(b.items || []).forEach(it => {
-    /* セット */
-    let m = it.name.match(/^セット(\d+)分/) || it.name.match(/^set(\d+)/i)
-    if (m) { minutes += +m[1]; return }
-
-    /* 延長 */
-    if (/延長/.test(it.name) || /^ext\d+/i.test(it.name)){
-      const mExt = it.name.match(/(\d+)分/) || it.name.match(/^ext(\d+)/i)
-      minutes += mExt ? +mExt[1] : 30   // 分数不明なら既定 30 分
+  ;(b.items||[]).forEach(it=>{
+    if (it.code?.startsWith('set')) {
+      minutes += (it.duration_min ??
+                 { setVIP:60, setMale:60, setFemale:60 }[it.code] ?? 60) * it.qty
+    }
+    if (it.code?.startsWith('extension')) {
+      minutes += (it.duration_min ??
+                 { extensionVip:30, extension:30 }[it.code] ?? 30) * it.qty
     }
   })
   return minutes
@@ -80,34 +84,49 @@ function calcOut(b){
     : '‑'
 }
 
+/* 3) 延長回数と合計分数 */
 function extStats(b){
   let count = 0, totalMin = 0
-  ;(b.items || []).forEach(it => {
-    if (/延長/.test(it.name) || /^ext\d+/i.test(it.name)){
-      count++
-      const m = it.name.match(/(\d+)分/) || it.name.match(/^ext(\d+)/i)
-      totalMin += m ? +m[1] : 30
+  ;(b.items||[]).forEach(it=>{
+    if (it.code?.startsWith('extension')){
+      const min =
+        it.duration_min ??
+        { extensionVip:30, extension:30 }[it.code] ?? 30
+      count   += it.qty
+      totalMin+= min * it.qty
     }
   })
   return { count, totalMin }
 }
 
 function liveCasts(b){
+  const mainNom = b.nominated_casts?.[0] ?? null   // ← 先頭だけ抜く
+
   return (b.stays||[])
-    .filter(s=>!s.left_at)
-    .map(s=>{
+    .filter(s => !s.left_at)        // まだ席にいる人
+    .map(s => {
       const cid = s.cast?.id
-      let tag='', color=''
-      if(cid === (b.nominated_casts?.[0]||null)){ tag='本指名'; color='danger'}
-      else if((b.inhouse_casts||[]).includes(cid)){ tag='場内'; color='success'}
+      let tag = '', color = ''
+
+      // ① 本指名（メイン指名は 1 人だけ）
+      if (cid === mainNom){
+        tag = '本指名';  color = 'danger'
+      }
+      // ② 場内指名（stay_type === 'in'）
+      else if (s.stay_type === 'in'){
+        tag = '場内';    color = 'success'
+      }
+
       return {
-        id:cid,
-        name:s.cast?.stage_name||'N/A',
-        avatar:s.cast?.avatar_url||'/img/user-default.png',
-        tag, color
+        id: cid,
+        name:   s.cast?.stage_name || 'N/A',
+        avatar: s.cast?.avatar_url  || '/img/user-default.png',
+        tag, color,
       }
     })
 }
+
+
 
 </script>
 

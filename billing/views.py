@@ -83,6 +83,11 @@ class BillViewSet(viewsets.ModelViewSet):
 			session.closed_at = timezone.now()
 			session.save()
 
+			# ④ 在席中のキャストを退出処理
+			for stay in session.stays.filter(left_at__isnull=True):
+				stay.left_at = session.closed_at  # または timezone.now()
+				stay.save()
+
 			# ── 小計 & back を計算
 			sub_total = sum(i.subtotal for i in session.items.all())
 			back_rate = request.data.get('back_rate', 0)	# フォールバック
