@@ -27,6 +27,15 @@ class UserStore(models.Model):
 	def __str__(self):
 		return f'{self.user.username} → {self.store.name}'
 
+
+class BillingUser(User):
+    class Meta:
+        proxy = True                # DB テーブルはそのまま
+        app_label = 'billing'       # ★ここを偽装するとサイドバーの見出しが billing になる
+        verbose_name = 'User'
+        verbose_name_plural = 'Users'
+
+
 # ───────── マスター ─────────
 class Store(models.Model):
 	slug = models.SlugField(unique=True)
@@ -40,6 +49,8 @@ class Table(models.Model):
 	store  = models.ForeignKey(Store, on_delete=models.CASCADE)
 	number = models.PositiveSmallIntegerField()
 	class Meta:
+		verbose_name = 'テーブル番号'
+		verbose_name_plural = verbose_name
 		unique_together = ('store', 'number')
 		ordering = ['store', 'number']
 	def __str__(self): return f'T{self.number}'
@@ -56,24 +67,66 @@ class ItemCategory(models.Model):
 
 
 class Cast(models.Model):
-	user = models.OneToOneField(
-		settings.AUTH_USER_MODEL,	 # ← これなら import 時に実体不要
-		on_delete=models.CASCADE,
-	)
-	stage_name   = models.CharField(max_length=50)
-	store	   = models.ForeignKey(Store, on_delete=models.CASCADE, null=True, blank=True)
-	# 個別上書き (null=カテゴリ既定を使う)
-	back_rate_free_override	   = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
-	back_rate_nomination_override = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
-	back_rate_inhouse_override	= models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
-	avatar = CloudinaryField(
-		"avatar",			  # カラム名
-		folder="avatars",	  # Cloudinary 内フォルダ
-		format="jpg",		  # 強制フォーマット任意
-		blank=True, null=True
-	)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name='ユーザー'
+    )
+    stage_name = models.CharField('源氏名', max_length=50)
+    store = models.ForeignKey(
+        Store, on_delete=models.CASCADE,
+        verbose_name='店舗', null=True, blank=True
+    )
 
-	def __str__(self): return self.stage_name or self.user.username
+    # ─ バック率上書き ─────────────────────
+    back_rate_free_override = models.DecimalField(
+        'バック率（フリー）', max_digits=4, decimal_places=2,
+        null=True, blank=True
+    )
+    back_rate_nomination_override = models.DecimalField(
+        'バック率（指名）', max_digits=4, decimal_places=2,
+        null=True, blank=True
+    )
+    back_rate_inhouse_override = models.DecimalField(
+        'バック率（場内）', max_digits=4, decimal_places=2,
+        null=True, blank=True
+    )
+
+    avatar = CloudinaryField(
+        'アバター',                # ← 第1引数にラベル
+        folder="avatars",
+        format="jpg",
+        blank=True, null=True
+    )
+
+    class Meta:
+        verbose_name = 'キャスト'
+        verbose_name_plural = verbose_name
+
+
+# ───────── スタッフ ──────────
+class Staff(models.Model):
+    """ホール／バーテンダーなど時給制スタッフ"""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name='ユーザー'
+    )
+    stores = models.ManyToManyField(          # 将来の“複数店舗兼務”に備えて M2M
+        Store,
+        verbose_name='所属店舗',
+        blank=True,
+        related_name='staff_members',
+    )
+    hourly_wage = models.PositiveIntegerField('時給', default=1300)
+
+    class Meta:
+        verbose_name = 'スタッフ'
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        return f'{self.user.username}（時給¥{self.hourly_wage}）'
+
 
 
 class ItemMaster(models.Model):

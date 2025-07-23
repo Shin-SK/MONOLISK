@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.db.models import Sum
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-
+from django.contrib.auth import get_user_model
 
 # ---------- 共通 ──────────
 class TimeStamped(models.Model):
@@ -17,44 +17,51 @@ class TimeStamped(models.Model):
 		abstract = True
 
 # ---------- ユーザー ----------
-class User(AbstractUser):
-	email = models.EmailField(_('email address'), unique=True)
-	display_name = models.CharField(
-		max_length=50,
-		blank=True,
-		verbose_name=_('Display name')
-	)
-	avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)  # ★追加
-	store = models.ForeignKey(
-        'billing.Store',          # ← 'app_label.ModelName'
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name='users',
-    )
+# class User(AbstractUser):
+# 	email = models.EmailField(_('email address'), unique=False, blank=True, null=True)
+# 	display_name = models.CharField(
+# 		max_length=50,
+# 		blank=True,
+# 		verbose_name=_('Display name')
+# 	)
+# 	avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)  # ★追加
+# 	store = models.ForeignKey(
+#         'billing.Store',          # ← 'app_label.ModelName'
+#         null=True, blank=True,
+#         on_delete=models.SET_NULL,
+#         related_name='users',
+#     )
 
-	@property
-	def avatar_url(self) -> str:
-		if self.avatar:
-			return self.avatar.url
-		return settings.STATIC_URL + 'img/user-default.png'
+# 	@property
+# 	def avatar_url(self) -> str:
+# 		if self.avatar:
+# 			return self.avatar.url
+# 		return settings.STATIC_URL + 'img/user-default.png'
 
-	# ロールは Django Group を利用（STAFF / DRIVER / CAST）
-	def add_role(self, role_name: str):
-		g, _ = Group.objects.get_or_create(name=role_name.upper())
-		self.groups.add(g)
+# 	# ロールは Django Group を利用（STAFF / DRIVER / CAST）
+# 	def add_role(self, role_name: str):
+# 		g, _ = Group.objects.get_or_create(name=role_name.upper())
+# 		self.groups.add(g)
 
-	# 便利プロパティ
-	@property
-	def service_rate(self):
-		return self.store.service_rate if self.store else 0
+# 	# 便利プロパティ
+# 	@property
+# 	def service_rate(self):
+# 		return self.store.service_rate if self.store else 0
 
-	@property
-	def tax_rate(self):
-		return self.store.tax_rate if self.store else 0
+# 	@property
+# 	def tax_rate(self):
+# 		return self.store.tax_rate if self.store else 0
 
-	# 管理画面などで分かりやすくq
-	def __str__(self):
-		return self.display_name or self.username
+# 	# 管理画面などで分かりやすくq
+# 	def __str__(self):
+# 		return self.display_name or self.username
+
+class User(get_user_model()):          # 既存 User をそのまま再利用
+    class Meta:
+        proxy = True                  # ← これが “DB テーブルを作らない” 印
+        app_label = "core"            # admin サイドバーで「core ▸ User」を残したい場合
+        verbose_name = "User"
+        verbose_name_plural = "Users"
 
 # ---------- マスタ ----------
 class Store(TimeStamped):

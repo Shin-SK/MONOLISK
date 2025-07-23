@@ -1,4 +1,4 @@
-# config/settings.py 先頭付近
+# config/settings.py
 from pathlib import Path
 import environ, cloudinary, dj_database_url, os
 
@@ -54,11 +54,22 @@ INSTALLED_APPS = [
     'dal_select2',      # ← 追加（Select2 フロント）
     "django_extensions",
 
+    'accounts',
     'core.apps.CoreConfig',
     'billing',
 
 ]
 
+
+AUTH_USER_MODEL = 'accounts.User'
+
+REST_AUTH_REGISTER_SERIALIZERS = {
+    'REGISTER_SERIALIZER': 'accounts.forms.MyRegisterSerializer',
+}
+
+REST_AUTH_SERIALIZERS = {
+    'USER_DETAILS_SERIALIZER': 'core.serializers.MyUserDetailsSerializer',
+}
 
 DJ_REST_AUTH = {
     "USER_DETAILS_SERIALIZER": "core.serializers.UserDetailSerializer",
@@ -85,11 +96,8 @@ STORAGES = {
 }
 
 SITE_ID = 1
-AUTH_USER_MODEL = 'core.User'
 
-REST_AUTH_SERIALIZERS = {
-    'USER_DETAILS_SERIALIZER': 'core.serializers.MyUserDetailsSerializer',
-}
+
 
 REST_AUTH = {
     'SIGNUP_FIELDS': {

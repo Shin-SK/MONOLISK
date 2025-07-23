@@ -17,11 +17,12 @@ from .models import (
 from dj_rest_auth.serializers import UserDetailsSerializer
 from rest_framework import serializers
 from .models import User
+from billing.models import Cast, Staff, Store
 
 class MyUserDetailsSerializer(UserDetailsSerializer):
-    class Meta(UserDetailsSerializer.Meta):
-        model  = User
-        fields = UserDetailsSerializer.Meta.fields + ('store',)
+	class Meta(UserDetailsSerializer.Meta):
+		model  = User
+		fields = UserDetailsSerializer.Meta.fields + ('store',)
 
 
 # ---------- マスタ ----------
@@ -681,38 +682,64 @@ class CustomerReservationSerializer(ReservationSerializer):
 # ---------- ユーザー ----------
 User = get_user_model() 
 
-class UserDetailSerializer(serializers.ModelSerializer):
-	"""
-	全ユーザー情報で共通して使うシリアライザー
-	- dj_rest_auth の /user/ エンドポイント
-	- DriverListSerializer などのネスト先
-	"""
-	groups	  = serializers.SlugRelatedField(
-		many=True, read_only=True, slug_field='name'
+class UserDetailSerializer(UserDetailsSerializer):
+	# 追加したい「安全な」拡張フィールド
+	display_name  = serializers.SerializerMethodField()
+	stage_name	= serializers.SerializerMethodField()
+	avatar_url	= serializers.SerializerMethodField()
+	primary_store = serializers.SerializerMethodField()
+
+	groups = serializers.SlugRelatedField(
+		many=True, read_only=True, slug_field="name"
 	)
-	avatar_url  = serializers.SerializerMethodField()
-	driver_id   = serializers.IntegerField(
-		source='driver.id', read_only=True
-	)
+
 	class Meta(UserDetailsSerializer.Meta):
-		model  = User
-		# UserDetailsSerializer.Meta.fields = ('pk','username','email',...) なので
-		# それに追加したい項目を全部並べる
+		# 元々の ('pk','username','email',…) に足すだけ
 		fields = UserDetailsSerializer.Meta.fields + (
-			'display_name',
-			'groups',
-			'avatar_url',
-			'driver_id',
+			"display_name",
+			"stage_name",
+			"avatar_url",
+			"primary_store",
+			"groups",
 		)
 
-	def get_avatar_url(self, obj):
+	# ---------- getters ----------
+	def get_stage_name(self, user):
+		return getattr(getattr(user, "cast", None), "stage_name", "")
+
+	def get_display_name(self, user):
+		return self.get_stage_name(user) or user.username
+
+	def get_avatar_url(self, user):
+		"""
+		• Cast.avatar があればその URL  
+		• 無ければ `/static/img/user-default.png`
+		• request があれば絶対 URL へ
+		"""
 		request = self.context.get("request")
-		url = obj.avatar.url if obj.avatar else static("img/user-default.png")
+		cast = getattr(user, "cast", None)
+		url  = cast.avatar.url if cast and cast.avatar else static("img/user-default.png")
 		return request.build_absolute_uri(url) if request else url
 
+	def get_primary_store(self, user):
+		"""
+		優先度:
+		① Cast.store
+		② Staff.stores.first()
+		③ UserStore.store
+		"""
+		cast = getattr(user, "cast", None)
+		if cast and cast.store_id:
+			return cast.store.slug
 
+		staff = getattr(user, "staff", None)
+		if staff and staff.stores.exists():
+			return staff.stores.first().slug
 
-
+		prof = getattr(user, "store_profile", None)
+		if prof:
+			return prof.store.slug
+		return None
 class ShiftPlanSerializer(serializers.ModelSerializer):
 	stage_name = serializers.CharField(source='cast_profile.stage_name', read_only=True)
 	store_name = serializers.CharField(source='cast_profile.store.name', read_only=True)

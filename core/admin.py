@@ -1,3 +1,4 @@
+#core/admin.py
 from django.contrib import admin
 from django.contrib.auth.models import Group
 from django.utils.translation import gettext_lazy as _
@@ -18,7 +19,6 @@ from import_export import resources
 from import_export.admin import ImportExportModelAdmin
 
 from .forms import ReservationForm
-
 
 
 
@@ -181,36 +181,36 @@ class CustomerAdmin(admin.ModelAdmin):
 
 User = get_user_model()
 
-@admin.register(User)
-class UserAdmin(BaseUserAdmin):
-	list_display  = ("id", "username", "display_name", "email",
-					 "is_staff", "is_active", "thumb")
-	list_filter   = ("is_staff", "is_active")
-	search_fields = ("username", "display_name", "email")
-	readonly_fields = ("thumb",)
+# @admin.register(User)
+# class UserAdmin(BaseUserAdmin):
+# 	list_display  = ("id", "username", "display_name", "email",
+# 					 "is_staff", "is_active", "thumb")
+# 	list_filter   = ("is_staff", "is_active")
+# 	search_fields = ("username", "display_name", "email")
+# 	readonly_fields = ("thumb",)
 
-	# ───── ここを１つにまとめる ─────
-	fieldsets = BaseUserAdmin.fieldsets + (
-		("Extra", {"fields": ("display_name", "avatar")}),
-	)
-	#  └─ これで重複ゼロ。『Personal info』の追加行は削除
+# 	# ───── ここを１つにまとめる ─────
+# 	fieldsets = BaseUserAdmin.fieldsets + (
+# 		("Extra", {"fields": ("display_name", "avatar")}),
+# 	)
+# 	#  └─ これで重複ゼロ。『Personal info』の追加行は削除
 
-	# 新規追加フォーム (createsuperuser 用)
-	add_fieldsets = BaseUserAdmin.add_fieldsets + (
-		(None, {
-			"classes": ("wide",),
-			"fields": ("display_name", "avatar"),   # ← avatar も追加可
-		}),
-	)
+# 	# 新規追加フォーム (createsuperuser 用)
+# 	add_fieldsets = BaseUserAdmin.add_fieldsets + (
+# 		(None, {
+# 			"classes": ("wide",),
+# 			"fields": ("display_name", "avatar"),   # ← avatar も追加可
+# 		}),
+# 	)
 
-	def thumb(self, obj):
-		if obj.avatar:
-			return format_html(
-				'<img src="{}" style="height:40px;border-radius:50%;" />',
-				obj.avatar.url,
-			)
-		return "-"
-	thumb.short_description = "Avatar"
+# 	def thumb(self, obj):
+# 		if obj.avatar:
+# 			return format_html(
+# 				'<img src="{}" style="height:40px;border-radius:50%;" />',
+# 				obj.avatar.url,
+# 			)
+# 		return "-"
+# 	thumb.short_description = "Avatar"
 
 # ---------- 予約 ----------
 

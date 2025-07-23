@@ -1,10 +1,18 @@
 # billing/admin.py  （TAB インデント）
 
 from django.contrib import admin
-from .models import Store, Table, ItemCategory, ItemMaster, Bill, BillItem, BillCastStay, Cast, CastPayout, ItemStock, UserStore
+from django.contrib.auth import get_user_model      # ★★ ここを追加
+from .models import (
+    Store, Table, ItemCategory, ItemMaster, Bill, BillItem,
+    BillCastStay, Cast, CastPayout, ItemStock, UserStore, BillingUser
+)
 from django.utils.safestring import mark_safe
-from django.contrib.auth import get_user_model
 from django.utils.html import format_html
+from import_export.admin import ImportExportModelAdmin
+from .resources import ItemCategoryRes, ItemMasterRes
+
+User = get_user_model()  
+
 
 # ───────── マスター ─────────
 @admin.register(Store)
@@ -67,35 +75,34 @@ class CastAdmin(admin.ModelAdmin):
     avatar_thumb.short_description = "Avatar"
 
     def user_link(self, obj):
-        """ユーザー編集画面へのリンク付き表示"""
+        from django.contrib.auth import get_user_model  # ← ここで遅延 import
+        User = get_user_model()
         if not obj.user_id:
             return "—"
-        url = (
-            f"/admin/{User._meta.app_label}/"
-            f"{User._meta.model_name}/{obj.user_id}/change/"
-        )
+        url = f"/admin/{User._meta.app_label}/{User._meta.model_name}/{obj.user_id}/change/"
         return format_html('<a href="{}">{}</a>', url, obj.user.username)
+
     user_link.short_description = "User"
 
 
 # ★ 追加：カテゴリ ──────────────────────
 @admin.register(ItemCategory)
-class ItemCategoryAdmin(admin.ModelAdmin):
-    list_display = ('code', 'name',
-                    'back_rate_free', 'back_rate_nomination', 'back_rate_inhouse')
-    list_editable = ('back_rate_free', 'back_rate_nomination', 'back_rate_inhouse')
+class ItemCategoryAdmin(ImportExportModelAdmin):
+    resource_classes = [ItemCategoryRes]
+    list_display = ("code", "name",
+                    "back_rate_free", "back_rate_nomination", "back_rate_inhouse")
+    list_editable = ("back_rate_free", "back_rate_nomination", "back_rate_inhouse")
 
 
 # 改訂版 ItemMaster
 @admin.register(ItemMaster)
-class ItemMasterAdmin(admin.ModelAdmin):
-    list_display = (
-        'store', 'category', 'name',
-        'price_regular', 'price_late',
-        'track_stock', 'exclude_from_payout',
-    )
-    list_filter   = ('store', 'category', 'track_stock', 'exclude_from_payout')
-    search_fields = ('name',)
+class ItemMasterAdmin(ImportExportModelAdmin):
+    resource_classes = [ItemMasterRes]
+    list_display  = ("store", "category", "code", "name",
+                     "price_regular", "duration_min",
+                     "track_stock", "exclude_from_payout")
+    list_filter   = ("store", "category", "track_stock", "exclude_from_payout")
+    search_fields = ("name", "code")
 
 
 @admin.register(ItemStock)
@@ -161,24 +168,4 @@ class UserStoreAdmin(admin.ModelAdmin):
 
 
 
-from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.contrib.auth import get_user_model
-from billing.models import Store
 
-User = get_user_model()
-
-class UserAdmin(BaseUserAdmin):
-    # ▶ 既存 fieldsets に store を足すだけ
-    fieldsets = BaseUserAdmin.fieldsets + (
-        ('Billing', {'fields': ('store',)}),
-    )
-    add_fieldsets = BaseUserAdmin.add_fieldsets + (
-        ('Billing', {'fields': ('store',)}),
-    )
-    list_display = ('username', 'email', 'store', 'is_staff', 'is_superuser')
-    list_filter  = ('is_staff', 'is_superuser', 'store')
-
-# いったん既存の登録を外してから再登録
-admin.site.unregister(User)
-admin.site.register(User, UserAdmin)

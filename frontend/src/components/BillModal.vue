@@ -3,7 +3,7 @@
 /* ── 必要最小限のインポート ───────────────────── */
 import { reactive, ref, watch, computed, onMounted } from 'vue'
 import BaseModal      from '@/components/BaseModal.vue'
-import { updateBillCasts, fetchCasts, fetchMasters, addBillItem, deleteBillItem, closeBill } from '@/api'
+import { api, updateBillCasts, fetchCasts, fetchMasters, addBillItem, deleteBillItem, closeBill } from '@/api'
 
 /* ── props / emit ─────────────────────────────── */
 const props = defineProps({
