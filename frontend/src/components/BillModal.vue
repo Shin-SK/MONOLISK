@@ -1,8 +1,9 @@
+<!-- BillModal.vue -->
 <script setup>
 /* ── 必要最小限のインポート ───────────────────── */
 import { reactive, ref, watch, computed, onMounted } from 'vue'
 import BaseModal      from '@/components/BaseModal.vue'
-import { updateBill, fetchCasts, fetchMasters, addBillItem, deleteBillItem, closeBill } from '@/api'
+import { updateBillCasts, fetchCasts, fetchMasters, addBillItem, deleteBillItem, closeBill } from '@/api'
 
 /* ── props / emit ─────────────────────────────── */
 const props = defineProps({
@@ -39,6 +40,7 @@ const freeCastIds  = ref([])
 const inhouseSet   = ref(new Set())
 
 
+
 /* コース用マップ（読み取り専用） */
 const courseMap = computed(() => Object.fromEntries(
   courseOptions.value.map(o => [o.code, { id:o.id, label:o.label }])
@@ -47,7 +49,14 @@ const courseMap = computed(() => Object.fromEntries(
 
 function toggleInhouse(cid) {
   const s = inhouseSet.value
-  s.has(cid) ? s.delete(cid) : s.add(cid)
+  if (s.has(cid)) {
+    s.delete(cid)
+  } else {
+    s.add(cid)
+    // free に居なければ追加しておく
+    if (!freeCastIds.value.includes(cid))
+      freeCastIds.value.push(cid)
+  }
 }
 
 const activeTab = ref('main')
@@ -130,25 +139,35 @@ function addSingle () {
 
 
 const currentCasts = computed(() => {
-  // mainCast が先頭、それ以外は freeCastIds の順
+  // mainCastIds だけ先に並べる
   const list = mainCastIds.value
-    .map(id => {
-      const mc = casts.value.find(c => c.id === id)
-      return mc ? { ...mc, role: 'main' } : null
-    })
+    .map(id => casts.value.find(c => c.id === id))
     .filter(Boolean)
-  freeCastIds.value.forEach(fid => {
-    const fc = casts.value.find(c => c.id === fid)
-    if (fc) {
-      list.push({
-        ...fc,
-        role : 'free',
-        inhouse: inhouseSet.value.has(fid)
-      })
+    .map(c => ({ ...c, role:'main' }))
+
+  // ★ free だけでなく inhouse も union する
+  const others = new Set([
+    ...freeCastIds.value,
+    ...inhouseSet.value          // ← ここを足す！
+  ])
+
+  others.forEach(id => {
+    // main と重複しないように
+    if (!mainCastIds.value.includes(id)) {
+      const c = casts.value.find(c => c.id === id)
+      if (c) {
+        list.push({
+          ...c,
+          role    : 'free',             // 見た目は free 行
+          inhouse : inhouseSet.value.has(id)
+        })
+      }
     }
   })
+
   return list
 })
+
 
 /* ── 追加：コースを即時 pending へ載せる ── */
 function chooseCourse(code) {
@@ -208,26 +227,14 @@ const preview = computed(() => {
 /* ---------- 伝票読み込み時 ---------- */
 watch(() => props.bill, b => {
   if (!b) return
-/* ---- ① stays から状態を取り出す ---- */
-const stayFree = b.stays
-                  ?.filter(s => s.stay_type === 'free')
-                  .map(s => s.cast.id) ?? []
-const stayIn   = b.stays
-                  ?.filter(s => s.stay_type === 'in')
-                  .map(s => s.cast.id) ?? []
 
-/* ---- ② 本指名は “nominated の先頭” を採用 ---- */
-const nominated = b.nominated_casts ?? []
-mainCastIds.value = nominated.length ? [nominated[0]] : []
+const stayNom = b.stays?.filter(s => s.stay_type==='nom').map(s=>s.cast.id) ?? []
+const stayFree = b.stays?.filter(s => s.stay_type==='free').map(s=>s.cast.id) ?? []
+const stayIn   = b.stays?.filter(s => s.stay_type==='in').map(s=>s.cast.id)   ?? []
 
-/* ---- ③ フリー = 先頭以外の nominated ＋ stayFree − 本指名 ---- */
-const tmpFree = [...nominated.slice(1), ...stayFree]
-freeCastIds.value = Array.from(
-  new Set(tmpFree.filter(id => !mainCastIds.value.includes(id)))
-)
-
-/* ---- ④ 場内セット ---- */
-inhouseSet.value = new Set(stayIn)
+mainCastIds.value  = stayNom
+freeCastIds.value  = [...new Set([...stayFree, ...stayIn])]
+inhouseSet.value   = new Set(stayIn)
 
 form.table_id = b.table?.id ?? null
 }, { immediate:true })
@@ -242,15 +249,11 @@ watch(mainCastIds, list => {
 })
 
 watch(freeCastIds, list => {
-  // ① main と重複を排除（必要なときだけ代入）
-  const deduped = list.filter(id => !mainCastIds.value.includes(id))
+ const deduped = list.filter(id => !mainCastIds.value.includes(id))
   if (deduped.length !== list.length) {
     freeCastIds.value = deduped      // 変化がある時だけ再代入
     return                           // ここで終われば再トリガは 1 回で済む
   }
-  // ② 場内セットを同期
-  inhouseSet.value = new Set([...inhouseSet.value]
-                              .filter(id => freeCastIds.value.includes(id)))
 })
 
 
@@ -293,23 +296,20 @@ async function save () {
   /* ----------------------------------------------------
    * 2.  Bill 本体の更新（卓 / 指名 / 場内）
    * -------------------------------------------------- */
-  try {
+    try {
+      await updateBillCasts(props.bill.id, {
+        nomIds  : [...mainCastIds.value],
+        inIds   : [...inhouseSet.value],
+        freeIds : [...freeCastIds.value],    // ★追加
+      })
 
-    const payload = {
-      nominated_casts :
-        mainCastIds.value.length               // 本指名が 1 人以上いるときだけ
-       ? [...mainCastIds.value, ...freeCastIds.value]
-       : [],  
-      inhouse_casts_w : [...inhouseSet.value],
-      table_id        : form.table_id
+      // 卓番号を変えたときだけ PATCH
+      if (form.table_id !== props.bill.table?.id) {
+        await api.patch(`billing/bills/${props.bill.id}/`, { table_id: form.table_id })
+      }
+    } catch (e) {
+      console.error('updateBillCasts failed', e)
     }
-      
-  await updateBill(props.bill.id, payload)
-  
-  } catch (e) {
-    console.error('update bill failed', e)
-  }
-
   /* ----------------------------------------------------
    * 3.  親コンポーネントへ通知してモーダル閉じ
    * -------------------------------------------------- */

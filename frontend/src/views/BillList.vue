@@ -16,6 +16,8 @@ const selectedIds = ref(new Set())     // 一覧チェック用
 /* ───── 初回ロード ───── */
 onMounted(() => bills.loadAll())
 
+const MAP_SET = { setVIP:60, setMale:60, setFemale:60, set60:60 }
+
 /* ───── 一覧クリック → 1件取得してモーダル ───── */
 async function open(id) {
   currentBill.value = await fetchBill(id)
@@ -100,30 +102,19 @@ function extStats(b){
 }
 
 function liveCasts(b){
-  const mainNom = b.nominated_casts?.[0] ?? null   // ← 先頭だけ抜く
-
   return (b.stays||[])
-    .filter(s => !s.left_at)        // まだ席にいる人
-    .map(s => {
-      const cid = s.cast?.id
-      let tag = '', color = ''
-
-      // ① 本指名（メイン指名は 1 人だけ）
-      if (cid === mainNom){
-        tag = '本指名';  color = 'danger'
-      }
-      // ② 場内指名（stay_type === 'in'）
-      else if (s.stay_type === 'in'){
-        tag = '場内';    color = 'success'
-      }
-
-      return {
-        id: cid,
-        name:   s.cast?.stage_name || 'N/A',
-        avatar: s.cast?.avatar_url  || '/img/user-default.png',
-        tag, color,
-      }
-    })
+    .filter(s => !s.left_at)             // まだ席にいる人
+    .map(s => ({
+        id:      s.cast?.id,
+        name:    s.cast?.stage_name || 'N/A',
+        avatar:  s.cast?.avatar_url  || '/img/user-default.png',
+        tag:   s.stay_type === 'nom' ? '本指名'
+             : s.stay_type === 'in'  ? '場内'
+             : '',
+        color: s.stay_type === 'nom' ? 'danger'
+             : s.stay_type === 'in'  ? 'success'
+             : ''
+    }))
 }
 
 

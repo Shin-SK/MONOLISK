@@ -291,11 +291,15 @@ export const fetchCasts = storeId =>
   api.get('billing/casts/', { params:{store:storeId} })
      .then(r => r.data.results ?? r.data)
 
-export const updateBill = (id, payload) =>
-  api.patch(`billing/bills/${id}/`, payload).then(r => r.data)
-
-export const setInhouseStatus = (billId, castIds) =>
-  api.patch(`billing/bills/${billId}/`, { inhouse_casts_w: castIds })
+export const updateBillCasts = (
+  billId,
+  { nomIds = [], inIds = [], freeIds = [] }   // ★ 追加
+) =>
+  api.patch(`billing/bills/${billId}/`, {
+    nominated_casts : nomIds,
+    inhouse_casts_w : inIds,
+    free_ids        : freeIds,	// ★ snake_case に合わせる
+  }).then(r => r.data)
 
 export const fetchTables = storeId =>
   api.get('billing/tables/', { params:{ store:storeId } }).then(r=>r.data)

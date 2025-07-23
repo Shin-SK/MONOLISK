@@ -1,3 +1,4 @@
+# billing/serializer.py
 from rest_framework import serializers
 from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast
 from django.utils import timezone
@@ -137,11 +138,14 @@ class BillSerializer(serializers.ModelSerializer):
 		write_only=True,
 	)
 
+   # ★ これを“トップレベル”で宣言し直す
+	inhouse_casts_w   = serializers.PrimaryKeyRelatedField(
+		many=True, queryset=Cast.objects.all(),
+		required=False, write_only=True
+	)
+
 	nominated_casts = serializers.PrimaryKeyRelatedField(
 		many=True, queryset=Cast.objects.all(), required=False
-	)
-	inhouse_casts_w = serializers.PrimaryKeyRelatedField(
-		many=True, queryset=Cast.objects.all(), write_only=True, required=False
 	)
 
 	class Meta:
@@ -183,23 +187,46 @@ class BillSerializer(serializers.ModelSerializer):
 	# --------------------------------------------------
 	#				 UPDATE
 	# --------------------------------------------------
+	# billing/serializers.py  ── BillSerializer.update 内
 	def update(self, instance, validated_data):
-		nominated_ids = validated_data.pop("nominated_casts", None)
-		inhouse_objs  = validated_data.pop("inhouse_casts_w", None)
+		nominated_raw = validated_data.pop("nominated_casts", None)
+		inhouse_raw   = validated_data.pop("inhouse_casts_w", None)
 
-		# table, settled_total など通常フィールドは DRF に任せる
+		nominated_ids = [c.id if isinstance(c, Cast) else c
+						for c in (nominated_raw or [])]
+		inhouse_ids   = [c.id if isinstance(c, Cast) else c
+						for c in (inhouse_raw or [])]
+
+		# 通常フィールド
 		instance = super().update(instance, validated_data)
 
-		# nominated
-		if nominated_ids is not None:
+		# ――― 共通で使う stay マップを先に作っておく ―――
+		stay_map = {s.cast_id: s for s in instance.stays.all()}
+
+		# ---------- 本指名 ----------
+		if nominated_raw is not None:
 			instance.nominated_casts.set(nominated_ids)
 
-		# in‑house（元ロジック）
-		if inhouse_objs is not None:
-			stay_map = {s.cast_id: s for s in instance.stays.all()}
-			ids = [c.id if isinstance(c, Cast) else c for c in inhouse_objs]
+			# ① nominated 全員を stay_type='nom' に upsert
+			for cid in nominated_ids:
+				stay, created = BillCastStay.objects.get_or_create(
+					bill=instance, cast_id=cid,
+					defaults={"entered_at": timezone.now(), "stay_type": "nom"},
+				)
+				if not created and stay.stay_type != "nom":
+					stay.stay_type = "nom"; stay.save()
 
-			for cid in ids:						 # ① 指定を in に
+			# ② もう nominated でなくなった人は free（ただし in が優先）
+			for cid, stay in stay_map.items():
+				if cid not in nominated_ids and stay.stay_type == "nom":
+					# inhouse ならそのまま、そうでなければ free
+					if cid not in inhouse_ids:
+						stay.stay_type = "free"; stay.save()
+
+		# ---------- 場内 ----------
+		if inhouse_raw is not None:
+			# ① 指定キャストを in に
+			for cid in inhouse_ids:
 				stay = stay_map.get(cid)
 				if stay and stay.stay_type != "in":
 					stay.stay_type = "in"; stay.save()
@@ -209,11 +236,34 @@ class BillSerializer(serializers.ModelSerializer):
 						entered_at=timezone.now(), stay_type="in"
 					)
 
-			for cid, stay in stay_map.items():	  # ② その他を free に
-				if cid not in ids and stay.stay_type == "in":
+			# ② inhouse から外れた人 → free
+			for cid, stay in stay_map.items():
+				if cid not in inhouse_ids and stay.stay_type == "in":
 					stay.stay_type = "free"; stay.save()
 
+		# ---------- FREE ----------
+		free_raw = validated_data.pop("free_ids", None)
+		if free_raw is not None:
+			free_ids = [
+				c.id if isinstance(c, Cast) else c
+				for c in free_raw
+			]
+			# ① free_ids の upsert
+			for cid in free_ids:
+				BillCastStay.objects.get_or_create(
+					bill=instance, cast_id=cid,
+					defaults={
+						"entered_at": timezone.now(),
+						"stay_type": "free",
+					},
+				)
+			# ② free から外れた人は削除 or 状態変更
+			for cid, stay in stay_map.items():
+				if cid not in free_ids and stay.stay_type == "free":
+					stay.delete()
+
 		return instance
+
 
 	# ── 共通計算ロジック ─────────────────
 	def _store_rates(self, obj):
