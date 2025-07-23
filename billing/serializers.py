@@ -138,6 +138,13 @@ class BillSerializer(serializers.ModelSerializer):
 		write_only=True,
 	)
 
+	free_ids = serializers.PrimaryKeyRelatedField(
+		many=True,
+		queryset=Cast.objects.all(),
+		required=False,
+		write_only=True,
+	)
+
    # ★ これを“トップレベル”で宣言し直す
 	inhouse_casts_w   = serializers.PrimaryKeyRelatedField(
 		many=True, queryset=Cast.objects.all(),
@@ -160,6 +167,7 @@ class BillSerializer(serializers.ModelSerializer):
 			"nominated_casts", "settled_total",
 			"inhouse_casts",		# READ
 			"inhouse_casts_w",	  # WRITE
+			"free_ids",
 		)
 		read_only_fields = (
 			"subtotal", "service_charge", "tax", "grand_total", "total",
