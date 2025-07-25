@@ -24,6 +24,9 @@ const chartEnd = computed(() =>
 const rows = ref([])   // [{id,label}]
 const bars = ref([])   // [{rowId,from,to,stays,billId,ganttBarConfig}]
 
+/* ★追加：内部フラグ */
+let firstCenterDone = false
+
 /* ───────── stay → バッジ class ───────── */
 function badgeClass (stay){
   if (stay.stay_type==='nom') return 'bg-danger'
@@ -102,11 +105,27 @@ watch(()=>[props.date,props.storeId], refresh, { immediate:true })
 /* ───────── now‑line ───────── */
 const nowX = ref(0)
 const wrapperRef = ref(null)
-function recalcNow(){
-  const total = chartEnd.value - chartStart.value
-  nowX.value  = ((Date.now()-chartStart.value)/total)*wrapperRef.value.scrollWidth
+
+/* ★追加：now線を中央に寄せる */
+function centerNow () {
+	const el = wrapperRef.value
+	if (!el) return
+	// now線を画面中央に置くための scrollLeft を計算
+	const target = Math.max(0, nowX.value - el.clientWidth / 2)
+	el.scrollLeft = Math.min(target, el.scrollWidth - el.clientWidth)
 }
-setInterval(recalcNow,60_000)
+
+function recalcNow(){
+	const total = chartEnd.value - chartStart.value
+	nowX.value  = ((Date.now()-chartStart.value)/total)*wrapperRef.value.scrollWidth
+
+	/* ★追加：初回だけ中央寄せ */
+	if (!firstCenterDone) {
+		nextTick(centerNow)
+		firstCenterDone = true
+	}
+}
+setInterval(recalcNow, 60_000)
 
 /* ───────── グリッド & 横スクロール幅 ───────── */
 const pxPerMinute = ref(6)
@@ -139,7 +158,14 @@ function onRowClick(e,rowId){
 
 /* ───────── expose ───────── */
 defineExpose({ reload: refresh })
-onMounted(()=>resizeAll())
+onMounted(() => {
+	resizeAll()
+	/* ★追加：DOM サイズ確定後に中央寄せ */
+	nextTick(() => {
+		recalcNow()   // nowX 更新
+		centerNow()   // 明示的に中央寄せ
+	})
+})
 </script>
 
 <template>
