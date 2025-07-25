@@ -40,10 +40,10 @@ async function logout () {
         <!-- -------- ナビ ---------- -->
         <nav class="nav flex-column">
           <RouterLink class="nav-link" to="/" @click="closeSidebar">ダッシュボード</RouterLink>
-          <RouterLink class="nav-link" to="/bills"  @click="closeSidebar">伝票一覧</RouterLink>
-          <RouterLink class="nav-link" to="/bills/pl/daily" @click="closeSidebar">日次</RouterLink>
-          <RouterLink class="nav-link" to="/bills/pl/monthly" @click="closeSidebar">月次</RouterLink>
-          <RouterLink class="nav-link" to="/bills/pl/yearly" @click="closeSidebar">年次</RouterLink>
+          <!-- <RouterLink class="nav-link" to="/bills"  @click="closeSidebar">伝票一覧</RouterLink> -->
+          <RouterLink class="nav-link" to="/bills/pl/daily" @click="closeSidebar">PL/日次</RouterLink>
+          <RouterLink class="nav-link" to="/bills/pl/monthly" @click="closeSidebar">PL/月次</RouterLink>
+          <RouterLink class="nav-link" to="/bills/pl/yearly" @click="closeSidebar">PL/年次</RouterLink>
           <!-- <RouterLink class="nav-link" to="/expense/form" @click="closeSidebar">経費申請</RouterLink> -->
           <button
             class="nav-link d-flex justify-content-between align-items-center fw-semibold"
