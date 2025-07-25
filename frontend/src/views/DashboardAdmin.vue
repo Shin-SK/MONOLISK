@@ -4,6 +4,8 @@ import dayjs from 'dayjs'
 
 import GanttChart from '@/components/GanttChart.vue'
 import BillModal  from '@/components/BillModal.vue'
+import BillListTable  from '@/components/BillListTable.vue'
+import BillList  from '@/views/BillList.vue'
 
 import { api, createBill, fetchBill } from '@/api'
 
@@ -50,11 +52,42 @@ function setToday(){ selectedDate.value = dayjs() }
 
 /* ───────── Gantt ref ───────── */
 const ganttRef = ref(null)
+
+/* ───────── タブ切り替え───────── */
+const activeTab = ref('gantt')              // 'gantt' | 'tables' | 'lists'
+const show = (tab) => { activeTab.value = tab }
+
 </script>
 
 <template>
 <div class="dashboard-admin container-fluid">
+  <nav>
+    <ul class="nav nav-tabs mb-3">
+      <li class="nav-item">
+        <button class="nav-link"
+                :class="{active:activeTab==='gantt'}"
+                @click="show('gantt')">
+          <i class="bi bi-diagram-3"></i>タイムライン
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link"
+                :class="{active:activeTab==='tables'}"
+                @click="show('tables')">
+          <i class="bi bi-grid-3x3-gap-fill"></i>テーブル
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link"
+                :class="{active:activeTab==='lists'}"
+                @click="show('lists')">
+          <i class="bi bi-card-list"></i>リスト
+        </button>
+      </li>
+    </ul>
+  </nav>
 
+  <div class="guant" v-if="activeTab==='gantt'">
 
   <!-- ▼ 日付ヘッダー -->
   <header class="gc-header position-relative mb-1">
@@ -97,6 +130,21 @@ const ganttRef = ref(null)
     @bill-click="openBillEditor"
     @request-new="handleNewBill"
   />
+
+    
+  </div>
+
+  <div class="tables" v-else-if="activeTab==='tables'" >
+
+    <BillListTable />
+
+  </div>
+
+  <div class="lists" v-else>
+  
+    <BillList />
+
+  </div>
 
 </div>
 

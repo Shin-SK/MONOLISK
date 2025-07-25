@@ -198,11 +198,8 @@ const currentCasts = computed(() => {
     .filter(Boolean)
     .map(c => ({ ...c, role:'main' }))
 
-  const others = new Set([
-    ...freeCastIds.value,
-    ...inhouseSet.value          // ← ここを足す！
-  ])
-
+  const others = new Set([...freeCastIds.value, ...inhouseSet.value])
+  
   others.forEach(id => {
     // main と重複しないように
     if (!mainCastIds.value.includes(id)) {
@@ -242,6 +239,41 @@ function toggleMain(id){
       freeCastIds.value.push(id)
   }
 }
+
+/* ---------- 履歴のやつ ---------- */
+const historyEvents = computed(() => {
+  if (!props.bill) return []
+
+  const events = []
+
+  ;(props.bill.stays || []).forEach(s => {
+    // IN (= 着席)
+    events.push({
+      key     : `${s.cast.id}-in-${s.entered_at}`,
+      when    : s.entered_at,
+      id      : s.cast.id,
+      name    : s.cast.stage_name,
+      avatar  : s.cast.avatar_url,
+      stayTag : s.stay_type,           // nom / in / free
+      ioTag   : 'in',                  // この行では入店
+    })
+    // OUT (= 退席) があれば追加
+    if (s.left_at) {
+      events.push({
+        key     : `${s.cast.id}-out-${s.left_at}`,
+        when    : s.left_at,
+        id      : s.cast.id,
+        name    : s.cast.stage_name,
+        avatar  : s.cast.avatar_url,
+        stayTag : s.stay_type,
+        ioTag   : 'out',
+      })
+    }
+  })
+
+  // 時間昇順で並べ替え
+  return events.sort((a, b) => new Date(b.when) - new Date(a.when))
+})
 
 /* ---------- ヘッダーに入れる基礎情報 ---------- */
 const headerInfo = computed(() => {
@@ -294,9 +326,11 @@ const preview = computed(() => {
 watch(() => props.bill, b => {
   if (!b) return
 
-const stayNom = b.stays?.filter(s => s.stay_type==='nom').map(s=>s.cast.id) ?? []
-const stayFree = b.stays?.filter(s => s.stay_type==='free').map(s=>s.cast.id) ?? []
-const stayIn   = b.stays?.filter(s => s.stay_type==='in').map(s=>s.cast.id)   ?? []
+  const active   = b.stays?.filter(s => !s.left_at) ?? []
+
+  const stayNom  = active.filter(s => s.stay_type==='nom').map(s => s.cast.id)
+  const stayFree = active.filter(s => s.stay_type==='free').map(s => s.cast.id)
+  const stayIn   = active.filter(s => s.stay_type==='in').map(s => s.cast.id)
 
 mainCastIds.value  = stayNom
 freeCastIds.value  = [...new Set([...stayFree, ...stayIn])]
@@ -536,8 +570,58 @@ async function save () {
         </div>
       </div>
 
-        
-      <button class="btn btn-primary w-100 mt-auto" @click="save">保存</button>
+<!-- ★ IN / OUT タイムライン -->
+<div class="history bg-light rounded p-3 mt-auto">
+  <h6 class="fw-bold mb-2">
+    <i class="bi bi-clock-history me-1"></i>着席履歴
+  </h6>
+
+  <!-- 空だった場合 -->
+  <p v-if="!historyEvents.length" class="text-muted mb-0">
+    履歴はありません
+  </p>
+
+  <!-- タイムライン -->
+  <ul v-else class="list-unstyled mb-0 overflow-auto"
+          style="max-height: 160px;">
+    <li v-for="ev in historyEvents" :key="ev.key"
+        class="d-flex align-items-center gap-2 mb-1">
+
+      <!-- 時刻 -->
+      <small class="text-muted" style="width:58px;">
+        {{ dayjs(ev.when).format('HH:mm') }}
+      </small>
+
+      <!-- アバター -->
+      <Avatar :url="ev.avatar" :alt="ev.name" size="24" class="me-1" />
+
+      <!-- 名前 -->
+      <span class="flex-grow-1">{{ ev.name }}</span>
+
+      <!-- 区分 (nom / in / free) -->
+      <span class="badge text-white me-1"
+            :class="{
+              'bg-danger'   : ev.stayTag==='nom',
+              'bg-success'  : ev.stayTag==='in',
+              'bg-secondary': ev.stayTag==='free'
+            }">
+        {{ ev.stayTag==='nom' ? '本指名'
+             : ev.stayTag==='in'  ? '場内'
+             : 'フリー' }}
+      </span>
+
+      <!-- IN / OUT -->
+      <span class="badge"
+            :class="ev.ioTag==='in' ? 'bg-primary' : 'bg-dark'">
+        {{ ev.ioTag.toUpperCase() }}
+      </span>
+    </li>
+  </ul>
+</div>
+
+
+
+      <button class="btn btn-primary w-100 " @click="save">保存</button>
     </div>
     <div class="outer">
 

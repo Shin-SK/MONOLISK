@@ -5,6 +5,7 @@ import { ref, onMounted, computed } from 'vue'
 import dayjs              from 'dayjs'          // ← 忘れずに
 import { useBills }       from '@/stores/useBills'
 import BillModal          from '@/components/BillModal.vue'
+import Avatar        from '@/components/Avatar.vue'
 import { fetchBill, createBill, deleteBill } from '@/api'
 
 /* ───── reactive state ───── */
@@ -15,6 +16,13 @@ const selectedIds = ref(new Set())     // 一覧チェック用
 
 /* ───── 初回ロード ───── */
 onMounted(() => bills.loadAll())
+
+/* ★ opened_at が新しい順に並べ替えた配列 */
+const sorted = computed(() =>
+  [...bills.list].sort((a, b) =>
+    new Date(b.opened_at || 0) - new Date(a.opened_at || 0)
+  )
+)
 
 const MAP_SET = { setVIP:60, setMale:60, setFemale:60, set60:60 }
 
@@ -60,21 +68,38 @@ function isSameDay(d1, d2){
 }
 
 
-function liveCasts(b){
-  return (b.stays||[])
-    .filter(s => !s.left_at)             // まだ席にいる人
-    .map(s => ({
-        id:      s.cast?.id,
-        name:    s.cast?.stage_name || 'N/A',
-        avatar:  s.cast?.avatar_url  || '/img/user-default.png',
-        tag:   s.stay_type === 'nom' ? '本指名'
-             : s.stay_type === 'in'  ? '場内'
-             : '',
-        color: s.stay_type === 'nom' ? 'danger'
-             : s.stay_type === 'in'  ? 'success'
-             : 'blue'
-    }))
+function liveCasts (b) {
+  const map = new Map();        // castId → { stay , present , entered }
+
+  (b.stays || []).forEach(s => {
+    const id = s.cast?.id;
+    if (!id) return;
+
+    const present = !s.left_at;                         // ← ★いるかどうか
+    const entered = new Date(s.entered_at).getTime();   //   比較用タイムスタンプ
+
+    const prev = map.get(id);
+    /* present の方を優先。present 同士／過去同士なら entered が新しい方 */
+    if (
+      !prev ||
+      (present && !prev.present) ||
+      entered > prev.entered
+    ) {
+      map.set(id, { stay: s, present, entered });
+    }
+  });
+
+  return [...map.values()].map(({ stay, present }) => ({
+    id     : stay.cast?.id,
+    name   : stay.cast?.stage_name || "N/A",
+    avatar : stay.cast?.avatar_url || "/img/user-default.png",
+    color  : stay.stay_type === "nom" ? "danger"
+           : stay.stay_type === "in"  ? "success"
+           : "blue",
+    present                                // ★ これでテンプレ側で判別
+  }));
 }
+
 
 </script>
 
@@ -90,7 +115,7 @@ function liveCasts(b){
         <div class="item badge text-white bg-warning">フリー(~20分)</div>
         <div class="item badge text-white bg-orange">フリー(~30分)</div>
     </div>
-    <button class="btn btn-primary d-flex align-items-center gap-1 mb-3"
+    <button class="btn btn-success d-flex align-items-center gap-1 mb-3"
             @click="newBill">
       <i class="bi bi-plus-lg"></i> 新規追加
     </button>
@@ -124,15 +149,17 @@ function liveCasts(b){
       </tr>
     </thead>
     <tbody>
-      <template v-for="(b, idx) in bills.list" :key="b.id">
+      <template v-for="(b, idx) in sorted" :key="b.id">
         <!-- ★ 見出し行：前の伝票と日付が違えば出力 -->
-        <tr v-if="idx === 0 || !isSameDay(bills.list[idx-1].opened_at, b.opened_at)"
+        <tr v-if="idx === 0 || !isSameDay(sorted[idx-1].opened_at, b.opened_at)"
             class="bg-light">
           <td :colspan="10" class="text-center fw-bold">
             {{ b.opened_at ? dayjs(b.opened_at).format('YYYY/MM/DD(ddd)') : '日付未定' }}
           </td>
         </tr>
-      <tr @click="open(b.id)" style="cursor:pointer" class="main">
+      <tr @click="open(b.id)"
+        class="main"
+        :class="b.closed_at ? 'table-close text-muted' : ''">
         <td class="text-center">
           <input type="checkbox"
                  :value="b.id"
@@ -153,16 +180,25 @@ function liveCasts(b){
         <td class="text-center"><span class="fs-3 fw-bold">{{ b.expected_out ? dayjs(b.expected_out).format('HH:mm') : '‑' }}</span></td>
 			
       <td>
-        <div class="d-flex flex-wrap gap-2">
-          <div v-for="p in liveCasts(b)" :key="p.id"
-            class="d-flex align-items-center btn text-light p-2"
-            :class="`bg-${p.color}`">
-            <img :src="p.avatar" class="avatar-icon me-1" width="40" height="40">
-            <div class="wrap d-flex flex-column align-items-start">
-              <span class="fw-bold">{{ p.name }}</span>
-            </div>
-          </div>
-        </div>
+  <!-- ── 今ついているキャスト ─────────────────── -->
+  <div class="d-flex flex-wrap gap-2 mb-1">
+    <div v-for="p in liveCasts(b).filter(p => p.present)"
+         :key="p.id"
+         class="d-flex align-items-center btn text-light p-2"
+         :class="`bg-${p.color}`">
+      <Avatar :url="p.avatar" :alt="p.name" size="28" class="me-1"/>
+      <span class="fw-bold">{{ p.name }}</span>
+    </div>
+  </div>
+
+  <!-- ── 過去に付いたキャスト ────────────────── -->
+  <div class="d-flex flex-wrap gap-1 mt-3">
+    <span v-for="p in liveCasts(b).filter(p => !p.present)"
+          :key="p.id"
+          class="badge bg-secondary-subtle text-dark small">
+      {{ p.name }}
+    </span>
+  </div>
       </td>
         <td class="text-end">{{ b.subtotal.toLocaleString() }}</td>
         <td class="text-end">{{ (b.settled_total ?? (b.closed_at ? b.total : b.grand_total)).toLocaleString() }}</td>
@@ -190,6 +226,12 @@ function liveCasts(b){
 tr.main td{
   padding:16px 4px;
 }
+
+.table-close, .table-close td{
+  background-color: gray !important;
+}
+
+
 
 
 </style>

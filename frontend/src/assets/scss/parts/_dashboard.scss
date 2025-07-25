@@ -99,3 +99,26 @@
 
 
 }
+
+.tables{
+	grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+	grid-auto-rows: 1fr;
+	.table-box{
+		aspect-ratio: 4/3;
+	}
+	.header{
+		height: auto;
+		@include fs(12);
+		.item{
+			@include flex();
+			gap: 4px;
+		}
+	}
+	.sum{
+		.item{
+			@include flex();
+			gap: 4px;
+			justify-content: flex-start;
+		}
+	}
+}

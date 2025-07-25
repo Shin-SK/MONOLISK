@@ -295,82 +295,114 @@ class BillSerializer(serializers.ModelSerializer):
 	# --------------------------------------------------
 	#				 UPDATE
 	# --------------------------------------------------
-	# billing/serializers.py  ── BillSerializer.update 内
+	# billing/serializers.py  ── BillSerializer.update
+
+
 	def update(self, instance, validated_data):
+		"""
+		本指名・場内・フリーをまとめて更新する。
+		・再入店は新しい stay 行を追加。
+		・退席は left_at を付与して履歴を残す。
+		"""
+		# ---------- 1. 送信された ID 群を取り出す ----------
 		nominated_raw = validated_data.pop("nominated_casts", None)
 		inhouse_raw   = validated_data.pop("inhouse_casts_w", None)
+		free_raw      = validated_data.pop("free_ids", None)
 
-		nominated_ids = [c.id if isinstance(c, Cast) else c
-						for c in (nominated_raw or [])]
-		inhouse_ids   = [c.id if isinstance(c, Cast) else c
-						for c in (inhouse_raw or [])]
+		to_ids = lambda raw: [
+			c.id if isinstance(c, Cast) else c for c in (raw or [])
+		]
+		nominated_ids = to_ids(nominated_raw)
+		inhouse_ids   = to_ids(inhouse_raw)
+		free_ids_orig = to_ids(free_raw)
 
-		# 通常フィールド
+		# ---------- 2. 通常フィールドを更新 ----------
 		instance = super().update(instance, validated_data)
 
-		# ――― 共通で使う stay マップを先に作っておく ―――
+		# ---------- 3. 既存 stay をキャッシュ ----------
 		stay_map = {s.cast_id: s for s in instance.stays.all()}
 
-		# ---------- 本指名 ----------
+		# ===============================================================
+		#  A. 本指名 (nom)
+		# ===============================================================
 		if nominated_raw is not None:
 			instance.nominated_casts.set(nominated_ids)
-
-			# ① nominated 全員を stay_type='nom' に upsert
 			for cid in nominated_ids:
-				stay, created = BillCastStay.objects.get_or_create(
-					bill=instance, cast_id=cid,
-					defaults={"entered_at": timezone.now(), "stay_type": "nom"},
-				)
-				if not created and stay.stay_type != "nom":
-					stay.stay_type = "nom"; stay.save()
-
-			# ② もう nominated でなくなった人は free（ただし in が優先）
+				stay = stay_map.get(cid)
+				if not stay:
+					BillCastStay.objects.create(
+						bill=instance, cast_id=cid,
+						entered_at=timezone.now(), stay_type="nom"
+					)
+				elif stay.stay_type != "nom":
+					stay.stay_type = "nom"
+					stay.left_at   = None
+					stay.save(update_fields=["stay_type", "left_at"])
 			for cid, stay in stay_map.items():
 				if cid not in nominated_ids and stay.stay_type == "nom":
-					# inhouse ならそのまま、そうでなければ free
-					if cid not in inhouse_ids:
-						stay.stay_type = "free"; stay.save()
+					stay.stay_type = "in" if cid in inhouse_ids else "free"
+					stay.save(update_fields=["stay_type"])
 
-		# ---------- 場内 ----------
+		# ===============================================================
+		#  B. 場内 (in)
+		# ===============================================================
 		if inhouse_raw is not None:
-			# ① 指定キャストを in に
 			for cid in inhouse_ids:
 				stay = stay_map.get(cid)
-				if stay and stay.stay_type != "in":
-					stay.stay_type = "in"; stay.save()
-				elif not stay:
+				if not stay:
 					BillCastStay.objects.create(
 						bill=instance, cast_id=cid,
 						entered_at=timezone.now(), stay_type="in"
 					)
-
-			# ② inhouse から外れた人 → free
+				else:
+					stay.stay_type = "in"
+					stay.left_at   = None
+					stay.save(update_fields=["stay_type", "left_at"])
 			for cid, stay in stay_map.items():
 				if cid not in inhouse_ids and stay.stay_type == "in":
-					stay.stay_type = "free"; stay.save()
+					stay.stay_type = "free"
+					stay.save(update_fields=["stay_type"])
 
-		# ---------- FREE ----------
-		free_raw = validated_data.pop("free_ids", None)
+		# ===============================================================
+		#  C. フリー (free)
+		# ===============================================================
 		if free_raw is not None:
+			# ① in / nom に含まれる ID を除外して「純粋な free のみ」にする
 			free_ids = [
-				c.id if isinstance(c, Cast) else c
-				for c in free_raw
+				cid for cid in free_ids_orig
+				if cid not in inhouse_ids and cid not in nominated_ids
 			]
-			# ① free_ids の upsert
-			for cid in free_ids:
-				BillCastStay.objects.get_or_create(
-					bill=instance, cast_id=cid,
-					defaults={
-						"entered_at": timezone.now(),
-						"stay_type": "free",
-					},
-				)
-			# ② free から外れた人は削除 or 状態変更
-			for cid, stay in stay_map.items():
-				if cid not in free_ids and stay.stay_type == "free":
-					stay.delete()
 
+			# ② free_ids を在席状態に
+			for cid in free_ids:
+				stay = stay_map.get(cid)
+				if not stay:
+					BillCastStay.objects.create(
+						bill=instance, cast_id=cid,
+						entered_at=timezone.now(), stay_type="free"
+					)
+				else:
+					if stay.left_at:
+						BillCastStay.objects.create(
+							bill=instance, cast_id=cid,
+							entered_at=timezone.now(), stay_type="free"
+						)
+					elif stay.stay_type != "free":
+						stay.stay_type = "free"
+						stay.save(update_fields=["stay_type"])
+
+			# ③ free から外れた人 → 退席
+			active_free = instance.stays.filter(
+				stay_type="free", left_at__isnull=True
+			)
+			for stay in active_free:
+				if stay.cast_id not in free_ids:
+					stay.left_at = timezone.now()
+					stay.save(update_fields=["left_at"])
+
+		# ===============================================================
 		return instance
+
 
 
 	# ── 共通計算ロジック ─────────────────
