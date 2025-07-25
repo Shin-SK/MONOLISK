@@ -46,7 +46,7 @@ function freeProps (stay) {
   /* 0‑29 分までは 10 分単位で段階色＋下線伸ばし */
   const stage   = Math.floor(mins / 10)          // 0,1,2
   const within  = mins % 10                      // 0‑9
-  const color   = stage === 0 ? 'secondary'      // 青
+  const color   = stage === 0 ? 'blue'      // 青
                 : stage === 1 ? 'warning'        // 黄
                 :               'orange'         // 20‑29 分
   return {
