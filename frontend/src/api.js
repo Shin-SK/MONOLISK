@@ -55,6 +55,10 @@ const SKIP_AUTH = [
 ]
 
 api.interceptors.request.use(cfg => {
+
+  if (cfg.data instanceof FormData) {
+    delete cfg.headers['Content-Type']; // axios が boundary 付きで付け直す
+  }
   // 対象 URL ならスキップ
   if (!SKIP_AUTH.some(p => cfg.url.includes(p))) {
     const t = localStorage.getItem('token')
@@ -270,7 +274,9 @@ export const deleteReservationDriver = id => api.delete(`reservation-drivers/${i
 /* ---------- Bills ---------- */
 // すでに baseURL が `/api/` なので “billing/...” を付ける
 
-export const fetchBills   = ()      => api.get('billing/bills/').then(r=>r.data)
+export const fetchBills   = (params={}) =>
+  api.get('billing/bills/', { params }).then(r=>r.data)
+
 export const fetchBill    = id      => api.get(`billing/bills/${id}/`).then(r=>r.data)
 
 export const createBill = (tableId = 1) =>
@@ -310,6 +316,7 @@ export const deleteBillItem = (billId, itemId) =>
 export const getStore  = id => api.get(`billing/stores/${id}/`).then(r => r.data)
 
 
+//PL
 
 export const getBillDailyPL = (date, storeId = '') =>
   api.get('billing/pl/daily/', { params: { date, store_id: storeId } }).then(r => r.data)
@@ -327,10 +334,10 @@ export const getBillYearlyPL = (year, storeId = '') =>
     params: { year, store_id: storeId }
   }).then(r => r.data)
 
+// キャスト系
 
-// await api.post(`billing/bills/${bill.id}/items/`, {
-//   item_master: draftMasterId.value,
-//   qty: draftQty.value,
-//   served_by_cast: draftCastId.value || null
-// })
-// Object.assign(bill, response.data)
+export const getBillingStores = () =>
+	api.get('billing/stores/').then(r => r.data)
+
+export const getBillingCasts = (params = {}) =>
+	api.get('billing/casts/', { params }).then(r => r.data)

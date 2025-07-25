@@ -29,3 +29,11 @@
 .btn .badge{
   top: 0;
 }
+
+.bg-orange { background-color:#ff922b !important; }
+
+.bg-blue { background-color:#0d6efd !important;}
+
+.fs-7{
+  @include fs(8);
+}

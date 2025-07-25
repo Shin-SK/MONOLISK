@@ -45,23 +45,22 @@ async function logout () {
           <RouterLink class="nav-link" to="/bills/pl/monthly" @click="closeSidebar">月次</RouterLink>
           <RouterLink class="nav-link" to="/bills/pl/yearly" @click="closeSidebar">年次</RouterLink>
           <!-- <RouterLink class="nav-link" to="/expense/form" @click="closeSidebar">経費申請</RouterLink> -->
-          <!-- <button
+          <button
             class="nav-link d-flex justify-content-between align-items-center fw-semibold"
             data-bs-toggle="collapse"
             data-bs-target="#shiftCollapse"
             :class="{ collapsed: !shiftActive }" 
             type="button">
-            シフト管理
+            設定
            <i class="bi bi-chevron-right"></i>
-          </button> -->
+          </button>
 
-          <!-- <div
+          <div
             id="shiftCollapse"
             class="collapse ps-3"
             :class="{ show: shiftActive }">
-            <RouterLink class="nav-link" to="/cast-shifts" @click="closeSidebar">キャスト出退勤</RouterLink>
-            <RouterLink class="nav-link" to="/driver-shifts" @click="closeSidebar">ドライバー出退勤</RouterLink>
-          </div> -->
+            <RouterLink class="nav-link" to="/casts" @click="closeSidebar">キャスト情報</RouterLink>
+          </div>
 
           <!-- <button
             class="nav-link d-flex justify-content-between align-items-center fw-semibold"
@@ -77,7 +76,8 @@ async function logout () {
             id="settingsCollapse"
             class="collapse ps-3"
             :class="{ show: settingsActive }">
-            <RouterLink class="nav-link" to="/casts" @click="closeSidebar">キャスト情報</RouterLink>
+            <RouterLink class="nav-link" to="/cast-shifts" @click="closeSidebar">キャスト出退勤</RouterLink>
+            <RouterLink class="nav-link" to="/driver-shifts" @click="closeSidebar">ドライバー出退勤</RouterLink>
             <RouterLink class="nav-link" to="/drivers" @click="closeSidebar">ドライバー情報</RouterLink>
             <RouterLink class="nav-link" to="/customers" @click="closeSidebar">顧客管理</RouterLink>
           </div> -->

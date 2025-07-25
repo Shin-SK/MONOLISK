@@ -20,12 +20,7 @@ const close = () => emit('update:modelValue', false)
         <div class="modal-dialog modal-fullscreen p-5">
           <div class="modal-content p-3">
             <!-- ヘッダー -->
-            <slot name="header">
-              <div class="modal-header">
-                <!-- <h5 class="modal-title w-100"><slot name="title" /></h5> -->
-                <button class="btn-close" @click="close"></button>
-              </div>
-            </slot>
+            <slot name="header" />
 
             <!-- 本体 -->
             <slot />

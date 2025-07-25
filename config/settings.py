@@ -151,9 +151,10 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 MIDDLEWARE = [
-    'billing.middleware.store_slug.StoreFromPathMiddleware',
+    'accounts.middleware.StoreFromPathMiddleware',
+
     'corsheaders.middleware.CorsMiddleware',
-    "django_htmx.middleware.HtmxMiddleware",
+    'django_htmx.middleware.HtmxMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -162,8 +163,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    "whitenoise.middleware.WhiteNoiseMiddleware",
+    'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
+
 
 ROOT_URLCONF = 'config.urls'
 
