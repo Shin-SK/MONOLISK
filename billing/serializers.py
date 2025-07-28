@@ -28,13 +28,13 @@ class CastPayoutSerializer(serializers.ModelSerializer):
 		fields	= '__all__'
   
 class CastSalesSummarySerializer(serializers.Serializer):
-	cast_id	   = serializers.IntegerField()
-	stage_name	= serializers.CharField()
-	sales_nom	 = serializers.IntegerField()
-	sales_in	  = serializers.IntegerField()
-	sales_free	= serializers.IntegerField()
-	sales_champ   = serializers.IntegerField()
-	total		 = serializers.IntegerField()
+    cast_id      = serializers.IntegerField()
+    stage_name   = serializers.CharField()          # ← フィールド名変更
+    sales_nom    = serializers.IntegerField()
+    sales_in     = serializers.IntegerField()
+    sales_free   = serializers.IntegerField()
+    sales_champ  = serializers.IntegerField()
+    total        = serializers.IntegerField()
 
 
 class BillItemMiniSerializer(serializers.ModelSerializer):

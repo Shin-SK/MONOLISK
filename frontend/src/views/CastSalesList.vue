@@ -1,4 +1,4 @@
-<!-- CastSalesSummary.vue ※一例 -->
+<!-- CastSalesList.vue  -->
 <script setup>
 import { ref, onMounted } from 'vue'
 import { fetchCastSalesSummary } from '@/api'
@@ -55,7 +55,7 @@ onMounted(load)
       </thead>
       <tbody>
         <tr v-for="c in casts" :key="c.cast_id">
-          <td>{{ c.cast__stage_name }}</td>
+          <td>{{ c.stage_name }}</td>
           <td>{{ yen(c.sales_champ) }}</td>
           <td class="text-end">{{ yen(c.sales_nom) }}</td>
           <td class="text-end">{{ yen(c.sales_in) }}</td>

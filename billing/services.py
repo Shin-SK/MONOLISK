@@ -1,8 +1,8 @@
 # billing/services.py
 from decimal import Decimal, ROUND_HALF_UP
-from django.db.models import Sum, Case, When, IntegerField, F, Q
+from django.db.models import Sum, Case, When, IntegerField, F, Q, Value
+from django.db.models.functions import Coalesce
 from .models import Cast, CastPayout
-
 
 def calc_bill_totals(bill):
 	items	 = bill.items.select_related('item_master', 'served_by_cast')
@@ -88,56 +88,75 @@ def calc_bill_totals(bill):
 
 
 
+
+
 def get_cast_sales(date_from, date_to, store_id=None):
     """
-    指定期間（必須）と任意の store_id でキャスト別売上を返す。
-    - date_from / date_to : 'YYYY‑MM‑DD' 文字列または date/datetime
+    指定期間 & 店舗で “全キャスト” の売上サマリを返す。
+      ‑ 集計０件のキャストも 0 埋めで必ず出す
     """
-    qs = (
-        CastPayout.objects
-        .filter(bill__opened_at__date__range=(date_from, date_to))
-        .values('cast_id', 'cast__stage_name')
+    # ─ 集計対象 Cast 一覧 ─────────────────────────
+    cast_qs = Cast.objects.all()
+    if store_id:
+        cast_qs = cast_qs.filter(store_id=store_id)
+
+    # ─ 期間内の CastPayout をベースに各種集計 ──────
+    period_payouts = CastPayout.objects.filter(
+        bill__opened_at__date__range=(date_from, date_to)
+    )
+
+    cast_qs = (
+        cast_qs
         .annotate(
-            sales_nom = Sum(
+            sales_nom=Coalesce(Sum(
                 Case(
                     When(
-                        bill__stays__stay_type='nom',
-                        bill__stays__cast_id=F('cast_id'),
-                        then='amount'
+                        payouts__in=period_payouts,
+                        payouts__bill__stays__stay_type='nom',
+                        payouts__bill__stays__cast_id=F('id'),
+                        then='payouts__amount'
                     ),
-                    default=0,
-                    output_field=IntegerField(),
+                    default=Value(0),
+                    output_field=IntegerField()
                 )
-            ),
-            sales_in = Sum(
+            ), 0),
+            sales_in=Coalesce(Sum(
                 Case(
                     When(
-                        bill__stays__stay_type='in',
-                        bill__stays__cast_id=F('cast_id'),
-                        then='amount'
+                        payouts__in=period_payouts,
+                        payouts__bill__stays__stay_type='in',
+                        payouts__bill__stays__cast_id=F('id'),
+                        then='payouts__amount'
                     ),
-                    default=0,
-                    output_field=IntegerField(),
+                    default=Value(0),
+                    output_field=IntegerField()
                 )
-            ),
-            sales_free = Sum(
+            ), 0),
+            sales_free=Coalesce(Sum(
                 Case(
                     When(
-                        bill__stays__stay_type='free',
-                        bill__stays__cast_id=F('cast_id'),
-                        then='amount'
+                        payouts__in=period_payouts,
+                        payouts__bill__stays__stay_type='free',
+                        payouts__bill__stays__cast_id=F('id'),
+                        then='payouts__amount'
                     ),
-                    default=0,
-                    output_field=IntegerField(),
+                    default=Value(0),
+                    output_field=IntegerField()
                 )
-            ),
+            ), 0),
         )
         .annotate(total=F('sales_nom') + F('sales_in') + F('sales_free'))
         .order_by('-total')
     )
 
-    if store_id:
-        qs = qs.filter(bill__table__store_id=store_id)
-
-    return list(qs)      # ← dict リストで返す
-
+    return list(
+        cast_qs.values(
+            'stage_name',                  # ← フィールドそのまま列挙
+            cast_id       = F('id'),
+            sales_nom     = F('sales_nom'),
+            sales_in      = F('sales_in'),
+            sales_free    = F('sales_free'),
+            sales_champ   = Value(0, output_field=IntegerField()),
+            total         = F('total'),
+        )
+    )
