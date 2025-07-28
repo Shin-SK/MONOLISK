@@ -1,6 +1,6 @@
 # billing/serializer.py
 from rest_framework import serializers
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate
 from django.utils import timezone
 from dj_rest_auth.serializers import UserDetailsSerializer
 from .models import User
@@ -26,6 +26,58 @@ class CastPayoutSerializer(serializers.ModelSerializer):
 	class Meta:
 		model	= CastPayout
 		fields	= '__all__'
+  
+class CastSalesSummarySerializer(serializers.Serializer):
+	cast_id	   = serializers.IntegerField()
+	stage_name	= serializers.CharField()
+	sales_nom	 = serializers.IntegerField()
+	sales_in	  = serializers.IntegerField()
+	sales_free	= serializers.IntegerField()
+	sales_champ   = serializers.IntegerField()
+	total		 = serializers.IntegerField()
+
+
+class BillItemMiniSerializer(serializers.ModelSerializer):
+	class Meta:
+		model  = BillItem
+		fields = ['id', 'name', 'qty', 'price', 'is_nomination',
+				  'is_inhouse', 'exclude_from_payout']
+
+
+class BillMiniSerializer(serializers.ModelSerializer):
+	class Meta:
+		model  = Bill
+		fields = ['id', 'opened_at', 'closed_at',			   # ← opened_at を追加
+				  'grand_total','subtotal','table',								# ← 伝票の総額
+				  'table']
+		
+class TableMiniSerializer(serializers.ModelSerializer):
+	class Meta:
+		model  = Table
+		fields = ['number']
+		
+
+
+class CastItemDetailSerializer(serializers.ModelSerializer):
+	bill_id	= serializers.IntegerField(source='bill.id', read_only=True)
+	closed_at  = serializers.DateTimeField(source='bill.closed_at', read_only=True)
+	table_no   = serializers.IntegerField(source='bill.table.number', read_only=True)
+	subtotal   = serializers.SerializerMethodField()
+	back_rate  = serializers.SerializerMethodField()
+	amount	 = serializers.SerializerMethodField()   # ギャラ
+
+	class Meta:
+		model  = BillItem
+		fields = (
+			'id', 'closed_at', 'bill_id', 'table_no',
+			'name', 'qty', 'subtotal', 'back_rate', 'amount',
+			'is_nomination', 'is_inhouse', 
+		)
+
+	def get_subtotal(self, obj): return obj.subtotal
+	def get_back_rate(self, obj): return float(obj.back_rate)
+	def get_amount(self, obj):
+		return int(obj.subtotal * obj.back_rate)
 
 
 class ItemMasterSerializer(serializers.ModelSerializer):
@@ -53,11 +105,13 @@ class ItemMasterSerializer(serializers.ModelSerializer):
 
 
 
+
 class TableMiniSerializer(serializers.ModelSerializer):
 	store = serializers.IntegerField(source='store.id', read_only=True)   # ★追加
 	class Meta:
 		model  = Table
 		fields = ('id', 'number', 'store')
+
 
 class BillCastStayMini(serializers.ModelSerializer):
 	class Meta:
@@ -80,6 +134,25 @@ class CastMiniSerializer(serializers.ModelSerializer):
 				secure=True	 # https:// 付与
 			)[0]
 		return None
+
+
+class CastPayoutDetailSerializer(serializers.ModelSerializer):
+	cast = CastMiniSerializer(read_only=True)
+	bill	  = BillMiniSerializer(read_only=True)
+	bill_item = BillItemMiniSerializer(read_only=True)
+
+	class Meta:
+		model  = CastPayout
+		fields = ('id', 'amount', 'bill', 'bill_item', 'cast')
+
+	def get_bill(self, obj):
+		if obj.bill is None:				# ← ★ null セーフ
+			return None
+		return {
+			'id'	   : obj.bill_id,
+			'closed_at': obj.bill.closed_at,
+		}
+  
 
 
 class BillItemSerializer(serializers.ModelSerializer):
@@ -115,6 +188,24 @@ class BillItemSerializer(serializers.ModelSerializer):
 		return obj.subtotal
 
 
+class CastCategoryRateSerializer(serializers.ModelSerializer):
+	category = serializers.SlugRelatedField(  # “set”“drink”… の code
+		slug_field='code', queryset=ItemCategory.objects.all()
+	)
+
+	class Meta:
+		model  = CastCategoryRate
+		fields = ('id', 'category', 'rate_free',
+				  'rate_nomination', 'rate_inhouse')
+  
+
+class ItemCategorySerializer(serializers.ModelSerializer):
+	class Meta:
+		model  = ItemCategory
+		fields = ("code", "name")	 # これだけで OK
+
+
+
 User = get_user_model()
 
 class CastSerializer(serializers.ModelSerializer):
@@ -129,7 +220,7 @@ class CastSerializer(serializers.ModelSerializer):
 	last_name_read  = serializers.CharField(source='user.last_name',  read_only=True)
 
 	avatar_url = serializers.SerializerMethodField()
-
+	category_rates = CastCategoryRateSerializer(many=True, required=False)
 	store = serializers.PrimaryKeyRelatedField(
 		queryset=Store.objects.all(),
 		required=False, write_only=True,
@@ -149,6 +240,7 @@ class CastSerializer(serializers.ModelSerializer):
 			"back_rate_inhouse_override",
 			# ← 画像
 			"avatar", "avatar_url",
+			'category_rates',
 		)
 
 	# ---------- helper ----------
@@ -159,16 +251,22 @@ class CastSerializer(serializers.ModelSerializer):
 								  secure=True)[0]
 		return None
 
-	# ---------- CREATE ----------
-	def create(self, validated):
-		username   = validated.pop("username")
-		first_name = validated.pop("first_name", "")
-		last_name  = validated.pop("last_name", "")
 
-		# ---------- 店舗を request.user から補完 ----------
-		request = self.context.get("request")
-		if not validated.get("store") and request and hasattr(request.user, "store_profile"):
-			validated["store"] = request.user.store_profile.store
+	# --------------------------------------------------
+	#					 CREATE
+	# --------------------------------------------------
+	def create(self, validated_data):
+		# ネストされて来た rate を取り出す
+		rates_data = validated_data.pop('category_rates', [])
+
+		# まずユーザーを作る（既存ロジックはそのまま）
+		username   = validated_data.pop('username')
+		first_name = validated_data.pop('first_name', '')
+		last_name  = validated_data.pop('last_name', '')
+
+		request = self.context.get('request')
+		if not validated_data.get('store') and request and hasattr(request.user, 'store_profile'):
+			validated_data['store'] = request.user.store_profile.store
 
 		user = User.objects.create_user(
 			username=username,
@@ -176,17 +274,52 @@ class CastSerializer(serializers.ModelSerializer):
 			first_name=first_name,
 			last_name=last_name,
 		)
-		return Cast.objects.create(user=user, **validated)
 
-	# ---------- UPDATE ----------
-	def update(self, instance, validated):
+		# Cast 本体を作成
+		cast = Cast.objects.create(user=user, **validated_data)
+
+		# rate 行を同期
+		self._sync_rates(cast, rates_data)
+		return cast
+
+	# --------------------------------------------------
+	#					 UPDATE
+	# --------------------------------------------------
+	def update(self, instance, validated_data):
+		# rate が来た場合だけ処理。来なければ据え置き
+		rates_data = validated_data.pop('category_rates', None)
+
+		# ユーザー情報更新（既存ロジック）
 		user = instance.user
-		# username / first_name / last_name が来ていたら更新
-		if "username"   in validated: user.username   = validated.pop("username")
-		if "first_name" in validated: user.first_name = validated.pop("first_name")
-		if "last_name"  in validated: user.last_name  = validated.pop("last_name")
-		user.save(update_fields=["username", "first_name", "last_name"])
-		return super().update(instance, validated)
+		if 'username' in validated_data:
+			user.username = validated_data.pop('username')
+		if 'first_name' in validated_data:
+			user.first_name = validated_data.pop('first_name')
+		if 'last_name' in validated_data:
+			user.last_name = validated_data.pop('last_name')
+		user.save(update_fields=['username', 'first_name', 'last_name'])
+
+		# Cast 本体フィールドを更新
+		cast = super().update(instance, validated_data)
+
+		# rate を送り直してきた場合だけ入れ替え
+		if rates_data is not None:
+			self._sync_rates(cast, rates_data)
+
+		return cast
+
+	# --------------------------------------------------
+	#			category‑rate 同期ヘルパ
+	# --------------------------------------------------
+	def _sync_rates(self, cast, rates_data):
+		"""
+		シンプルに：
+		1. 既存行を全削除 → 2. 送られてきた行を丸ごと作り直し
+		"""
+		CastCategoryRate.objects.filter(cast=cast).delete()
+		for r in rates_data:
+			CastCategoryRate.objects.create(cast=cast, **r)
+
 
 
 	def to_representation(self, obj):
@@ -206,6 +339,10 @@ class CastSerializer(serializers.ModelSerializer):
 			if obj.back_rate_inhouse_override is not None else cat.back_rate_inhouse
 		)
 		return data
+
+
+
+
 
 class BillCastStaySerializer(serializers.ModelSerializer):
 	cast = CastMiniSerializer()				   # ← ネストに置き換え
@@ -228,6 +365,10 @@ class BillSerializer(serializers.ModelSerializer):
 	expected_out = serializers.DateTimeField(read_only=True)
 	set_rounds   = serializers.IntegerField(read_only=True)
 	ext_minutes  = serializers.IntegerField(read_only=True)
+	main_cast	  = serializers.PrimaryKeyRelatedField(
+		queryset=Cast.objects.all(), allow_null=True, required=False
+	)
+	main_cast_obj  = CastMiniSerializer(source='main_cast', read_only=True)
 	# ---------- WRITE ----------
 	# “卓番号” を受け取る専用フィールド
 	table_id = serializers.PrimaryKeyRelatedField(
@@ -267,7 +408,8 @@ class BillSerializer(serializers.ModelSerializer):
 			"nominated_casts", "settled_total",
 			"inhouse_casts",		# READ
 			"inhouse_casts_w",	  # WRITE
-			"free_ids","set_rounds","ext_minutes",
+			"free_ids","set_rounds","ext_minutes", 'main_cast',	  # WRITE 用 (id)
+			'main_cast_obj',  # READ 用 ({id,stage_name})
 		)
 		read_only_fields = (
 			"subtotal", "service_charge", "tax", "grand_total", "total",
@@ -307,7 +449,7 @@ class BillSerializer(serializers.ModelSerializer):
 		# ---------- 1. 送信された ID 群を取り出す ----------
 		nominated_raw = validated_data.pop("nominated_casts", None)
 		inhouse_raw   = validated_data.pop("inhouse_casts_w", None)
-		free_raw      = validated_data.pop("free_ids", None)
+		free_raw	  = validated_data.pop("free_ids", None)
 
 		to_ids = lambda raw: [
 			c.id if isinstance(c, Cast) else c for c in (raw or [])
@@ -435,3 +577,5 @@ class BillSerializer(serializers.ModelSerializer):
 			self.get_service_charge(obj) +
 			self.get_tax(obj)
 		)
+
+

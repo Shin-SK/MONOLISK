@@ -133,6 +133,15 @@ const routes = [
           { path: 'pl/daily', component: () => import('@/views/BillPLDaily.vue'), meta: { title: '売上-日次' }},
           { path: 'pl/Monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次' }},
           { path: 'pl/yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次' } },
+          {
+            path: '/cast-sales',
+            component: () => import('@/views/CastSalesList.vue')
+          },
+          {
+            path: '/cast-sales/:id',
+            component: () => import('@/views/CastSalesDetail.vue'),
+            props: true
+          },
     ]
   },
 
@@ -142,6 +151,8 @@ const router = createRouter({
   history: createWebHistory(),
   routes,
 })
+
+
 
 
 

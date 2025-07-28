@@ -341,3 +341,18 @@ export const getBillingStores = () =>
 
 export const getBillingCasts = (params = {}) =>
 	api.get('billing/casts/', { params }).then(r => r.data)
+
+
+/* ---------- キャスト売上 ---------- */
+export const fetchCastSalesSummary = (params = {}) =>
+  api.get('billing/cast-sales/', { params }).then(r => r.data)
+
+export const fetchCastSalesDetail = (castId, params = {}) =>
+  api.get('billing/cast-payouts/', {
+    params: { cast: castId, ...params }
+  }).then(r => r.data)
+
+export const fetchCastItemDetails = (castId, params = {}) =>
+  api.get('billing/cast-items/', {
+    params: { cast: castId, ...params }
+  }).then(r => r.data)

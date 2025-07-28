@@ -1,11 +1,14 @@
-# billing/admin.py  （TAB インデント）
+# billing/admin.py
 
 from django.contrib import admin
-from django.contrib.auth import get_user_model      # ★★ ここを追加
+from django.contrib.auth import get_user_model
 from .models import (
     Store, Table, ItemCategory, ItemMaster, Bill, BillItem,
-    BillCastStay, Cast, CastPayout, ItemStock, UserStore, BillingUser
+    BillCastStay, Cast, CastPayout, ItemStock, UserStore, BillingUser, CastCategoryRate
 )
+from django.contrib import admin
+from .models import Store
+from django import forms
 from django.utils.safestring import mark_safe
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
@@ -14,12 +17,34 @@ from .resources import ItemCategoryRes, ItemMasterRes
 User = get_user_model()  
 
 
+class CastCategoryRateInline(admin.TabularInline):
+    model = CastCategoryRate
+    extra = 1
+
+
 # ───────── マスター ─────────
+class StoreForm(forms.ModelForm):
+    class Meta:
+        model  = Store
+        fields = "__all__"
+        widgets = {
+            # 0.01 刻みで入力。 % ではなく「0.50 = 50%」方式に統一
+            "nom_pool_rate": forms.NumberInput(attrs={"step": "0.01"}),
+        }
+
 @admin.register(Store)
 class StoreAdmin(admin.ModelAdmin):
-	list_display  = ('slug', 'name', 'service_rate', 'tax_rate')
-	search_fields = ('slug', 'name')
+    form = StoreForm
 
+    list_display  = ("name", "service_rate", "tax_rate", "nom_pool_rate")
+    list_editable = ("service_rate", "tax_rate", "nom_pool_rate")  # 一覧で即編集しても OK
+
+    fieldsets = (
+        (None,               {"fields": ("name", "slug")}),
+        ("各種レート",        {"fields": ("service_rate",
+                                      "tax_rate",
+                                      "nom_pool_rate")}),
+    )
 
 @admin.register(Table)
 class TableAdmin(admin.ModelAdmin):
@@ -35,6 +60,7 @@ class CastAdmin(admin.ModelAdmin):
     list_select_related = ("user", "store")
     search_fields      = ("stage_name", "user__username", "user__email")
     list_filter        = ("store",)
+    inlines = [CastCategoryRateInline]
 
     # ───────── フォーム構成 ───────
     # ① 大量ユーザーでも軽い raw_id   ② “＋”ボタンでユーザー新規作成
@@ -165,6 +191,7 @@ class UserStoreAdmin(admin.ModelAdmin):
     list_display  = ('user', 'store')
     list_select_related = ('store',)
     search_fields = ('user__username', 'store__name')
+
 
 
 

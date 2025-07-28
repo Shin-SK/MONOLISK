@@ -46,17 +46,37 @@ const inhouseSet   = ref(new Set())
 
 
 
-function toggleInhouse(cid) {
-  const s = inhouseSet.value
-  if (s.has(cid)) {
-    s.delete(cid)
-  } else {
-    s.add(cid)
-    // free に居なければ追加しておく
-    if (!freeCastIds.value.includes(cid))
-      freeCastIds.value.push(cid)
+/*
+ * ▶ 場内トグル
+ * ------------------------------------------------
+ *  1. API へ POST
+ *  2. レスポンス stay_type でローカル更新
+ */
+async function toggleInhouse (cid) {
+  const nowIn = inhouseSet.value.has(cid)
+  try {
+    const { data } = await api.post(
+      `billing/bills/${props.bill.id}/toggle-inhouse/`,
+      {
+        cast_id : cid,
+        inhouse : !nowIn,
+      }
+    )
+    // data.stay_type: "in" | "free"
+    if (data.stay_type === 'in') {
+      inhouseSet.value.add(cid)
+      if (!freeCastIds.value.includes(cid)) freeCastIds.value.push(cid)
+    } else {
+      inhouseSet.value.delete(cid)
+      // free には残す（stay_type==free）
+      if (!freeCastIds.value.includes(cid)) freeCastIds.value.push(cid)
+    }
+  } catch (e) {
+    console.error('toggle inhouse failed', e)
+    alert('場内フラグの更新に失敗しました')
   }
 }
+
 
 
 /* ---------- オーダー ---------- */

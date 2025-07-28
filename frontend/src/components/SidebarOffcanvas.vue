@@ -44,6 +44,7 @@ async function logout () {
           <RouterLink class="nav-link" to="/bills/pl/daily" @click="closeSidebar">PL/日次</RouterLink>
           <RouterLink class="nav-link" to="/bills/pl/monthly" @click="closeSidebar">PL/月次</RouterLink>
           <RouterLink class="nav-link" to="/bills/pl/yearly" @click="closeSidebar">PL/年次</RouterLink>
+          <RouterLink class="nav-link" to="/cast-sales" @click="closeSidebar">キャスト売上</RouterLink>
           <!-- <RouterLink class="nav-link" to="/expense/form" @click="closeSidebar">経費申請</RouterLink> -->
           <button
             class="nav-link d-flex justify-content-between align-items-center fw-semibold"

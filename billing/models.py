@@ -1,4 +1,5 @@
 # billing/models.py  ※TAB インデント
+from __future__ import annotations
 from django.conf import settings
 from decimal import Decimal, ROUND_HALF_UP
 from collections import defaultdict
@@ -37,6 +38,8 @@ class BillingUser(User):
 		app_label = 'billing'	   # ★ここを偽装するとサイドバーの見出しが billing になる
 		verbose_name = 'User'
 		verbose_name_plural = 'Users'
+  
+
 
 
 # ───────── マスター ─────────
@@ -45,6 +48,10 @@ class Store(models.Model):
 	name = models.CharField(max_length=50)
 	service_rate = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.10'))
 	tax_rate	 = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.10'))
+	nom_pool_rate = models.DecimalField(  # 0.50 = 50 %
+		max_digits=4, decimal_places=2, default=Decimal("0.50"),
+		verbose_name="本指名率")
+
 	def __str__(self): return self.name
 
 
@@ -160,10 +167,15 @@ class Bill(models.Model):
 	table = models.ForeignKey('billing.Table', on_delete=models.CASCADE, null=True, blank=True)
 	opened_at = models.DateTimeField(default=timezone.now)
 	closed_at = models.DateTimeField(null=True, blank=True)
-
-	# 退店予定時刻（SET／延長を追加・削除したら自動更新）
 	expected_out = models.DateTimeField('退店予定', null=True, blank=True)
 
+	main_cast = models.ForeignKey(		  # 本指名（0 or 1）
+		'billing.Cast',
+		null=True, blank=True,
+		on_delete=models.SET_NULL,
+		related_name='main_bills',
+		verbose_name='本指名'
+	)
 	nominated_casts = models.ManyToManyField('billing.Cast', blank=True, related_name='nominated_bills')
 
 	subtotal = models.PositiveIntegerField(default=0)
@@ -231,16 +243,39 @@ class Bill(models.Model):
 			self.save(update_fields=['expected_out'])
 		return self.expected_out
 
-	# ─── 締め処理は変更なし ───────────────────────
-	def close(self):
-		from .services import calc_bill_totals
-		res = calc_bill_totals(self)
-		self.total = res['total']
+	# billing/models.Bill
+	def close(self, settled_total: int | None = None):
+		"""
+		- 金額再計算
+		- CastPayout を作り直し
+		- 在席中 stay を締める
+		"""
+		self.recalc(save=True)
+
+		if settled_total:
+			self.settled_total = settled_total
+			self.total = settled_total
+		else:
+			self.total = self.grand_total
+
 		self.closed_at = timezone.now()
-		self.save()
+		self.save(update_fields=["subtotal","service_charge","tax",
+								"grand_total","total","settled_total",
+								"closed_at"])
+
+		# stay の一括退席
+		self.stays.filter(left_at__isnull=True).update(left_at=self.closed_at)
+
+		# CastPayout 再生成
+		from .services import calc_bill_totals
+		out = calc_bill_totals(self)
+
 		self.payouts.all().delete()
-		for cast, amt in res['payouts'].items():
-			CastPayout.objects.create(bill=self, cast=cast, amount=amt)
+		CastPayout.objects.bulk_create([
+			CastPayout(bill=self, bill_item=bi, cast=cs, amount=amt)
+			for cs, bi, amt in out["payouts"]
+		])
+
 
 	class Meta:
 		verbose_name = '伝票'
@@ -281,6 +316,9 @@ class BillItem(models.Model):
 		"""
 		admin.list_display 用。ItemCategory から既定率を引き、キャスト個別上書きを考慮
 		"""
+		if self.served_by_cast is None:
+			return Decimal('0.00')
+
 		if not self.item_master:
 			return Decimal('0.00')
 
@@ -301,6 +339,8 @@ class BillItem(models.Model):
 
 	# --------------- save / delete ---------------
 	def save(self, *args, **kwargs):
+		self.is_nomination = bool(self.is_nomination)
+		self.is_inhouse	= bool(self.is_inhouse)
 		if self.item_master:
 			self.name = self.name or self.item_master.name
 			self.price = self.price or self.item_master.price_regular
@@ -342,6 +382,13 @@ class BillCastStay(models.Model):
 		max_length=4, choices=STAY_TYPE, default='free'
 	)
 	is_inhouse = models.BooleanField(null=True, blank=True)
+	nom_weight = models.DecimalField(  # ← NEW!
+		max_digits=4, decimal_places=2,
+		null=True, blank=True,
+		help_text='この伝票だけの本指名バック用ウェイト。未入力なら1扱い'
+	)
+ 
+ 
 	class Meta:
 		ordering = ['entered_at']
 
@@ -357,6 +404,56 @@ class CastPayout(models.Model):
 	bill_item = models.ForeignKey(BillItem, null=True, blank=True,
 								  on_delete=models.CASCADE, related_name='payouts')
 	bill	  = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name='payouts', null=True)
-	cast	  = models.ForeignKey(Cast, on_delete=models.CASCADE, null=True)
+	cast	  = models.ForeignKey(Cast, on_delete=models.CASCADE, related_name='payouts', null=True)
 	amount	= models.PositiveIntegerField()
 	def __str__(self): return f'{self.cast}: ¥{self.amount}'
+
+
+
+class CastCategoryRate(models.Model):
+	cast	  = models.ForeignKey('billing.Cast', on_delete=models.CASCADE,
+								  related_name='category_rates')
+	category  = models.ForeignKey('billing.ItemCategory', on_delete=models.CASCADE)
+	rate_free	   = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+	rate_nomination = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+	rate_inhouse	= models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+
+	class Meta:
+		unique_together = ('cast', 'category')
+
+
+def rate_from_cast_category(cast, category, is_nom: bool, is_in: bool) -> Decimal | None:
+	"""
+	CastCategoryRate → Cast 上書き → Category 既定 の順で rate を返す。
+	該当なしなら None を返す（呼び出し側で fallback する）
+	"""
+	try:
+		cr = cast.category_rates.get(category=category)
+		if is_nom and cr.rate_nomination is not None:
+			return cr.rate_nomination
+		if is_in and cr.rate_inhouse is not None:
+			return cr.rate_inhouse
+		if (not is_nom and not is_in) and cr.rate_free is not None:
+			return cr.rate_free
+	except CastCategoryRate.DoesNotExist:
+		pass  # fall through to cast‑level override / category default
+
+	# Cast 固有の override
+	if is_nom and cast.back_rate_nomination_override is not None:
+		return cast.back_rate_nomination_override
+	if is_in and cast.back_rate_inhouse_override is not None:
+		return cast.back_rate_inhouse_override
+	if (not is_nom and not is_in) and cast.back_rate_free_override is not None:
+		return cast.back_rate_free_override
+
+	# Category 既定
+	if is_nom:
+		return category.back_rate_nomination
+	if is_in:
+		return category.back_rate_inhouse
+	return category.back_rate_free
+
+
+@receiver(post_delete, sender=BillItem)
+def _billitem_post_delete(sender, instance: 'BillItem', **kwargs):
+	instance.bill.update_expected_out(save=True)

@@ -7,6 +7,7 @@ import { api } from '@/api'
 const route  = useRoute()
 const router = useRouter()
 const isEdit = !!route.params.id
+const categories  = ref([]) 
 
 /* ---------- フォーム ---------- */
 const form = reactive({
@@ -14,6 +15,7 @@ const form = reactive({
   username   : '',
   first_name : '',
   last_name  : '',
+  category_rates: [],
   back_rate_free_override       : null,
   back_rate_nomination_override : null,
   back_rate_inhouse_override    : null,
@@ -37,6 +39,26 @@ function clearAvatar (){
   avatarUrl.value   = ''
   form.avatar_clear = true
 }
+
+/* ---------- バックレート系 ---------- */
+async function loadCategories () {
+  const { data } = await api.get('billing/item-categories/') // code & name だけでOK
+  categories.value = data
+}
+/* ---------- rate 行を１つ追加 ---------- */
+function addRateRow () {
+  form.category_rates.push({
+    category         : '',   // code をセット
+    rate_free        : null,
+    rate_nomination  : null,
+    rate_inhouse     : null,
+  })
+}
+/* ---------- 行を削除 ---------- */
+function removeRateRow (idx){
+  form.category_rates.splice(idx,1)
+}
+
 
 // /* ---------- 初期化 ---------- */
 async function fetchCast () {
@@ -100,8 +122,9 @@ async function remove () {
 }
 
 /* ---------- 起動 ---------- */
-onMounted(async () => {
-  await fetchCast()
+onMounted(async ()=>{
+  await loadCategories()
+  await fetchCast()      // 既存キャストは category_rates も流し込み
 })
 </script>
 
@@ -153,7 +176,7 @@ onMounted(async () => {
 
   <!-- バック率 -->
   <div class="mb-3">
-    <label class="form-label">バック率 (%)</label>
+    <label class="form-label">個別指名等バック率 (%)</label>
     <div class="row g-2">
       <div class="col">
         <input type="number" v-model.number="form.back_rate_free_override"
@@ -168,6 +191,45 @@ onMounted(async () => {
                placeholder="場内" class="form-control" min="0" max="100">
       </div>
     </div>
+  </div>
+
+
+  <div class="mb-4">
+    <label class="form-label fw-bold">カテゴリ別バック率 (%)</label>
+    <table class="table table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th style="width:140px">カテゴリ</th>
+          <th>フリー</th><th>本指名</th><th>場内</th><th style="width:60px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="(r,idx) in form.category_rates" :key="idx">
+          <!-- ▼カテゴリ選択（code をバインド） -->
+          <td>
+            <select v-model="r.category" class="form-select form-select-sm">
+              <option disabled value="">選択…</option>
+              <option v-for="c in categories" :key="c.code" :value="c.code">
+                {{ c.name }}
+              </option>
+            </select>
+          </td>
+          <td><input v-model.number="r.rate_free"
+                    type="number" min="0" max="100" class="form-control form-control-sm"></td>
+          <td><input v-model.number="r.rate_nomination"
+                    type="number" min="0" max="100" class="form-control form-control-sm"></td>
+          <td><input v-model.number="r.rate_inhouse"
+                    type="number" min="0" max="100" class="form-control form-control-sm"></td>
+          <td class="text-center">
+            <button class="btn btn-danger btn-sm"
+                    @click="removeRateRow(idx)">✕</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <button class="btn btn-outline-secondary btn-sm" @click="addRateRow">
+      + 行を追加
+    </button>
   </div>
 
   <!-- 操作ボタン -->
