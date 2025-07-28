@@ -96,12 +96,12 @@ const nomType = p => {
 										<td>{{ it.name }}</td>
 										<td class="text-end">×{{ it.qty }}</td>
 										<td class="text-end">{{ yen(it.subtotal / it.qty) }}</td>
-										<td class="text-end">
-											{{ it.is_nomination ? '-' : (it.back_rate*100).toFixed(0)+'%' }}
-										</td>
-										<td class="text-end">
-											{{ it.is_nomination ? '-' : yen(it.amount) }}
-										</td>
+  <td class="text-end">
+    {{ p.bill_item ? (it.back_rate*100).toFixed(0)+'%' : '-' }}
+  </td>
+  <td class="text-end">
+    {{ p.bill_item ? yen(it.amount) : '-' }}
+  </td>
 									</tr>
 								</tbody>
 
