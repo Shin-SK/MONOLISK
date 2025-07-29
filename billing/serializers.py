@@ -279,6 +279,22 @@ class CastSerializer(serializers.ModelSerializer):
         # Cast 本体を作成
         cast = Cast.objects.create(user=user, **validated_data)
 
+
+        # 新規入店の子につける0サマリー
+        CastDailySummary.objects.get_or_create(
+            cast=cast,
+            store=cast.store,          # 同じ店舗で
+            work_date=date.today(),    # 今日の日付
+            defaults=dict(
+                worked_min   = 0,
+                payroll      = 0,
+                sales_free   = 0,
+                sales_in     = 0,
+                sales_nom    = 0,
+                sales_champ  = 0,
+            )
+        )
+
         # rate 行を同期
         self._sync_rates(cast, rates_data)
         return cast

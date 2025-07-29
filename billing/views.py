@@ -643,7 +643,7 @@ class CastSalesSummaryView(ListAPIView):
         date_q = Q(daily_summaries__work_date__range=(f, t))
 
         return (Cast.objects
-                .filter(is_active=True)                # 退店は除外など
+                # .filter(is_active=True)                # 退店は除外など
                 .annotate(
                     sales_champ = Coalesce(Sum(
                         'daily_summaries__sales_champ',  filter=date_q), Value(0)),
