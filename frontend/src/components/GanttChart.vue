@@ -76,11 +76,11 @@ async function fetchBars(){
 
       const rowId = typeof b.table==='object' ? b.table.id : b.table
       const from  = new Date(b.opened_at)
-      const to    = b.closed_at
-                   ? new Date(b.closed_at)
-                   : b.expected_out
-                     ? new Date(b.expected_out)
-                     : new Date()
+      const to = b.expected_out               // ← 常に期待退店で描画
+        ? new Date(b.expected_out)
+        : new Date()                          // 念のためフォールバック
+
+      const isClosed = !!b.closed_at          // ← フラグ立てる
 
       return {
         rowId,
@@ -91,8 +91,11 @@ async function fetchBars(){
         ganttBarConfig:{
           id   : `bill_${b.id}`,
           label: '',
-          style:{ background:'rgba(25,135,84,.2)' }   // success 30% 透過
+          style:{ background: isClosed
+                  ? 'rgba(108,117,125,.3)'     // ← グレーで「済」
+                  : 'rgba(25,135,84,.2)' }     // ← 営業中は従来色
         },
+        isClosed,
       }
     })
     .filter(Boolean)

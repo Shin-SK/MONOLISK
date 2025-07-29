@@ -24,6 +24,7 @@ const visible = computed({
 
 /* ── キャスト一覧を API からロード ─────────────── */
 const casts = ref([])               // [{id, stage_name, …}]
+const onDutySet  = ref(new Set())
 const masters = ref([])
 const tables   = ref([])
 const castKeyword = ref('')
@@ -32,6 +33,16 @@ onMounted(async () => {
   try {
     const storeId = props.bill?.table?.store ?? ''   // ← 無ければ全店
     casts.value   = await fetchCasts(storeId)
+      /* ─ 今日シフト IN のキャスト一覧を取るだけ ───────── */
+      const today = dayjs().format('YYYY-MM-DD')
+      const { data: todayShifts } = await api.get('billing/cast-shifts/', {
+        params: { from: today, to: today, store: storeId }
+      })
+      onDutySet.value = new Set(
+        todayShifts
+          .filter(s => s.clock_in && !s.clock_out)   // ← ここがポイント
+          .map(s => s.cast.id)
+      )
 	  masters.value   = await fetchMasters(storeId)
     tables.value  = await fetchTables(storeId)
   } catch (e) {
@@ -571,10 +582,16 @@ async function save () {
                     :id="`cast-${c.id}`"
                     :value="c.id"
                     v-model="freeCastIds">
-            <label  class="btn d-flex align-items-center"
-                    :class=" (freeCastIds.includes(c.id) || mainCastIds.includes(c.id))
-                            ? 'bg-secondary-subtle'
-                            : 'bg-light'"
+            <label  
+                   class="btn d-flex align-items-center"
+                   :class="[
+                      (freeCastIds.includes(c.id) || mainCastIds.includes(c.id))
+                        ? 'bg-secondary-subtle'
+                        : 'bg-light',
+                      !onDutySet.has(c.id)               // ← シフト外なら灰色
+                        ? 'text-muted opacity-50'
+                        : ''
+                    ]"
                     :for="`cast-${c.id}`">
               <!-- Avatar(共通コンポーネント) -->
               <Avatar :url="c.avatar_url" :alt="c.stage_name" size="28" class="me-1"/>
@@ -660,7 +677,7 @@ async function save () {
           <!-- 1 注文キャスト -->
           <select class="form-select" v-model="draftCastId">
             <option :value="null">‑ CAST ‑</option>
-            <option v-for="c in casts" :key="c.id" :value="c.id">{{ c.stage_name }}</option>
+            <option v-for="c in currentCasts" :key="c.id" :value="c.id">{{ c.stage_name }}</option>
           </select>
 
           <!-- 3 品名（選択したカテゴリだけが出る） -->

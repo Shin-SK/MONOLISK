@@ -46,29 +46,16 @@ const displayName = computed(() =>
   <header class="header">
     <div class="header__wrap container d-flex justify-content-between align-items-center">
 
-      <!-- アバター（メニュー開閉トグル） -->
-	   <button class="avatar-icon btn p-0 border-0 bg-transparent"
-        data-bs-toggle="offcanvas"
-        data-bs-target="#appSidebar"
-        aria-controls="appSidebar">
-			<img  :src="userStore.avatar" class="rounded-circle" width="40" height="40"/>
-		</button>
+        <!-- アバター（メニュー開閉トグル） -->
+      <button class="avatar-icon btn p-0 border-0 bg-transparent"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#appSidebar"
+          aria-controls="appSidebar">
+        <img  :src="userStore.avatar" class="rounded-circle" width="40" height="40"/>
+      </button>
+      <h2>MyPage</h2>
 
 
-      <!-- ページ切替ミニナビ -->
-      <div class="mini-nav">
-        <button class="btn btn-sm"
-                :class="mode==='list' ? 'btn-primary':'btn-outline-primary'"
-                @click="goList">
-          <span class="material-symbols-outlined">list</span>
-        </button>
-
-        <button class="btn btn-sm"
-                :class="mode==='timeline' ? 'btn-primary':'btn-outline-primary'"
-                @click="goTimeline">
-          <span class="material-symbols-outlined">view_timeline</span>
-        </button>
-      </div>
     </div>
   </header>
 

@@ -1,39 +1,69 @@
-<script setup>
-import { onMounted, ref, computed, watch } from 'vue'
-import { fetchCastSalesDetail, fetchCastItemDetails } from '@/api'
-import dayjs from 'dayjs'
-import { useRoute } from 'vue-router'
+<!-- src/views/CastSalesDetail.vue  修正版 -->
 
+<script setup>
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import dayjs from 'dayjs'
+import {
+  fetchCastSalesDetail,
+  fetchCastItemDetails,
+  fetchCastShiftHistory
+} from '@/api'
+
+/* ---------- ルーティング ---------- */
 const { params:{ id } } = useRoute()
+
+/* ---------- 期間 ---------- */
 const dateFrom = ref(dayjs().startOf('month').format('YYYY-MM-DD'))
 const dateTo   = ref(dayjs().format('YYYY-MM-DD'))
-const payouts  = ref([])
-const details  = ref({})
 
-async function load(){
-	const params = { from: dateFrom.value, to: dateTo.value }
-	payouts.value = await fetchCastSalesDetail(id, params)
-	const items   = await fetchCastItemDetails(id, params)
-	details.value = {}
-	items.forEach(it => {
-		(details.value[it.bill_id] ??= []).push(it)
-	})
+/* ---------- データ ---------- */
+const payouts = ref([])
+const details = ref({})
+const shifts  = ref([])
+
+/* ---------- 取得 ---------- */
+async function load () {
+  const params = { from: dateFrom.value, to: dateTo.value }
+
+  payouts.value = await fetchCastSalesDetail(id, params)
+  const items   = await fetchCastItemDetails(id, params)
+  shifts.value  = await fetchCastShiftHistory(id, params)
+
+  /* bill_id → 明細配列 の形にまとめ直し */
+  details.value = {}
+  items.forEach(it => {
+    (details.value[it.bill_id] ??= []).push(it)
+  })
 }
+
 onMounted(load)
 watch([dateFrom, dateTo], load)
 
-/* util */
-const castName = computed(()=> payouts.value[0]?.cast?.stage_name || '')
+/* ---------- util & 集計 ---------- */
+const yen      = n => `¥${(+n || 0).toLocaleString()}`
 const fmt      = d => new Date(d).toLocaleString()
-const yen      = n => `¥${(+n||0).toLocaleString()}`
-const total    = computed(()=> payouts.value.reduce((s,p)=>s+p.amount,0))
+const castName = computed(() => payouts.value[0]?.cast?.stage_name || '')
 
+/* 売上ギャラ合計 */
+const totalPayout = computed(
+  () => payouts.value.reduce((s, p) => s + p.amount, 0)
+)
 
-/* 指名区分を返す */
+/* 勤務時間・時給関連 */
+const workedMin = computed(
+  () => shifts.value.reduce((s, sh) => s + (sh.worked_min || 0), 0)
+)
+const payrollSum = computed(
+  () => shifts.value.reduce((s, sh) => s + (sh.payroll_amount || 0), 0)
+)
+const totalAll   = computed(() => totalPayout.value + payrollSum.value)
+
+/* 指名区分 */
 const nomType = p => {
-	if (!p.bill_item) return '本指名'          // プール = 本指名
-	if (p.bill_item.is_inhouse) return '場内'
-	return 'フリー'
+  if (!p.bill_item)           return '本指名'   // プール = 本指名
+  if (p.bill_item.is_inhouse) return '場内'
+  return 'フリー'
 }
 </script>
 
@@ -41,17 +71,17 @@ const nomType = p => {
 	<div class="container-fluid mt-4">
 		<h2 class="mb-3">{{ castName }} の売上</h2>
 
-		<!-- 期間指定 -->
-		<div class="d-flex align-items-end gap-2 mb-3">
-			<div>
-				<label class="form-label">開始日</label>
-				<input type="date" v-model="dateFrom" class="form-control" />
-			</div>
-			<div>
-				<label class="form-label">終了日</label>
-				<input type="date" v-model="dateTo" class="form-control" />
-			</div>
-		</div>
+    <!-- 期間指定 -->
+    <div class="d-flex align-items-end gap-2 mb-3">
+      <div>
+        <label class="form-label">開始日</label>
+        <input type="date" v-model="dateFrom" class="form-control" />
+      </div>
+      <div>
+        <label class="form-label">終了日</label>
+        <input type="date" v-model="dateTo" class="form-control" />
+      </div>
+    </div>
 
 		<table class="table">
 			<thead class="table-dark">
@@ -107,7 +137,7 @@ const nomType = p => {
 
 								<tfoot class="fw-bold bg-white">
 									<tr>
-										<td colspan="4" class="text-end">ギャラ合計</td>
+										<td colspan="4" class="text-end">ギャラ小計</td>
 										<td class="text-end">{{ yen(p.amount) }}</td>
 									</tr>
 								</tfoot>
@@ -117,12 +147,16 @@ const nomType = p => {
 				</template>
 			</tbody>
 
-			<tfoot class="fw-bold">
-				<tr>
-					<td colspan="4" class="text-end">総ギャラ合計</td>
-					<td class="text-end">{{ yen(total) }}</td>
-				</tr>
-			</tfoot>
+      <tfoot class="fw-bold">
+        <tr>
+          <td colspan="4" class="text-end">時給小計</td>
+          <td class="text-end">{{ yen(payrollSum) }}</td>
+        </tr>
+        <tr>
+          <td colspan="4" class="text-end">総ギャラ合計</td>
+          <td class="text-end">{{ yen(totalAll) }}</td>
+        </tr>
+      </tfoot>
 		</table>
 	</div>
 </template>

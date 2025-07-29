@@ -12,11 +12,8 @@ import CastLayout       from '@/layouts/CastLayout.vue'
 import ReservationList       from '@/views/ReservationList.vue'
 import ReservationFormAdmin  from '@/views/ReservationFormAdmin.vue'
 import ReservationFormDriver from '@/views/ReservationFormDriver.vue'
-import ReservationFormCast from '@/views/ReservationFormCast.vue'
 import Login                 from '@/views/Login.vue'
 import TimelineAdmin         from '@/views/TimelineAdmin.vue'
-import CastMypage          from '@/views/CastMypage.vue'
-import CastSales          from '@/views/CastSales.vue'
 import DriverMypage        from '@/views/DriverMypage.vue'
 import CustomerList          from '@/views/CustomerList.vue'
 import CustomerForm          from '@/views/CustomerForm.vue'
@@ -68,7 +65,7 @@ const routes = [
         component: () => import('@/views/DriverShift.vue'),
         props: true
       },
-      { path: 'cast-shifts', component: () => import('@/views/CastShift.vue') },
+      // { path: 'cast-shifts', component: () => import('@/views/CastShift.vue') },
       { path: 'sales', component: Sales },
       /* ---------- PL ---------- */
       { path: '/pl/monthly', component: PLMonthly },
@@ -104,23 +101,8 @@ const routes = [
     ],
   },
 
-  /* ---------- キャスト ---------- */
-  {
-    path: '/cast',
-    component: CastLayout,
-    meta: { requiresAuth: true, castOnly: true },
-    children: [
-      { path: '', redirect: '/cast/mypage' },
-      { path: 'mypage',        component: CastMypage },
-      { path: 'reservations/:id', component: ReservationFormCast },
-      { path:'sales', component: CastSales },
-      { path: 'profile', component: UserProfileEdit }   // /cast/profile など
-    ],
-  },
-
   /* ---------- 認証 ---------- */
   { path: '/login', component: Login },
-
 
 
   /* ---------- キャバクラ編 伝票 ---------- */
@@ -133,17 +115,29 @@ const routes = [
           { path: 'pl/daily', component: () => import('@/views/BillPLDaily.vue'), meta: { title: '売上-日次' }},
           { path: 'pl/Monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次' }},
           { path: 'pl/yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次' } },
-          {
-            path: '/cast-sales',
-            component: () => import('@/views/CastSalesList.vue')
-          },
-          {
-            path: '/cast-sales/:id',
-            component: () => import('@/views/CastSalesDetail.vue'),
-            props: true
-          },
+          { path: '/cast-sales', component: () => import('@/views/CastSalesList.vue') },
+          { path: '/cast-sales/:id', component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail' },
+          { path: 'cast-shift', component: () => import('@/views/CastShiftList.vue'), props: true },
+          { path: 'cast-shift/:id/shifts', component: () => import('@/views/CastShiftPage.vue'), props: true ,name: 'cast-shift-page', },
     ]
   },
+
+  {
+    path: '/cast',
+    component: CastLayout,
+    meta: { requiresAuth: true }, // ★ 後で castOnly へ
+    children: [
+      { path: '', redirect: '/cast/mypage' },
+
+      // マイページは「必ず :id を付ける」形に
+      { path: 'mypage/:id(\\d+)', component: () => import('@/views/CastMypage.vue'), name: 'cast-mypage' },
+
+      { path: 'sales', component: () => import('@/views/CastSalesDetail.vue') },
+      { path: 'profile', component: UserProfileEdit },
+    ],
+  },
+
+
 
 ]
 

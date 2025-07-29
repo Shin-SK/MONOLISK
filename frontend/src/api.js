@@ -4,6 +4,7 @@ import qs        from 'qs'
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
 })
+import dayjs from 'dayjs'
 
 
 /* ---------------------------------------- */
@@ -356,3 +357,72 @@ export const fetchCastItemDetails = (castId, params = {}) =>
   api.get('billing/cast-items/', {
     params: { cast: castId, ...params }
   }).then(r => r.data)
+
+/**
+ * 一覧取得
+ *   params: { cast, date, ordering, ... }
+ */
+export const fetchCastShifts = (params = {}) =>
+    api.get('billing/cast-shifts/', { params }).then(r => r.data)
+
+/**
+ * 予定＋実績の新規作成
+ *   payload: { cast_id, store_id, plan_start, plan_end, clock_in, clock_out }
+ */
+export const createCastShift = payload =>
+    api.post('billing/cast-shifts/', payload).then(r => r.data)
+
+/**
+ * 更新（汎用）
+ *   id:        shift 行 ID
+ *   payload:   任意フィールドを部分更新
+ */
+export const patchCastShift = (id, payload) =>
+    api.patch(`billing/cast-shifts/${id}/`, payload).then(r => r.data)
+
+/**
+ * 削除
+ */
+export const deleteCastShift = id =>
+    api.delete(`billing/cast-shifts/${id}/`)
+
+/* --- 便利ラッパ --- */
+
+/** 出勤打刻 (clock_in を現在時刻でセット) */
+export const castCheckIn = (id, at = dayjs().toISOString()) =>
+    patchCastShift(id, { clock_in: at })
+
+/** 退勤打刻 (clock_out を現在時刻でセット) */
+export const castCheckOut = (id, at = dayjs().toISOString()) =>
+    patchCastShift(id, { clock_out: at })
+
+/* ---------- Cast シフト履歴 ---------- */
+export const fetchCastShiftHistory = (castId, params = {}) =>
+  api.get('billing/cast-shifts/', {
+    params: { cast: castId, ordering: '-clock_in', ...params },
+  }).then(r => r.data)
+
+export const updateCastShift = (id, payload) =>
+  api.patch(`billing/cast-shifts/${id}/`, payload).then(r => r.data)
+
+
+/* ★NEW:  出勤打刻だけクリア（予定は残す） */
+export const clearCastAttendance = id =>
+  api.patch(`billing/cast-shifts/${id}/`, {
+    clock_in : null,
+    clock_out: null,
+  }).then(r => r.data)  
+
+
+export const fetchCastDailySummaries = (params = {}) =>
+  api.get('billing/cast-daily-summaries/', { params })
+     .then(r => r.data);
+
+
+/* ---------- Cast ランキング ---------- */
+/**
+ * Top‑10 ランキング
+ *   params: { from:'YYYY-MM-DD', to:'YYYY-MM-DD' } 省略時＝当月
+ */
+export const fetchCastRankings = (params = {}) =>
+  api.get('billing/cast-rankings/', { params }).then(r => r.data)

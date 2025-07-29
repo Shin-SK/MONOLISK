@@ -15,6 +15,7 @@ const form = reactive({
   username   : '',
   first_name : '',
   last_name  : '',
+  hourly_wage: null,
   category_rates: [],
   back_rate_free_override       : null,
   back_rate_nomination_override : null,
@@ -69,6 +70,7 @@ async function fetchCast () {
     username   : data.username_read,
     first_name : data.first_name_read,
     last_name  : data.last_name_read,
+    hourly_wage: data.hourly_wage,
   })
   avatarUrl.value = data.avatar_url || ''
 }
@@ -172,6 +174,17 @@ onMounted(async ()=>{
               class="btn btn-outline-danger btn-sm"
               @click="clearAvatar">削除</button>
     </div>
+  </div>
+
+  <div class="mb-3">
+      <label class="form-label">時給 (円)</label>
+      <input
+          v-model.number="form.hourly_wage"
+          type="number"
+          class="form-control"
+          min="0"
+          placeholder="例: 3000"
+      >
   </div>
 
   <!-- バック率 -->

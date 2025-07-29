@@ -38,13 +38,15 @@ async function logout () {
 
       <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
         <!-- -------- ナビ ---------- -->
-        <nav class="nav flex-column">
+        <nav class="nav flex-column h-100">
           <RouterLink class="nav-link" to="/" @click="closeSidebar">ダッシュボード</RouterLink>
           <!-- <RouterLink class="nav-link" to="/bills"  @click="closeSidebar">伝票一覧</RouterLink> -->
           <RouterLink class="nav-link" to="/bills/pl/daily" @click="closeSidebar">PL/日次</RouterLink>
           <RouterLink class="nav-link" to="/bills/pl/monthly" @click="closeSidebar">PL/月次</RouterLink>
           <RouterLink class="nav-link" to="/bills/pl/yearly" @click="closeSidebar">PL/年次</RouterLink>
+          <RouterLink class="nav-link" to="/bills/cast-shift" @click="closeSidebar">キャストシフト</RouterLink>
           <RouterLink class="nav-link" to="/cast-sales" @click="closeSidebar">キャスト売上</RouterLink>
+
           <!-- <RouterLink class="nav-link" to="/expense/form" @click="closeSidebar">経費申請</RouterLink> -->
           <button
             class="nav-link d-flex justify-content-between align-items-center fw-semibold"
@@ -63,25 +65,7 @@ async function logout () {
             <RouterLink class="nav-link" to="/casts" @click="closeSidebar">キャスト情報</RouterLink>
           </div>
 
-          <!-- <button
-            class="nav-link d-flex justify-content-between align-items-center fw-semibold"
-            data-bs-toggle="collapse"
-            data-bs-target="#settingsCollapse"
-            :class="{ collapsed: !settingsActive}"
-            type="button">
-            設定
-           <i class="bi bi-chevron-right"></i>
-          </button>
-
-          <div
-            id="settingsCollapse"
-            class="collapse ps-3"
-            :class="{ show: settingsActive }">
-            <RouterLink class="nav-link" to="/cast-shifts" @click="closeSidebar">キャスト出退勤</RouterLink>
-            <RouterLink class="nav-link" to="/driver-shifts" @click="closeSidebar">ドライバー出退勤</RouterLink>
-            <RouterLink class="nav-link" to="/drivers" @click="closeSidebar">ドライバー情報</RouterLink>
-            <RouterLink class="nav-link" to="/customers" @click="closeSidebar">顧客管理</RouterLink>
-          </div> -->
+          <RouterLink class="nav-link mt-auto" to="/cast/mypage/1" @click="closeSidebar">キャストマイページ（サンプルID=1）</RouterLink>
         </nav>
 
         <!-- -------- フッタ ---------- -->
