@@ -27,15 +27,14 @@ class CastPayoutSerializer(serializers.ModelSerializer):
         model    = CastPayout
         fields    = '__all__'
   
-class CastSalesSummarySerializer(serializers.Serializer):
-    cast_id      = serializers.IntegerField()
-    stage_name   = serializers.CharField()          # ← フィールド名変更
-    sales_nom    = serializers.IntegerField()
-    sales_in     = serializers.IntegerField()
-    sales_free   = serializers.IntegerField()
-    sales_champ  = serializers.IntegerField()
-    total        = serializers.IntegerField()
-
+class CastSalesSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Cast
+        fields = (
+            'id', 'stage_name',
+            'sales_champ', 'sales_nom', 'sales_in', 'sales_free',
+            'total', 'payroll',
+        )
 
 class BillItemMiniSerializer(serializers.ModelSerializer):
     class Meta:

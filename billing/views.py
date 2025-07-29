@@ -622,23 +622,43 @@ class CastShiftViewSet(StoreScopedModelViewSet):
             
             
 
-class CastDailySummaryViewSet(StoreScopedModelViewSet):
-    """
-    GET   /billing/cast-daily-summaries/?from=YYYY-MM-DD&to=YYYY-MM-DD&cast=ID
-    """
-    serializer_class = CastDailySummarySerializer
-    queryset         = CastDailySummary.objects.select_related('cast', 'store')
-    filter_backends  = [DjangoFilterBackend]
-    filterset_fields = ['cast', 'work_date']
 
-    # 期間指定 (?from=2025‑07‑01&to=2025‑07‑31)
+
+class CastSalesSummaryView(ListAPIView):
+    """
+    GET /api/billing/cast-sales/?from=YYYY-MM-DD&to=YYYY-MM-DD
+    └ 期間を指定しなければ当月
+    """
+    serializer_class = CastSalesSummarySerializer      # 下に例あり
+    pagination_class = None
+
     def get_queryset(self):
-        qs = super().get_queryset()
-        f  = self.request.query_params.get('from')
-        t  = self.request.query_params.get('to')
-        if f and t:
-            qs = qs.filter(work_date__range=(f, t))
-        return qs.order_by('cast__stage_name', 'work_date')
+        f = self.request.query_params.get('from')
+        t = self.request.query_params.get('to')
+        if not (f and t):
+            today = timezone.localdate()
+            f = today.replace(day=1)
+            t = today
+
+        date_q = Q(daily_summaries__work_date__range=(f, t))
+
+        return (Cast.objects
+                .filter(is_active=True)                # 退店は除外など
+                .annotate(
+                    sales_champ = Coalesce(Sum(
+                        'daily_summaries__sales_champ',  filter=date_q), Value(0)),
+                    sales_nom   = Coalesce(Sum(
+                        'daily_summaries__sales_nom',    filter=date_q), Value(0)),
+                    sales_in    = Coalesce(Sum(
+                        'daily_summaries__sales_in',     filter=date_q), Value(0)),
+                    sales_free  = Coalesce(Sum(
+                        'daily_summaries__sales_free',   filter=date_q), Value(0)),
+                    payroll     = Coalesce(Sum(
+                        'daily_summaries__payroll',      filter=date_q), Value(0)),
+                    total       = F('sales_champ') + F('sales_nom')
+                                 + F('sales_in') + F('sales_free'),
+                )
+                .order_by('stage_name'))
 
 
 

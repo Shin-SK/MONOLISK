@@ -348,6 +348,7 @@ export const getBillingCasts = (params = {}) =>
 export const fetchCastSalesSummary = (params = {}) =>
   api.get('billing/cast-sales/', { params }).then(r => r.data)
 
+
 export const fetchCastSalesDetail = (castId, params = {}) =>
   api.get('billing/cast-payouts/', {
     params: { cast: castId, ...params }
