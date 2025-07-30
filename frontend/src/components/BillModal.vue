@@ -367,7 +367,7 @@ mainCastIds.value  = stayNom
 freeCastIds.value  = [...new Set([...stayFree, ...stayIn])]
 inhouseSet.value   = new Set(stayIn)
 
-form.table_id = b.table?.id ?? null
+form.table_id = b.table?.id ?? b.table_id_hint ?? null
 }, { immediate:true })
 
 /* ---------- ウォッチャー ---------- */
@@ -401,44 +401,50 @@ function removeCast(id) {
 
 /* ── 保存ボタン ─────────────────────────────── */
 async function save () {
-
+  /* 1. 未送信の注文（pending）をまず確定 */
   for (const it of pending.value) {
     try {
-    const payload = {
-      item_master : it.master_id,
-      qty         : it.qty,
-    }
-    if (it.cast_id != null) payload.served_by_cast_id = it.cast_id
-
-    const newItem = await addBillItem(props.bill.id, payload)
-      props.bill.items.push(newItem)
-      
+      const payload = {
+        item_master       : it.master_id,
+        qty               : it.qty,
+        served_by_cast_id : it.cast_id ?? undefined      // null は送らない
+      }
+      const newItem = await addBillItem(props.bill.id, payload)
+      props.bill.items.push(newItem)                     // フロントへ即反映
     } catch (e) {
       console.error('add item failed', e)
+      alert('注文の送信に失敗しました')
     }
   }
-  pending.value = []   // クリア（UI からも消す）
+  pending.value = []   // クリア
 
-  /* ----------------------------------------------------
-   * 2.  Bill 本体の更新（卓 / 指名 / 場内）
-   * -------------------------------------------------- */
+  /* 2. 指名・場内・フリー配列を同期 */
+  try {
+    await updateBillCasts(props.bill.id, {
+      nomIds  : [...mainCastIds.value],
+      inIds   : [...inhouseSet.value],
+      freeIds : [...freeCastIds.value],
+    })
+  } catch (e) {
+    console.error('updateBillCasts failed', e)
+    alert('キャスト情報の更新に失敗しました')
+  }
+
+  /* 3. 卓番号が変更されていれば PATCH */
+  /* 新規伝票直後は currentTableId が null になるので、その場合も必ず PATCH を走らせる */
+  const currentTableId = props.bill.table?.id ?? props.bill.table ?? null
+  if (currentTableId === null || form.table_id !== currentTableId) {
     try {
-      await updateBillCasts(props.bill.id, {
-        nomIds  : [...mainCastIds.value],
-        inIds   : [...inhouseSet.value],
-        freeIds : [...freeCastIds.value],
+      await api.patch(`billing/bills/${props.bill.id}/`, {
+        table_id: form.table_id                       // 数値 or null
       })
-
-      // 卓番号を変えたときだけ PATCH
-      if (form.table_id !== props.bill.table?.id) {
-        await api.patch(`billing/bills/${props.bill.id}/`, { table_id: form.table_id })
-      }
     } catch (e) {
-      console.error('updateBillCasts failed', e)
+      console.error('table patch failed', e)
+      alert('卓番号の更新に失敗しました')
     }
-  /* ----------------------------------------------------
-   * 3.  親コンポーネントへ通知してモーダル閉じ
-   * -------------------------------------------------- */
+  }
+
+  /* 4. 親へ通知してモーダルを閉じる */
   emit('saved', props.bill.id)
 }
 
@@ -531,7 +537,7 @@ async function save () {
               <i class="bi bi-x me-2"
                   role="button"
                   @click.stop="removeCast(c.id)"></i>
-              <Avatar :url="c.avatar_url" :alt="c.stage_name" size="28" class="me-1" />
+              <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
               <span>{{ c.stage_name }}</span>
               <span class="badge bg-danger text-white ms-1 d-flex align-items-center">
                 本指名
@@ -547,7 +553,7 @@ async function save () {
               <i class="bi bi-x me-2"
                   role="button"
                   @click.stop="removeCast(c.id)"></i>
-              <Avatar :url="c.avatar_url" :alt="c.stage_name" size="28" class="me-1" />
+              <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
               <span>{{ c.stage_name }}</span>
               <span class="badge"
                     :class="c.inhouse ? 'bg-success' : 'bg-secondary'">
@@ -594,7 +600,7 @@ async function save () {
                     ]"
                     :for="`cast-${c.id}`">
               <!-- Avatar(共通コンポーネント) -->
-              <Avatar :url="c.avatar_url" :alt="c.stage_name" size="28" class="me-1"/>
+              <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1"/>
               {{ c.stage_name }}
               <!-- 本指名バッジ -->
               <span class="badge ms-2"
@@ -630,7 +636,7 @@ async function save () {
       </small>
 
       <!-- アバター -->
-      <Avatar :url="ev.avatar" :alt="ev.name" size="24" class="me-1" />
+      <Avatar :url="ev.avatar" :alt="ev.name" :size="24" class="me-1" />
 
       <!-- 名前 -->
       <span class="flex-grow-1">{{ ev.name }}</span>

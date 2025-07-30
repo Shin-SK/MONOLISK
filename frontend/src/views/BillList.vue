@@ -186,7 +186,7 @@ function liveCasts (b) {
          :key="p.id"
          class="d-flex align-items-center btn text-light p-2"
          :class="`bg-${p.color}`">
-      <Avatar :url="p.avatar" :alt="p.name" size="28" class="me-1"/>
+      <Avatar :url="p.avatar" :alt="p.name" :size="28" class="me-1"/>
       <span class="fw-bold">{{ p.name }}</span>
     </div>
   </div>

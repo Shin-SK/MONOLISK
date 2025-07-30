@@ -16,6 +16,7 @@ const currentBill = ref(null)
 /* ── 初回ロード ── */
 onMounted(async () => {
   await Promise.all([billsStore.loadAll(), loadTables()])
+  checkDuplicates()
 })
 
 async function loadTables () {
@@ -36,10 +37,7 @@ function paxCount (bill){
 const openBillMap = computed(() => {
   const m = new Map()
   billsStore.list.forEach(b => {
-     if (
-       !b.closed_at &&
-       dayjs(b.opened_at).isSame(dayjs(), 'day')   // ★ 今日の伝票だけ！
-     ){
+     if (!b.closed_at){
        m.set(b.table?.id || b.table, b)
      }  })
   return m
@@ -53,11 +51,12 @@ async function handleClick (table) {
   const hit = getOpenBill(table.id)
 
   if (hit){
-    currentBill.value = await fetchBill(hit.id)   // 既存伝票 → そのまま
+    currentBill.value = { ...(await fetchBill(hit.id)), table_id_hint: table.id }
   }else{
     const bill = await createBill({ table_id: table.id })
+    const fetched   = await fetchBill(bill.id)
     // table.number をモーダルに渡すため、オブジェクトを合成
-    currentBill.value = { ...bill, table }       // table は {id,number,store}
+    currentBill.value = { ...fetched, table_id_hint: table.id }
   }
 
   showModal.value = true
@@ -67,7 +66,35 @@ async function handleClick (table) {
 async function handleSaved () {
   showModal.value = false
   await billsStore.loadAll()
+  checkDuplicates()
 }
+
+/* ── 重複伝票チェック ─────────────────── */
+function checkDuplicates () {
+  // { tableId : 件数 } を集計
+  const counts = {}
+  billsStore.list.forEach(b => {
+    if (b.closed_at) return
+    const id = b.table?.id || b.table
+    counts[id] = (counts[id] || 0) + 1
+  })
+
+  // 2 件以上ある卓を抽出
+  const dupTables = Object.entries(counts)
+    .filter(([, cnt]) => cnt > 1)
+    .map(([id]) => {
+      const t = tables.value.find(t => t.id == id)
+      return t ? t.number : id
+    })
+
+  if (dupTables.length) {
+    window.alert(
+      `テーブル【${dupTables.join(', ')}】でアクティブな伝票があります。\n` +
+      `リストビューで確認してください。`
+    )
+  }
+}
+
 
 /* 新規追加ボタン（テーブル未指定） */
 async function newBill () {
@@ -150,7 +177,7 @@ function liveCasts(b){
                  class="d-flex align-items-center btn text-light p-2"
                  :class="`bg-${p.color}`"
                  :style="p.afterWidth ? {'--after-width': p.afterWidth} : {}">
-              <Avatar :url="p.avatar" :alt="p.name" size="28" class="me-1"/>
+              <Avatar :url="p.avatar" :alt="p.name" :size="28" class="me-1"/>
               <span class="fw-bold">{{ p.name }}</span>
             </div>
           </div>
