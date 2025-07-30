@@ -160,3 +160,69 @@ def get_cast_sales(date_from, date_to, store_id=None):
             total         = F('total'),
         )
     )
+
+
+
+# billing/services.py
+from typing import Iterable, Set
+from .models import Bill, BillItem, ItemMaster
+
+_MAIN_FEE_CODE   = "mainNom-fee"      # ← ItemMaster.code
+_INHOUSE_FEE_CODE = "houseNom-fee"    # ← ItemMaster.code
+
+
+def _sync_fee_lines(
+    bill: Bill,
+    cast_ids_added: Iterable[int],
+    cast_ids_removed: Iterable[int],
+    item_code: str,
+):
+    """差分だけ BillItem を追加／削除する共通ルーチン"""
+    master = ItemMaster.objects.get(code=item_code)
+
+    # 追加 ────────────────────────────
+    for cid in cast_ids_added:
+        BillItem.objects.get_or_create(
+            bill=bill,
+            item_master=master,
+            served_by_cast_id=cid,
+            defaults=dict(
+                qty=1,
+                price=master.price_regular,     # 販売価格
+                exclude_from_payout=True,       # 歩合の対象外なら (任意)
+            ),
+        )
+
+    # 削除 ────────────────────────────
+    if cast_ids_removed:
+        BillItem.objects.filter(
+            bill=bill,
+            item_master=master,
+            served_by_cast_id__in=cast_ids_removed,
+        ).delete()
+
+
+def sync_nomination_fees(
+    bill: Bill,
+    prev_main: Set[int], new_main: Set[int],
+    prev_in:   Set[int], new_in:   Set[int],
+):
+    """
+    ・mainNom‑fee / houseNom‑fee の BillItem を差分で整合させる
+    ・最後に bill.recalc() で金額を確定
+    """
+    _sync_fee_lines(
+        bill,
+        cast_ids_added=new_main - prev_main,
+        cast_ids_removed=prev_main - new_main,
+        item_code=_MAIN_FEE_CODE,
+    )
+    _sync_fee_lines(
+        bill,
+        cast_ids_added=new_in - prev_in,
+        cast_ids_removed=prev_in - new_in,
+        item_code=_INHOUSE_FEE_CODE,
+    )
+
+    # 金額の再計算は 1 回で OK
+    bill.recalc(save=True)

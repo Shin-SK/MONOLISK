@@ -16,6 +16,7 @@ from django.db.models import Sum, F, Q, IntegerField, ExpressionWrapper
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models.functions import Coalesce
 from datetime import date
+from .services import sync_nomination_fees
 
 from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, Cast, BillCastStay, Cast, CastPayout ,BillItem, ItemCategory, CastShift, CastDailySummary
 from .serializers import CastSalesSummarySerializer, CastPayoutDetailSerializer, CastItemDetailSerializer, CastSerializer, ItemCategorySerializer, StoreSerializer, TableSerializer, BillSerializer, ItemMasterSerializer, BillItemSerializer, CastSerializer, CastShiftSerializer, CastDailySummarySerializer, CastRankingSerializer
@@ -435,16 +436,23 @@ class BillViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(bill).data)
         
 
-
     @action(detail=True, methods=['post'], url_path='toggle-inhouse')
     def toggle_inhouse(self, request, pk=None):
         """
         cast_id と inhouse(bool) を受け取り、
         BillCastStay.stay_type を 'in' / 'free' に切り替える。
+        さらに houseNom‑fee 行を差分同期する。
         """
         bill    = self.get_object()
         cid     = int(request.data.get('cast_id'))
-        make_in = bool(request.data.get('inhouse'))
+        want_in = bool(request.data.get('inhouse'))
+
+        # ① 変更前の inhouse ＆ main 集合をキャッシュ
+        prev_in   = set(
+            bill.stays.filter(stay_type='in', left_at__isnull=True)
+                .values_list('cast_id', flat=True)
+        )
+        prev_main = set(bill.nominated_casts.values_list('id', flat=True))
 
         stay, _ = BillCastStay.objects.get_or_create(
             bill=bill, cast_id=cid,
@@ -453,10 +461,22 @@ class BillViewSet(viewsets.ModelViewSet):
                 stay_type='free',
             )
         )
-
-        stay.stay_type = 'in' if make_in else 'free'
-        stay.left_at   = None          # 在席扱い
+        stay.stay_type = 'in' if want_in else 'free'
+        stay.left_at   = None          # 常に在席扱い
         stay.save(update_fields=['stay_type', 'left_at'])
+
+        # ② 変更後の inhouse 集合を取得
+        new_in = set(
+            bill.stays.filter(stay_type='in', left_at__isnull=True)
+                .values_list('cast_id', flat=True)
+        )
+
+        # ③ 差分に基づき houseNom‑fee 行を同期
+        sync_nomination_fees(
+            bill,
+            prev_main, prev_main,     # 本指名は変化なし
+            prev_in,  new_in,
+        )
 
         return Response({'stay_type': stay.stay_type},
                         status=status.HTTP_200_OK)
@@ -701,3 +721,50 @@ class CastRankingView(ListAPIView):
 class ItemMasterViewSet(viewsets.ModelViewSet):
     queryset = ItemMaster.objects.select_related('category')   # ←追加
     serializer_class = ItemMasterSerializer
+    
+    
+
+class BillToggleInhouseAPIView(APIView):
+    # permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        bill = get_object_or_404(Bill, pk=pk)
+        cid  = int(request.data['cast_id'])
+        want_in = bool(request.data['inhouse'])
+
+
+        # ---- ① 変更前の inhouse 集合をキャッシュ
+        prev_in = set(
+            bill.stays.filter(stay_type='in', left_at__isnull=True)
+                .values_list('cast_id', flat=True)
+        )
+ 
+        stay, _ = BillCastStay.objects.get_or_create(
+            bill=bill, cast_id=cid,
+            defaults=dict(
+                entered_at=timezone.now(),
+                stay_type='in' if want_in else 'free'
+            )
+        )
+        if want_in:
+            stay.stay_type = 'in'
+            stay.left_at   = None
+        else:
+            stay.stay_type = 'free'
+        stay.save(update_fields=['stay_type', 'left_at'])
+
+        # ---- ② 変更後の inhouse 集合を取得
+        new_in = set(
+            bill.stays.filter(stay_type='in', left_at__isnull=True)
+                .values_list('cast_id', flat=True)
+        )
+        prev_main = set(bill.nominated_casts.values_list('id', flat=True))
+ 
+        # ---- ③ 差分にもとづき fee 行を同期
+        sync_nomination_fees(
+            bill,
+            prev_main, prev_main,     # main は変化しない
+            prev_in,  new_in,
+        )
+ 
+        return Response({'stay_type': stay.stay_type})

@@ -298,14 +298,21 @@ export const fetchCasts = storeId =>
   api.get('billing/casts/', { params:{store:storeId} })
      .then(r => r.data.results ?? r.data)
 
+/**
+ * 指名／場内／フリーの配列をまとめて PATCH
+ *   nomIds  = 本指名キャスト ID[]
+ *   inIds   = 場内キャスト ID[]
+ *   freeIds = フリー在席キャスト ID[]
+ */
 export const updateBillCasts = (
   billId,
-  { nomIds = [], inIds = [], freeIds = [] }   // ★ 追加
+  { nomIds = [], inIds = [], freeIds = [] }
 ) =>
   api.patch(`billing/bills/${billId}/`, {
-    nominated_casts : nomIds,
-    inhouse_casts_w : inIds,
-    free_ids        : freeIds,	// ★ snake_case に合わせる
+    // ── バックエンドのフィールド名に合わせて変換 ──
+    nominated_casts : nomIds,        // ← 本指名
+    inhouse_casts_w : inIds,         // ← 場内
+    free_ids        : freeIds,       // ← フリー
   }).then(r => r.data)
 
 export const fetchTables = storeId =>

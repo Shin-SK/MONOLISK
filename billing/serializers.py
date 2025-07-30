@@ -8,6 +8,8 @@ from cloudinary.utils import cloudinary_url
 from decimal import Decimal, ROUND_HALF_UP
 from django.contrib.auth import get_user_model
 from django.utils.crypto import get_random_string
+from datetime import date
+from .services import sync_nomination_fees
 
 
 class StoreSerializer(serializers.ModelSerializer):
@@ -454,9 +456,21 @@ class BillSerializer(serializers.ModelSerializer):
     # --------------------------------------------------
     def create(self, validated_data):
         nominated = validated_data.pop("nominated_casts", [])
-        bill = Bill.objects.create(**validated_data)   # table もここでセットされる
+        inhouse   = validated_data.pop("inhouse_casts_w", [])
+        
+        bill = Bill.objects.create(**validated_data)
         if nominated:
             bill.nominated_casts.set(nominated)
+
+        # ↑ stay 行を追加するロジックをここで呼ぶ場合は
+        #    その直後に sync_nomination_fees() を実行
+        sync_nomination_fees(
+            bill,
+            prev_main=set(),              # before = 0
+            new_main=set(nominated),      # after  = 指名キャスト
+            prev_in=set(),
+            new_in=set(inhouse),
+        )
         return bill
 
     # --------------------------------------------------
@@ -471,6 +485,13 @@ class BillSerializer(serializers.ModelSerializer):
         ・再入店は新しい stay 行を追加。
         ・退席は left_at を付与して履歴を残す。
         """
+        # ---------- 0. 差分検出用に現状をキャッシュ ----------
+        prev_main = set(instance.nominated_casts.values_list("id", flat=True))
+        prev_in   = set(
+            instance.stays.filter(stay_type="in", left_at__isnull=True)
+                     .values_list("cast_id", flat=True)
+        )        
+
         # ---------- 1. 送信された ID 群を取り出す ----------
         nominated_raw = validated_data.pop("nominated_casts", None)
         inhouse_raw   = validated_data.pop("inhouse_casts_w", None)
@@ -568,8 +589,21 @@ class BillSerializer(serializers.ModelSerializer):
                     stay.save(update_fields=["left_at"])
 
         # ===============================================================
-        return instance
+        
+        
+        # ---------- 4. 更新後の状態を取得して差分同期 ----------
+        new_main = set(instance.nominated_casts.values_list('id', flat=True))
+        new_in   = set(
+            instance.stays.filter(stay_type='in', left_at__isnull=True)
+                    .values_list('cast_id', flat=True)
+        )
 
+        sync_nomination_fees(
+            instance,
+            prev_main, new_main,
+            prev_in,   new_in,
+        )
+        return instance
 
 
     # ── 共通計算ロジック ─────────────────
