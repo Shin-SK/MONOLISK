@@ -4,7 +4,7 @@ import { ref, onMounted } from 'vue'
 import { getBillYearlyPL, getStores } from '@/api'
 
 const year     = ref(new Date().getFullYear())
-const storeId  = ref('')
+const storeId  = ref(1)
 const stores   = ref([])
 const pl       = ref(null)
 

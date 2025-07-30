@@ -11,6 +11,8 @@ from django.db.models import Sum
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from datetime import timedelta
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 User = get_user_model()
 
@@ -593,3 +595,9 @@ class CastDailySummary(models.Model):
             (self.sales_nom   or 0) +
             (self.sales_champ or 0)
         )
+
+
+@receiver(post_save, sender=CastShift)
+def _update_summary(sender, instance, **kwargs):
+    if instance.clock_in and instance.clock_out:
+        CastDailySummary.upsert_from_shift(instance)

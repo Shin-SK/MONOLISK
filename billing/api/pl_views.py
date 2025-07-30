@@ -30,15 +30,32 @@ class DailyPLAPIView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        # --- ① 入力バリデーション ---
         ser = DailyPLRequestSerializer(data=request.query_params)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
-        pl   = get_daily_pl(
-            data["date"],
-            store_id=data.get("store_id"),
-        )
-        return Response(pl)
+        prof = getattr(request.user, "store_profile", None)
+        if prof:
+            store_id = prof.store_id
 
+        # --- ② store_id 解決 ---
+        raw = data.get("store_id")            # None / int
+        if raw in (None, ""):
+            if getattr(request, "store", None):
+                store_id = request.store.id
+            elif getattr(request.user, "store_id", None):
+                store_id = request.user.store_id
+            else:
+                return Response(
+                    {"detail": "store_id を指定してください"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            store_id = int(raw)
+
+        # --- ③ 本体呼び出し ---
+        pl = get_daily_pl(data["date"], store_id=store_id)
+        return Response(pl)
 
 class MonthlyPLAPIView(APIView):
     """
@@ -63,10 +80,9 @@ class YearlyPLRequestSerializer(serializers.Serializer):
     year     = serializers.IntegerField(min_value=2000, max_value=2100)
     store_id = serializers.IntegerField(required=False, allow_null=True)
 
+
+
 class YearlyPLAPIView(APIView):
-    """
-    GET /api/billing/pl/yearly/?year=2025&store_id=1
-    """
     permission_classes = [AllowAny]
 
     def get(self, request):
@@ -74,8 +90,20 @@ class YearlyPLAPIView(APIView):
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
 
-        pl = get_yearly_pl(
-            data["year"],
-            store_id=data.get("store_id"),
-        )
+        # --- store_id 解決 --------------------------
+        raw = data.get("store_id")          # None / '' / int
+        if not raw:                         # ← None や '' は False
+            if getattr(request, "store", None):
+                store_id = request.store.id
+            elif getattr(request.user, "store_id", None):
+                store_id = request.user.store_id
+            else:
+                return Response(
+                    {"detail": "store_id を指定してください"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            store_id = int(raw)
+
+        pl = get_yearly_pl(data["year"], store_id=store_id)
         return Response(pl)

@@ -8,7 +8,7 @@ def get_yearly_pl(year: int, store_id: int | None = None) -> Dict:
 	1 年分（12 か月）の月次 P/L + 年間サマリ
 	"""
 	months: List[Dict] = [
-		get_monthly_pl(year, m, store_id) for m in range(1, 13)
+		get_monthly_pl(year, m, store_id=store_id) for m in range(1, 13)
 	]
 
 	totals = {

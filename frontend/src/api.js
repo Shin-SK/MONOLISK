@@ -124,7 +124,7 @@ export const createCustomerAddress = (custId, payload) =>
 
 /* ---------- マスター ---------- */
 const simple = r => r.data
-export const getStores    = () => api.get('stores/?simple=1').then(simple)
+export const getStores = () => api.get('billing/stores/?simple=1').then(r => r.data)
 export const getCustomers = () => api.get('customers/?simple=1').then(simple)
 export const getDrivers   = () => api.get('drivers/?simple=1').then(simple)
 export const getCourses   = () => api.get('courses/?simple=1').then(simple)
@@ -326,21 +326,24 @@ export const getStore  = id => api.get(`billing/stores/${id}/`).then(r => r.data
 
 //PL
 
-export const getBillDailyPL = (date, storeId = '') =>
-  api.get('billing/pl/daily/', { params: { date, store_id: storeId } }).then(r => r.data)
-
-
-export const getBillMonthlyPL = (monthStr, storeId = '') => {
-  const [year, month] = monthStr.split('-').map(Number)
-  return api.get('billing/pl/monthly/', {
-    params: { year, month, store_id: storeId }
-  }).then(r => r.data)
+export const getBillDailyPL = (date, store) => {
+  const params = { date }
+  if (store) params.store_id = store
+  return api.get('billing/pl/daily/', { params }).then(r => r.data)
 }
 
-export const getBillYearlyPL = (year, storeId = '') =>
-  api.get('billing/pl/yearly/', {
-    params: { year, store_id: storeId }
-  }).then(r => r.data)
+
+
+export const getBillMonthlyPL = (monthStr, storeId) => {
+  const [year, month] = monthStr.split('-').map(Number)
+  const params = { year, month, store_id: storeId }
+  return api.get('billing/pl/monthly/', { params }).then(r => r.data)
+}
+
+export const getBillYearlyPL = (year, storeId) => {
+  const params = { year, store_id: storeId }   // 常に送る
+  return api.get('billing/pl/yearly/', { params }).then(r => r.data)
+}
 
 // キャスト系
 

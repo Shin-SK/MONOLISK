@@ -1,23 +1,30 @@
+<!-- BillPLDaily.vue -->
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getBillDailyPL, getStores } from '@/api'
 
-const today   = new Date().toISOString().slice(0, 10)
-const dateStr = ref(today)
-const storeId = ref('')
+const dateStr = ref(new Date().toISOString().slice(0, 10))
+const storeId = ref(null)               // ← 初期値 null に変更
 const stores  = ref([])
 const pl      = ref(null)
 
 const yen = n => `¥${(+n || 0).toLocaleString()}`
 
 async function fetchData () {
-	pl.value = await getBillDailyPL(dateStr.value, storeId.value)
+  // storeId が必須。まだ取得前なら何もしない
+  if (!storeId.value) return
+  pl.value = await getBillDailyPL(dateStr.value, storeId.value)
 }
-async function loadStores () { stores.value = await getStores() }
+
+async function loadStores () {
+  stores.value = await getStores()
+  // ❶ 最初の店舗 ID を必ずセット
+  storeId.value = stores.value[0]?.id || null
+}
 
 onMounted(async () => {
-	await loadStores()
-	await fetchData()
+  await loadStores()
+  await fetchData()                    // ❷ storeId セット後に呼ぶ
 })
 </script>
 

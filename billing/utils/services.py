@@ -20,3 +20,16 @@ def cast_payout_sum(date_from, date_to, store_id=None):
 
 	# ③ 合計額を返す
 	return qs.aggregate(total=Sum('amount'))['total'] or 0
+
+
+from django.db.models import Sum
+from billing.models import CastDailySummary        # ← 追加
+
+def cast_payroll_sum(date_from, date_to, store_id=None):
+    """
+    CastDailySummary.payroll の合計を返す
+    """
+    qs = CastDailySummary.objects.filter(work_date__range=(date_from, date_to))
+    if store_id:
+        qs = qs.filter(store_id=store_id)
+    return qs.aggregate(total=Sum('payroll'))['total'] or 0

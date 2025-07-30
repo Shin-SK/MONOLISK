@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { getBillMonthlyPL, getStores } from '@/api'
 
 const monthStr = ref(new Date().toISOString().slice(0,7))
-const storeId  = ref('')
+const storeId  = ref(1) 
 const stores   = ref([])
 const pl       = ref(null)
 
