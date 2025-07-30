@@ -696,3 +696,8 @@ class CastRankingView(ListAPIView):
             )
             .order_by('-revenue')[:10]
         )
+
+
+class ItemMasterViewSet(viewsets.ModelViewSet):
+    queryset = ItemMaster.objects.select_related('category')   # ←追加
+    serializer_class = ItemMasterSerializer

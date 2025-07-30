@@ -73,6 +73,10 @@ class ItemCategory(models.Model):
     back_rate_free       = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
     back_rate_nomination = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
     back_rate_inhouse    = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
+    show_in_menu = models.BooleanField(
+        default=False,
+        verbose_name='POSメニューに表示'
+    )
     def __str__(self): return self.name
 
 

@@ -22,6 +22,14 @@ const visible = computed({
   set : v  => emit('update:modelValue', v)
 })
 
+// --- ① 共通ユーティリティ -----------------------------
+const catCode      = m => typeof m.category === 'string'
+                        ? m.category               // "drink"
+                        : m.category?.code         // {code:"drink",…}
+const showInMenu   = m => typeof m.category === 'object'
+                        ? m.category.show_in_menu  // true / false
+                        : true                     // 文字列なら表示OK
+
 /* ── キャスト一覧を API からロード ─────────────── */
 const casts = ref([])               // [{id, stage_name, …}]
 const onDutySet  = ref(new Set())
@@ -92,21 +100,29 @@ async function toggleInhouse (cid) {
 
 /* ---------- オーダー ---------- */
 
-const CAT_PRESET = [
-  { value: 'drink',        label: 'ドリンク'   },
-  { value: 'extension',    label: '延長'       },
-  { value: 'extensionVip', label: 'VIP延長'    },
-]
+const catOptions = computed(() => {
+  // ① show_in_menu==true のマスターだけ → ② カテゴリ code をユニーク抽出
+  const codes = [...new Set(
+    masters.value
+      .filter(m => m.category?.show_in_menu)   // POS メニュー ON
+      .map(m => m.category.code)               // 'drink' など
+  )]
 
-const catOptions = computed(() =>
-  CAT_PRESET.filter(p =>
-    masters.value.some(m => m.category === p.value)
-  )
-)
-const selectedCat  = ref('drink')   // デフォルトは drink
+  // ③ code から対応する name を引く
+  return codes.map(code => {
+    const master = masters.value.find(m => m.category.code === code)
+    return {
+      value: code,
+      label: master?.category.name ?? code     // name が無ければ code
+    }
+  })
+})
+
+
+const selectedCat  = ref('drink')
 
 const orderMasters = computed(() =>
-  masters.value.filter(m => m.category === selectedCat.value)
+  masters.value.filter(m => catCode(m) === selectedCat.value)
 )
 
 
@@ -157,14 +173,10 @@ async function cancelItem(idx, item){
 const COURSE_CATS = ['setMale','setVip','setFemale']
 
 const courseOptions = computed(() =>
-  COURSE_CATS.map(cat => {
-    const m = masters.value.find(v => v.category === cat)
-    return m ? {                    // UI で使う最低限
-      id   : m.id,                  // ← addBillItem 用
-      code : m.code,                // ← v-model 用
-      label: m.name,                // ← ボタン表示
-    } : null
-  }).filter(Boolean)                // 未登録カテゴリは除外
+  COURSE_CATS.map(code => {
+    const m = masters.value.find(v => catCode(v) === code)
+    return m ? { id: m.id, code: m.code, label: m.name } : null
+  }).filter(Boolean)
 )
 
 

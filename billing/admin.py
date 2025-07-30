@@ -115,7 +115,7 @@ class CastAdmin(admin.ModelAdmin):
 @admin.register(ItemCategory)
 class ItemCategoryAdmin(ImportExportModelAdmin):
     resource_classes = [ItemCategoryRes]
-    list_display = ("code", "name",
+    list_display = ("code", "name", "show_in_menu",
                     "back_rate_free", "back_rate_nomination", "back_rate_inhouse")
     list_editable = ("back_rate_free", "back_rate_nomination", "back_rate_inhouse")
 

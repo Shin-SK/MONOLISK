@@ -79,30 +79,44 @@ class CastItemDetailSerializer(serializers.ModelSerializer):
         return int(obj.subtotal * obj.back_rate)
 
 
-class ItemMasterSerializer(serializers.ModelSerializer):
-    # ------ READ ------
-    # フロント互換: 'drink' / 'setVip' … をそのまま返す
-    category = serializers.CharField(source='category.code', read_only=True)
+class ItemCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = ItemCategory
+        fields = ("code", "name")     # これだけで OK
 
-    # ------ WRITE -----
-    # POST / PUT では `category_id` に FK を渡す
+
+class ItemCategoryMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = ItemCategory
+        fields = ('code', 'name', 'show_in_menu')
+
+
+
+class ItemMasterSerializer(serializers.ModelSerializer):
+    category = serializers.SerializerMethodField()   # ★ここを変更
+
+    def get_category(self, obj):
+        return {
+            "code": obj.category.code,
+            "name": obj.category.name, 
+            "show_in_menu": obj.category.show_in_menu,
+        }
+
     category_id = serializers.PrimaryKeyRelatedField(
         source='category',
         queryset=ItemCategory.objects.all(),
         write_only=True,
     )
 
-    class Meta:                         # ★←欠けていた
+    class Meta:
         model  = ItemMaster
         fields = [
             'id', 'name', 'code', 'price_regular',
             'duration_min', 'apply_service',
             'exclude_from_payout', 'track_stock',
-            # ↓ 上で定義した 2 つを必ず含める
-            'category', 'category_id',
+            'category',        # ← READ 用 (obj)
+            'category_id',     # ← WRITE 用 (FK)
         ]
-
-
 
 
 class TableMiniSerializer(serializers.ModelSerializer):
@@ -197,12 +211,6 @@ class CastCategoryRateSerializer(serializers.ModelSerializer):
         fields = ('id', 'category', 'rate_free',
                   'rate_nomination', 'rate_inhouse')
   
-
-class ItemCategorySerializer(serializers.ModelSerializer):
-    class Meta:
-        model  = ItemCategory
-        fields = ("code", "name")     # これだけで OK
-
 
 
 User = get_user_model()
