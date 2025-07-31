@@ -437,3 +437,25 @@ export const fetchCastDailySummaries = (params = {}) =>
  */
 export const fetchCastRankings = (params = {}) =>
   api.get('billing/cast-rankings/', { params }).then(r => r.data)
+
+
+/* ---------- Cast 詳細 & 店舗お知らせ ---------- */
+
+/** キャスト 1 名の詳細（stage_name, avatar_url など） */
+export const fetchCastMypage = id =>
+  api.get(`billing/casts/${id}/`).then(r => r.data)
+
+/**
+ * 店舗お知らせ
+ *  ─ MVP: API 未実装なので常に空配列を返すダミー
+ *  ─ 実装後は 'billing/store-notices/' などに置換するだけで済む
+ * - ここはいずれ実装するから、実装するときはここを読んで修正してね
+ */
+export const fetchStoreNotices = () =>
+  axios.get('billing/store-notices/', {
+    baseURL: api.defaults.baseURL,          // 共通の /api/ を使う
+    headers: api.defaults.headers.common,   // 認証ヘッダなど継承
+    validateStatus: () => true              // 404 でも reject させない
+  })
+  .then(res => (res.status === 200 ? res.data : []))  // 200 以外は空配列
+  .catch(() => []);                                   // ネットワークエラーも無視

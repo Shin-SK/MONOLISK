@@ -1,80 +1,70 @@
-<!-- src/views/CastMypage.vue -->
 <script setup>
 /*
  * MVP キャスト用マイページ
- * ---------------------------------------------
- * 機能
+ * 機能:
  *  1. シフト申請（予定の新規登録）
  *  2. 今月の売上 & 給与サマリ
  *  3. 自分のシフト一覧（期間フィルタ可）
  *  4. 自分のランキング順位
- *  5. 店全体のランキング（再利用出来るようコンポーネント化）
- * ---------------------------------------------
+ *  5. 店全体のランキング
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import RankingTable from '@/components/RankingTable.vue'
 import dayjs from 'dayjs'
-
-// 🔽 API ラッパ
 import {
   createCastShift,
   fetchCastShiftHistory,
   fetchCastDailySummaries,
   fetchCastRankings,
+  fetchCastMypage,
+  fetchStoreNotices
 } from '@/api'
 import { yen } from '@/utils/money'
 
 /* ---------- パラメータ ---------- */
-// MVP: ルートパラメータ ?id= でキャストを決定（将来はログインユーザから取得）
 const { params:{ id } } = useRoute()
 const castId = Number(id)
 if (Number.isNaN(castId)) {
-  alert('キャスト ID が不正です');      // MVP 用ガード
+  alert('キャスト ID が不正です')
   throw new Error('invalid cast id')
 }
 
-const router = useRouter()
-
-/* ---------- 期間 ---------- */
+/* ---------- 日付 ---------- */
 const dateFrom = ref(dayjs().startOf('month').format('YYYY-MM-DD'))
 const dateTo   = ref(dayjs().format('YYYY-MM-DD'))
+const todayStr = dayjs().format('YYYY-MM-DD')
 
-/* ---------- シフト申請フォーム ---------- */
-const form = reactive({ start:'', end:'' })
+/* ---------- 状態 ---------- */
+const castInfo    = ref(null)
+const shifts      = ref([])
+const summary     = ref(null)
+const todaySum    = ref(null)
+const rankings    = ref([])
+const notices     = ref([])
 const draftShifts = ref([])
 
+/* ---------- タブ ---------- */
+const activeTab = ref(null)
+const setTab    = k => (activeTab.value = k)
 
-/* ---------- シフトをカートに追加 ---------- */
-function addDraft () {
-  if (!form.start || !form.end) return alert('開始／終了を入力してください')
-  if (dayjs(form.start).isAfter(dayjs(form.end)))
-    return alert('終了は開始より後にしてください')
-
-  draftShifts.value.push({
-    plan_start: new Date(form.start).toISOString(),
-    plan_end  : new Date(form.end ).toISOString(),
-  })
-  form.start = form.end = ''
-}
-
-/* ---------- データ ---------- */
-const shifts    = ref([])        // 自分のシフト明細
-const summary   = ref(null)      // CastDailySummary 1 行
-const rankings  = ref([])        // 店全体ランキング（上位10）
+/* ---------- フォーム ---------- */
+const form = reactive({ start:'', end:'' })
 
 /* ---------- util ---------- */
 const fmt = d => d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '–'
 const h   = m => m ? (m/60).toFixed(2) : '0.00'
 
-/* ---------- 取得関数 ---------- */
+/* ---------- 取得 ---------- */
+async function loadCast () {
+  castInfo.value = await fetchCastMypage(castId)
+}
 async function loadShifts () {
   shifts.value = await fetchCastShiftHistory(castId, {
     from: dateFrom.value,
     to  : dateTo.value,
   })
 }
-
 async function loadSummary () {
   const list = await fetchCastDailySummaries({
     cast : castId,
@@ -83,147 +73,257 @@ async function loadSummary () {
   })
   summary.value = list[0] ?? null
 }
-
+async function loadToday () {
+  const list = await fetchCastDailySummaries({
+    cast : castId,
+    from : todayStr,
+    to   : todayStr,
+  })
+  todaySum.value = list[0] ?? null
+}
 async function loadRankings () {
   rankings.value = await fetchCastRankings({
     from: dateFrom.value,
     to  : dateTo.value,
   })
 }
-
+async function loadNotices () {
+  notices.value = await fetchStoreNotices()
+}
 async function loadAll () {
-  await Promise.all([loadShifts(), loadSummary(), loadRankings()])
+  await Promise.all([
+    loadCast(), loadShifts(),
+    loadSummary(), loadToday(),
+    loadRankings(), loadNotices()
+  ])
 }
 
-/* ---------- シフト新規申請 ---------- */
-async function submitAll () {
-  if (!draftShifts.value.length) return alert('カートが空です')
-  try {
-    await Promise.all(
-      draftShifts.value.map(s =>
-        createCastShift({ cast_id: castId, ...s })
-      )
-    )
-    draftShifts.value = []
-    loadShifts()
-    alert('申請しました！')
-  } catch (e) {
-    console.error(e)
-    alert('一部登録に失敗しました')
-  }
-}
-
-function removeDraft(i) { draftShifts.value.splice(i,1) }
 /* ---------- 計算 ---------- */
 const myRank = computed(() => {
   const idx = rankings.value.findIndex(r => r.cast_id === castId)
   return idx === -1 ? null : idx + 1
 })
+const nextShift = computed(() => {
+  const now = dayjs()
+  return shifts.value
+    .filter(s => s.plan_start && dayjs(s.plan_start).isAfter(now))
+    .sort((a,b) => dayjs(a.plan_start) - dayjs(b.plan_start))[0] || null
+})
+const todaySales = computed(() =>
+  todaySum.value ? todaySum.value.total + todaySum.value.payroll : null
+)
 
-/* ---------- ウォッチ & 初期ロード ---------- */
-watch([dateFrom, dateTo], loadAll)
+/* ---------- シフト申請 ---------- */
+function addDraft () {
+  if (!form.start || !form.end) return alert('開始／終了を入力してください')
+  if (dayjs(form.start).isAfter(dayjs(form.end)))
+    return alert('終了は開始より後にしてください')
+  draftShifts.value.push({
+    plan_start: new Date(form.start).toISOString(),
+    plan_end  : new Date(form.end ).toISOString(),
+  })
+  form.start = form.end = ''
+}
+function removeDraft(i){ draftShifts.value.splice(i,1) }
+async function submitAll () {
+  if (!draftShifts.value.length) return alert('カートが空です')
+  try{
+    await Promise.all(
+      draftShifts.value.map(s => createCastShift({ cast_id: castId, ...s }))
+    )
+    draftShifts.value = []
+    await loadShifts()
+    alert('申請しました！')
+  }catch(e){
+    console.error(e)
+    alert('一部登録に失敗しました')
+  }
+}
+
+/* ---------- 次シフト日時フォーマット ---------- */
+const nextShiftDate  = computed(() =>
+  nextShift.value ? dayjs(nextShift.value.plan_start).format('YYYY/MM/DD') : null
+)
+const nextShiftStart = computed(() =>
+  nextShift.value ? dayjs(nextShift.value.plan_start).format('HH:mm') : null
+)
+const nextShiftEnd   = computed(() =>
+  nextShift.value ? dayjs(nextShift.value.plan_end  ).format('HH:mm') : null
+)
+
+/* ---------- ウォッチ ---------- */
+watch([dateFrom,dateTo], () => { loadShifts(); loadSummary(); loadRankings() })
 onMounted(loadAll)
 </script>
 
 <template>
-  <div class="container-fluid mt-4">
+  <div class="cast-mypage container-fluid mt-4 pb-5">
+    <!-- ===== ヘッダ ===== -->
+    <div class="d-flex align-items-center mb-4 gap-4">
+      <img v-if="castInfo?.avatar_url" :src="castInfo.avatar_url" alt="avatar"
+           class="rounded-circle" style="width:72px;height:72px;object-fit:cover" />
+      <div>
+        <h3 class="mb-1">{{ castInfo?.stage_name || 'キャスト名' }}</h3>
+        <p class="mb-0 text-muted">
+          あなたは現在 <strong v-if="myRank">{{ myRank }} 位</strong>
+          <span v-else>圏外</span> です
+        </p>
+      </div>
+    </div>
 
-    <!-- ▼ シフト申請 ---------------------------------------------- -->
-    <div class="card mb-5">
+    <!-- 次シフト & 今日売上 -->
+    <div class="row g-3 mb-4">
+      <div class="col-6">
+        <div class="card text-bg-light">
+          <div class="card-body">
+            <h6 class="card-title mb-1">次のシフト</h6>
+            <p class="card-text fs-5 mb-0">
+              <template v-if="nextShift">
+                <span>{{ nextShiftDate }}</span>
+                <span class="ms-2">{{ nextShiftStart }} 〜 {{ nextShiftEnd }}</span>
+              </template>
+              <span v-else>予定なし</span>
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="card text-bg-light">
+          <div class="card-body">
+            <h6 class="card-title mb-1">今日の売上</h6>
+            <p class="card-text fs-5 mb-0">
+              <span v-if="todaySales !== null">{{ yen(todaySales) }}</span>
+              <span v-else>–</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- タブ -->
+    <nav class="d-flex justify-content-around">
+      <a href="#" :class="{ active: activeTab === 'apply' }" @click.prevent="setTab('apply')">
+        <i class="bi bi-calendar-plus"></i><span>シフト申請</span>
+      </a>
+      <a href="#" :class="{ active: activeTab === 'list' }" @click.prevent="setTab('list')">
+        <i class="bi bi-table"></i><span>シフト一覧</span>
+      </a>
+      <a href="#" :class="{ active: activeTab === 'sales' }" @click.prevent="setTab('sales')">
+        <i class="bi bi-currency-yen"></i><span>売上</span>
+      </a>
+      <a href="#" :class="{ active: activeTab === 'customers' }" @click.prevent="setTab('customers')">
+        <i class="bi bi-people"></i><span>顧客情報</span>
+      </a>
+      <a href="#" :class="{ active: activeTab === 'news' }" @click.prevent="setTab('news')">
+        <i class="bi bi-card-list"></i><span>おしらせ</span>
+      </a>
+    </nav>
+
+    <!-- ▼ シフト申請 -->
+    <div v-if="activeTab === 'apply'" class="card mb-5">
       <div class="card-header fw-bold">シフト申請</div>
-      <div class="card-body">
+      <div class="card-body bg-white">
         <div class="row g-3 align-items-end">
           <div class="col-md-5">
             <label class="form-label">開始日時</label>
-            <input type="datetime-local" v-model="form.start" class="form-control">
+            <input type="datetime-local" v-model="form.start" class="form-control" />
           </div>
           <div class="col-md-5">
             <label class="form-label">終了日時</label>
-            <input type="datetime-local" v-model="form.end" class="form-control">
+            <input type="datetime-local" v-model="form.end" class="form-control" />
           </div>
           <div class="col-md-2 text-end">
             <button class="btn btn-outline-secondary w-100" @click="addDraft">追加</button>
           </div>
         </div>
-    <!-- カート一覧 -->
-     <table v-if="draftShifts.length" class="table table-sm mb-3">
-       <thead><tr><th>#</th><th>開始</th><th>終了</th><th></th></tr></thead>
-       <tbody>
-         <tr v-for="(d,i) in draftShifts" :key="i">
-           <td>{{ i+1 }}</td>
-           <td>{{ fmt(d.plan_start) }}</td>
-           <td>{{ fmt(d.plan_end) }}</td>
-           <td>
-             <button class="btn btn-sm btn-outline-danger" @click="removeDraft(i)">
-               🗑
-             </button>
-           </td>
-         </tr>
-       </tbody>
-     </table>
 
-    <!-- 一括申請ボタン -->
-     <button class="btn btn-primary" @click="submitAll" :disabled="!draftShifts.length">
-       {{ draftShifts.length }} 件まとめて申請
-     </button>
-        <p class="text-muted small mt-2 mb-0">※ MVP では承認フローなしで即登録されます</p>
+        <table v-if="draftShifts.length" class="table mb-3">
+          <thead><tr><th>#</th><th>開始</th><th>終了</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="(d,i) in draftShifts" :key="i">
+              <td>{{ i+1 }}</td>
+              <td>{{ fmt(d.plan_start) }}</td>
+              <td>{{ fmt(d.plan_end) }}</td>
+              <td>
+                <button class="btn" @click="removeDraft(i)"><i class="bi bi-x"></i></button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="d-flex justify-content-center mt-5">
+          <button class="btn btn-primary" @click="submitAll" :disabled="!draftShifts.length">
+            {{ draftShifts.length }} 件まとめて申請
+          </button>
+        </div>
       </div>
     </div>
 
-
-    <h4 class="mt-4 mb-2">売上見込</h4>
-    <!-- ▼ 期間フィルタ -->
-    <div class="d-flex align-items-end gap-2 mb-4">
-      <div>
-        <label class="form-label">開始日</label>
-        <input type="date" v-model="dateFrom" class="form-control" />
-      </div>
-      <div>
-        <label class="form-label">終了日</label>
-        <input type="date" v-model="dateTo" class="form-control" />
+    <!-- ▼ 自分のシフト一覧 -->
+    <div v-if="activeTab === 'list'">
+      <h4 class="mt-4 mb-2">シフト一覧</h4>
+      <div class="table-responsive">
+        <table class="table align-middle text-nowrap">
+          <thead class="table-light">
+            <tr>
+              <th>ID</th><th>予定</th><th>出勤</th><th>退勤</th>
+              <th>勤務</th><th>見込給与</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in shifts" :key="s.id">
+              <td>{{ s.id }}</td>
+              <!-- ★ 予定を 2 行表記 (日付 / 時間帯) -->
+              <td>
+                <template v-if="s.plan_start">
+                  <div>{{ dayjs(s.plan_start).format('YYYY/MM/DD') }}</div>
+                  <div class="fw-bold">{{ dayjs(s.plan_start).format('HH:mm') }} – {{ dayjs(s.plan_end).format('HH:mm') }}</div>
+                </template>
+                <span v-else>–</span>
+              </td>
+              <td>{{ s.clock_in ? dayjs(s.clock_in).format('HH:mm') : '–' }}</td>
+              <td>{{ s.clock_out ? dayjs(s.clock_out).format('HH:mm') : '–' }}</td>
+              <td>{{ s.worked_min ? (s.worked_min/60).toFixed(2) + ' h' : '–' }}</td>
+              <td>{{ s.payroll_amount ? yen(s.payroll_amount) : '–' }}</td>
+            </tr>
+            <tr v-if="!shifts.length">
+              <td colspan="6" class="text-center text-muted">シフトがありません</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
-    <!-- ▼ 今月のサマリ --------------------------------------------- -->
-    <div v-if="summary" class="alert alert-info">
-      この期間の勤務 <strong>{{ h(summary.worked_min) }} h</strong> ／
-      時給計 <strong>{{ yen(summary.payroll) }}</strong> ／
-      歩合計 <strong>{{ yen(summary.total) }}</strong> ／
-      <u>支給見込 {{ yen(summary.total + summary.payroll) }}</u>
+
+    <!-- ▼ 売上 -->
+    <div v-if="activeTab === 'sales'">
+      <h4 class="mt-5 mb-3">売上</h4>
+      <p class="text-muted">売上はまだありません</p>
     </div>
 
-    <!-- ▼ 自分のシフト一覧 ----------------------------------------- -->
-    <h4 class="mt-4 mb-2">シフト一覧</h4>
-    <table class="table table-sm align-middle">
-      <thead class="table-light">
-        <tr>
-          <th>ID</th><th>予定</th><th>出勤</th><th>退勤</th>
-          <th>勤務</th><th>給与</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="s in shifts" :key="s.id">
-          <td>{{ s.id }}</td>
-          <td>{{ fmt(s.plan_start) }} – {{ fmt(s.plan_end) }}</td>
-          <td>{{ fmt(s.clock_in) }}</td>
-          <td>{{ fmt(s.clock_out) }}</td>
-          <td>{{ s.worked_min ? (s.worked_min/60).toFixed(2) + ' h' : '–' }}</td>
-          <td>{{ s.payroll_amount ? yen(s.payroll_amount) : '–' }}</td>
-        </tr>
-        <tr v-if="!shifts.length">
-          <td colspan="6" class="text-center text-muted">シフトがありません</td>
-        </tr>
-      </tbody>
-    </table>
+    <!-- ▼ 売上 -->
+    <div v-if="activeTab === 'customers'">
+      <h4 class="mt-5 mb-3">顧客情報</h4>
+      <p class="text-muted">顧客情報はまだありません</p>
+    </div>
 
-    <!-- ▼ ランキング ------------------------------------------------- -->
+    <!-- ▼ 顧客情報 -->
+    <div v-if="activeTab === 'news'">
+      <h4 class="mt-5 mb-3">お店からのお知らせ</h4>
+      <ul v-if="notices.length" class="list-group mb-4">
+        <li v-for="n in notices" :key="n.id" class="list-group-item">
+          {{ n.message }}
+          <span class="text-muted small ms-2">{{ dayjs(n.created_at).format('YYYY/MM/DD') }}</span>
+        </li>
+      </ul>
+      <p v-else class="text-muted">現在お知らせはありません</p>
+    </div>
+
+    <!-- ランキング -->
     <h4 class="mt-5 mb-3">ランキング</h4>
-
-    <!-- 自分の順位 -->
-    <p v-if="myRank" class="fs-5">
-      あなたは現在 <strong class="text-danger">{{ myRank }} 位</strong> です！
-    </p>
-
-    <!-- 店舗全体上位10 -->
     <RankingTable :rows="rankings" />
   </div>
 </template>
+
+<style>
+nav a.active { font-weight: bold; }
+</style>

@@ -29,34 +29,34 @@ onMounted(async () => {
 </script>
 
 <template>
-	<div class="pl-daily p-4">
-		<h3 class="mb-3">日次 P/L</h3>
+	<div class="pl pl-daily p-4 container">
+		<template v-if="pl">
+			<!-- <h3 class="mb-3">
+				日次 P/L ({{ pl.date }})
+			</h3> -->
+			<div class="d-flex align-items-center gap-2 mb-3">
+				<input type="date" v-model="dateStr" class="form-control w-auto" />
+				<button class="btn btn-primary" @click="fetchData">読み込み</button>
+			</div>
 
-		<div class="d-flex align-items-center gap-2 mb-3">
-			<input type="date" v-model="dateStr" class="form-control w-auto" />
-			<select v-model="storeId" class="form-select w-auto">
-				<option value="">全店舗</option>
-				<option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
-			</select>
-			<button class="btn btn-primary" @click="fetchData">読み込み</button>
-		</div>
+			<div class="summary-area">
+				<div class="box"><div class="head">売上合計</div><div class="number">{{ yen(pl.sales_total) }}</div></div>
+				<div class="box"><div class="head">人件費</div><div class="number">{{ yen(pl.labor_cost) }}</div></div>
+				<div class="box"><div class="head">営業利益</div><div class="number">{{ yen(pl.operating_profit) }}</div></div>
+			</div>
 
-		<table v-if="pl" class="table table-bordered table-striped">
-			<tbody>
-				<tr><th class="w-50">日付</th><td>{{ pl.date }}</td></tr>
-				<tr><th>店舗</th><td>{{ pl.store_id || '全店舗' }}</td></tr>
-				<tr><th>来客数</th><td>{{ pl.guest_count }}</td></tr>
-				<tr><th>売上合計</th><td>{{ yen(pl.sales_total) }}</td></tr>
-				<tr><th>平均客単価</th><td>{{ yen(pl.avg_spend) }}</td></tr>
-				<tr><th>ドリンク売上</th><td>{{ yen(pl.drink_sales) }}</td></tr>
-				<tr><th>ドリンク杯数</th><td>{{ pl.drink_qty }}</td></tr>
-				<tr><th>ドリンク単価</th><td>{{ yen(pl.drink_unit_price) }}</td></tr>
-				<tr><th>延長回数</th><td>{{ pl.extension_qty }}</td></tr>
-				<tr><th>VIP比率</th><td>{{ (pl.vip_ratio * 100).toFixed(1) }}%</td></tr>
-				<tr><th>人件費</th><td>{{ yen(pl.labor_cost) }}</td></tr>					<!-- ★ -->
-				<tr><th>営業利益</th><td>{{ yen(pl.operating_profit) }}</td></tr>			<!-- ★ -->
-			</tbody>
-		</table>
+			<table class="table table-bordered table-striped">
+				<tbody>
+					<tr><th class="w-25">来客数</th><td class="text-end">{{ pl.guest_count }}</td></tr>
+					<tr><th>平均客単価</th><td class="text-end">{{ yen(pl.avg_spend) }}</td></tr>
+					<tr><th>ドリンク売上</th><td class="text-end">{{ yen(pl.drink_sales) }}</td></tr>
+					<tr><th>ドリンク杯数</th><td class="text-end">{{ pl.drink_qty }}</td></tr>
+					<tr><th>ドリンク単価</th><td class="text-end">{{ yen(pl.drink_unit_price) }}</td></tr>
+					<tr><th>延長回数</th><td class="text-end">{{ pl.extension_qty }}</td></tr>
+					<tr><th>VIP比率</th><td class="text-end">{{ (pl.vip_ratio * 100).toFixed(1) }}%</td></tr>
+				</tbody>
+			</table>
+		</template>
 
 		<div v-else class="text-muted">読み込み中…</div>
 	</div>

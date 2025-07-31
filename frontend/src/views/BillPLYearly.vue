@@ -65,10 +65,10 @@ onMounted(async () => {
     <!-- ▼ フィルタ UI（共通なので常時表示） -->
     <div class="d-flex gap-2 mb-3">
       <input type="number" v-model="year" class="form-control w-auto" min="2000" max="2100" />
-      <select v-model="storeId" class="form-select w-auto">
+      <!-- <select v-model="storeId" class="form-select w-auto">
         <option value="">全店舗</option>
         <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
-      </select>
+      </select> -->
       <button class="btn btn-primary" @click="fetchData">読み込み</button>
     </div>
 

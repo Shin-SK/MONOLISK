@@ -12,7 +12,7 @@ from django.conf      import settings
 from django.apps      import apps
 from rest_framework.generics import ListAPIView
 from rest_framework    import viewsets, generics, permissions
-from django.db.models import Sum, F, Q, IntegerField
+from django.db.models import Sum, F, Q, IntegerField, ExpressionWrapper, Value
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models.functions import Coalesce
 from datetime import date

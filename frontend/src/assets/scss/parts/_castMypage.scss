@@ -1,0 +1,21 @@
+@use '../global/global' as *;
+
+.cast-mypage{
+	nav{
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		background-color: white;
+		padding: 16px 0px;
+		margin: 16px auto;
+		a{
+			@include flex();
+			flex-direction: column;
+			i{
+				@include fs(20);
+				line-height: 100%;
+				margin-bottom: 4px;
+			}
+		}
+	}
+}

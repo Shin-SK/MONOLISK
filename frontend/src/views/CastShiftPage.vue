@@ -1,11 +1,11 @@
-<!-- src/views/CastShiftPage.vue -->
+<!-- src/views/CastShiftPage.vue (complete cart版) -->
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import dayjs from 'dayjs'
 import {
-  fetchCastShiftHistory,        // 明細
-  fetchCastDailySummaries,      // ← 集計
+  fetchCastShiftHistory,
+  fetchCastDailySummaries,
   createCastShift,
   updateCastShift,
   deleteCastShift,
@@ -22,166 +22,180 @@ const dateFrom = ref(dayjs().startOf('month').format('YYYY-MM-DD'))
 const dateTo   = ref(dayjs().format('YYYY-MM-DD'))
 
 /* ---------- データ ---------- */
-const rows     = ref([])          // シフト明細
-const summary  = ref(null)        // 日次集計 1 行
+const rows     = ref([])
+const summary  = ref(null)
 
-/* ---------- 新規登録フォーム ---------- */
-const newShift = reactive({ start:'', end:'' })
-
-/* ---------- 編集ステート ---------- */
-const editing = reactive({
-  id: null, plan_start:'', plan_end:'', clock_in:'', clock_out:''
-})
-
-/* ---------- stage_name ---------- */
+/* ---------- キャスト名 ---------- */
 const stageName = computed(() => rows.value[0]?.cast.stage_name || '')
 
-/* ---------- 取得 ---------- */
-async function load () {
-  /* シフト明細（from / to フィルタ） */
-  rows.value = await fetchCastShiftHistory(castId, {
-    from: dateFrom.value, to: dateTo.value,
-  })
+/* ---------- カート方式フォーム ---------- */
+const form = reactive({ start:'', end:'' })
+const draftShifts = ref([])
 
-  /* /cast‑daily‑summaries/ → cast は 1 名なので 1 行だけ返る */
-  const list = await fetchCastDailySummaries({
-    cast : castId,
-    from : dateFrom.value,
-    to   : dateTo.value,
+function addDraft(){
+  if(!form.start||!form.end) return alert('開始／終了を入力してください')
+  if(dayjs(form.start).isAfter(dayjs(form.end))) return alert('終了は開始より後にしてください')
+  draftShifts.value.push({
+    plan_start:new Date(form.start).toISOString(),
+    plan_end  :new Date(form.end ).toISOString(),
   })
-  summary.value = list[0] ?? null
+  form.start=form.end=''
+}
+function removeDraft(i){ draftShifts.value.splice(i,1) }
+async function submitAll(){
+  if(!draftShifts.value.length) return
+  await Promise.all(draftShifts.value.map(p=>createCastShift({ cast_id:castId, ...p })))
+  draftShifts.value=[]
+  await load()
+  alert('申請しました！')
 }
 
-watch([dateFrom, dateTo], load)
-
-/* ---------- 新規シフト登録 ---------- */
-async function saveShift () {
-  if (!newShift.start || !newShift.end) return alert('開始／終了を入力してください')
-  if (dayjs(newShift.start).isAfter(dayjs(newShift.end)))
-    return alert('終了は開始より後にしてください')
-
-  await createCastShift({
-    cast_id   : castId,
-    plan_start: new Date(newShift.start).toISOString(),
-    plan_end  : new Date(newShift.end).toISOString(),
-  })
-  newShift.start = newShift.end = ''
-  load()
-}
-
-/* ---------- 編集 ---------- */
-function startEdit (r) {
-  Object.assign(editing, {
-    id         : r.id,
-    plan_start : r.plan_start ? dayjs(r.plan_start).format('YYYY-MM-DDTHH:mm') : '',
-    plan_end   : r.plan_end   ? dayjs(r.plan_end  ).format('YYYY-MM-DDTHH:mm') : '',
-    clock_in   : r.clock_in   ? dayjs(r.clock_in ).format('YYYY-MM-DDTHH:mm') : '',
-    clock_out  : r.clock_out  ? dayjs(r.clock_out).format('YYYY-MM-DDTHH:mm') : '',
+/* ---------- 編集用 ---------- */
+const editing = reactive({ id:null, plan_start:'', plan_end:'', clock_in:'', clock_out:'' })
+function startEdit(r){
+  Object.assign(editing,{
+    id:r.id,
+    plan_start:r.plan_start?dayjs(r.plan_start).format('YYYY-MM-DDTHH:mm'):'',
+    plan_end  :r.plan_end  ?dayjs(r.plan_end  ).format('YYYY-MM-DDTHH:mm'):'',
+    clock_in  :r.clock_in  ?dayjs(r.clock_in ).format('YYYY-MM-DDTHH:mm'):'',
+    clock_out :r.clock_out ?dayjs(r.clock_out).format('YYYY-MM-DDTHH:mm'):'',
   })
 }
-const cancelEdit = () => { editing.id = null }
-
-async function saveEdit () {
+const cancelEdit = ()=>{ editing.id=null }
+async function saveEdit(){
   const { plan_start:ps, plan_end:pe, clock_in:ci, clock_out:co } = editing
-  if (ps && pe && dayjs(ps).isAfter(dayjs(pe)))
-    return alert('予定終了は予定開始より後にしてください')
-  if (ci && co && dayjs(ci).isAfter(dayjs(co)))
-    return alert('退勤は出勤より後にしてください')
-
-  await updateCastShift(editing.id, {
-    plan_start: ps ? new Date(ps).toISOString() : null,
-    plan_end  : pe ? new Date(pe).toISOString() : null,
-    clock_in  : ci ? new Date(ci).toISOString() : null,
-    clock_out : co ? new Date(co).toISOString() : null,
+  if(ps&&pe&&dayjs(ps).isAfter(dayjs(pe))) return alert('予定終了は予定開始より後にしてください')
+  if(ci&&co&&dayjs(ci).isAfter(dayjs(co))) return alert('退勤は出勤より後にしてください')
+  await updateCastShift(editing.id,{
+    plan_start:ps?new Date(ps).toISOString():null,
+    plan_end  :pe?new Date(pe).toISOString():null,
+    clock_in  :ci?new Date(ci).toISOString():null,
+    clock_out :co?new Date(co).toISOString():null,
   })
-  editing.id = null
+  editing.id=null
   load()
 }
 
-/* ---------- 個別クリア／削除 ---------- */
-async function clearPlan (r) {
-  if (!r.plan_start && !r.plan_end) return
-  if (confirm('この予定を削除しますか？')) {
-    await updateCastShift(r.id, { plan_start:null, plan_end:null })
+/* ---------- 個別クリア・削除 ---------- */
+async function clearPlan(r){
+  if(!r.plan_start&&!r.plan_end) return
+  if(confirm('この予定を削除しますか？')){
+    await updateCastShift(r.id,{ plan_start:null, plan_end:null })
     load()
   }
 }
-async function clearAttendance (r) {
-  if (!r.clock_in) return
-  if (confirm('この出勤・退勤を取り消しますか？')) {
+async function clearAttendance(r){
+  if(!r.clock_in) return
+  if(confirm('この出勤・退勤を取り消しますか？')){
     await clearCastAttendance(r.id)
     load()
   }
 }
-async function removeShift (r) {
-  if (confirm('このシフト（行）を完全に削除します。よろしいですか？')) {
+async function removeShift(r){
+  if(confirm('このシフト（行）を完全に削除します。よろしいですか？')){
     await deleteCastShift(r.id)
     load()
   }
 }
 
 /* ---------- util ---------- */
-const fmt = d => d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '–'
-const h   = (m)=> m ? (m/60).toFixed(2) : '0.00'
+const fmt = d=>d?dayjs(d).format('YYYY/MM/DD HH:mm'):'–'
+const h   = m=>m?(m/60).toFixed(2):'0.00'
 
+/* ---------- データロード ---------- */
+async function load(){
+  rows.value = await fetchCastShiftHistory(castId,{ from:dateFrom.value, to:dateTo.value })
+  const list = await fetchCastDailySummaries({ cast:castId, from:dateFrom.value, to:dateTo.value })
+  summary.value = list[0] ?? null
+}
+watch([dateFrom,dateTo],load)
 onMounted(load)
 </script>
 
 <template>
   <div class="container-fluid">
+    <h4 class="fw-bold">{{ stageName }} さん</h4>
 
-    <!-- ▼ 新規シフト登録 -->
+    <!-- ▼ シフト申請（カート） -->
     <div class="card mb-5">
-      <div class="card-header fw-bold">シフト登録</div>
-      <div class="card-body">
-        <div class="row g-3 align-items-end">
-          <div class="col-md-5">
-            <label class="form-label">開始日時</label>
-            <input type="datetime-local" v-model="newShift.start" class="form-control">
+      <div class="card-header fw-bold text-center">シフト申請</div>
+      <div class="card-body bg-white">
+        <div class="d-flex gap-5">
+          <div class="area w-50">
+            <div class="d-flex g-3 align-items-end mb-3">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>開始時刻</th>
+                    <th>終了時刻</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><input type="datetime-local" v-model="form.start" class="form-control"></td>
+                    <td><input type="datetime-local" v-model="form.end" class="form-control"></td>
+                    <td><button class="btn" @click="addDraft"><i class="bi bi-plus-circle"></i></button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div class="col-md-5">
-            <label class="form-label">終了日時</label>
-            <input type="datetime-local" v-model="newShift.end" class="form-control">
-          </div>
-          <div class="col-md-2 text-end">
-            <button class="btn btn-primary w-100" @click="saveShift">登録</button>
+          <div class="area w-50">
+            <table class="table">
+              <thead>
+                <tr><th></th><th>開始時刻</th><th>終了時刻</th><th></th></tr>
+              </thead>
+              <tbody>
+                <!-- ドラフト行 -->
+                <tr v-for="(d,i) in draftShifts" :key="i" class="align-middle">
+                  <td>{{ i+1 }}</td>
+                  <td>{{ fmt(d.plan_start) || '–' }}</td>
+                  <td>{{ fmt(d.plan_end)   || '–' }}</td>
+                  <td>
+                    <button class="btn" @click="removeDraft(i)"><i class="bi bi-x-circle"></i></button>
+                  </td>
+                </tr>
+
+                <!-- 何も無いときはダミー行 -->
+                <tr v-if="!draftShifts.length" class="align-middle text-muted">
+                  <td></td><td>–</td><td>–</td><td></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
+        <div class="d-flex justify-content-center">
+          <button class="btn btn-primary" :disabled="!draftShifts.length" @click="submitAll">
+            {{ draftShifts.length }} 件まとめて申請
+          </button>
+        </div>
+
       </div>
     </div>
-    <!-- ▲ 新規シフト登録 -->
 
-	<div class="d-flex align-items-end gap-2 mb-3">
-	<div>
-		<label class="form-label">開始日</label>
-		<input type="date" v-model="dateFrom" class="form-control">
-	</div>
-	<div>
-		<label class="form-label">終了日</label>
-		<input type="date" v-model="dateTo" class="form-control">
-	</div>
-	<button class="btn btn-primary mb-1" @click="load">再表示</button>
-	</div>
-
-    <div v-if="summary" class="alert alert-info">
-      この期間の勤務&nbsp;
-      <strong>{{ h(summary.worked_min) }} h</strong>／
-      時給計&nbsp;<strong>{{ yen(summary.payroll) }}</strong>／
-      歩合計&nbsp;<strong>{{ yen(summary.total) }}</strong>／
-      <u>支給見込&nbsp;{{ yen(summary.total + summary.payroll) }}</u>
+    <!-- ▼ フィルタ -->
+    <h3 class="mb-3">シフト履歴</h3>
+    <div class="d-flex align-items-end gap-2 mb-3">
+      <div>
+        <label class="form-label">開始日</label>
+        <input type="date" v-model="dateFrom" class="form-control">
+      </div>
+      <div>
+        <label class="form-label">終了日</label>
+        <input type="date" v-model="dateTo" class="form-control">
+      </div>
+      <button class="btn btn-primary mb-1" @click="load">再表示</button>
     </div>
 
-
-    <h2 class="mb-3">シフト履歴 {{ stageName }}</h2>
-
-    <table class="table table-sm align-middle">
-      <thead class="table-light">
+    <!-- ▼ テーブル -->
+    <table class="table align-middle">
+      <thead class="table-dark">
         <tr>
           <th>ID</th><th>予定</th><th>出勤</th><th>退勤</th>
           <th>勤務</th><th>時給</th><th>給与</th><th class="text-end">操作</th>
         </tr>
       </thead>
-
       <tbody>
         <tr v-for="r in rows" :key="r.id">
           <td>{{ r.id }}</td>
@@ -190,85 +204,52 @@ onMounted(load)
           <td>
             <template v-if="editing.id !== r.id">
               <span v-if="r.plan_start">{{ fmt(r.plan_start) }} – {{ fmt(r.plan_end) }}</span>
-
-              <!-- 予定クリア -->
-              <button
-                class="btn btn-sm"
-                :disabled="!r.plan_start"
-                title="予定だけ削除"
-                @click="clearPlan(r)"
-              >
-                <i class="bi bi-x"></i>
-              </button>
+              <button class="btn" :disabled="!r.plan_start" title="予定削除" @click="clearPlan(r)"><i class="bi bi-x"></i></button>
             </template>
-
             <template v-else>
               <div class="d-flex gap-2">
-                <input type="datetime-local" v-model="editing.plan_start"
-                       class="form-control form-control-sm mb-1">
-                <input type="datetime-local" v-model="editing.plan_end"
-                       class="form-control form-control-sm">
+                <input type="datetime-local" v-model="editing.plan_start" class="form-control form-control-sm mb-1">
+                <input type="datetime-local" v-model="editing.plan_end" class="form-control form-control-sm">
               </div>
             </template>
           </td>
 
           <!-- 出勤 -->
           <td v-if="editing.id !== r.id">
-			{{ fmt(r.clock_in) }}
-
-				<button
-				 v-if="r.clock_in"
-				class="btn btn-sm"
-				:disabled="!r.clock_in"
-				title="出勤/退勤をクリア"
-				@click="clearAttendance(r)"
-				>
-				<i class="bi bi-x"></i>
-				</button>
-
+            {{ fmt(r.clock_in) }}
+            <button v-if="r.clock_in" class="btn" title="出退勤クリア" @click="clearAttendance(r)"><i class="bi bi-x"></i></button>
           </td>
           <td v-else>
-            <input type="datetime-local" v-model="editing.clock_in"
-                   class="form-control form-control-sm">
+            <input type="datetime-local" v-model="editing.clock_in" class="form-control form-control-sm">
           </td>
 
           <!-- 退勤 -->
           <td v-if="editing.id !== r.id">{{ fmt(r.clock_out) }}</td>
           <td v-else>
-            <input type="datetime-local" v-model="editing.clock_out"
-                   class="form-control form-control-sm">
+            <input type="datetime-local" v-model="editing.clock_out" class="form-control form-control-sm">
           </td>
 
           <!-- 勤務 -->
-          <td>
-            <span v-if="r.worked_min">{{ (r.worked_min/60).toFixed(2) }} h</span>
-            <span v-else>–</span>
-          </td>
+          <td>{{ r.worked_min ? (r.worked_min/60).toFixed(2)+' h' : '–' }}</td>
 
           <!-- 時給／給与 -->
           <td>{{ yen(r.hourly_wage_snap) }}</td>
           <td>{{ r.payroll_amount ? yen(r.payroll_amount) : '–' }}</td>
 
-          <!-- 操作列 -->
+          <!-- 操作 -->
           <td class="text-end">
             <template v-if="editing.id !== r.id">
-              <button class="btn btn-sm btn-outline-primary me-1"
-                      @click="startEdit(r)">
-                編集
-              </button>
-
-              <!-- 行ごと削除 -->
-              <button class="btn btn-sm btn-outline-danger"
-                      @click="removeShift(r)">
-                削除
-              </button>
+              <button class="btn btn-outline-primary me-2" @click="startEdit(r)">編集</button>
+              <button class="btn btn-outline-danger" @click="removeShift(r)">削除</button>
             </template>
-
             <template v-else>
-              <button class="btn btn-sm btn-success me-1" @click="saveEdit">保存</button>
-              <button class="btn btn-sm btn-secondary"   @click="cancelEdit">キャンセル</button>
+              <button class="btn btn-success me-2" @click="saveEdit">保存</button>
+              <button class="btn btn-secondary" @click="cancelEdit">キャンセル</button>
             </template>
           </td>
+        </tr>
+        <tr v-if="!rows.length">
+          <td colspan="8" class="text-center text-muted">シフトがありません</td>
         </tr>
       </tbody>
     </table>

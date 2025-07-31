@@ -115,10 +115,10 @@ const routes = [
           { path: 'pl/daily', component: () => import('@/views/BillPLDaily.vue'), meta: { title: '売上-日次' }},
           { path: 'pl/Monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次' }},
           { path: 'pl/yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次' } },
-          { path: '/cast-sales', component: () => import('@/views/CastSalesList.vue') },
-          { path: '/cast-sales/:id', component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail' },
-          { path: 'cast-shift', component: () => import('@/views/CastShiftList.vue'), props: true },
-          { path: 'cast-shift/:id/shifts', component: () => import('@/views/CastShiftPage.vue'), props: true ,name: 'cast-shift-page', },
+          { path: '/cast-sales', component: () => import('@/views/CastSalesList.vue'), meta: { title: 'キャスト売上' } },
+          { path: '/cast-sales/:id', component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail', meta: { title: 'キャスト売上' } },
+          { path: 'cast-shift', component: () => import('@/views/CastShiftList.vue'), props: true, meta: { title: 'シフト管理' } },
+          { path: 'cast-shift/:id/shifts', component: () => import('@/views/CastShiftPage.vue'), props: true ,name: 'cast-shift-page', meta: { title: 'シフト管理' } },
     ]
   },
 
@@ -130,7 +130,7 @@ const routes = [
       { path: '', redirect: '/cast/mypage' },
 
       // マイページは「必ず :id を付ける」形に
-      { path: 'mypage/:id(\\d+)', component: () => import('@/views/CastMypage.vue'), name: 'cast-mypage' },
+      { path: 'mypage/:id(\\d+)', component: () => import('@/views/CastMypage.vue'), name: 'cast-mypage',meta: { title: 'MyPage' } },
 
       { path: 'sales', component: () => import('@/views/CastSalesDetail.vue') },
       { path: 'profile', component: UserProfileEdit },
