@@ -1,7 +1,6 @@
 <script setup>
 /*
  * MVP キャスト用マイページ
- * 機能:
  *  1. シフト申請（予定の新規登録）
  *  2. 今月の売上 & 給与サマリ
  *  3. 自分のシフト一覧（期間フィルタ可）
@@ -37,25 +36,25 @@ const todayStr = dayjs().format('YYYY-MM-DD')
 
 /* ---------- 状態 ---------- */
 const castInfo    = ref(null)
-const shifts      = ref([])
-const summary     = ref(null)
-const todaySum    = ref(null)
-const rankings    = ref([])
-const notices     = ref([])
-const draftShifts = ref([])
+const shifts      = ref([])            // 自分のシフト一覧
+const summary     = ref(null)          // 期間サマリ（売上）
+const todaySum    = ref(null)          // 今日サマリ
+const rankings    = ref([])            // 店全体ランキング
+const notices     = ref([])            // 店舗お知らせ
+const draftShifts = ref([])            // シフト申請カート
 
 /* ---------- タブ ---------- */
 const activeTab = ref(null)
 const setTab    = k => (activeTab.value = k)
 
-/* ---------- フォーム ---------- */
+/* ---------- 申請フォーム ---------- */
 const form = reactive({ start:'', end:'' })
 
 /* ---------- util ---------- */
 const fmt = d => d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '–'
 const h   = m => m ? (m/60).toFixed(2) : '0.00'
 
-/* ---------- 取得 ---------- */
+/* ---------- データ取得 ---------- */
 async function loadCast () {
   castInfo.value = await fetchCastMypage(castId)
 }
@@ -113,6 +112,16 @@ const todaySales = computed(() =>
   todaySum.value ? todaySum.value.total + todaySum.value.payroll : null
 )
 
+/* ---------- 売上ブレイクダウン ---------- */
+const salesBreakdown = computed(() => summary.value ? {
+  champ: summary.value.sales_champ || 0,
+  nom  : summary.value.sales_nom   || 0,
+  in   : summary.value.sales_in    || 0,
+  free : summary.value.sales_free  || 0,
+  total: summary.value.total       || 0,
+  payroll: summary.value.payroll   || 0,
+} : null)
+
 /* ---------- シフト申請 ---------- */
 function addDraft () {
   if (!form.start || !form.end) return alert('開始／終了を入力してください')
@@ -141,15 +150,9 @@ async function submitAll () {
 }
 
 /* ---------- 次シフト日時フォーマット ---------- */
-const nextShiftDate  = computed(() =>
-  nextShift.value ? dayjs(nextShift.value.plan_start).format('YYYY/MM/DD') : null
-)
-const nextShiftStart = computed(() =>
-  nextShift.value ? dayjs(nextShift.value.plan_start).format('HH:mm') : null
-)
-const nextShiftEnd   = computed(() =>
-  nextShift.value ? dayjs(nextShift.value.plan_end  ).format('HH:mm') : null
-)
+const nextShiftDate  = computed(() => nextShift.value ? dayjs(nextShift.value.plan_start).format('YYYY/MM/DD') : null)
+const nextShiftStart = computed(() => nextShift.value ? dayjs(nextShift.value.plan_start).format('HH:mm') : null)
+const nextShiftEnd   = computed(() => nextShift.value ? dayjs(nextShift.value.plan_end  ).format('HH:mm') : null)
 
 /* ---------- ウォッチ ---------- */
 watch([dateFrom,dateTo], () => { loadShifts(); loadSummary(); loadRankings() })
@@ -291,13 +294,72 @@ onMounted(loadAll)
             </tr>
           </tbody>
         </table>
+        <div class="d-flex justify-content-center">
+          <button class="btn btn-outline-primary" @click="setTab('apply')">
+            シフト申請
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- ▼ 売上 -->
     <div v-if="activeTab === 'sales'">
-      <h4 class="mt-5 mb-3">売上</h4>
-      <p class="text-muted">売上はまだありません</p>
+      <!-- ▼ 売上タブ用：期間フィルタ（スマホ向けにコンパクト） -->
+      <div class="d-flex align-items-center gap-2 mb-4">
+        <div>
+          <input type="date" v-model="dateFrom"
+                class="form-control form-control-sm" />
+        </div>
+        <div>
+          〜
+        </div>
+        <div>
+          <input type="date" v-model="dateTo"
+                class="form-control form-control-sm" />
+        </div>
+        <!-- v-model 変更で自動再読込しているなら @click は不要。
+            明示的に押して更新したいなら loadSummary() を呼ぶ -->
+        <button class=""
+                @click="loadSummary">
+          <i class="bi bi-search"></i>
+        </button>
+      </div>
+
+      <!-- <h4 class="mt-5 mb-3">売上 ({{ dateFrom }} 〜 {{ dateTo }})</h4> -->
+
+      <div v-if="salesBreakdown" class="table-responsive">
+        <table class="table table-sm text-nowrap align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>シャンパン</th>
+              <th>本指名</th>
+              <th>場内</th>
+              <th>フリー</th>
+              <th class="text-end">歩合小計</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{{ yen(salesBreakdown.champ) }}</td>
+              <td>{{ yen(salesBreakdown.nom) }}</td>
+              <td>{{ yen(salesBreakdown.in) }}</td>
+              <td>{{ yen(salesBreakdown.free) }}</td>
+              <td class="text-end fw-bold">{{ yen(salesBreakdown.total) }}</td>
+            </tr>
+          </tbody>
+          <tfoot class="table-light fw-bold">
+            <tr>
+              <td colspan="4" class="text-end">時給小計</td>
+              <td class="text-end">{{ yen(salesBreakdown.payroll) }}</td>
+            </tr>
+            <tr>
+              <td colspan="4" class="text-end">支給見込 (歩合+時給)</td>
+              <td class="text-end">{{ yen(salesBreakdown.total + salesBreakdown.payroll) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p v-else class="text-muted">売上はまだありません</p>
     </div>
 
     <!-- ▼ 売上 -->
