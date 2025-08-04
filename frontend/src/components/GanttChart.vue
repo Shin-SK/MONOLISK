@@ -76,9 +76,11 @@ async function fetchBars(){
 
       const rowId = typeof b.table==='object' ? b.table.id : b.table
       const from  = new Date(b.opened_at)
-      const to = b.expected_out               // ← 常に期待退店で描画
-        ? new Date(b.expected_out)
-        : new Date()                          // 念のためフォールバック
+      // ① 基本 SET の終了 (= opened_at + 1 SET ぶん)
+      const to  = new Date(+from + (b.set_rounds ? 60 : 0) * 60_000)
+ 
+      // ② 延長分（分）→ px に換算して CSS 変数に埋め込む
+      const extPx = b.ext_minutes * pxPerMinute.value
 
       const isClosed = !!b.closed_at          // ← フラグ立てる
 
@@ -91,9 +93,13 @@ async function fetchBars(){
         ganttBarConfig:{
           id   : `bill_${b.id}`,
           label: '',
-          style:{ background: isClosed
-                  ? 'rgba(108,117,125,.3)'     // ← グレーで「済」
-                  : 'rgba(25,135,84,.2)' }     // ← 営業中は従来色
+          class: b.ext_minutes ? 'has-ext' : '',
+          style:{
+            '--ext-width': `${extPx}px`,
+            background  : isClosed
+              ? 'rgba(108,117,125,.3)'
+              : 'rgba(25,135,84,.2)'
+          }
         },
         isClosed,
       }
@@ -242,6 +248,16 @@ onMounted(() => {
 :deep(.g-upper-timeunit){ display:none }
 :deep(.g-gantt-chart){ margin-top:-40px }
 :deep(.g-gantt-row){ position:relative }
+
+/* ▼ style scoped ブロック内 */
+:deep(.has-ext)::after{
+  content:'';
+  position:absolute;
+  top:0; bottom:0; left:100%;
+  width:var(--ext-width);
+  background:rgba(254, 139, 139, 0.469);
+  pointer-events:none;
+}
 
 /*  badge下のステータス線 */
 .badge{

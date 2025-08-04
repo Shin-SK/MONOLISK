@@ -16,8 +16,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models.functions import Coalesce
 from datetime import date
 
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, Cast, BillCastStay, Cast, CastPayout ,BillItem, ItemCategory, CastShift, CastDailySummary
-from .serializers import CastSalesSummarySerializer, CastPayoutDetailSerializer, CastItemDetailSerializer, CastSerializer, ItemCategorySerializer, StoreSerializer, TableSerializer, BillSerializer, ItemMasterSerializer, BillItemSerializer, CastSerializer, CastShiftSerializer, CastDailySummarySerializer, CastRankingSerializer
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, Cast, BillCastStay, Cast, CastPayout ,BillItem, ItemCategory, CastShift, CastDailySummary, Staff
+from .serializers import CastSalesSummarySerializer, CastPayoutDetailSerializer, CastItemDetailSerializer, CastSerializer, ItemCategorySerializer, StoreSerializer, TableSerializer, BillSerializer, ItemMasterSerializer, BillItemSerializer, CastSerializer, CastShiftSerializer, CastDailySummarySerializer, CastRankingSerializer, StaffSerializer
 from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales ,sync_nomination_fees
 
@@ -432,3 +432,10 @@ class CastRankingView(ListAPIView):
                 .select_related('store')          # ← avatar は cast.avatar に直接あるので OK
                 .order_by('-revenue')[:10]
         )
+
+
+class StaffViewSet(StoreScopedModelViewSet):
+    queryset = Staff.objects.prefetch_related('stores', 'user')
+    serializer_class = StaffSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ['user__username', 'stores']

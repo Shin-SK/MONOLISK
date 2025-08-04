@@ -20,12 +20,20 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         today = localdate()
-        parser.add_argument("--from", dest="date_from", default=today.isoformat())
-        parser.add_argument("--to",   dest="date_to",   default=today.isoformat())
-
+        parser.add_argument("--from", dest="date_from", default=None)
+        parser.add_argument("--to",   dest="date_to",   default=None)
+        
     def handle(self, *args, **opt):
-        d_from = date.fromisoformat(opt["date_from"])
-        d_to   = date.fromisoformat(opt["date_to"])
+        # ① 範囲を決定
+        if opt["date_from"]:
+            d_from = date.fromisoformat(opt["date_from"])
+        else:
+            # CastDailySummary が必要な一番古い日付を求める（例：最初の Bill の日）
+            d_from = Bill.objects.earliest("closed_at").closed_at.date()
+
+        if opt["date_to"]:
+            d_to = date.fromisoformat(opt["date_to"])
+        else:
 
         bills = (Bill.objects
                  .filter(closed_at__date__range=(d_from, d_to))

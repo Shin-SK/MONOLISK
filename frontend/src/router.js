@@ -4,7 +4,6 @@ import { useUser } from '@/stores/useUser'
 
 /* --- レイアウト --- */
 import AdminLayout      from '@/layouts/AdminLayout.vue'
-import ReservationLayout from '@/layouts/ReservationLayout.vue' // スタッフ共通
 import DriverLayout     from '@/layouts/DriverLayout.vue'
 import CastLayout       from '@/layouts/CastLayout.vue'
 
@@ -17,7 +16,6 @@ import TimelineAdmin         from '@/views/TimelineAdmin.vue'
 import DriverMypage        from '@/views/DriverMypage.vue'
 import CustomerList          from '@/views/CustomerList.vue'
 import CustomerForm          from '@/views/CustomerForm.vue'
-import AdminCastList              from '@/views/AdminCastList.vue'
 import AdminCastForm              from '@/views/AdminCastForm.vue'
 import AdminDriverList              from '@/views/AdminDriverList.vue'
 import AdminDriverForm              from '@/views/AdminDriverForm.vue'
@@ -46,7 +44,6 @@ const routes = [
       { path: 'customers',            component: CustomerList, meta: { title: '顧客情報' }},
       { path: 'customers/new',        component: CustomerForm, meta: { title: '新規顧客' }},
       { path: 'customers/:id',        component: CustomerForm, meta: { title: '顧客編集' } },
-      { path: 'casts',                component: AdminCastList, meta: { title: 'キャスト情報' } },
       { path: 'casts/new',            component: AdminCastForm, meta: { title: '新規キャスト' } },
       { path: 'casts/:id',            component: AdminCastForm, meta: { title: 'キャスト編集' } },
       { path: 'drivers',                component: AdminDriverList, meta: { title: 'ドライバー情報' } },
@@ -76,16 +73,16 @@ const routes = [
   },
 
   /* ---------- スタッフ（予約管理だけ欲しい場合） ---------- */
-  {
-    path: '/staff',
-    component: ReservationLayout,      // サイドバーなどスタッフ用外枠
-    meta: { requiresAuth: true },
-    children: [
-      { path: 'reservations',          component: ReservationList },    // /reservation
-      { path: 'reservations/:id',       component: ReservationFormAdmin, name: 'staff-reservation-detail' },
-      { path: 'reservations/new',       component: ReservationFormAdmin },
-    ],
-  },
+  // {
+  //   path: '/staff',
+  //   component: ReservationLayout,      // サイドバーなどスタッフ用外枠
+  //   meta: { requiresAuth: true },
+  //   children: [
+  //     { path: 'reservations',          component: ReservationList },    // /reservation
+  //     { path: 'reservations/:id',       component: ReservationFormAdmin, name: 'staff-reservation-detail' },
+  //     { path: 'reservations/new',       component: ReservationFormAdmin },
+  //   ],
+  // },
 
   /* ---------- ドライバー ---------- */
   {
@@ -116,11 +113,13 @@ const routes = [
           { path: 'pl/Monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次' }},
           { path: 'pl/yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次' } },
           { path: '/cast-sales', component: () => import('@/views/CastSalesList.vue'), meta: { title: 'キャスト売上' } },
+          { path: '/casts', component: () => import('@/views/AdminCastList.vue'), meta: { title: 'キャスト情報' } },
           { path: '/cast-sales/:id', component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail', meta: { title: 'キャスト売上' } },
           { path: 'cast-shift', component: () => import('@/views/CastShiftList.vue'), props: true, meta: { title: 'シフト管理' } },
           { path: 'cast-shift/:id/shifts', component: () => import('@/views/CastShiftPage.vue'), props: true ,name: 'cast-shift-page', meta: { title: 'シフト管理' } },
           { path: '/ranking', component: () => import('@/views/CastRanking.vue'), props: true, meta: { title: 'ランキング' } },
-    ]
+          { path: '/staff', component: () => import('@/views/AdminStaffList.vue'), props: true, meta: { title: 'スタッフ情報' } },
+    ],
   },
 
   {

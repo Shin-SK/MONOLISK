@@ -1,6 +1,6 @@
 # billing/serializer.py
 from rest_framework import serializers
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff
 from django.utils import timezone
 from dj_rest_auth.serializers import UserDetailsSerializer
 from .models import User
@@ -728,3 +728,11 @@ class CastRankingSerializer(serializers.ModelSerializer):
             )
             return url
         return static('img/user-default.png')
+
+
+class StaffSerializer(serializers.ModelSerializer):
+    user = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model  = Staff
+        fields = ('id', 'user', 'hourly_wage', 'stores')

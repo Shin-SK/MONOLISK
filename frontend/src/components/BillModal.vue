@@ -191,6 +191,9 @@ async function chooseCourse(opt){           // opt = {id, code, label}
     // ② フロント側に即反映
     props.bill.items.push(newItem)
 
+    // ★ ③ expected_out が返ってきたらローカルで更新
+    emit('saved', props.bill.id)
+
     // ③ テーブルが変更されていれば PATCH で確定
     if (form.table_id !== props.bill.table?.id) {
       await api.patch(`billing/bills/${props.bill.id}/`, {
@@ -423,6 +426,10 @@ async function save () {
       }
       const newItem = await addBillItem(props.bill.id, payload)
       props.bill.items.push(newItem)                     // フロントへ即反映
+    // ★ expected_out をローカル更新
+    if (newItem.bill?.expected_out) {
+      props.bill.expected_out = newItem.bill.expected_out
+    }
     } catch (e) {
       console.error('add item failed', e)
       alert('注文の送信に失敗しました')

@@ -58,11 +58,9 @@ async function logout () {
            <i class="bi bi-chevron-right"></i>
           </button>
 
-          <div
-            id="shiftCollapse"
-            class="collapse ps-3"
-            :class="{ show: shiftActive }">
+          <div id="shiftCollapse" class="collapse ps-3" :class="{ show: shiftActive }">
             <RouterLink class="nav-link" to="/casts" @click="closeSidebar">キャスト情報</RouterLink>
+            <RouterLink class="nav-link" to="/staff" @click="closeSidebar">スタッフ情報</RouterLink>
           </div>
 
           <RouterLink class="nav-link mt-auto" to="/cast/mypage/1" @click="closeSidebar">キャストマイページ（サンプルID=1）</RouterLink>

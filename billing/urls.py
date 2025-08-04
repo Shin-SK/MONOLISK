@@ -3,7 +3,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 from rest_framework_nested.routers import NestedSimpleRouter
 from billing.api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
-from .views import StoreViewSet, TableViewSet, ItemMasterViewSet, BillViewSet, BillItemViewSet, CastViewSet, CastSalesView, CastPayoutListView, CastItemDetailView, ItemCategoryViewSet, CastShiftViewSet, CastDailySummaryViewSet, CastRankingView
+from .views import StoreViewSet, TableViewSet, ItemMasterViewSet, BillViewSet, BillItemViewSet, CastViewSet, CastSalesView, CastPayoutListView, CastItemDetailView, ItemCategoryViewSet, CastShiftViewSet, CastDailySummaryViewSet, CastRankingView, StaffViewSet
 
 # --- Routers ---
 router = DefaultRouter()
@@ -15,6 +15,7 @@ router.register(r'casts', CastViewSet)
 router.register(r'item-categories',  ItemCategoryViewSet)
 router.register(r'cast-shifts', CastShiftViewSet)
 router.register(r'cast-daily-summaries', CastDailySummaryViewSet, basename='cast-daily-summaries')
+router.register(r'staffs', StaffViewSet, basename='staff')
 
 bill_items_router = NestedSimpleRouter(router, r'bills', lookup='bill')
 bill_items_router.register(r'items', BillItemViewSet, basename='bill-item')

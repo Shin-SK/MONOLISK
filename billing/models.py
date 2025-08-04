@@ -14,6 +14,7 @@ from datetime import timedelta
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 import warnings
+from django.db.models import Q
 
 from .calculator import BillCalculator
 
@@ -186,12 +187,14 @@ class Bill(models.Model):
 
     @property
     def ext_minutes(self):
-        """延長系の総分数"""
+        qs = self.items.filter(
+            Q(item_master__code__startswith='extension') |
+            Q(item_master__code__startswith='ext')
+        )
         return sum(
             (it.duration_min or 30) * it.qty
-            for it in self.items.filter(item_master__code__startswith='extension')
+            for it in qs
         )
-    
 
     # ─── 金額再計算 ───────────────────────────────
     def recalc(self, save: bool = False):  # noqa: D401
@@ -224,7 +227,7 @@ class Bill(models.Model):
             if code.startswith('set') and not base_found:
                 base_found = True
                 minutes += dur
-            elif code.startswith('extension'):
+            elif code.startswith(('extension', 'ext')):
                 minutes += dur * it.qty
         self.expected_out = self.opened_at + timedelta(minutes=minutes) if minutes else None
         if save:
@@ -371,7 +374,7 @@ class BillItem(models.Model):
         super().save(*args, **kwargs)
 
         # SET / EXTENSION 系なら退店予定を即時更新
-        if self.code.startswith(('set', 'extension')):
+        if self.code.startswith(('set', 'extension', 'ext')):
             self.bill.update_expected_out(save=True)
 
     def delete(self, *args, **kwargs):
@@ -545,8 +548,6 @@ class CastShift(models.Model):
         super().save(*args, **kwargs)
 
 
-
-# billing/models.py
 class CastDailySummary(models.Model):
     """1キャスト x 1日 x 店舗 の給与・売上サマリ"""
     store       = models.ForeignKey(Store, on_delete=models.CASCADE)

@@ -475,3 +475,28 @@ export const fetchStoreNotices = () =>
   })
   .then(res => (res.status === 200 ? res.data : []))  // 200 以外は空配列
   .catch(() => []);                                   // ネットワークエラーも無視
+
+
+// ─────────────────────────────────────────────
+//  Staff APIs  ★ここから下を api.js のどこかに追記
+// ─────────────────────────────────────────────
+
+/**
+ * スタッフ一覧取得（ページネーション有無どちらでも可）
+ *   params: { name, ordering, ... }
+ *
+ * 例）fetchStaffs({ name:'佐藤' })
+ */
+export const fetchStaffs = (params = {}) =>
+  api.get('billing/staffs/', { params })
+     .then(r => r.data.results ?? r.data)   // DRF pagination 対応
+
+/**
+ * 今日のシフト予定（勤務表）
+ *   params: { date:'YYYY-MM-DD', /* store_id はヘッダに自動付加 *\/ }
+ *
+ * 例）getStaffShiftPlans({ date:'2025-08-04' })
+ */
+export const getStaffShiftPlans = (params = {}) =>
+  api.get('billing/staff-shift-plans/', { params })
+     .then(r => r.data)
