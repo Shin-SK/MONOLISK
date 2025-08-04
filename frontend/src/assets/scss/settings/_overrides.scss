@@ -37,3 +37,10 @@
 .fs-7{
   @include fs(8);
 }
+
+.modal-fullscreen .modal-content {
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    min-height: 100%;
+}
