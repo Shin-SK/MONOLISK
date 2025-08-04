@@ -226,3 +226,5 @@ def sync_nomination_fees(
 
     # 金額の再計算は 1 回で OK
     bill.recalc(save=True)
+
+

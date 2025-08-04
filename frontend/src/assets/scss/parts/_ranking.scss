@@ -1,0 +1,88 @@
+@use '../global/global' as *;
+
+.ranking-block{
+	margin-bottom: 80px;
+	aspect-ratio: 1/1;
+	min-height: 100%;
+	h5{
+		@include flex();
+		font-weight: bold;
+		flex-direction: column;
+		gap: 16px;
+		margin-bottom: 16px;
+		&::after {
+			content: '';
+			width: 40px;
+			height: 4px;
+			background-color: black;
+			border-radius: 100px;
+		}
+	}
+	.top-three{
+		gap: 40px;
+		margin-bottom: 16px;
+		.number{
+			.avatar{
+				aspect-ratio: 1/1;
+				position: relative;
+				&::before {
+					position: absolute;
+					top: -8px; left: -8px;
+					font-family: "bootstrap-icons";
+					line-height: 1;
+					color: black;
+				}
+			}
+			.wrap{
+				display: flex;
+				
+			}
+
+		}
+		.no1{
+			.avatar{
+				img{
+					width: 240px;
+				}
+			}
+			.medal{
+				width: 60px;
+			}
+		}
+		.no2{
+			.avatar{
+				img{
+					width: 200px;
+				}
+			}
+			.medal{
+				width: 50px;
+			}
+		}
+		.no3{
+			.avatar{
+				img{
+					width: 160px;
+				}
+			}
+			.medal{
+				width: 40px;
+			}
+		}
+	}
+	.others{
+		.other-item{
+			.avatar{
+					width: 40px;
+					height: 40px;
+				img{
+					aspect-ratio: 1/1;
+					width: 100%;
+					object-fit: cover;
+					border-radius: 50%;
+				}
+			}
+		}
+
+	}
+}

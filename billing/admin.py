@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from .models import (
     Store, Table, ItemCategory, ItemMaster, Bill, BillItem,
-    BillCastStay, Cast, CastPayout, ItemStock, UserStore, BillingUser, CastCategoryRate
+    BillCastStay, Cast, CastPayout, ItemStock, BillingUser, CastCategoryRate
 )
 from django.contrib import admin
 from .models import Store
@@ -184,13 +184,6 @@ class CastPayoutAdmin(admin.ModelAdmin):
 	list_filter   = ('cast', 'bill__table__store')
 	search_fields = ('bill__id', 'cast__stage_name')
 
-
-
-@admin.register(UserStore)
-class UserStoreAdmin(admin.ModelAdmin):
-    list_display  = ('user', 'store')
-    list_select_related = ('store',)
-    search_fields = ('user__username', 'store__name')
 
 
 

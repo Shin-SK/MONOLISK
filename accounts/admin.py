@@ -30,33 +30,26 @@ class CustomUserAdmin(ImportExportModelAdmin, BaseUserAdmin):
 
     list_display = (
         "username", "get_stage_name", "get_avatar",
-        "get_store", "is_staff",
+        "store", "is_staff",
     )
-    list_select_related = ("cast",)
-    list_filter = ("is_staff",)
+    list_filter  = ("is_staff", "store")
+    search_fields = ("username", "email", "store__name")
 
-    # ----- helper columns -----
-    @admin.display(description="源氏名")
-    def get_stage_name(self, obj):
-        return getattr(obj.cast, "stage_name", "—")
+    fieldsets = (
+        (None, {"fields": ("username", "password")}),
+        ("個人情報", {"fields": ("first_name", "last_name", "email")}),
+        ("所属店舗", {"fields": ("store",)}),         # ★ 追加
+        ("権限", {"fields": ("is_active", "is_staff", "is_superuser",
+                            "groups", "user_permissions")}),
+        ("日付", {"fields": ("last_login", "date_joined")}),
+    )
 
     @admin.display(description="アバター")
     def get_avatar(self, obj):
         cast = getattr(obj, "cast", None)
-        if cast and cast.avatar:
-            return format_html(
-                '<img src="{}" style="height:40px;border-radius:50%;" />',
-                cast.avatar.url,
-            )
-        return "—"
+        return format_html('<img src="{}" style="height:40px;border-radius:50%;" />',
+                           cast.avatar.url) if cast and cast.avatar else "—"
 
-    @admin.display(description="店舗")
-    def get_store(self, obj):
-        if getattr(obj, "cast", None) and obj.cast.store:
-            return obj.cast.store
-        staff = getattr(obj, "staff", None)
-        if staff and staff.stores.exists():
-            return ", ".join(s.slug for s in staff.stores.all())
-        if hasattr(obj, "store_profile"):
-            return obj.store_profile.store
-        return "—"
+    @admin.display(description="源氏名")
+    def get_stage_name(self, obj):
+        return getattr(obj.cast, "stage_name", "—")

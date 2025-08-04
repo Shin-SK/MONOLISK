@@ -10,4 +10,10 @@ class User(AbstractUser):
         null=True,
         unique=False
     )
+    store = models.ForeignKey(
+        'billing.Store',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='users'
+    )
     # 今後はここに “オーナー区分” とか “電話番号” とか足していくだけ

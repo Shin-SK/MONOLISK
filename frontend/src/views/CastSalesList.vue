@@ -3,7 +3,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter }      from 'vue-router'
 import dayjs              from 'dayjs'
-import { fetchCastDailySummaries } from '@/api'
+import { fetchCastDailySummaries, fetchCasts } from '@/api'
 
 /* ---------- 期間 ---------- */
 const dateFrom = ref(dayjs().startOf('month').format('YYYY-MM-DD'))
@@ -12,6 +12,7 @@ const dateTo   = ref(dayjs().format('YYYY-MM-DD'))
 /* ---------- データ ---------- */
 const dailyRows = ref([])   // API 生レコード（日別）
 const totals    = ref([])   // キャスト別集計結果
+const allCasts  = ref([])
 
 const router = useRouter()
 const yen = n => `¥${(+n || 0).toLocaleString()}`
@@ -19,17 +20,14 @@ const yen = n => `¥${(+n || 0).toLocaleString()}`
 /* ---------- 集計 ---------- */
 function aggregate () {
   const map = new Map()
+
+  /* ---------- 集計（実売上があるキャスト） ---------- */
   dailyRows.value.forEach(r => {
     const id = r.cast.id
     if (!map.has(id)) {
       map.set(id, {
-        cast  : r.cast,
-        champ : 0,
-        nom   : 0,
-        in    : 0,
-        free  : 0,
-        comm  : 0,  // 歩合小計
-        pay   : 0,  // 時給小計
+        cast:r.cast, champ:0, nom:0, in:0, free:0,
+        comm:0, pay:0, grand:0
       })
     }
     const t = map.get(id)
@@ -39,14 +37,31 @@ function aggregate () {
     t.free  += r.sales_free
     t.comm  += r.total
     t.pay   += r.payroll
+    t.grand  = t.comm + t.pay
   })
-  totals.value = [...map.values()].map(t => ({ ...t, grand: t.comm + t.pay }))
-    .sort((a,b) => b.grand - a.grand)
+
+  /* ---------- 売上ゼロのキャストを追加 ---------- */
+  allCasts.value.forEach(c => {
+    if (!map.has(c.id)) {
+      map.set(c.id, {
+        cast:c, champ:0, nom:0, in:0, free:0,
+        comm:0, pay:0, grand:0
+      })
+    }
+  })
+
+  totals.value = [...map.values()].sort((a,b) => b.grand - a.grand)
 }
+
 
 /* ---------- 取得 ---------- */
 async function load () {
-  dailyRows.value = await fetchCastDailySummaries({ from: dateFrom.value, to: dateTo.value })
+  const [rows, casts] = await Promise.all([
+    fetchCastDailySummaries({ from: dateFrom.value, to: dateTo.value }),
+    fetchCasts()                           // 👈 追加
+  ])
+  dailyRows.value = rows
+  allCasts.value  = casts
   aggregate()
 }
 
@@ -93,9 +108,6 @@ onMounted(load)
           <td class="fw-bold">{{ yen(t.comm) }}</td>
           <td>{{ yen(t.pay) }}</td>
           <td class="text-end fw-bold">{{ yen(t.grand) }}</td>
-        </tr>
-        <tr v-if="!totals.length">
-          <td colspan="8" class="text-center text-muted">データがありません</td>
         </tr>
       </tbody>
     </table>

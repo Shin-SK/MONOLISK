@@ -5,10 +5,12 @@ export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
 })
 import dayjs from 'dayjs'
+import { getToken, getStoreId, clearAuth } from './auth'
+
 
 
 /* ---------------------------------------- */
-/* 共通レスポンスインターセプタ & パーサ     */
+/* 共通レスポンスインターセプタ & パーサ          */
 /* ---------------------------------------- */
 
 function parseApiError(err){
@@ -25,29 +27,8 @@ function parseApiError(err){
 	return '不明なエラー'
 }
 
-/* ❶ 401 専用（壊れたトークン掃除のみ） */
-api.interceptors.response.use(
-	res => res,
-	err => {
-		if (err.response?.status === 401) localStorage.removeItem('token')
-		return Promise.reject(err)	// → 次(❷)へ
-	}
-)
-
-/* ❷ 全エラー共通（alert で内容表示） */
-api.interceptors.response.use(
-	res => res,
-	err => {
-		alert(parseApiError(err))
-		return Promise.reject(err)	// → 呼び出し元の catch へ
-	}
-)
-
-
-
-
 /* ------------------------------------------------------------------ */
-/* 1. interceptor: “ログイン系 URL には token を付けない”            */
+/* interceptor: “ログイン系 URL には token を付けない”                    */
 /* ------------------------------------------------------------------ */
 const SKIP_AUTH = [
   'dj-rest-auth/login/',
@@ -56,49 +37,67 @@ const SKIP_AUTH = [
 ]
 
 api.interceptors.request.use(cfg => {
+  // FormData 用ヘッダ調整
+  if (cfg.data instanceof FormData) delete cfg.headers['Content-Type']
 
-  if (cfg.data instanceof FormData) {
-    delete cfg.headers['Content-Type']; // axios が boundary 付きで付け直す
-  }
-  // 対象 URL ならスキップ
+  // ---- Token 付加 ---------------------------------
   if (!SKIP_AUTH.some(p => cfg.url.includes(p))) {
-    const t = localStorage.getItem('token')
+    const t = getToken()
     if (t) cfg.headers.Authorization = `Token ${t}`
   }
+
+  // ---- store_id 自動付加 ---------------------------
+  const storeId = getStoreId()
+  if (storeId) {
+    // GET → query, それ以外 → body
+    if ((cfg.method ?? 'get').toLowerCase() === 'get') {
+      cfg.params ??= {}
+      cfg.params.store_id ??= storeId
+    } else if (cfg.data && typeof cfg.data === 'object' && !Array.isArray(cfg.data)) {
+      cfg.data.store_id ??= storeId
+    }
+  }
+
   return cfg
 })
 
 
+/* ------------------------------------------------------------------ */
+/* 認証 API                                                            */
+/* ------------------------------------------------------------------ */
+
+export async function login(username, password) {
+  localStorage.removeItem('token')
+  localStorage.removeItem('store_id')
+
+  const { data } = await api.post('dj-rest-auth/login/', { username, password })
+
+  localStorage.setItem('token', data.key)
+  if (data.store_id) localStorage.setItem('store_id', String(data.store_id))
+}
+
+
+export async function logout() {
+  try { await api.post('dj-rest-auth/logout/') } catch (_) {}
+  clearAuth()
+}
+
+/* ------------------------------------------------------------------ */
+/* 401 ハンドリング                                                     */
+/* ------------------------------------------------------------------ */
 api.interceptors.response.use(
   res => res,
   err => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem('token')      // ← 壊れた token を掃除
-    }
+    if (err.response?.status === 401) clearAuth()
     return Promise.reject(err)
   }
 )
 
+
 /* ------------------------------------------------------------------ */
-/* 2. 認証 API                                                         */
+/* Reservations いずれ整理する                                          */
 /* ------------------------------------------------------------------ */
-export async function login(username, password) {
-  localStorage.removeItem('token')                // ← まず完全クリア
-  const { data } = await api.post(
-    'dj-rest-auth/login/',
-    { username, password },
-    { headers: { Authorization: '' } }           // ← 念のため空ヘッダで上書き
-  )
-  localStorage.setItem('token', data.key)
-}
 
-export async function logout() {
-  try { await api.post('dj-rest-auth/logout/') } catch (_) {}
-  localStorage.removeItem('token')
-}
-
-
-/* ---------- Reservations ---------- */
 export const getReservations = (params = {}) => {
   const cleaned = Object.fromEntries(
     Object.entries(params).filter(([, v]) => v !== '' && v != null)
@@ -272,7 +271,11 @@ export const deleteReservationDriver = id => api.delete(`reservation-drivers/${i
 
 
 
-/* ---------- Bills ---------- */
+/* ------------------------------------------------------------------ */
+/* Bills キャバクラ版への移植版。現在のメイン
+/* ------------------------------------------------------------------ */
+
+
 // すでに baseURL が `/api/` なので “billing/...” を付ける
 
 export const fetchBills   = (params={}) =>
@@ -326,24 +329,37 @@ export const getStore  = id => api.get(`billing/stores/${id}/`).then(r => r.data
 
 //PL
 
-export const getBillDailyPL = (date, store) => {
-  const params = { date }
-  if (store) params.store_id = store
-  return api.get('billing/pl/daily/', { params }).then(r => r.data)
-}
+export const getBillDailyPL  = (date)       => api.get('billing/pl/daily/',  { params:{ date } }).then(r=>r.data)
 
+export const getBillYearlyPL = (year) =>
+  api.get('billing/pl/yearly/', { params: { year } })
+    .then(r => {
+      const d = r.data
 
+      /* ── 年間トータルを UI 互換のキーに寄せる ─────────── */
+      const totals = {
+        sales_total      : d.sales_total      ?? 0,
+        guest_count      : d.guest_count      ?? 0,
+        avg_spend        : d.avg_spend        ?? 0,
+        labor_cost       : d.labor_cost       ?? 0,
+        operating_profit : d.operating_profit ?? 0,
+      }
 
-export const getBillMonthlyPL = (monthStr, storeId) => {
+      /* ── months 配列はそのまま返す（0 埋めは vue 側に任せる） */
+      const months = Array.isArray(d.months) ? d.months : []
+
+      return { year: d.year, totals, months }
+    })
+
+export const getBillMonthlyPL = (monthStr) => {
   const [year, month] = monthStr.split('-').map(Number)
-  const params = { year, month, store_id: storeId }
-  return api.get('billing/pl/monthly/', { params }).then(r => r.data)
+  return api.get('billing/pl/monthly/', { params: { year, month } })
+          .then(r => ({
+            days:          r.data.days          ?? [],   // 常に配列で返す
+            monthly_total: r.data.monthly_total ?? {},   // 常に Obj で返す
+          }))
 }
 
-export const getBillYearlyPL = (year, storeId) => {
-  const params = { year, store_id: storeId }   // 常に送る
-  return api.get('billing/pl/yearly/', { params }).then(r => r.data)
-}
 
 // キャスト系
 

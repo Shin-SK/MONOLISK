@@ -7,7 +7,6 @@ from rest_framework.response import Response
 from django.db import transaction
 from django.utils import timezone
 from decimal import Decimal
-from .services import get_cast_sales 
 from django.conf      import settings
 from django.apps      import apps
 from rest_framework.generics import ListAPIView
@@ -20,6 +19,7 @@ from datetime import date
 from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, Cast, BillCastStay, Cast, CastPayout ,BillItem, ItemCategory, CastShift, CastDailySummary
 from .serializers import CastSalesSummarySerializer, CastPayoutDetailSerializer, CastItemDetailSerializer, CastSerializer, ItemCategorySerializer, StoreSerializer, TableSerializer, BillSerializer, ItemMasterSerializer, BillItemSerializer, CastSerializer, CastShiftSerializer, CastDailySummarySerializer, CastRankingSerializer
 from .filters import CastPayoutFilter, CastItemFilter
+from .services import get_cast_sales ,sync_nomination_fees
 
 
 StoreModel = apps.get_model(settings.STORE_MODEL)    # billing.Store を取得
@@ -359,46 +359,6 @@ class CastSalesSummaryView(ListAPIView):
                 .order_by('stage_name'))
 
 
-
-class CastRankingView(ListAPIView):
-    """
-    GET /api/billing/cast-rankings/?from=YYYY-MM-DD&to=YYYY-MM-DD
-    期間指定なしなら当月1日〜今日まで
-    """
-    serializer_class = CastRankingSerializer
-    pagination_class = None  # 上位10名だけ
-
-    def get_queryset(self):
-        # ─ 期間 ───────────────────────────
-        date_from = self.request.query_params.get('from')
-        date_to   = self.request.query_params.get('to')
-        if not (date_from and date_to):
-            today = timezone.localdate()
-            date_from = today.replace(day=1)
-            date_to   = today
-
-        # ─ 売上 (= 4 カラム合算) を集計 ────────
-        revenue_expr = (
-            F('sales_free')  + F('sales_in') +
-            F('sales_nom')   + F('sales_champ')
-        )
-
-        return (
-            CastDailySummary.objects
-            .filter(work_date__range=(date_from, date_to))
-            .values('cast_id')                              # ← dict key: cast_id
-            .annotate(
-                stage_name = F('cast__stage_name'),
-                revenue    = Sum(ExpressionWrapper(revenue_expr,
-                                                   output_field=IntegerField()))
-            )
-            .order_by('-revenue')[:10]
-        )
-
-
-    
-    
-
 class BillToggleInhouseAPIView(APIView):
     # permission_classes = [IsAuthenticated]
 
@@ -445,46 +405,30 @@ class BillToggleInhouseAPIView(APIView):
         return Response({'stay_type': stay.stay_type})
 
 
+class CastRankingView(ListAPIView):
+    serializer_class = CastRankingSerializer
+    pagination_class = None          # 上位 10 名だけ
 
+    def get_queryset(self):
+        date_from = self.request.query_params.get('from')
+        date_to   = self.request.query_params.get('to')
+        if not (date_from and date_to):
+            today = timezone.localdate()
+            date_from = today.replace(day=1)
+            date_to   = today
 
-# class DailyPLView(APIView):
-#     def get(self, request):
-#         target_dt = date.fromisoformat(request.query_params.get("date"))
-#         pl        = get_daily_pl(
-#             target_dt,
-#             store_id=request.query_params.get("store_id")
-#         )
-#         return Response(pl)
-#     """
-#     GET /api/billing/pl/daily/?date=YYYY-MM-DD&store_id=<id>
+        # ── Cast モデルから直接集約 ─────────────────
+        revenue_expr = (
+            F('daily_summaries__sales_free')  +
+            F('daily_summaries__sales_in')    +
+            F('daily_summaries__sales_nom')   +
+            F('daily_summaries__sales_champ')
+        )
 
-#     - store_id をクエリに入れなければヘッダの `request.store` を使う  
-#     - どちらも無ければ 400 を返す
-#     """
-#     permission_classes = [permissions.IsAuthenticated]
-
-#     def get(self, request):
-#         # --- 日付 ---
-#         date_str  = request.query_params.get("date")
-#         target_dt = (
-#             date.fromisoformat(date_str)
-#             if date_str else timezone.localdate()
-#         )
-
-#         # --- store_id 解決 ---
-#         raw = request.query_params.get("store_id")  # '' の可能性あり
-#         if not raw:                                 # None / '' のとき
-#             if hasattr(request, "store") and request.store:
-#                 store_id = request.store.id
-#             elif getattr(request.user, "store_id", None):
-#                 store_id = request.user.store_id
-#             else:
-#                 return Response(
-#                     {"detail": "store_id を指定してください"},
-#                     status=status.HTTP_400_BAD_REQUEST,
-#                 )
-#         else:
-#             store_id = int(raw)
-
-#         data = get_daily_pl(target_dt, store_id=store_id)
-#         return Response(data)
+        return (
+            Cast.objects
+                .filter(daily_summaries__work_date__range=(date_from, date_to))
+                .annotate(revenue=Sum(revenue_expr, output_field=IntegerField()))
+                .select_related('store')          # ← avatar は cast.avatar に直接あるので OK
+                .order_by('-revenue')[:10]
+        )

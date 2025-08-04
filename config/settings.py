@@ -54,8 +54,8 @@ INSTALLED_APPS = [
     'dal_select2',      # ← 追加（Select2 フロント）
     "django_extensions",
 
-    'accounts',
     'core.apps.CoreConfig',
+    'accounts',
     'billing',
 
 ]
@@ -67,14 +67,6 @@ REST_AUTH_REGISTER_SERIALIZERS = {
     'REGISTER_SERIALIZER': 'accounts.forms.MyRegisterSerializer',
 }
 
-REST_AUTH_SERIALIZERS = {
-    'USER_DETAILS_SERIALIZER': 'core.serializers.MyUserDetailsSerializer',
-}
-
-DJ_REST_AUTH = {
-    "USER_DETAILS_SERIALIZER": "core.serializers.UserDetailSerializer",
-    # ※ 他に書く項目があればここに
-}
 
 # 管理画面に飛ばしたい場合
 LOGIN_REDIRECT_URL = "/admin/"
@@ -98,15 +90,18 @@ STORAGES = {
 SITE_ID = 1
 
 
-
 REST_AUTH = {
+    # 既存
     'SIGNUP_FIELDS': {
         'username': {'required': True},
         'email':    {'required': True},
     },
     'LOGIN_FIELD': 'username',
-}
 
+    # 追記／統合
+    'LOGIN_SERIALIZER'       : 'accounts.serializers.LoginWithStoreSerializer',
+    'USER_DETAILS_SERIALIZER': 'accounts.serializers.UserDetailsWithStoreSerializer',
+}
 # allauth のログインは username のみ許可
 ACCOUNT_AUTHENTICATION_METHOD = "username"
 ACCOUNT_EMAIL_REQUIRED        = True
@@ -167,7 +162,6 @@ MIDDLEWARE = [
     
     'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
-
 
 ROOT_URLCONF = 'config.urls'
 

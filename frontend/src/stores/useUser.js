@@ -18,7 +18,7 @@ export const useUser = defineStore('user', {
   // getters
   // -------------------------------------------------------------------------
   getters: {
-    avatar:   (s) => s.info?.avatar_url ?? '/static/img/user-default.png',
+    avatar:   (s) => s.info?.avatar_url || '/img/user-default.png',
     name:     (s) => s.info?.display_name || s.info?.username || '',
     isDriver: (s) => s.info?.groups?.includes('DRIVER') ?? false,
     isCast:   (s) => s.info?.groups?.includes('CAST')   ?? false,

@@ -9,7 +9,7 @@
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import RankingTable from '@/components/RankingTable.vue'
+import RankingBlock from '@/components/RankingBlock.vue'
 import dayjs from 'dayjs'
 import {
   createCastShift,
@@ -40,6 +40,7 @@ const shifts      = ref([])            // 自分のシフト一覧
 const summary     = ref(null)          // 期間サマリ（売上）
 const todaySum    = ref(null)          // 今日サマリ
 const rankings    = ref([])            // 店全体ランキング
+const monthlyRows = computed(() => rankings.value)
 const notices     = ref([])            // 店舗お知らせ
 const draftShifts = ref([])            // シフト申請カート
 
@@ -217,9 +218,6 @@ onMounted(loadAll)
       <a href="#" :class="{ active: activeTab === 'customers' }" @click.prevent="setTab('customers')">
         <i class="bi bi-people"></i><span>顧客情報</span>
       </a>
-      <a href="#" :class="{ active: activeTab === 'news' }" @click.prevent="setTab('news')">
-        <i class="bi bi-card-list"></i><span>おしらせ</span>
-      </a>
     </nav>
 
     <!-- ▼ シフト申請 -->
@@ -369,20 +367,26 @@ onMounted(loadAll)
     </div>
 
     <!-- ▼ 顧客情報 -->
-    <div v-if="activeTab === 'news'">
-      <h4 class="mt-5 mb-3">お店からのお知らせ</h4>
+    <div class="notice mt-5">
+      <h5>お店からのお知らせ</h5>
       <ul v-if="notices.length" class="list-group mb-4">
         <li v-for="n in notices" :key="n.id" class="list-group-item">
           {{ n.message }}
           <span class="text-muted small ms-2">{{ dayjs(n.created_at).format('YYYY/MM/DD') }}</span>
         </li>
       </ul>
-      <p v-else class="text-muted">現在お知らせはありません</p>
+      <p v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height: 200px;">現在お知らせはありません</p>
     </div>
 
     <!-- ランキング -->
-    <h4 class="mt-5 mb-3">ランキング</h4>
-    <RankingTable :rows="rankings" />
+    <div class="container mt-4">
+      <RankingBlock
+        v-if="monthlyRows.length"
+        label="月間ランキング"
+        :rows="monthlyRows"
+      />
+      <p v-else class="text-muted text-center">集計されていません</p>
+    </div>
   </div>
 </template>
 

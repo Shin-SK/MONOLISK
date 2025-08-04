@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.conf import settings
 from decimal import Decimal, ROUND_HALF_UP
 from collections import defaultdict
-from django.db import models
+from django.db import models, transaction 
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from cloudinary.models import CloudinaryField
@@ -13,25 +13,11 @@ from django.dispatch import receiver
 from datetime import timedelta
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+import warnings
+
+from .calculator import BillCalculator
 
 User = get_user_model()
-
-class UserStore(models.Model):
-    """
-    1ユーザー = 1店舗 の紐付けだけを保持する軽量プロファイル
-    """
-    user  = models.OneToOneField(
-        User, on_delete=models.CASCADE,
-        related_name='store_profile'
-    )
-    store = models.ForeignKey('billing.Store', on_delete=models.CASCADE)
-
-    class Meta:
-        verbose_name = 'ユーザー店舗紐付け'
-        verbose_name_plural = verbose_name
-
-    def __str__(self):
-        return f'{self.user.username} → {self.store.name}'
 
 
 class BillingUser(User):
@@ -40,9 +26,6 @@ class BillingUser(User):
         app_label = 'billing'       # ★ここを偽装するとサイドバーの見出しが billing になる
         verbose_name = 'User'
         verbose_name_plural = 'Users'
-  
-
-
 
 # ───────── マスター ─────────
 class Store(models.Model):
@@ -176,11 +159,9 @@ class Bill(models.Model):
     closed_at = models.DateTimeField(null=True, blank=True)
     expected_out = models.DateTimeField('退店予定', null=True, blank=True)
 
-    main_cast = models.ForeignKey(          # 本指名（0 or 1）
-        'billing.Cast',
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name='main_bills',
+    main_cast = models.ForeignKey(
+        'billing.Cast', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='main_bills',
         verbose_name='本指名'
     )
     nominated_casts = models.ManyToManyField('billing.Cast', blank=True, related_name='nominated_bills')
@@ -192,6 +173,11 @@ class Bill(models.Model):
 
     total = models.PositiveIntegerField(default=0)          # close 時に確定
     settled_total = models.PositiveIntegerField(null=True, blank=True, default=None)
+    discount_rule = models.ForeignKey(
+        'billing.DiscountRule',
+        null=True, blank=True,
+        on_delete=models.SET_NULL
+    )
     
     @property
     def set_rounds(self):
@@ -208,32 +194,28 @@ class Bill(models.Model):
     
 
     # ─── 金額再計算 ───────────────────────────────
-    def recalc(self, save=False):
+    def recalc(self, save: bool = False):  # noqa: D401
+        """DEPRECATED: BillCalculator へ移行中"""
+        warnings.warn("Bill.recalc() は BillCalculator に置換予定", DeprecationWarning, stacklevel=2)
+        
         sub = sum(it.subtotal for it in self.items.all())
-
         store = self.table.store if self.table_id else None
         sr = Decimal(store.service_rate) if store else Decimal('0')
         tr = Decimal(store.tax_rate) if store else Decimal('0')
         sr = sr / 100 if sr >= 1 else sr
         tr = tr / 100 if tr >= 1 else tr
-
         svc = int((Decimal(sub) * sr).quantize(Decimal('1'), ROUND_HALF_UP))
         tax = int((Decimal(sub + svc) * tr).quantize(Decimal('1'), ROUND_HALF_UP))
-
         self.subtotal = sub
         self.service_charge = svc
         self.tax = tax
         self.grand_total = sub + svc + tax
-
         if save:
             self.save(update_fields=['subtotal', 'service_charge', 'tax', 'grand_total'])
         return self.grand_total
 
     # ─── 退店予定再計算 ───────────────────────────
-    def update_expected_out(self, save=False):
-        """
-        SET の 1 行目 + EXTENSION 系を積算して expected_out を再設定
-        """
+    def update_expected_out(self, save: bool = False):
         minutes = 0
         base_found = False
         for it in self.items.all():
@@ -244,49 +226,81 @@ class Bill(models.Model):
                 minutes += dur
             elif code.startswith('extension'):
                 minutes += dur * it.qty
-
         self.expected_out = self.opened_at + timedelta(minutes=minutes) if minutes else None
         if save:
             self.save(update_fields=['expected_out'])
         return self.expected_out
 
-    # billing/models.Bill
+    
     def close(self, settled_total: int | None = None):
-        """
-        - 金額再計算
-        - CastPayout を作り直し
-        - 在席中 stay を締める
-        """
-        self.recalc(save=True)
+        """伝票を締め、金額・CastPayout・日次サマリを確定保存"""
+        result = BillCalculator(self).execute()
 
-        if settled_total:
+        # ─ 金額フィールド更新 ─
+        self.subtotal       = result.subtotal
+        self.service_charge = result.service_fee
+        self.tax            = result.tax
+        self.grand_total    = result.total
+        self.total          = settled_total or result.total
+        if settled_total is not None:
             self.settled_total = settled_total
-            self.total = settled_total
-        else:
-            self.total = self.grand_total
-
         self.closed_at = timezone.now()
-        self.save(update_fields=["subtotal","service_charge","tax",
-                                "grand_total","total","settled_total",
-                                "closed_at"])
 
-        # stay の一括退席
-        self.stays.filter(left_at__isnull=True).update(left_at=self.closed_at)
+        from .models import CastPayout, CastDailySummary  # ループ依存対策
 
-        # CastPayout 再生成
-        from .services import calc_bill_totals
-        out = calc_bill_totals(self)
+        with transaction.atomic():
+            # ① 退席前に stay_type をキャッシュ
+            stay_map = {
+                s.cast_id: s.stay_type
+                for s in self.stays.filter(left_at__isnull=True)
+            }
 
-        self.payouts.all().delete()
-        CastPayout.objects.bulk_create([
-            CastPayout(bill=self, bill_item=bi, cast=cs, amount=amt)
-            for cs, bi, amt in out["payouts"]
-        ])
+            # ② 伝票を確定
+            self.save(update_fields=[
+                'subtotal', 'service_charge', 'tax', 'grand_total',
+                'total', 'settled_total', 'closed_at'
+            ])
 
+            # ③ 一括退席
+            self.stays.filter(left_at__isnull=True).update(left_at=self.closed_at)
+
+            # ④ CastPayout をリフレッシュ
+            self.payouts.all().delete()
+            CastPayout.objects.bulk_create(result.cast_payouts)
+
+            # ⑤ cast_id → 売上合計を集計
+            sales_map = defaultdict(int)
+            for it in self.items.select_related('served_by_cast'):
+                if not it.served_by_cast:
+                    continue
+                sales_map[it.served_by_cast_id] += it.subtotal   # ← “小計” で集計中ならこれ
+
+            work_date = self.closed_at.date()
+
+            # テーブルが無い伝票でも落ちないようにフォールバック
+            store_id = (
+                self.table.store_id if self.table_id else
+                self.store_id       if self.store_id  else
+                next(iter(stay_map)) and self.stays.first().bill.table.store_id  # 最後の保険
+            )
+
+            # ⑥ CastDailySummary を upsert
+            for cid, amt in sales_map.items():
+                col = {
+                    'nom': 'sales_nom', 'in': 'sales_in', 'free': 'sales_free',
+                }.get(stay_map.get(cid, 'free'), 'sales_free')
+
+                rec, _ = CastDailySummary.objects.get_or_create(
+                    store_id=store_id, cast_id=cid, work_date=work_date,
+                    defaults={}
+                )
+                setattr(rec, col, (getattr(rec, col) or 0) + amt)
+                rec.save(update_fields=[col])
 
     class Meta:
         verbose_name = '伝票'
         verbose_name_plural = verbose_name
+
 
 
 # ───────── 品目行 ─────────
@@ -536,7 +550,7 @@ class CastShift(models.Model):
 class CastDailySummary(models.Model):
     """1キャスト x 1日 x 店舗 の給与・売上サマリ"""
     store       = models.ForeignKey(Store, on_delete=models.CASCADE)
-    cast        = models.ForeignKey(Cast,  on_delete=models.CASCADE)
+    cast        = models.ForeignKey(Cast,  on_delete=models.CASCADE, related_name='daily_summaries')
     work_date   = models.DateField()                     # 2025‑07‑28
     worked_min  = models.PositiveIntegerField(default=0) # 分
     payroll     = models.PositiveIntegerField(default=0) # 時給分
@@ -601,3 +615,25 @@ class CastDailySummary(models.Model):
 def _update_summary(sender, instance, **kwargs):
     if instance.clock_in and instance.clock_out:
         CastDailySummary.upsert_from_shift(instance)
+        
+        
+
+class DiscountRule(models.Model):
+    """伝票全体に適用される単発割引（併用不可）"""
+    name = models.CharField(max_length=40)
+    amount_off = models.PositiveIntegerField(null=True, blank=True)  # ¥固定値
+    percent_off = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)  # 0.10 = 10%
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "割引ルール"
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        if self.amount_off:
+            return f"{self.name}: -¥{self.amount_off}"
+        if self.percent_off:
+            return f"{self.name}: -{float(self.percent_off)*100}%"
+        return self.name

@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 from django.utils.crypto import get_random_string
 from datetime import date
 from .services import sync_nomination_fees
+from django.templatetags.static import static
 
 
 class StoreSerializer(serializers.ModelSerializer):
@@ -276,8 +277,8 @@ class CastSerializer(serializers.ModelSerializer):
         last_name  = validated_data.pop('last_name', '')
 
         request = self.context.get('request')
-        if not validated_data.get('store') and request and hasattr(request.user, 'store_profile'):
-            validated_data['store'] = request.user.store_profile.store
+        if not validated_data.get('store') and request and request.user.store_id:
+            validated_data['store'] = request.user.store
 
         user = User.objects.create_user(
             username=username,
@@ -605,38 +606,21 @@ class BillSerializer(serializers.ModelSerializer):
         )
         return instance
 
-
-    # ── 共通計算ロジック ─────────────────
     def _store_rates(self, obj):
-        if not obj.table_id:
-            return Decimal("0"), Decimal("0")
-        store = obj.table.store
-        sr = Decimal(store.service_rate)
-        tr = Decimal(store.tax_rate)
-        sr = sr / 100 if sr >= 1 else sr
-        tr = tr / 100 if tr >= 1 else tr
-        return sr, tr
+        """DEPRECATED: 計算は BillCalculator に統合済み。"""
+        return Decimal("0"), Decimal("0")
 
     def get_subtotal(self, obj):
-        return sum(i.subtotal for i in obj.items.all())
+        return obj.subtotal
 
     def get_service_charge(self, obj):
-        subtotal, (sr, _) = self.get_subtotal(obj), self._store_rates(obj)
-        return round(subtotal * sr)
+        return obj.service_charge
 
     def get_tax(self, obj):
-        subtotal = self.get_subtotal(obj)
-        svc      = self.get_service_charge(obj)
-        _, tr    = self._store_rates(obj)
-        return round((subtotal + svc) * tr)
+        return obj.tax
 
     def get_grand_total(self, obj):
-        return obj.total or (
-            self.get_subtotal(obj) +
-            self.get_service_charge(obj) +
-            self.get_tax(obj)
-        )
-
+        return obj.total or obj.grand_total
 
 
 class CastShiftSerializer(serializers.ModelSerializer):
@@ -721,7 +705,26 @@ class CastDailySummarySerializer(serializers.ModelSerializer):
         )
 
 
-class CastRankingSerializer(serializers.Serializer):
-    cast_id    = serializers.IntegerField()
-    stage_name = serializers.CharField()
-    revenue    = serializers.IntegerField()
+
+class CastRankingSerializer(serializers.ModelSerializer):
+    cast_id    = serializers.IntegerField(source='id', read_only=True)  # ← ★追加
+    revenue    = serializers.IntegerField(read_only=True)
+    avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Cast
+        fields = ('cast_id',      # ← こちらを公開
+                  'stage_name',
+                  'revenue',
+                  'avatar_url')   # id は除外したので OK
+
+    def get_avatar_url(self, obj):
+        if obj.avatar:
+            url, _ = cloudinary_url(
+                obj.avatar.public_id,
+                format=obj.avatar.format,
+                width=240, height=240, crop='thumb',
+                secure=True,
+            )
+            return url
+        return static('img/user-default.png')

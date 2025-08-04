@@ -1,56 +1,46 @@
-# billing/utils/pl_monthly.py  ―― まるごと貼り替え OK
-from datetime    import date, timedelta
-from calendar    import monthrange
-from typing      import Dict, List
+from __future__ import annotations
+"""
+pl_monthly.py (Step-7): 日次 PL を合算して月次 PL を返す
+"""
+from datetime import date, timedelta
+from typing import Dict, Any
 
 from billing.utils.pl_daily import get_daily_pl
 
+__all__ = ["get_monthly_pl"]
 
-def get_monthly_pl(year: int, month: int,
-                   *,                     # ← store_id は keyword‑only
-                   store_id: int) -> Dict:
-    """
-    指定年月 + 店舗の月次 P/L 集計。
-      ‑ store_id は必須（全店集計は想定しない）
-    """
-    first_day     = date(year, month, 1)
-    days_in_month = monthrange(year, month)[1]
 
-    days: List[Dict] = []
-    totals = {
-        "guest_count"     : 0,
-        "sales_total"     : 0,
-        "drink_sales"     : 0,
-        "drink_qty"       : 0,
-        "extension_qty"   : 0,
-        "labor_cost"      : 0,
+def _daterange_day(start: date, end: date):
+    cur = start
+    while cur <= end:
+        yield cur
+        cur += timedelta(days=1)
+
+
+def get_monthly_pl(year: int, month: int, *, store_id: int) -> Dict[str, Any]:
+    """指定年月・店舗の月次 PL を返す（daily PL の単純合算）"""
+    first = date(year, month, 1)
+    # 翌月1日を求めて1日引けば月末
+    last = (first.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+    agg = {
+        "sales_total": 0,
+        "guest_count": 0,
+        "labor_cost": 0,
         "operating_profit": 0,
     }
 
-    for d in range(days_in_month):
-        curr = first_day + timedelta(days=d)
-        # ★ get_daily_pl は store_id キーワード必須
-        row  = get_daily_pl(curr, store_id=store_id)
-        days.append(row)
+    for d in _daterange_day(first, last):
+        day_pl = get_daily_pl(d, store_id=store_id)
+        for k in agg:
+            agg[k] += day_pl[k]
 
-        for k in totals:
-            totals[k] += row[k]
-
-    # 平均系・率系を再計算
-    totals["avg_spend"] = (
-        totals["sales_total"] // totals["guest_count"]
-        if totals["guest_count"] else 0
-    )
-    totals["drink_unit_price"] = (
-        totals["drink_sales"] // totals["drink_qty"]
-        if totals["drink_qty"] else 0
-    )
-    totals["vip_ratio"] = 0   # 必要なら別途算出
+    avg_spend = int(agg["sales_total"] // agg["guest_count"]) if agg["guest_count"] else 0
 
     return {
-        "year"    : year,
-        "month"   : month,
+        "year": year,
+        "month": month,
         "store_id": store_id,
-        "days"    : days,
-        "totals"  : totals,
+        **agg,
+        "avg_spend": avg_spend,
     }

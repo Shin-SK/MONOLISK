@@ -119,6 +119,7 @@ const routes = [
           { path: '/cast-sales/:id', component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail', meta: { title: 'キャスト売上' } },
           { path: 'cast-shift', component: () => import('@/views/CastShiftList.vue'), props: true, meta: { title: 'シフト管理' } },
           { path: 'cast-shift/:id/shifts', component: () => import('@/views/CastShiftPage.vue'), props: true ,name: 'cast-shift-page', meta: { title: 'シフト管理' } },
+          { path: '/ranking', component: () => import('@/views/CastRanking.vue'), props: true, meta: { title: 'ランキング' } },
     ]
   },
 
