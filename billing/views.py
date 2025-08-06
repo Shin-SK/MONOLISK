@@ -1,7 +1,7 @@
 # billing/views.py
 
 from rest_framework.views import APIView
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction
@@ -16,8 +16,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models.functions import Coalesce
 from datetime import date
 
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, Cast, BillCastStay, Cast, CastPayout ,BillItem, ItemCategory, CastShift, CastDailySummary, Staff
-from .serializers import CastSalesSummarySerializer, CastPayoutDetailSerializer, CastItemDetailSerializer, CastSerializer, ItemCategorySerializer, StoreSerializer, TableSerializer, BillSerializer, ItemMasterSerializer, BillItemSerializer, CastSerializer, CastShiftSerializer, CastDailySummarySerializer, CastRankingSerializer, StaffSerializer
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, Cast, BillCastStay, Cast, CastPayout ,BillItem, ItemCategory, CastShift, CastDailySummary, Staff, StaffShift
+from .serializers import CastSalesSummarySerializer, CastPayoutDetailSerializer, CastItemDetailSerializer, CastSerializer, ItemCategorySerializer, StoreSerializer, TableSerializer, BillSerializer, ItemMasterSerializer, BillItemSerializer, CastSerializer, CastShiftSerializer, CastDailySummarySerializer, CastRankingSerializer, StaffSerializer, StaffShiftSerializer, BillCastStayMiniSerializer
 from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales ,sync_nomination_fees
 
@@ -439,3 +439,38 @@ class StaffViewSet(StoreScopedModelViewSet):
     serializer_class = StaffSerializer
     permission_classes = [permissions.IsAuthenticated]
     filterset_fields = ['user__username', 'stores']
+
+
+class StaffShiftViewSet(StoreScopedModelViewSet):
+    queryset = StaffShift.objects.select_related('store', 'staff')
+    serializer_class = StaffShiftSerializer
+    filterset_fields = ['staff', 'clock_in', 'clock_out']
+
+
+class BillStayViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    """
+    POST   /billing/bills/<bill_id>/stays/          ← 新規 stay 追加
+    PATCH  /billing/bills/<bill_id>/stays/<id>/     ← stay_type 等を変更
+    DELETE /billing/bills/<bill_id>/stays/<id>/     ← stay 行削除
+    """
+    serializer_class = BillCastStayMiniSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        bill_id = self.kwargs['bill_pk']
+        return BillCastStay.objects.filter(bill_id=bill_id)
+
+    # 伝票に紐づける
+    def perform_create(self, serializer):
+        bill = Bill.objects.get(pk=self.kwargs['bill_pk'])
+        serializer.save(bill=bill, entered_at=timezone.now())
+
+    # PATCH で “退席させる” ショートハンド
+    def partial_update(self, request, *args, **kwargs):
+        if request.data.get('left_now'):
+            instance = self.get_object()
+            instance.left_at = timezone.now()
+            instance.save(update_fields=['left_at'])
+            ser = self.get_serializer(instance)
+            return Response(ser.data, status=status.HTTP_200_OK)
+        return super().partial_update(request, *args, **kwargs)

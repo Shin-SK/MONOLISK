@@ -38,41 +38,76 @@ function primaryAddress(c) {
 </script>
 
 <template>
-<div class="customer customer-list container-fluid py-4">
-	<!-- <h1 class="h4 mb-3">顧客検索 / 登録</h1> -->
+  <div class="customer customer-list container-fluid py-4">
+    <!-- <h1 class="h4 mb-3">顧客検索 / 登録</h1> -->
 
-	<!-- 検索バー -->
-	<div class="input-group mb-3">
-		<input v-model="keyword" @keyup.enter="fetch"
-			   class="form-control" placeholder="名前 または 電話番号">
-		<button class="btn btn-outline-secondary" @click="fetch">検索</button>
-		<button class="btn btn-primary" @click="addCustomer">＋ 登録</button>
-	</div>
+    <!-- 検索バー -->
+    <div class="input-group mb-3">
+      <input
+        v-model="keyword"
+        class="form-control"
+        placeholder="名前 または 電話番号"
+        @keyup.enter="fetch"
+      >
+      <button
+        class="btn btn-outline-secondary"
+        @click="fetch"
+      >
+        検索
+      </button>
+      <button
+        class="btn btn-primary"
+        @click="addCustomer"
+      >
+        ＋ 登録
+      </button>
+    </div>
 
-	<!-- 一覧 -->
-	<table class="table table-bordered table-hover align-middle table-striped" v-if="results.length">
-		<thead>
-			<tr>
-				<th>ID</th><th>名前</th><th>電話</th><th>住所</th><th>メモ</th><th class="text-end">編集</th>
-			</tr>
-		</thead>
-		<tbody>
-			<tr v-for="c in results" :key="c.id">
-				<td>{{ c.id }}</td>
-				<td>{{ c.name }}</td>
-				<td>{{ c.phone }}</td>
-				<td>{{ primaryAddress(c) }}</td>
-				<td class="pre-line">{{ c.memo }}</td>
-				<td class="text-end">
-					<RouterLink :to="`/customers/${c.id}`" class="btn btn-sm btn-outline-secondary">
-						編集
-					</RouterLink>
-				</td>
-			</tr>
-		</tbody>
-	</table>
+    <!-- 一覧 -->
+    <table
+      v-if="results.length"
+      class="table table-bordered table-hover align-middle table-striped"
+    >
+      <thead>
+        <tr>
+          <th>ID</th><th>名前</th><th>電話</th><th>住所</th><th>メモ</th><th class="text-end">
+            編集
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="c in results"
+          :key="c.id"
+        >
+          <td>{{ c.id }}</td>
+          <td>{{ c.name }}</td>
+          <td>{{ c.phone }}</td>
+          <td>{{ primaryAddress(c) }}</td>
+          <td class="pre-line">
+            {{ c.memo }}
+          </td>
+          <td class="text-end">
+            <RouterLink
+              :to="`/customers/${c.id}`"
+              class="btn btn-sm btn-outline-secondary"
+            >
+              編集
+            </RouterLink>
+          </td>
+        </tr>
+      </tbody>
+    </table>
 
-	<p v-else class="text-muted" v-if="!loading">結果がありません</p>
-	<p v-if="loading">読み込み中...</p>
-</div>
+    <p
+      v-else
+      v-if="!loading"
+      class="text-muted"
+    >
+      結果がありません
+    </p>
+    <p v-if="loading">
+      読み込み中...
+    </p>
+  </div>
 </template>

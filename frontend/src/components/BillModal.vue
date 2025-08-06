@@ -192,7 +192,7 @@ async function chooseCourse(opt){           // opt = {id, code, label}
     props.bill.items.push(newItem)
 
     // ★ ③ expected_out が返ってきたらローカルで更新
-    emit('saved', props.bill.id)
+    emit('updated', props.bill.id)
 
     // ③ テーブルが変更されていれば PATCH で確定
     if (form.table_id !== props.bill.table?.id) {
@@ -471,353 +471,561 @@ async function save () {
 
 <template>
   <!-- 伝票がまだ無い瞬間は描画しない -->
-  <BaseModal v-if="props.bill" v-model="visible">
-  <template #header>
-    <div class="modal-header align-items-center justify-content-end gap-3">
-      <div class="d-flex flex-wrap gap-3">
-        <span class="fs-3 fw-bold">
-          {{ headerInfo.sets }}SET 
-        </span>
+  <BaseModal
+    v-if="props.bill"
+    v-model="visible"
+  >
+    <template #header>
+      <div class="modal-header align-items-center justify-content-end gap-3">
+        <div class="d-flex flex-wrap gap-3">
+          <span class="fs-3 fw-bold">
+            {{ headerInfo.sets }}SET 
+          </span>
 
-        <span class="fs-3 fw-bold">
-          {{ headerInfo.start }} 〜 {{ headerInfo.end }}
-        </span>
+          <span class="fs-3 fw-bold">
+            {{ headerInfo.start }} 〜 {{ headerInfo.end }}
+          </span>
 
-        <span v-if="headerInfo.extCnt">
-          延長 <b>{{ headerInfo.extCnt }}</b> 回
-        </span>
+          <span v-if="headerInfo.extCnt">
+            延長 <b>{{ headerInfo.extCnt }}</b> 回
+          </span>
+        </div>
+
+        <button
+          class="btn-close"
+          style="margin-left: unset;"
+          @click="visible = false"
+        />
       </div>
+    </template>
 
-      <button class="btn-close" @click="visible = false" style="margin-left: unset;"></button>
-    </div>
-  </template>
-
-    <div class="position-relative p-4 d-grid gap-4 h-100" style="grid-template-columns:auto 1fr 1fr;">
-        <div class="outer d-flex flex-column gap-4">
-          <!-- 伝票番号 -->
-          <div class="d-flex flex-column align-items-center gap-2">
-            <span class="badge bg-primary text-light">伝票番号</span>
-            <span>{{ props.bill.id }}</span>
+    <div
+      class="position-relative p-4 d-grid gap-4 h-100"
+      style="grid-template-columns:auto 1fr 1fr;"
+    >
+      <div class="outer d-flex flex-column gap-4">
+        <!-- 伝票番号 -->
+        <div class="d-flex flex-column align-items-center gap-2">
+          <span class="badge bg-primary text-light">伝票番号</span>
+          <span>{{ props.bill.id }}</span>
+        </div>
+        <!-- テーブル番号 -->
+        <div class="wrap d-flex flex-column align-items-center gap-2">
+          <div class="badge bg-primary text-light">
+            テーブル
           </div>
-          <!-- テーブル番号 -->
-          <div class="wrap d-flex flex-column align-items-center gap-2">
-            <div class="badge bg-primary text-light">テーブル</div>
-            <select class="form-select text-end"
-                    style="width: 80px;"
-                    v-model.number="form.table_id">
-              <option class="text-center" :value="null"> - </option>
-              <option class="text-center" v-for="t in tables" :key="t.id" :value="t.id">
-                {{ t.number }}
+          <select
+            v-model.number="form.table_id"
+            class="form-select text-end"
+            style="width: 80px;"
+          >
+            <option
+              class="text-center"
+              :value="null"
+            >
+              -
+            </option>
+            <option
+              v-for="t in tables"
+              :key="t.id"
+              class="text-center"
+              :value="t.id"
+            >
+              {{ t.number }}
+            </option>
+          </select>
+        </div>
+        <!-- 人数 -->
+        <div class="wrap d-flex flex-column align-items-center gap-2">
+          <div class="badge bg-primary text-light">
+            人数
+          </div>
+          <select
+            v-model.number="pax"
+            class="form-select text-center"
+            style="width: 80px;"
+          >
+            <option
+              v-for="n in 12"
+              :key="n"
+              :value="n"
+            >
+              {{ n }}
+            </option>
+          </select>
+        </div>
+
+        <!-- コース -->
+        <div class="wrap d-flex flex-column align-items-center gap-2">
+          <div class="badge bg-primary text-light">
+            セット
+          </div>
+          <div class="d-flex flex-column gap-2">
+            <button
+              v-for="c in courseOptions"
+              :key="c.code"
+              class="btn btn-outline-dark d-flex justify-content-center"
+              @click="chooseCourse(c)"
+            >
+              {{ c.label }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="outer d-flex flex-column gap-4">
+        <!-- 現在ついているキャストエリア ------------------------------- -->
+        <div class="mb-3">
+          <!-- (D) 誰もいない時 -->
+          <div
+            v-if="!currentCasts.length"
+            class="border border‑2 rounded p‑4 text-center text-muted d-flex justify-content-center align-items-center bg-light"
+            style="min-height: 100px;"
+          >
+            キャストを選択してください
+          </div>
+
+          <!-- (A,B,C) 一覧 -->
+          <div
+            v-else
+            class="d-flex flex-wrap gap-2 bg-light px-3 py-5 rounded"
+          >
+            <template
+              v-for="c in currentCasts"
+              :key="c.id"
+            >
+              <!-- 本指名 -->
+              <div
+                v-if="c.role==='main'"
+                class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
+                role="button"
+              >
+                <!-- ✕ボタン：単なるアイコンに click を付与 -->
+                <IconX
+                  class="me-2"
+                  role="button"
+                  @click.stop="removeCast(c.id)"
+                />
+                <Avatar
+                  :url="c.avatar_url"
+                  :alt="c.stage_name"
+                  :size="28"
+                  class="me-1"
+                />
+                <span>{{ c.stage_name }}</span>
+                <span class="badge bg-danger text-white ms-1 d-flex align-items-center">
+                  本指名
+                </span>
+              </div>
+
+              <!-- フリー -->
+              <div
+                v-else
+                class="btn rounded border-secondary fw-bold bg-white py-3 px-3 d-flex align-items-center gap-1"
+                role="button"
+                @click="toggleInhouse(c.id)"
+              >
+                <!-- ✕アイコン -->
+                <IconX
+                  class="me-2"
+                  role="button"
+                  @click.stop="removeCast(c.id)"
+                />
+                <Avatar
+                  :url="c.avatar_url"
+                  :alt="c.stage_name"
+                  :size="28"
+                  class="me-1"
+                />
+                <span>{{ c.stage_name }}</span>
+                <span
+                  class="badge"
+                  :class="c.inhouse ? 'bg-success' : 'bg-secondary'"
+                >
+                  {{ c.inhouse ? '場内' : 'フリー' }}
+                </span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+
+        <!-- ▼キャスト選択　一括表示 -->
+        <div class="mb-3 cast-select">
+          <div class="input-group mb-4">
+            <span class="input-group-text">
+              <IconSearch />
+            </span>
+            <input
+              v-model="castKeyword"
+              type="text"
+              class="form-control"
+              placeholder="キャスト名で絞り込み"
+            >
+            <!-- クリアボタン（×）-->
+            <button
+              v-if="castKeyword"
+              class="d-flex align-items-center p-2"
+              @click="castKeyword=''"
+            >
+              <IconX />
+            </button>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <template
+              v-for="c in filteredCasts"
+              :key="c.id"
+            >
+              <!-- free 用チェックボックス -->
+              <input
+                :id="`cast-${c.id}`"
+                v-model="freeCastIds"
+                class="btn-check"
+                type="checkbox"
+                :value="c.id"
+              >
+              <label  
+                class="btn d-flex align-items-center"
+                :class="[
+                  (freeCastIds.includes(c.id) || mainCastIds.includes(c.id))
+                    ? 'bg-secondary-subtle'
+                    : 'bg-light',
+                  !onDutySet.has(c.id) // ← シフト外なら灰色
+                    ? 'text-muted opacity-50'
+                    : ''
+                ]"
+                :for="`cast-${c.id}`"
+              >
+                <!-- Avatar(共通コンポーネント) -->
+                <Avatar
+                  :url="c.avatar_url"
+                  :alt="c.stage_name"
+                  :size="28"
+                  class="me-1"
+                />
+                {{ c.stage_name }}
+                <!-- 本指名バッジ -->
+                <span
+                  class="badge ms-2"
+                  :class="mainCastIds.includes(c.id) ? 'bg-danger' : 'bg-secondary'"
+                  @click.stop="toggleMain(c.id)"
+                >
+                  本指名
+                </span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <!-- ★ IN / OUT タイムライン -->
+        <div class="history bg-light rounded p-3 mt-auto">
+          <h6 class="fw-bold mb-2">
+            <IconHistoryToggle class="me-1" />着席履歴
+          </h6>
+
+          <!-- 空だった場合 -->
+          <p
+            v-if="!historyEvents.length"
+            class="text-muted mb-0"
+          >
+            履歴はありません
+          </p>
+
+          <!-- タイムライン -->
+          <ul
+            v-else
+            class="list-unstyled mb-0 overflow-auto"
+            style="max-height: 160px;"
+          >
+            <li
+              v-for="ev in historyEvents"
+              :key="ev.key"
+              class="d-flex align-items-center gap-2 mb-1"
+            >
+              <!-- 時刻 -->
+              <small
+                class="text-muted"
+                style="width:58px;"
+              >
+                {{ dayjs(ev.when).format('HH:mm') }}
+              </small>
+
+              <!-- アバター -->
+              <Avatar
+                :url="ev.avatar"
+                :alt="ev.name"
+                :size="24"
+                class="me-1"
+              />
+
+              <!-- 名前 -->
+              <span class="flex-grow-1">{{ ev.name }}</span>
+
+              <!-- 区分 (nom / in / free) -->
+              <span
+                class="badge text-white me-1"
+                :class="{
+                  'bg-danger' : ev.stayTag==='nom',
+                  'bg-success' : ev.stayTag==='in',
+                  'bg-secondary': ev.stayTag==='free'
+                }"
+              >
+                {{ ev.stayTag==='nom' ? '本指名'
+                  : ev.stayTag==='in' ? '場内'
+                    : 'フリー' }}
+              </span>
+
+              <!-- IN / OUT -->
+              <span
+                class="badge"
+                :class="ev.ioTag==='in' ? 'bg-primary' : 'bg-dark'"
+              >
+                {{ ev.ioTag.toUpperCase() }}
+              </span>
+            </li>
+          </ul>
+        </div>
+
+
+
+        <button
+          class="btn btn-primary w-100 "
+          @click="save"
+        >
+          保存
+        </button>
+      </div>
+      <div class="outer">
+        <!-- ── 単品注文フォーム ───────────────────────── -->
+        <div class="mb-3 border-top pt-3">
+          <label class="form-label fw-bold">単品注文</label>
+
+          <div
+            class="d-grid align-items-stretch gap-2 mb-2"
+            style="grid-template-columns: 2fr 3fr 3fr 1fr auto;"
+          >
+            <!-- 2 カテゴリ -->
+            <select
+              v-model="selectedCat"
+              class="form-select"
+            >
+              <option
+                v-for="o in catOptions"
+                :key="o.value"
+                :value="o.value"
+              >
+                {{ o.label }}
               </option>
             </select>
-          </div>
-          <!-- 人数 -->
-          <div class="wrap d-flex flex-column align-items-center gap-2">
-            <div class="badge bg-primary text-light">人数</div>
-            <select class="form-select text-center" style="width: 80px;"
-                    v-model.number="pax">
-              <option v-for="n in 12" :key="n" :value="n">{{ n }}</option>
-            </select>
-          </div>
 
-          <!-- コース -->
-          <div class="wrap d-flex flex-column align-items-center gap-2">
-            <div class="badge bg-primary text-light">セット</div>
-            <div class="d-flex flex-column gap-2">
-              <button
-                v-for="c in courseOptions"
-                :key="c.code"
-                class="btn btn-outline-dark d-flex justify-content-center"
-                @click="chooseCourse(c)"
+            <!-- 1 注文キャスト -->
+            <select
+              v-model="draftCastId"
+              class="form-select"
+            >
+              <option :value="null">
+                ‑ CAST ‑
+              </option>
+              <option
+                v-for="c in currentCasts"
+                :key="c.id"
+                :value="c.id"
               >
-                {{ c.label }}
-              </button>
-            </div>
-          </div>
-        </div>
-      <div class="outer d-flex flex-column gap-4">
-      <!-- 現在ついているキャストエリア ------------------------------- -->
-      <div class="mb-3">
-
-        <!-- (D) 誰もいない時 -->
-        <div v-if="!currentCasts.length"
-            class="border border‑2 rounded p‑4 text-center text-muted d-flex justify-content-center align-items-center bg-light" style="min-height: 100px;">
-          キャストを選択してください
-        </div>
-
-        <!-- (A,B,C) 一覧 -->
-        <div v-else class="d-flex flex-wrap gap-2 bg-light px-3 py-5 rounded">
-          <template v-for="c in currentCasts" :key="c.id">
-            <!-- 本指名 -->
-            <div v-if="c.role==='main'"
-                  class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
-                  role="button">
-              <!-- ✕ボタン：単なるアイコンに click を付与 -->
-              <i class="bi bi-x me-2"
-                  role="button"
-                  @click.stop="removeCast(c.id)"></i>
-              <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
-              <span>{{ c.stage_name }}</span>
-              <span class="badge bg-danger text-white ms-1 d-flex align-items-center">
-                本指名
-              </span>
-            </div>
-
-            <!-- フリー -->
-            <div v-else
-                  class="btn rounded border-secondary fw-bold bg-white py-3 px-3 d-flex align-items-center gap-1"
-                  role="button"
-                  @click="toggleInhouse(c.id)">
-              <!-- ✕アイコン -->
-              <i class="bi bi-x me-2"
-                  role="button"
-                  @click.stop="removeCast(c.id)"></i>
-              <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
-              <span>{{ c.stage_name }}</span>
-              <span class="badge"
-                    :class="c.inhouse ? 'bg-success' : 'bg-secondary'">
-                {{ c.inhouse ? '場内' : 'フリー' }}
-              </span>
-            </div>
-          </template>
-        </div>
-      </div>
-
-
-      <!-- ▼キャスト選択　一括表示 -->
-      <div class="mb-3 cast-select">
-        <div class="input-group mb-4">
-          <span class="input-group-text"><i class="bi bi-search"></i></span>
-          <input  type="text"
-                  class="form-control"
-                  placeholder="キャスト名で絞り込み"
-                  v-model="castKeyword">
-          <!-- クリアボタン（×）-->
-          <button class="d-flex align-items-center p-2"
-                  v-if="castKeyword"
-                  @click="castKeyword=''">
-            <i class="bi bi-x-lg"></i>
-          </button>
-        </div>
-        <div class="d-flex flex-wrap gap-2">
-          <template v-for="c in filteredCasts" :key="c.id">
-            <!-- free 用チェックボックス -->
-            <input  class="btn-check"
-                    type="checkbox"
-                    :id="`cast-${c.id}`"
-                    :value="c.id"
-                    v-model="freeCastIds">
-            <label  
-                   class="btn d-flex align-items-center"
-                   :class="[
-                      (freeCastIds.includes(c.id) || mainCastIds.includes(c.id))
-                        ? 'bg-secondary-subtle'
-                        : 'bg-light',
-                      !onDutySet.has(c.id)               // ← シフト外なら灰色
-                        ? 'text-muted opacity-50'
-                        : ''
-                    ]"
-                    :for="`cast-${c.id}`">
-              <!-- Avatar(共通コンポーネント) -->
-              <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1"/>
-              {{ c.stage_name }}
-              <!-- 本指名バッジ -->
-              <span class="badge ms-2"
-                    :class="mainCastIds.includes(c.id) ? 'bg-danger' : 'bg-secondary'"
-                    @click.stop="toggleMain(c.id)">
-                本指名
-              </span>
-            </label>
-          </template>
-        </div>
-      </div>
-
-<!-- ★ IN / OUT タイムライン -->
-<div class="history bg-light rounded p-3 mt-auto">
-  <h6 class="fw-bold mb-2">
-    <i class="bi bi-clock-history me-1"></i>着席履歴
-  </h6>
-
-  <!-- 空だった場合 -->
-  <p v-if="!historyEvents.length" class="text-muted mb-0">
-    履歴はありません
-  </p>
-
-  <!-- タイムライン -->
-  <ul v-else class="list-unstyled mb-0 overflow-auto"
-          style="max-height: 160px;">
-    <li v-for="ev in historyEvents" :key="ev.key"
-        class="d-flex align-items-center gap-2 mb-1">
-
-      <!-- 時刻 -->
-      <small class="text-muted" style="width:58px;">
-        {{ dayjs(ev.when).format('HH:mm') }}
-      </small>
-
-      <!-- アバター -->
-      <Avatar :url="ev.avatar" :alt="ev.name" :size="24" class="me-1" />
-
-      <!-- 名前 -->
-      <span class="flex-grow-1">{{ ev.name }}</span>
-
-      <!-- 区分 (nom / in / free) -->
-      <span class="badge text-white me-1"
-            :class="{
-              'bg-danger'   : ev.stayTag==='nom',
-              'bg-success'  : ev.stayTag==='in',
-              'bg-secondary': ev.stayTag==='free'
-            }">
-        {{ ev.stayTag==='nom' ? '本指名'
-             : ev.stayTag==='in'  ? '場内'
-             : 'フリー' }}
-      </span>
-
-      <!-- IN / OUT -->
-      <span class="badge"
-            :class="ev.ioTag==='in' ? 'bg-primary' : 'bg-dark'">
-        {{ ev.ioTag.toUpperCase() }}
-      </span>
-    </li>
-  </ul>
-</div>
-
-
-
-      <button class="btn btn-primary w-100 " @click="save">保存</button>
-    </div>
-    <div class="outer">
-
-      <!-- ── 単品注文フォーム ───────────────────────── -->
-      <div class="mb-3 border-top pt-3">
-        <label class="form-label fw-bold">単品注文</label>
-
-        <div class="d-grid align-items-stretch gap-2 mb-2"
-            style="grid-template-columns: 2fr 3fr 3fr 1fr auto;">
-
-          <!-- 2 カテゴリ -->
-          <select class="form-select" v-model="selectedCat">
-            <option v-for="o in catOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
-          </select>
-
-          <!-- 1 注文キャスト -->
-          <select class="form-select" v-model="draftCastId">
-            <option :value="null">‑ CAST ‑</option>
-            <option v-for="c in currentCasts" :key="c.id" :value="c.id">{{ c.stage_name }}</option>
-          </select>
-
-          <!-- 3 品名（選択したカテゴリだけが出る） -->
-          <select class="form-select" v-model="draftMasterId">
-            <option :value="null">‑ ITEM ‑</option>
-            <option v-for="m in orderMasters" :key="m.id" :value="m.id">{{ m.name }}</option>
-          </select>
-
-          <!-- 4 -->
-            <select class="form-select text-center"
-                    v-model.number="draftQty">
-              <option v-for="n in 12" :key="n" :value="n">{{ n }}</option>
+                {{ c.stage_name }}
+              </option>
             </select>
-          <!-- <input type="number" min="1"
+
+            <!-- 3 品名（選択したカテゴリだけが出る） -->
+            <select
+              v-model="draftMasterId"
+              class="form-select"
+            >
+              <option :value="null">
+                ‑ ITEM ‑
+              </option>
+              <option
+                v-for="m in orderMasters"
+                :key="m.id"
+                :value="m.id"
+              >
+                {{ m.name }}
+              </option>
+            </select>
+
+            <!-- 4 -->
+            <select
+              v-model.number="draftQty"
+              class="form-select text-center"
+            >
+              <option
+                v-for="n in 12"
+                :key="n"
+                :value="n"
+              >
+                {{ n }}
+              </option>
+            </select>
+            <!-- <input type="number" min="1"
                 class="form-control text-end"
                 v-model.number="draftQty"> -->
 
-          <!-- 5 追加ボタン -->
-          <button class="btn btn-dark text-light" @click="addSingle">
-            <i class="bi bi-cart-plus-fill"></i>
+            <!-- 5 追加ボタン -->
+            <button
+              class="btn btn-dark text-light"
+              @click="addSingle"
+            >
+              <IconShoppingCartPlus />
+            </button>
+          </div>
+        </div>
+        <!-- 🛒 ここが「仮確定」カート ----------------------------- -->
+        <ul
+          v-if="pending.length"
+          class="list-group mb-3"
+        >
+          <li
+            v-for="(it,i) in pending"
+            :key="i"
+            class="list-group-item d-flex justify-content-between align-items-center"
+          >
+            <span>
+              <!--  masters で検索に変更 -->
+              {{ masters.find(m => m.id === it.master_id)?.name }}
+              <small class="text-muted ms-2">
+                {{ casts.find(c => c.id === it.cast_id)?.stage_name || '‑' }}
+              </small>
+            </span>
+
+            <span class="d-flex align-items-center gap-2">
+              <span class="badge bg-secondary">{{ it.qty }}</span>
+              <IconTrash
+                class="text-danger"
+                role="button"
+                @click="pending.splice(i,1)"
+              />
+            </span>
+          </li>
+        </ul>
+
+        <!-- ▼pending がある時だけ：追加後の仮計算 ------- -->
+        <table
+          v-if="pending.length"
+          class="table table-sm mb-3 text-end border-top"
+        >
+          <tbody>
+            <tr>
+              <th class="text-start">
+                小計(仮)
+              </th>      <td>{{ preview.sub.toLocaleString() }}</td>
+            </tr>
+            <tr>
+              <th class="text-start">
+                サービス料(仮)
+              </th><td>{{ preview.svc.toLocaleString() }}</td>
+            </tr>
+            <tr>
+              <th class="text-start">
+                消費税(仮)
+              </th>    <td>{{ preview.tax.toLocaleString() }}</td>
+            </tr>
+            <tr class="fw-bold">
+              <th class="text-start">
+                合計(仮)
+              </th>
+              <td>{{ preview.total.toLocaleString() }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="d-flex my-5">
+          <button
+            class="btn btn-warning flex-fill"
+            @click="save"
+          >
+            注文
+          </button>
+        </div>
+
+
+        <table class="table table-sm table-striped">
+          <thead>
+            <tr>
+              <th /><th>品名</th><th>キャスト</th><th class="text-end">
+                Qty
+              </th><th class="text-end">
+                小計
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(it, idx) in props.bill.items"
+              :key="it.id"
+            >
+              <!-- キャンセル -->
+              <td class="text-center">
+                <IconX
+                  class="text-danger"
+                  role="button"
+                  @click="cancelItem(idx, it)"
+                />
+              </td>
+              <td>{{ it.name }}</td>
+              <td>{{ it.served_by_cast?.stage_name || '‑' }}</td>
+              <td class="text-end">
+                {{ it.qty }}
+              </td>
+              <td class="text-end">
+                {{ it.subtotal.toLocaleString() }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- ▼いつも出す：現状確定分 -------------------- -->
+        <table class="table table-sm mb-3 text-end">
+          <tbody>
+            <tr>
+              <th class="text-start">
+                小計
+              </th>      <td>{{ current.sub.toLocaleString() }}</td>
+            </tr>
+            <tr>
+              <th class="text-start">
+                サービス料
+              </th><td>{{ current.svc.toLocaleString() }}</td>
+            </tr>
+            <tr>
+              <th class="text-start">
+                消費税
+              </th>    <td>{{ current.tax.toLocaleString() }}</td>
+            </tr>
+            <tr class="fw-bold">
+              <th class="text-start">
+                合計
+              </th>
+              <td>{{ current.total.toLocaleString() }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="d-flex align-items-center gap-2 mt-4">
+          <label class="fw-bold mb-0">会計金額</label>
+          <input
+            v-model.number="settleAmount"
+            type="number"
+            class="form-control text-end"
+            style="max-width:120px;"
+          >
+          <button
+            class="btn btn-info"
+            :disabled="!settleAmount"
+            @click="settleBill"
+          >
+            会計
           </button>
         </div>
       </div>
-      <!-- 🛒 ここが「仮確定」カート ----------------------------- -->
-      <ul v-if="pending.length" class="list-group mb-3">
-        <li v-for="(it,i) in pending" :key="i"
-            class="list-group-item d-flex justify-content-between align-items-center">
-
-          <span>
-            <!--  masters で検索に変更 -->
-            {{ masters.find(m => m.id === it.master_id)?.name }}
-            <small class="text-muted ms-2">
-              {{ casts.find(c => c.id === it.cast_id)?.stage_name || '‑' }}
-            </small>
-          </span>
-
-          <span class="d-flex align-items-center gap-2">
-            <span class="badge bg-secondary">{{ it.qty }}</span>
-            <i class="bi bi-trash text-danger" role="button"
-              @click="pending.splice(i,1)"></i>
-          </span>
-        </li>
-      </ul>
-
-<!-- ▼pending がある時だけ：追加後の仮計算 ------- -->
-<table v-if="pending.length"
-       class="table table-sm mb-3 text-end border-top">
-  <tbody>
-    <tr><th class="text-start">小計(仮)</th>      <td>{{ preview.sub.toLocaleString() }}</td></tr>
-    <tr><th class="text-start">サービス料(仮)</th><td>{{ preview.svc.toLocaleString() }}</td></tr>
-    <tr><th class="text-start">消費税(仮)</th>    <td>{{ preview.tax.toLocaleString() }}</td></tr>
-    <tr class="fw-bold">
-      <th class="text-start">合計(仮)</th>
-      <td>{{ preview.total.toLocaleString() }}</td>
-    </tr>
-  </tbody>
-</table>
-
-      <div class="d-flex my-5">
-        <button class="btn btn-warning flex-fill" @click="save">注文</button>
-      </div>
-
-
-      <table class="table table-sm table-striped">
-        <thead>
-          <tr><th></th><th>品名</th><th>キャスト</th><th class="text-end">Qty</th><th class="text-end">小計</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="(it, idx) in props.bill.items" :key="it.id">
-            <!-- キャンセル -->
-            <td class="text-center">
-              <i class="bi bi-x text-danger" role="button"
-               @click="cancelItem(idx, it)"></i>
-            </td>
-            <td>{{ it.name }}</td>
-            <td>{{ it.served_by_cast?.stage_name || '‑' }}</td>
-            <td class="text-end">{{ it.qty }}</td>
-            <td class="text-end">{{ it.subtotal.toLocaleString() }}</td>
-          </tr>
-        </tbody>
-      </table>
-
-<!-- ▼いつも出す：現状確定分 -------------------- -->
-<table class="table table-sm mb-3 text-end">
-  <tbody>
-    <tr><th class="text-start">小計</th>      <td>{{ current.sub.toLocaleString() }}</td></tr>
-    <tr><th class="text-start">サービス料</th><td>{{ current.svc.toLocaleString() }}</td></tr>
-    <tr><th class="text-start">消費税</th>    <td>{{ current.tax.toLocaleString() }}</td></tr>
-    <tr class="fw-bold">
-      <th class="text-start">合計</th>
-      <td>{{ current.total.toLocaleString() }}</td>
-    </tr>
-  </tbody>
-</table>
-
-<div class="d-flex align-items-center gap-2 mt-4">
-	<label class="fw-bold mb-0">会計金額</label>
-	<input type="number"
-		   class="form-control text-end"
-		   style="max-width:120px;"
-		   v-model.number="settleAmount">
-	<button class="btn btn-info"
-			:disabled="!settleAmount"
-			@click="settleBill">
-		会計
-	</button>
-</div>
-
-
     </div>
-
-    </div>
-
-
-
   </BaseModal>
 </template>
 

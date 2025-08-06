@@ -73,13 +73,26 @@ onMounted(load)
     <!-- 期間選択 -->
     <div class="d-flex align-items-center gap-3 mb-3">
       <div>
-        <input type="date" v-model="dateFrom" class="form-control" />
+        <input
+          v-model="dateFrom"
+          type="date"
+          class="form-control"
+        >
       </div>
       <div>〜</div>
       <div>
-        <input type="date" v-model="dateTo" class="form-control" />
+        <input
+          v-model="dateTo"
+          type="date"
+          class="form-control"
+        >
       </div>
-      <button class="btn btn-primary mb-1" @click="load">再表示</button>
+      <button
+        class="btn btn-primary mb-1"
+        @click="load"
+      >
+        再表示
+      </button>
     </div>
 
     <!-- 一覧 (キャスト1行) -->
@@ -93,21 +106,30 @@ onMounted(load)
           <th>フリー</th>
           <th>歩合小計</th>
           <th>時給小計</th>
-          <th class="text-end">合計</th>
+          <th class="text-end">
+            合計
+          </th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="t in totals" :key="t.cast.id"
-            @click="router.push(`/cast-sales/${t.cast.id}`)"
-            style="cursor:pointer">
+        <tr
+          v-for="t in totals"
+          :key="t.cast.id"
+          style="cursor:pointer"
+          @click="router.push(`/cast-sales/${t.cast.id}`)"
+        >
           <td>{{ t.cast.stage_name }}</td>
           <td>{{ yen(t.champ) }}</td>
           <td>{{ yen(t.nom) }}</td>
           <td>{{ yen(t.in) }}</td>
           <td>{{ yen(t.free) }}</td>
-          <td class="fw-bold">{{ yen(t.comm) }}</td>
+          <td class="fw-bold">
+            {{ yen(t.comm) }}
+          </td>
           <td>{{ yen(t.pay) }}</td>
-          <td class="text-end fw-bold">{{ yen(t.grand) }}</td>
+          <td class="text-end fw-bold">
+            {{ yen(t.grand) }}
+          </td>
         </tr>
       </tbody>
     </table>

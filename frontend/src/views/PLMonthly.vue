@@ -43,27 +43,62 @@ watch(yearMonth, fetchData)
   <div class="pl pl-monthly container-fluid py-4">
     <!-- ── サマリー ───────────────────────── -->
     <div class="summary-area">
-      <div class="box"><div class="head">粗利益</div>
-        <div class="number">{{ $yen(total?.gross_profit ?? 0) }}</div></div>
+      <div class="box">
+        <div class="head">
+          粗利益
+        </div>
+        <div class="number">
+          {{ $yen(total?.gross_profit ?? 0) }}
+        </div>
+      </div>
 
-      <div class="box"><div class="head">売上</div>
-        <div class="number">{{ $yen(total?.sales_total ?? 0) }}</div></div>
+      <div class="box">
+        <div class="head">
+          売上
+        </div>
+        <div class="number">
+          {{ $yen(total?.sales_total ?? 0) }}
+        </div>
+      </div>
 
-      <div class="box"><div class="head">キャスト人件費</div>
-        <div class="number">{{ $yen(total?.cast_labor ?? 0) }}</div></div>
+      <div class="box">
+        <div class="head">
+          キャスト人件費
+        </div>
+        <div class="number">
+          {{ $yen(total?.cast_labor ?? 0) }}
+        </div>
+      </div>
 
-      <div class="box"><div class="head">ドライバー人件費</div>
-        <div class="number">{{ $yen(total?.driver_labor ?? 0) }}</div></div>
+      <div class="box">
+        <div class="head">
+          ドライバー人件費
+        </div>
+        <div class="number">
+          {{ $yen(total?.driver_labor ?? 0) }}
+        </div>
+      </div>
 
-      <div class="box"><div class="head">カスタム経費</div>
-        <div class="number">{{ $yen(total?.custom_expense ?? 0) }}</div></div>
+      <div class="box">
+        <div class="head">
+          カスタム経費
+        </div>
+        <div class="number">
+          {{ $yen(total?.custom_expense ?? 0) }}
+        </div>
+      </div>
     </div>
 
     <!-- ── フィルタ ───────────────────────── -->
     <div class="d-flex gap-3 mb-3 align-items-end">
       <div>
         <label class="form-label small mb-1">対象月</label>
-        <input type="month" v-model="yearMonth" class="form-control" style="max-width:180px">
+        <input
+          v-model="yearMonth"
+          type="month"
+          class="form-control"
+          style="max-width:180px"
+        >
       </div>
     </div>
 
@@ -72,28 +107,63 @@ watch(yearMonth, fetchData)
       <table class="table table-sm align-middle table-striped">
         <thead class="table-dark">
           <tr>
-            <th class="text-nowrap">日付</th>
-            <th class="text-end">現金</th>
-            <th class="text-end">カード</th>
-            <th class="text-end">売上</th>
-            <th class="text-end">キャスト人件費</th>
-            <th class="text-end">ドライバー人件費</th>
-            <th class="text-end">カスタム経費</th>
-            <th class="text-end">粗利益</th>
+            <th class="text-nowrap">
+              日付
+            </th>
+            <th class="text-end">
+              現金
+            </th>
+            <th class="text-end">
+              カード
+            </th>
+            <th class="text-end">
+              売上
+            </th>
+            <th class="text-end">
+              キャスト人件費
+            </th>
+            <th class="text-end">
+              ドライバー人件費
+            </th>
+            <th class="text-end">
+              カスタム経費
+            </th>
+            <th class="text-end">
+              粗利益
+            </th>
           </tr>
         </thead>
 
         <tbody>
-          <tr v-for="d in rows" :key="d.date">
-            <td class="text-nowrap">{{ d.date }}</td>
-            <td class="text-end">{{ $yen(d?.sales_cash     ?? 0) }}</td>
-            <td class="text-end">{{ $yen(d?.sales_card     ?? 0) }}</td>
-            <td class="text-end">{{ $yen(d?.sales_total    ?? 0) }}</td>
-            <td class="text-end">{{ $yen(d?.cast_labor     ?? 0) }}</td>
-            <td class="text-end">{{ $yen(d?.driver_labor   ?? 0) }}</td>
-            <td class="text-end">{{ $yen(d?.custom_expense ?? 0) }}</td>
-            <td class="text-end fw-semibold"
-                :class="(d?.gross_profit ?? 0) < 0 ? 'text-danger' : ''">
+          <tr
+            v-for="d in rows"
+            :key="d.date"
+          >
+            <td class="text-nowrap">
+              {{ d.date }}
+            </td>
+            <td class="text-end">
+              {{ $yen(d?.sales_cash ?? 0) }}
+            </td>
+            <td class="text-end">
+              {{ $yen(d?.sales_card ?? 0) }}
+            </td>
+            <td class="text-end">
+              {{ $yen(d?.sales_total ?? 0) }}
+            </td>
+            <td class="text-end">
+              {{ $yen(d?.cast_labor ?? 0) }}
+            </td>
+            <td class="text-end">
+              {{ $yen(d?.driver_labor ?? 0) }}
+            </td>
+            <td class="text-end">
+              {{ $yen(d?.custom_expense ?? 0) }}
+            </td>
+            <td
+              class="text-end fw-semibold"
+              :class="(d?.gross_profit ?? 0) < 0 ? 'text-danger' : ''"
+            >
               {{ $yen(d?.gross_profit ?? 0) }}
             </td>
           </tr>
@@ -101,12 +171,24 @@ watch(yearMonth, fetchData)
 
         <tfoot>
           <tr class="table-secondary fw-bold">
-            <td class="text-end">合計</td>
-            <td class="text-end">{{ $yen(total?.sales_total    ?? 0) }}</td>
-            <td class="text-end">{{ $yen(total?.cast_labor     ?? 0) }}</td>
-            <td class="text-end">{{ $yen(total?.driver_labor   ?? 0) }}</td>
-            <td class="text-end">{{ $yen(total?.custom_expense ?? 0) }}</td>
-            <td class="text-end">{{ $yen(total?.gross_profit   ?? 0) }}</td>
+            <td class="text-end">
+              合計
+            </td>
+            <td class="text-end">
+              {{ $yen(total?.sales_total ?? 0) }}
+            </td>
+            <td class="text-end">
+              {{ $yen(total?.cast_labor ?? 0) }}
+            </td>
+            <td class="text-end">
+              {{ $yen(total?.driver_labor ?? 0) }}
+            </td>
+            <td class="text-end">
+              {{ $yen(total?.custom_expense ?? 0) }}
+            </td>
+            <td class="text-end">
+              {{ $yen(total?.gross_profit ?? 0) }}
+            </td>
           </tr>
         </tfoot>
       </table>

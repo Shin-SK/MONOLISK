@@ -1,6 +1,6 @@
 # billing/serializer.py
 from rest_framework import serializers
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift
 from django.utils import timezone
 from dj_rest_auth.serializers import UserDetailsSerializer
 from .models import User
@@ -134,6 +134,14 @@ class BillCastStayMini(serializers.ModelSerializer):
         model  = BillCastStay
         fields = ('cast',)           # cast は {id, stage_name} で返る
 
+class BillCastStayMiniSerializer(serializers.ModelSerializer):
+    cast_id    = serializers.PrimaryKeyRelatedField(
+        source='cast', queryset=Cast.objects.all(), write_only=True
+    )
+    class Meta:
+        model  = BillCastStay
+        fields = ('id', 'cast_id', 'stay_type', 'entered_at', 'left_at')
+        read_only_fields = ('entered_at', 'left_at')
 
 
 class CastMiniSerializer(serializers.ModelSerializer):
@@ -731,8 +739,77 @@ class CastRankingSerializer(serializers.ModelSerializer):
 
 
 class StaffSerializer(serializers.ModelSerializer):
-    user = serializers.StringRelatedField(read_only=True)
+    # 既存の user → username に分解
+    username    = serializers.CharField(source='user.username',   read_only=True)
+    first_name  = serializers.CharField(source='user.first_name', read_only=True)
+    last_name   = serializers.CharField(source='user.last_name',  read_only=True)
+    full_name   = serializers.SerializerMethodField()
+
+    stores      = serializers.PrimaryKeyRelatedField(
+        many=True, read_only=True
+    )
+
+    # ① 内部コード＝write-only
+    role       = serializers.ChoiceField(
+        choices=Staff.ROLE_CHOICES,
+        write_only=True, required=False
+    )
+    # ② 表示用ラベル＝read-only
+    role_label = serializers.CharField(
+        source='get_role_display',
+        read_only=True
+    )
+    role_code = serializers.CharField(
+        source='role',
+        read_only=True
+    )
+
 
     class Meta:
         model  = Staff
-        fields = ('id', 'user', 'hourly_wage', 'stores')
+        fields = (
+            'id', 'username', 'first_name', 'last_name',
+            'full_name', 'hourly_wage', 'stores', 'role','role_label','role_code',
+        )
+
+    def get_full_name(self, obj):
+        fn = (obj.user.first_name + obj.user.last_name).strip()
+        return fn or obj.user.username
+
+
+class StaffShiftSerializer(serializers.ModelSerializer):
+    store_id = serializers.PrimaryKeyRelatedField(
+        source='store', queryset=Store.objects.all(),
+        write_only=True, required=False
+    )
+    staff_id = serializers.PrimaryKeyRelatedField(
+        source='staff',
+        queryset=Staff.objects.all(),
+        # これで「読み書き OK」→ レスポンスにも id が載る
+    )
+    staff = serializers.StringRelatedField(read_only=True)
+    store = serializers.CharField(source='store.name', read_only=True)
+
+    class Meta:
+        model  = StaffShift
+        fields = (
+            'id', 'store', 'store_id',
+            'staff', 'staff_id',
+            'plan_start', 'plan_end',
+            'clock_in', 'clock_out',
+            'hourly_wage_snap', 'worked_min', 'payroll_amount',
+        )
+        read_only_fields = ('hourly_wage_snap', 'worked_min', 'payroll_amount')
+
+    def create(self, validated):
+        # ① store が無ければ request.store
+        if not validated.get('store'):
+            validated['store'] = self.context['request'].store
+
+        # ② まだ無ければ staff.stores.first() を補完
+        if not validated.get('store'):
+            st = validated['staff'].stores.first()
+            if st:
+                validated['store'] = st
+
+        return super().create(validated)

@@ -1,124 +1,159 @@
 @use '../global/global' as *;
 
-.dashboard-admin{
-	padding-bottom: 40px;
-	.gc-header{
-		margin-bottom: 16px;
-		.day{
-			font-weight: bold;
+
+.dashboard{
+	.add-button{
+		bottom: 16px;
+		right: 16px;
+		button{
+			aspect-ratio: 1/1;
 			@include fs(20);
 		}
-		button{
-			white-space: nowrap;
-		}
 	}
 
-
-	/* ─── ラベル全体 ─── */
-	.g-gantt-bar,
-	.g-gantt-bar-label {
-	overflow: visible;        /* ← これが無いと外側が切られる */
-	gap: 4px;
-	}
-
-	/* ─── 中央 (#ID) ─── */
-	.bar-center {
-	z-index: 1;        /* 重なり順を明示しておくと安心 */
-	}
-
-	/* ─── PU / DO ─── */
-	.drv-label {
-	position: absolute;       /* ← “バー”を基準に張り付け */
-	top: 50%;
-	transform: translateY(-50%);
-	white-space: nowrap;
-	font-size: 11px;
-	font-weight: 600;
-	background-color: lightgray;
-	padding: 0px 4px;
-	border-radius: 4px;
-
-	&.left  {                  /* バーの左外に */
-		left: 0;
-		transform: translate(-24px, -50%);   /* ← 6px 分だけ外へ押し出す */
-		text-align: right;
-	}
-
-	&.right {                  /* バーの右外に */
-		right: 0;
-		transform: translate(24px, -50%);
-		text-align: left;
-	}
-	}
-
-	// :root { --label-width: 140px }
-
-	.gantt-board   { display: flex; }
-	.label-col     {
-		background-color: rgba(black,0.8);
-		overflow-y: auto;
-		margin-top: 42px;
-		height: fit-content;
-		position: absolute;
-		z-index: 999;
-		width: fit-content;
-		overflow: visible;
-		.label-row {
-			height: 40px;
-			display: flex;
-			align-items: center;
-			border-bottom: 1px solid #f0f0f0;
-			white-space: nowrap;
-			.label-label{
-				@include fs(10);
+	&.gantt{
+		padding-bottom: 40px;
+		height: 100%;
+		.gc-header{
+			margin-bottom: 16px;
+			.day{
 				font-weight: bold;
-				padding: 0px 8px;
-				color: white;
+				@include fs(20);
+			}
+			button{
+				white-space: nowrap;
 			}
 		}
 
+		/* ─── ラベル全体 ─── */
+		.g-gantt-bar,
+		.g-gantt-bar-label {
+		overflow: visible;        /* ← これが無いと外側が切られる */
+		gap: 4px;
+		}
+
+		/* ─── 中央 (#ID) ─── */
+		.bar-center {
+		z-index: 1;        /* 重なり順を明示しておくと安心 */
+		}
+
+		/* ─── PU / DO ─── */
+		.drv-label {
+		position: absolute;       /* ← “バー”を基準に張り付け */
+		top: 50%;
+		transform: translateY(-50%);
+		white-space: nowrap;
+		font-size: 11px;
+		font-weight: 600;
+		background-color: lightgray;
+		padding: 0px 4px;
+		border-radius: 4px;
+
+		&.left  {                  /* バーの左外に */
+			left: 0;
+			transform: translate(-24px, -50%);   /* ← 6px 分だけ外へ押し出す */
+			text-align: right;
+		}
+
+		&.right {                  /* バーの右外に */
+			right: 0;
+			transform: translate(24px, -50%);
+			text-align: left;
+		}
+		}
+
+		// :root { --label-width: 140px }
+
+		.gantt-board   { display: flex; }
+		.label-col     {
+			background-color: rgba(black,0.8);
+			overflow-y: auto;
+			margin-top: 42px;
+			height: fit-content;
+			position: absolute;
+			z-index: 999;
+			width: fit-content;
+			overflow: visible;
+			.label-row {
+				height: 40px;
+				display: flex;
+				align-items: center;
+				border-bottom: 1px solid #f0f0f0;
+				white-space: nowrap;
+				.label-label{
+					@include fs(10);
+					font-weight: bold;
+					padding: 0px 8px;
+					color: white;
+				}
+			}
+
+		}
+
+		/* ▼ 住所テキストをバーの残り幅いっぱいに */
+		.addr-text{
+		display: inline-block;
+		max-width: 80%;    /* ドット＋PU/DO を避ける buffer */
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		}
+
+		/* チャート領域 */
+		.chart-col {
+		flex: 1 1 auto;
+		overflow: auto;       /* X, Y どちらも OK */
+		position: relative;
+		}
+
 	}
 
-	/* ▼ 住所テキストをバーの残り幅いっぱいに */
-	.addr-text{
-	display: inline-block;
-	max-width: 80%;    /* ドット＋PU/DO を避ける buffer */
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
+	.tables{
+		.bench-cast{
+				border-radius: 8px;
+				overflow: hidden;
+			.table-box{
+				.casts{
+					justify-content: center;
+				}
+			}
+		}
+		.tables-main{
+			grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+			grid-auto-rows: 1fr;
+			.table-wrap{
+				display: flex;
+				flex-direction: column;
+				height: 100%;
+				justify-content: space-between;
+				border-radius: 8px;
+				overflow: hidden;
+			}
+			.table-box{
+				min-height: 240px;
+				.content{
+					
+				}
+			}
+			.header{
+				height: auto;
+				@include fs(12);
+				.item{
+					@include flex();
+					gap: 4px;
+				}
+			}
+			.sum{
+				.item{
+					@include flex();
+					gap: 4px;
+					justify-content: flex-start;
+				}
+			}
+		}
 	}
-
-	/* チャート領域 */
-	.chart-col {
-	flex: 1 1 auto;
-	overflow: auto;       /* X, Y どちらも OK */
-	position: relative;
-	}
-
-
 
 
 }
 
-.tables{
-	grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
-	grid-auto-rows: 1fr;
-	.table-box{
-		aspect-ratio: 4/3;
-	}
-	.header{
-		height: auto;
-		@include fs(12);
-		.item{
-			@include flex();
-			gap: 4px;
-		}
-	}
-	.sum{
-		.item{
-			@include flex();
-			gap: 4px;
-			justify-content: flex-start;
-		}
-	}
-}
+

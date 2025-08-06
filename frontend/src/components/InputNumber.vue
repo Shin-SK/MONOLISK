@@ -10,7 +10,7 @@
         :value="modelValue"
         :readonly="readonly"
         @input="$emit('update:modelValue', +$event.target.value)"
-      />
+      >
       <span class="input-group-text">円</span>
     </div>
   </div>

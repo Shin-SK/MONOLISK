@@ -208,100 +208,140 @@ function openDetail(id){
 
 
 <template>
-	<!-- ▼ 過去を読むボタン（最上部） -->
-		<!-- ▼ Pull to Refresh インジケーター -->
-		<div class="pull-indicator text-center" :style="{ height:isPulling ? '40px':'0', transition:'height .2s' }">
-			<span>{{ pullText }}</span>
-		</div>
+  <!-- ▼ 過去を読むボタン（最上部） -->
+  <!-- ▼ Pull to Refresh インジケーター -->
+  <div
+    class="pull-indicator text-center"
+    :style="{ height:isPulling ? '40px':'0', transition:'height .2s' }"
+  >
+    <span>{{ pullText }}</span>
+  </div>
 
-	<div v-if="error" class="text-danger p-3">通信エラー</div>
+  <div
+    v-if="error"
+    class="text-danger p-3"
+  >
+    通信エラー
+  </div>
 
-	<div v-else class="timeline--card" ref="listRef" :style="{ transform:`translateY(${pullDistance/2}px)` }">
-
-
-
-		<div
-			v-for="g in groups"
-			:key="g.date.format('YYYYMMDD')"
-			:id="`date-${g.date.format('YYYYMMDD')}`"
-			class="wrapper"
-		>
-			<!-- ☆
+  <div
+    v-else
+    ref="listRef"
+    class="timeline--card"
+    :style="{ transform:`translateY(${pullDistance/2}px)` }"
+  >
+    <div
+      v-for="g in groups"
+      :id="`date-${g.date.format('YYYYMMDD')}`"
+      :key="g.date.format('YYYYMMDD')"
+      class="wrapper"
+    >
+      <!-- ☆
 			 	ここ、ある場合もない場合もこのdivがないと、表示が崩れちゃうみたい
 				display grid 1fr 1frみたいにしちゃって
 				ないとき、食い込んじゃう
 				この場合どうしたらいい？☆
 			-->
-			<h6 class="card-date">
-				<div class="month">
-					<span>{{ g.date.format('M') }}月</span>
-				</div>
-				<div class="day">
-					<span>{{ g.date.format('D') }}</span>
-				</div>
-				<div class="date">
-					<span>{{ g.date.format('ddd') }}</span>
-				</div>
-			</h6>
+      <h6 class="card-date">
+        <div class="month">
+          <span>{{ g.date.format('M') }}月</span>
+        </div>
+        <div class="day">
+          <span>{{ g.date.format('D') }}</span>
+        </div>
+        <div class="date">
+          <span>{{ g.date.format('ddd') }}</span>
+        </div>
+      </h6>
 
-			 <div v-for="r in g.list" :key="r.id" class="card">
+      <div
+        v-for="r in g.list"
+        :key="r.id"
+        class="card"
+      >
+        <div
+          v-for="c in (r.casts ?? [])"
+          :key="`${r.id}-${c.id}`"
+          :class="{ settled: r.received_amount != null }"
+        >
+          <div class="card__wrap">
+            <div
+              class="cast-image"
+              style="cursor:pointer;"
+              @click="openDetail(r.id)"
+            >
+              <div class="name">
+                {{ c.stage_name }}様
+              </div>
 
-				<div
-					v-for="c in (r.casts ?? [])"
-					:key="`${r.id}-${c.id}`"
-					:class="{ settled: r.received_amount != null }"
-				>
-					<div class="card__wrap">
-						<div class="cast-image" @click="openDetail(r.id)" style="cursor:pointer;">
-							<div class="name">{{ c.stage_name }}様</div>
+              <img :src="c.avatar_url">
 
-							<img :src="c.avatar_url" />
+              <div class="time-area">
+                <div class="start">
+                  {{ dayjs(r.start_at).format('M/D HH:mm') }}
+                </div>
+                <div class="time">
+                  {{ c.minutes }}分
+                </div>
+              </div>
+            </div>
 
-							<div class="time-area">
-								<div class="start">{{ dayjs(r.start_at).format('M/D HH:mm') }}</div>
-								<div class="time">{{ c.minutes }}分</div>
-							</div>
-						</div>
+            <div class="info">
+              <div class="other-area">
+                <div class="area">
+                  <div
+                    v-if="r.customer_address"
+                    class="adress"
+                  >
+                    {{ r.customer_address }}
+                  </div>
 
-						<div class="info">
+                  <div
+                    v-if="(r.charges ?? []).some(ch=>ch.kind==='OPTION')"
+                    class="option"
+                  >
+                    <span
+                      v-for="ch in (r.charges ?? []).filter(ch=>ch.kind==='OPTION')"
+                      :key="ch.id"
+                      class="badge bg-secondary me-1"
+                    >{{ ch.option_name }}</span>
+                  </div>
+                  <div v-else>
+                    <span class="text-muted">オプションなし</span>
+                  </div>
+                  <div class="customer">
+                    {{ r.customer_name }} 様
+                  </div>
+                </div>
 
-							<div class="other-area">
+                <div
+                  v-if="r.customer_address"
+                  class="googlemap"
+                >
+                  <a
+                    :href="mapLink(r.customer_address)"
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    <img
+                      :src="mapImg(r.customer_address)"
+                      alt="map"
+                      class="img-fluid"
+                    >
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-								<div class="area">
-
-									<div v-if="r.customer_address" class="adress">
-										{{ r.customer_address }}
-									</div>
-
-									<div v-if="(r.charges ?? []).some(ch=>ch.kind==='OPTION')" class="option">
-										<span
-											v-for="ch in (r.charges ?? []).filter(ch=>ch.kind==='OPTION')"
-											:key="ch.id"
-											class="badge bg-secondary me-1"
-										>{{ ch.option_name }}</span>
-									</div>
-									<div v-else><span class="text-muted">オプションなし</span></div>
-									<div class="customer">{{ r.customer_name }} 様</div>
-								</div>
-
-								<div v-if="r.customer_address" class="googlemap">
-									<a :href="mapLink(r.customer_address)" target="_blank" rel="noopener">
-										<img :src="mapImg(r.customer_address)" alt="map" class="img-fluid" />
-									</a>
-								</div>
-								
-
-							</div>
-						</div>
-					</div>
-
-
-				</div>
-			</div>
-		</div>
-
-		<!-- ↓方向ローディング -->
-		<div style="height:80vh"></div>
-		<div ref="bottomSentinel" style="height:1px"></div>
-	</div>
+    <!-- ↓方向ローディング -->
+    <div style="height:80vh" />
+    <div
+      ref="bottomSentinel"
+      style="height:1px"
+    />
+  </div>
 </template>

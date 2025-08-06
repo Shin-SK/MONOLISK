@@ -1,5 +1,6 @@
-# billing/models.py  ※TAB インデント
+# billing/models.py
 from __future__ import annotations
+import warnings
 from django.conf import settings
 from decimal import Decimal, ROUND_HALF_UP
 from collections import defaultdict
@@ -7,16 +8,14 @@ from django.db import models, transaction
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from cloudinary.models import CloudinaryField
-from django.db.models import Sum 
+from django.db.models import Sum, Q
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from datetime import timedelta
 from django.db.models.signals import post_save
-from django.dispatch import receiver
-import warnings
-from django.db.models import Q
-
+from django.core.exceptions import ValidationError
 from .calculator import BillCalculator
+
 
 User = get_user_model()
 
@@ -107,19 +106,25 @@ class Cast(models.Model):
 
 # ───────── スタッフ ──────────
 class Staff(models.Model):
-    """ホール／バーテンダーなど時給制スタッフ"""
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         verbose_name='ユーザー'
     )
-    stores = models.ManyToManyField(          # 将来の“複数店舗兼務”に備えて M2M
+    stores = models.ManyToManyField(
         Store,
         verbose_name='所属店舗',
         blank=True,
         related_name='staff_members',
     )
     hourly_wage = models.PositiveIntegerField('時給', default=1300)
+    ROLE_CHOICES = [
+        ('staff',  'スタッフ'),
+        ('submgr', '副店長'),
+        ('mgr',    '店長'),
+    ]
+    role = models.CharField('役職', max_length=10,
+                            choices=ROLE_CHOICES, default='staff')
 
     class Meta:
         verbose_name = 'スタッフ'
@@ -127,6 +132,50 @@ class Staff(models.Model):
 
     def __str__(self):
         return f'{self.user.username}（時給¥{self.hourly_wage}）'
+
+
+class StaffShift(models.Model):
+    store = models.ForeignKey(Store, on_delete=models.CASCADE)
+    staff = models.ForeignKey(Staff, on_delete=models.CASCADE)
+
+    # 予定
+    plan_start = models.DateTimeField('予定開始', null=True, blank=True)
+    plan_end   = models.DateTimeField('予定終了', null=True, blank=True)
+
+    # 実績
+    clock_in  = models.DateTimeField('出勤', null=True, blank=True)
+    clock_out = models.DateTimeField('退勤', null=True, blank=True)
+
+    hourly_wage_snap = models.PositiveIntegerField('時給スナップ', null=True, blank=True)
+    worked_min       = models.PositiveIntegerField('勤務分',       null=True, blank=True, editable=False)
+    payroll_amount   = models.PositiveIntegerField('給与額',       null=True, blank=True, editable=False)
+
+    class Meta:
+        verbose_name = 'スタッフシフト'
+        verbose_name_plural = verbose_name
+        ordering = ['-plan_start']
+
+    # ───── save ロジック ─────
+    def save(self, *args, **kwargs):
+        # 時給スナップ
+        if self.hourly_wage_snap is None:
+            self.hourly_wage_snap = self.staff.hourly_wage
+
+        # 勤務時間
+        if self.clock_in and self.clock_out:
+            delta = self.clock_out - self.clock_in
+            self.worked_min = int(delta.total_seconds() // 60)
+        else:
+            self.worked_min = None
+
+        # 給与
+        if self.worked_min and self.hourly_wage_snap:
+            self.payroll_amount = int(self.hourly_wage_snap * self.worked_min / 60)
+        else:
+            self.payroll_amount = None
+
+        super().save(*args, **kwargs)
+
 
 
 
@@ -484,11 +533,7 @@ def _billitem_post_delete(sender, instance: 'BillItem', **kwargs):
 
 
 
-# billing/models.py  （ CastShift ― 修正版全文 ）
-from django.core.exceptions import ValidationError
-from django.db import models
-from django.utils import timezone     # ほかのモデルでも使っている前提
-from .models import Store, Cast, Staff
+
 
 
 class CastShift(models.Model):

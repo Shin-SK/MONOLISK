@@ -23,19 +23,39 @@ async function save () {
 
 <template>
   <div class="container py-4">
-    <h1 class="h4">プロフィール編集</h1>
+    <h1 class="h4">
+      プロフィール編集
+    </h1>
 
     <div class="mb-3">
       <label class="form-label">表示名</label>
-      <input v-model="form.display_name" class="form-control">
+      <input
+        v-model="form.display_name"
+        class="form-control"
+      >
     </div>
 
     <div class="mb-3">
       <label class="form-label">アイコン</label>
-      <input type="file" accept="image/*" @change="fileInput" class="form-control">
-      <img v-if="form.avatar && typeof form.avatar==='string'" :src="form.avatar" class="mt-2 rounded" width="96">
+      <input
+        type="file"
+        accept="image/*"
+        class="form-control"
+        @change="fileInput"
+      >
+      <img
+        v-if="form.avatar && typeof form.avatar==='string'"
+        :src="form.avatar"
+        class="mt-2 rounded"
+        width="96"
+      >
     </div>
 
-    <button class="btn btn-primary" @click="save">保存</button>
+    <button
+      class="btn btn-primary"
+      @click="save"
+    >
+      保存
+    </button>
   </div>
 </template>

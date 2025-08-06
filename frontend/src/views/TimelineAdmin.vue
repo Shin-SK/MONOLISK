@@ -48,15 +48,37 @@ const onClick = ({ event }) =>
 
 <template>
   <div class="container py-4">
-    <h1 class="h4 mb-3">予約タイムライン（管理者）</h1>
+    <h1 class="h4 mb-3">
+      予約タイムライン（管理者）
+    </h1>
 
     <!-- フィルター -->
     <div class="d-flex gap-3 mb-3">
-      <input type="date" v-model="date" class="form-control" style="max-width:180px">
+      <input
+        v-model="date"
+        type="date"
+        class="form-control"
+        style="max-width:180px"
+      >
 
-      <select v-model="store" class="form-select" style="max-width:220px">
-        <option disabled value="">店舗を選択</option>
-        <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+      <select
+        v-model="store"
+        class="form-select"
+        style="max-width:220px"
+      >
+        <option
+          disabled
+          value=""
+        >
+          店舗を選択
+        </option>
+        <option
+          v-for="s in stores"
+          :key="s.id"
+          :value="s.id"
+        >
+          {{ s.name }}
+        </option>
       </select>
     </div>
 
@@ -69,7 +91,12 @@ const onClick = ({ event }) =>
       style="height: 70vh"
     />
 
-    <p v-else class="text-muted">予約なし</p>
+    <p
+      v-else
+      class="text-muted"
+    >
+      予約なし
+    </p>
   </div>
 </template>
 

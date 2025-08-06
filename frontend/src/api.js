@@ -1,6 +1,9 @@
 // src/api.js
 import axios from 'axios'
 import qs        from 'qs'
+import { useLoading } from '@/stores/useLoading'   // ★追加
+import NProgress from 'nprogress'                  // ★追加
+import 'nprogress/nprogress.css'
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
 })
@@ -37,6 +40,9 @@ const SKIP_AUTH = [
 ]
 
 api.interceptors.request.use(cfg => {
+  const loading = useLoading()
+  loading.start()
+  NProgress.start()
   // FormData 用ヘッダ調整
   if (cfg.data instanceof FormData) delete cfg.headers['Content-Type']
 
@@ -86,8 +92,16 @@ export async function logout() {
 /* 401 ハンドリング                                                     */
 /* ------------------------------------------------------------------ */
 api.interceptors.response.use(
-  res => res,
+  res => {
+    const loading = useLoading()
+    loading.end()
+    NProgress.done()
+     return res
+  },
   err => {
+    const loading = useLoading()
+    loading.end()
+    NProgress.done()
     if (err.response?.status === 401) clearAuth()
     return Promise.reject(err)
   }
@@ -482,16 +496,6 @@ export const fetchStoreNotices = () =>
 // ─────────────────────────────────────────────
 
 /**
- * スタッフ一覧取得（ページネーション有無どちらでも可）
- *   params: { name, ordering, ... }
- *
- * 例）fetchStaffs({ name:'佐藤' })
- */
-export const fetchStaffs = (params = {}) =>
-  api.get('billing/staffs/', { params })
-     .then(r => r.data.results ?? r.data)   // DRF pagination 対応
-
-/**
  * 今日のシフト予定（勤務表）
  *   params: { date:'YYYY-MM-DD', /* store_id はヘッダに自動付加 *\/ }
  *
@@ -500,3 +504,47 @@ export const fetchStaffs = (params = {}) =>
 export const getStaffShiftPlans = (params = {}) =>
   api.get('billing/staff-shift-plans/', { params })
      .then(r => r.data)
+
+
+
+/* ---------- Staff & StaffShift ---------- */
+// スタッフ一覧
+export const fetchStaffs = (params = {}) =>
+  api.get('billing/staffs/', { params })
+     .then(r => r.data.results ?? r.data)   // ページネーション両対応
+
+
+/* ---------- Staff CRUD ---------- */
+export const fetchStaff = id =>
+  api.get(`billing/staffs/${id}/`).then(r => r.data)
+
+export const createStaff = payload =>
+  api.post('billing/staffs/', payload).then(r => r.data)
+
+export const updateStaff = (id, payload) =>
+  api.put(`billing/staffs/${id}/`, payload).then(r => r.data)
+
+export const deleteStaff = id =>
+  api.delete(`billing/staffs/${id}/`)
+
+export const fetchStaffShifts  = (params = {}) =>
+  api.get('billing/staff-shift-plans/', { params }).then(r => r.data)
+
+ export const createStaffShift = payload =>
+  api.post('billing/staff-shift-plans/', {
+    store_id: getStoreId(),   // ← ヘッダに持っている自店 ID を注入
+    ...payload,
+  }).then(r => r.data)
+
+export const patchStaffShift   = (id, p) =>
+  api.patch(`billing/staff-shift-plans/${id}/`, p).then(r => r.data)
+
+export const deleteStaffShift  = id =>
+  api.delete(`billing/staff-shift-plans/${id}/`)
+
+
+export const staffCheckIn  = (shiftId, at = dayjs().toISOString()) =>
+  patchStaffShift(shiftId, { clock_in: at })
+
+export const staffCheckOut = (shiftId, at = dayjs().toISOString()) =>
+  patchStaffShift(shiftId, { clock_out: at })

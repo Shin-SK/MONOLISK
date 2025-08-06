@@ -8,13 +8,12 @@ const mode = ref('timeline')          // ヘッダー内で切替ボタン状態
 
 <template>
   <div class="driver mypage min-vh-100 d-flex flex-column">
-
     <!-- ▽ ヘッダー -->
-    <AppHeader></AppHeader>
+    <AppHeader />
 
     <!-- ▽ ページ本体 -->
     <main class="flex-fill container d-flex flex-column">
-      <router-view/>
+      <router-view />
     </main>
   </div>
 </template>

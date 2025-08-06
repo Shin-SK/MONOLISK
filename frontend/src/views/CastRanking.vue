@@ -29,8 +29,17 @@ onMounted(load)
 
 <template>
   <div class="container mt-4">
-    <RankingBlock label="月間ランキング"   :rows="rowsGekkan" />
-    <RankingBlock label="月前半ランキング" :rows="rowsKami"   />
-    <RankingBlock label="月後半ランキング" :rows="rowsShimo" />
+    <RankingBlock
+      label="月間ランキング"
+      :rows="rowsGekkan"
+    />
+    <RankingBlock
+      label="月前半ランキング"
+      :rows="rowsKami"
+    />
+    <RankingBlock
+      label="月後半ランキング"
+      :rows="rowsShimo"
+    />
   </div>
 </template>

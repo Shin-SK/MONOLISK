@@ -126,30 +126,60 @@ function handleEventClick({ event }){
   <div class="timeline d-flex flex-column flex-grow-1">
     <!-- ナビ -->
     <div class="mb-2 d-flex align-items-center gap-2 justify-content-end">
-      <button class="btn btn-sm me-1"
-              :class="view==='day' ? 'btn-primary':'btn-outline-primary'"
-              @click="changeView('day')">Day</button>
-      <button class="btn btn-sm me-3"
-              :class="view==='week' ? 'btn-primary':'btn-outline-primary'"
-              @click="changeView('week')">Week</button>
+      <button
+        class="btn btn-sm me-1"
+        :class="view==='day' ? 'btn-primary':'btn-outline-primary'"
+        @click="changeView('day')"
+      >
+        Day
+      </button>
+      <button
+        class="btn btn-sm me-3"
+        :class="view==='week' ? 'btn-primary':'btn-outline-primary'"
+        @click="changeView('week')"
+      >
+        Week
+      </button>
 
-      <button class="btn btn-sm btn-outline-secondary" @click="moveWeek(-7)">‹</button>
-      <button class="btn btn-sm btn-outline-primary"  @click="goToday">Today</button>
-      <button class="btn btn-sm btn-outline-secondary" @click="moveWeek( 7)">›</button>
+      <button
+        class="btn btn-sm btn-outline-secondary"
+        @click="moveWeek(-7)"
+      >
+        ‹
+      </button>
+      <button
+        class="btn btn-sm btn-outline-primary"
+        @click="goToday"
+      >
+        Today
+      </button>
+      <button
+        class="btn btn-sm btn-outline-secondary"
+        @click="moveWeek( 7)"
+      >
+        ›
+      </button>
     </div>
 
     <!-- カスタム週ヘッダー -->
     <div class="timeline-header mb-2">
       <div class="wrap">
+        <div
+          v-for="d in weekDays"
+          :key="d.format('YYYY-MM-DD')"
+          class="weekday"
+          @click="pickDay(d)"
+        >
           <div
-            v-for="d in weekDays" :key="d.format('YYYY-MM-DD')"
-            class="weekday"
-            @click="pickDay(d)"
+            class="weekday__wrap"
+            :class="{ active: d.isSame(selectedDay,'day') }"
           >
-          <div class="weekday__wrap"
-               :class="{ active: d.isSame(selectedDay,'day') }">
-            <div class="date">{{ d.format('ddd') }}</div>
-            <div class="day">{{ d.format('D') }}</div>
+            <div class="date">
+              {{ d.format('ddd') }}
+            </div>
+            <div class="day">
+              {{ d.format('D') }}
+            </div>
           </div>
         </div>
       </div>
@@ -158,9 +188,9 @@ function handleEventClick({ event }){
     <!-- VueCal 本体 -->
     <VueCal
       v-model:selected-date="calDate"
+      v-model:active-view="view"
       :events="events"
-      :disable-views="['years','year','month']"
-      :active-view.sync="view" 
+      :disable-views="['years','year','month']" 
       :time="true"  
       :time-step="30"
       :on-event-click="handleEventClick"

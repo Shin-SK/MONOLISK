@@ -107,72 +107,135 @@ watch(date, load)
 </script>
 
 <template>
-<div class="container-fluid">
-  <!-- <h2 class="h4 mb-3">経費入力</h2> -->
+  <div class="container-fluid">
+    <!-- <h2 class="h4 mb-3">経費入力</h2> -->
 
-  <!-- 日付 -->
-  <div class="d-flex align-items-center gap-3 mb-3">
-    <label class="mb-0">対象日</label>
-    <input type="date" v-model="date" class="form-control" style="max-width:200px;">
-  </div>
+    <!-- 日付 -->
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <label class="mb-0">対象日</label>
+      <input
+        v-model="date"
+        type="date"
+        class="form-control"
+        style="max-width:200px;"
+      >
+    </div>
 
-  <!-- 固定費 ------------------------------------------------ -->
+    <!-- 固定費 ------------------------------------------------ -->
 
-  <div class="card mb-4">
-    <h2 class="card-header p-0">
-      <button
-        class="btn btn-link w-100 text-start collapsed"
-        type="button"
-        data-bs-toggle="collapse"
-        data-bs-target="#fixCollapse"
-        aria-expanded="false"
-        aria-controls="fixCollapse">
-        固定費
-      </button>
-    </h2>
-    <div id="fixCollapse" class="collapse" aria-labelledby="fixCollapse">
-      <div v-for="cat in fixedCats" :key="cat.id" class="row g-2 align-items-center">
-        <label class="col-sm-3 col-form-label">{{ cat.name }}</label>
-        <div class="col-sm-5">
-          <input v-model.number="fixedVals[cat.id]" type="number" min="0"
-                 class="form-control" placeholder="0">
+    <div class="card mb-4">
+      <h2 class="card-header p-0">
+        <button
+          class="btn btn-link w-100 text-start collapsed"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#fixCollapse"
+          aria-expanded="false"
+          aria-controls="fixCollapse"
+        >
+          固定費
+        </button>
+      </h2>
+      <div
+        id="fixCollapse"
+        class="collapse"
+        aria-labelledby="fixCollapse"
+      >
+        <div
+          v-for="cat in fixedCats"
+          :key="cat.id"
+          class="row g-2 align-items-center"
+        >
+          <label class="col-sm-3 col-form-label">{{ cat.name }}</label>
+          <div class="col-sm-5">
+            <input
+              v-model.number="fixedVals[cat.id]"
+              type="number"
+              min="0"
+              class="form-control"
+              placeholder="0"
+            >
+          </div>
+          <span class="col-auto">円</span>
         </div>
-        <span class="col-auto">円</span>
       </div>
     </div>
-  </div>
 
-  <!-- カスタム ------------------------------------------------ -->
-  <div class="card mb-4">
-    <div class="card-header fw-bold d-flex justify-content-between align-items-center">
-      <span>カスタム経費</span>
-      <button class="btn btn-sm btn-success" @click="addRow">＋ 行追加</button>
+    <!-- カスタム ------------------------------------------------ -->
+    <div class="card mb-4">
+      <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+        <span>カスタム経費</span>
+        <button
+          class="btn btn-sm btn-success"
+          @click="addRow"
+        >
+          ＋ 行追加
+        </button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0 align-middle">
+          <thead>
+            <tr>
+              <th style="width:45%">
+                ラベル
+              </th><th style="width:25%">
+                金額
+              </th><th style="width:25%">
+                日付
+              </th><th />
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(r,i) in customs"
+              :key="i"
+            >
+              <td>
+                <input
+                  v-model="r.label"
+                  class="form-control"
+                >
+              </td>
+              <td class="d-flex align-items-center">
+                <input
+                  v-model.number="r.amount"
+                  type="number"
+                  min="0"
+                  class="form-control"
+                >
+                <span class="ms-1">円</span>
+              </td>
+              <td>
+                <input
+                  v-model="r.date"
+                  type="date"
+                  class="form-control"
+                >
+              </td>
+              <td>
+                <button
+                  class="btn btn-outline-danger btn-sm"
+                  @click="removeRow(i,r)"
+                >
+                  ×
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-    <div class="card-body p-0">
-      <table class="table mb-0 align-middle">
-        <thead>
-          <tr><th style="width:45%">ラベル</th><th style="width:25%">金額</th><th style="width:25%">日付</th><th></th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="(r,i) in customs" :key="i">
-            <td><input v-model="r.label" class="form-control"></td>
-            <td class="d-flex align-items-center">
-              <input v-model.number="r.amount" type="number" min="0" class="form-control">
-              <span class="ms-1">円</span>
-            </td>
-            <td><input type="date" v-model="r.date" class="form-control"></td>
-            <td><button class="btn btn-outline-danger btn-sm" @click="removeRow(i,r)">×</button></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
 
-  <!-- 保存 -->
-  <div class="text-end">
-    <button class="btn btn-primary" @click="save">保存</button>
+    <!-- 保存 -->
+    <div class="text-end">
+      <button
+        class="btn btn-primary"
+        @click="save"
+      >
+        保存
+      </button>
+    </div>
   </div>
-</div>
 </template>
 
 <style scoped>

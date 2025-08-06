@@ -216,179 +216,281 @@ onMounted(async () => {
 
 
 <template>
-<div class="container-fluid py-4" style="max-width:640px">
-	
-	<h1 class="h4 mb-3">{{ isEdit ? 'キャスト編集' : 'キャスト登録' }}</h1>
+  <div
+    class="container-fluid py-4"
+    style="max-width:640px"
+  >
+    <h1 class="h4 mb-3">
+      {{ isEdit ? 'キャスト編集' : 'キャスト登録' }}
+    </h1>
 
-	<div class="mb-3">
-		<input v-model="form.stage_name" class="form-control" placeholder="源氏名"/>
-	</div>
-<section class="casts-area">
+    <div class="mb-3">
+      <input
+        v-model="form.stage_name"
+        class="form-control"
+        placeholder="源氏名"
+      >
+    </div>
+    <section class="casts-area" />
 
-	
+    <div class="row mb-3">
+      <div class="col-md-6">
+        <label class="form-label">Rank</label>
+        <select
+          v-model="form.rank"
+          class="form-select"
+        >
+          <option
+            v-for="r in ranks"
+            :key="r.id"
+            :value="r.id"
+          >
+            {{ r.name }}
+          </option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">店舗</label>
+        <select
+          v-model="form.store"
+          class="form-select"
+        >
+          <option
+            v-for="s in stores"
+            :key="s.id"
+            :value="s.id"
+          >
+            {{ s.name }}
+          </option>
+        </select>
+      </div>
+    </div>
 
-
-</section>
-
-	<div class="row mb-3">
-		<div class="col-md-6">
-			<label class="form-label">Rank</label>
-			<select v-model="form.rank" class="form-select">
-				<option v-for="r in ranks" :key="r.id" :value="r.id">{{ r.name }}</option>
-			</select>
-		</div>
-		<div class="col-md-6">
-			<label class="form-label">店舗</label>
-			<select v-model="form.store" class="form-select">
-				<option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
-			</select>
-		</div>
-	</div>
-
-	<!-- 歩合 (%) 入力 -->
-<div class="mb-3 col-md-4">
-	<label class="form-label">歩合 (%)</label>
-	<input
-		type="number"
-		v-model.number="commission_pct"
-		class="form-control"
-		min="0"
-		max="100"
-	/>
-</div>
-
-
-<!-- ◆ 待機場所 ◆ -->
-<div class="mb-4">
-	<label class="form-label">待機場所</label>
-
-	<!-- 行 -->
-	<div v-for="(p,i) in form.standby_places" :key="i" class="border p-3 mb-2 rounded">
-
-		<div class="row g-2 align-items-end">
-			<!-- 郵便番号 -->
-			<div class="col-md-3">
-				<label class="form-label small">郵便番号</label>
-				<input v-model="p.zipcode" class="form-control" placeholder="1500041" />
-				<small class="text-danger">{{ p.zipErr }}</small>
-			</div>
-
-			<!-- 住所 -->
-			<div class="col-md-6">
-				<label class="form-label small">住所</label>
-				<input v-model="p.address" class="form-control" />
-			</div>
-
-			<!-- ラベル -->
-			<div class="col-md-2">
-				<label class="form-label small">ラベル</label>
-				<input v-model="p.label" class="form-control" placeholder="自宅 / 事務所 など"/>
-			</div>
-
-			<!-- 既定 -->
-			<div class="col-md-1 form-check">
-				<input type="radio" class="form-check-input"
-							 v-model="p.is_primary" :value="true"
-							 @change="form.standby_places.forEach((r,j)=>{ if(j!==i) r.is_primary=false })">
-				<label class="form-check-label small">既定</label>
-			</div>
-		</div>
-
-		<!-- 削除ボタン -->
-		<button v-if="form.standby_places.length>1"
-						class="btn btn-sm btn-outline-danger mt-2"
-						@click="removePlace(i)">
-			削除
-		</button>
-	</div>
-
-	<!-- 追加 -->
-	<button class="btn btn-sm btn-outline-primary" @click="addPlace">
-		＋ 追加
-	</button>
-</div>
+    <!-- 歩合 (%) 入力 -->
+    <div class="mb-3 col-md-4">
+      <label class="form-label">歩合 (%)</label>
+      <input
+        v-model.number="commission_pct"
+        type="number"
+        class="form-control"
+        min="0"
+        max="100"
+      >
+    </div>
 
 
-	<div class="mb-3">
-		<label class="form-label">メモ</label>
-		<textarea v-model="form.memo" rows="3" class="form-control"></textarea>
-	</div>
+    <!-- ◆ 待機場所 ◆ -->
+    <div class="mb-4">
+      <label class="form-label">待機場所</label>
 
-	<!-- NG 顧客 -->
-	<div class="mb-3 position-relative">
-		<label class="form-label">NG 顧客</label>
+      <!-- 行 -->
+      <div
+        v-for="(p,i) in form.standby_places"
+        :key="i"
+        class="border p-3 mb-2 rounded"
+      >
+        <div class="row g-2 align-items-end">
+          <!-- 郵便番号 -->
+          <div class="col-md-3">
+            <label class="form-label small">郵便番号</label>
+            <input
+              v-model="p.zipcode"
+              class="form-control"
+              placeholder="1500041"
+            >
+            <small class="text-danger">{{ p.zipErr }}</small>
+          </div>
 
-		<!-- 検索入力 -->
-		<input v-model="kwNg" @input="findNg" class="form-control mb-1"
-				placeholder="名前 or 電話で検索して追加">
+          <!-- 住所 -->
+          <div class="col-md-6">
+            <label class="form-label small">住所</label>
+            <input
+              v-model="p.address"
+              class="form-control"
+            >
+          </div>
 
-		<!-- 候補リスト -->
-		<div class="mt-2" v-if="form.ng_customers.length">
-			<span v-for="id in form.ng_customers" :key="id" class="badge bg-secondary me-2">
-				{{ customers.find(c => c.id === id)?.name || id }}
-				<button class="btn-close btn-close-white btn-sm ms-1"
-						@click="removeNg(id)"></button>
-			</span>
-		</div>
+          <!-- ラベル -->
+          <div class="col-md-2">
+            <label class="form-label small">ラベル</label>
+            <input
+              v-model="p.label"
+              class="form-control"
+              placeholder="自宅 / 事務所 など"
+            >
+          </div>
 
-		<!-- multi-select は残しても OK（編集用） -->
-		<select multiple class="form-select mt-2" v-model="form.ng_customers">
-			<option v-for="c in customers" :key="c.id" :value="c.id">
-				{{ c.name }} / {{ c.phone }}
-			</option>
-		</select>
-	</div>
+          <!-- 既定 -->
+          <div class="col-md-1 form-check">
+            <input
+              v-model="p.is_primary"
+              type="radio"
+              class="form-check-input"
+              :value="true"
+              @change="form.standby_places.forEach((r,j)=>{ if(j!==i) r.is_primary=false })"
+            >
+            <label class="form-check-label small">既定</label>
+          </div>
+        </div>
 
-	<!-- Option NG (チェック＝利用可) -->
-	<div class="mb-3">
-	<label class="form-label">オプション（NG はチェックを外す）</label>
+        <!-- 削除ボタン -->
+        <button
+          v-if="form.standby_places.length>1"
+          class="btn btn-sm btn-outline-danger mt-2"
+          @click="removePlace(i)"
+        >
+          削除
+        </button>
+      </div>
 
-	<!-- 編集時: castOpts を表示 / 新規時: master options -->
-	<div class="list-group" v-if="isEdit && castOpts.length">
-		<label v-for="co in castOpts" :key="co.id"
-			class="list-group-item d-flex align-items-center gap-2">
-		<input type="checkbox" class="form-check-input mt-0"
-				:checked="co.is_enabled"
-				@change="toggleOpt(co)" />
-		<span>{{ co.option_name }}</span>
-		</label>
-	</div>
+      <!-- 追加 -->
+      <button
+        class="btn btn-sm btn-outline-primary"
+        @click="addPlace"
+      >
+        ＋ 追加
+      </button>
+    </div>
 
-	<!-- 新規登録フォームではマスタを全部 ON 状態で参考表示 -->
-	<div class="list-group" v-else>
-		<label v-for="o in options" :key="o.id"
-			class="list-group-item d-flex align-items-center gap-2">
-		<input type="checkbox" class="form-check-input mt-0" checked disabled />
-		<span>{{ o.name }}</span>
-		</label>
-	</div>
-	</div>
 
-	<div class="mb-4" v-if="isEdit">
-		<h5>登録シフト</h5>
-		<table class="table table-sm">
-			<thead class="table-light"><tr><th>日付</th><th>開始</th><th>終了</th><th>状態</th></tr></thead>
-			<tbody>
-				<tr v-for="s in shifts" :key="s.id">
-					<td>{{ s.date }}</td>
-					<td>{{ s.start_at }}</td>
-					<td>{{ s.end_at }}</td>
-					<td>
-						<span v-if="s.is_checked_in" class="badge bg-success">IN</span>
-						<span v-else class="badge bg-secondary">予定</span>
-					</td>
-				</tr>
-			</tbody>
-		</table>
-	</div>
+    <div class="mb-3">
+      <label class="form-label">メモ</label>
+      <textarea
+        v-model="form.memo"
+        rows="3"
+        class="form-control"
+      />
+    </div>
 
-<button
-	type="button"
-	class="btn btn-primary"
-	@click="save"
->
-	保存
-</button>
+    <!-- NG 顧客 -->
+    <div class="mb-3 position-relative">
+      <label class="form-label">NG 顧客</label>
 
-</div>
+      <!-- 検索入力 -->
+      <input
+        v-model="kwNg"
+        class="form-control mb-1"
+        placeholder="名前 or 電話で検索して追加"
+        @input="findNg"
+      >
+
+      <!-- 候補リスト -->
+      <div
+        v-if="form.ng_customers.length"
+        class="mt-2"
+      >
+        <span
+          v-for="id in form.ng_customers"
+          :key="id"
+          class="badge bg-secondary me-2"
+        >
+          {{ customers.find(c => c.id === id)?.name || id }}
+          <button
+            class="btn-close btn-close-white btn-sm ms-1"
+            @click="removeNg(id)"
+          />
+        </span>
+      </div>
+
+      <!-- multi-select は残しても OK（編集用） -->
+      <select
+        v-model="form.ng_customers"
+        multiple
+        class="form-select mt-2"
+      >
+        <option
+          v-for="c in customers"
+          :key="c.id"
+          :value="c.id"
+        >
+          {{ c.name }} / {{ c.phone }}
+        </option>
+      </select>
+    </div>
+
+    <!-- Option NG (チェック＝利用可) -->
+    <div class="mb-3">
+      <label class="form-label">オプション（NG はチェックを外す）</label>
+
+      <!-- 編集時: castOpts を表示 / 新規時: master options -->
+      <div
+        v-if="isEdit && castOpts.length"
+        class="list-group"
+      >
+        <label
+          v-for="co in castOpts"
+          :key="co.id"
+          class="list-group-item d-flex align-items-center gap-2"
+        >
+          <input
+            type="checkbox"
+            class="form-check-input mt-0"
+            :checked="co.is_enabled"
+            @change="toggleOpt(co)"
+          >
+          <span>{{ co.option_name }}</span>
+        </label>
+      </div>
+
+      <!-- 新規登録フォームではマスタを全部 ON 状態で参考表示 -->
+      <div
+        v-else
+        class="list-group"
+      >
+        <label
+          v-for="o in options"
+          :key="o.id"
+          class="list-group-item d-flex align-items-center gap-2"
+        >
+          <input
+            type="checkbox"
+            class="form-check-input mt-0"
+            checked
+            disabled
+          >
+          <span>{{ o.name }}</span>
+        </label>
+      </div>
+    </div>
+
+    <div
+      v-if="isEdit"
+      class="mb-4"
+    >
+      <h5>登録シフト</h5>
+      <table class="table table-sm">
+        <thead class="table-light">
+          <tr><th>日付</th><th>開始</th><th>終了</th><th>状態</th></tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="s in shifts"
+            :key="s.id"
+          >
+            <td>{{ s.date }}</td>
+            <td>{{ s.start_at }}</td>
+            <td>{{ s.end_at }}</td>
+            <td>
+              <span
+                v-if="s.is_checked_in"
+                class="badge bg-success"
+              >IN</span>
+              <span
+                v-else
+                class="badge bg-secondary"
+              >予定</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <button
+      type="button"
+      class="btn btn-primary"
+      @click="save"
+    >
+      保存
+    </button>
+  </div>
 </template>

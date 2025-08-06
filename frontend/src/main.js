@@ -19,6 +19,9 @@ import '@/plugins/dayjs'
 
 import { yen } from '@/utils/money'
 
+import Sortable, { Swap } from 'sortablejs'
+Sortable.mount(new Swap())
+
 // import '@syncfusion/ej2-vue-gantt/styles/material.css'
 // import { registerLicense } from '@syncfusion/ej2-base'
 // registerLicense('Ngo9BigBOggjHTQxAR8/V1JEaF5cXmRCdkxxWmFZfVtgdVVMZFhbRH5PIiBoS35Rc0VkWXZedHdUQ2BeU0FxVEFd')
@@ -31,4 +34,10 @@ const app = createApp(App)
   app.component('Multiselect', Multiselect)  // グローバル登録
   app.component('DatePicker', DatePicker)
   
+import * as TablerIcons from '@tabler/icons-vue'        // ← 追加ここだけ
+
+Object.entries(TablerIcons).forEach(([name, comp]) => {
+  app.component(name, comp)                             // <IconUser /> など全アイコン即使用
+})
+
 app.mount('#app')

@@ -68,46 +68,80 @@ const dailyMap = computed(()=>{
 
 <template>
   <div class="container py-4">
-
-    <h1 class="h4 mb-3">売上（キャスト）</h1>
+    <h1 class="h4 mb-3">
+      売上（キャスト）
+    </h1>
 
     <!-- ▼ 期間タブ -->
     <ul class="nav nav-pills mb-3">
       <li class="nav-item">
-        <button class="nav-link"
-                :class="{active:period==='day'}"
-                @click="period='day'">今日</button>
+        <button
+          class="nav-link"
+          :class="{active:period==='day'}"
+          @click="period='day'"
+        >
+          今日
+        </button>
       </li>
       <li class="nav-item">
-        <button class="nav-link"
-                :class="{active:period==='week'}"
-                @click="period='week'">今週</button>
+        <button
+          class="nav-link"
+          :class="{active:period==='week'}"
+          @click="period='week'"
+        >
+          今週
+        </button>
       </li>
       <li class="nav-item">
-        <button class="nav-link"
-                :class="{active:period==='month'}"
-                @click="period='month'">今月</button>
+        <button
+          class="nav-link"
+          :class="{active:period==='month'}"
+          @click="period='month'"
+        >
+          今月
+        </button>
       </li>
     </ul>
 
-    <div v-if="error" class="alert alert-danger">通信エラー</div>
-    <div v-else-if="loading">読み込み中…</div>
+    <div
+      v-if="error"
+      class="alert alert-danger"
+    >
+      通信エラー
+    </div>
+    <div v-else-if="loading">
+      読み込み中…
+    </div>
 
     <!-- ▼ 集計 -->
     <div v-else>
-      <h2 class="h5">合計&nbsp;{{ total.toLocaleString() }} 円</h2>
+      <h2 class="h5">
+        合計&nbsp;{{ total.toLocaleString() }} 円
+      </h2>
 
       <table class="table table-sm mt-3">
         <thead>
-          <tr><th style="width:40%">日付</th><th>受取金額</th></tr>
+          <tr>
+            <th style="width:40%">
+              日付
+            </th><th>受取金額</th>
+          </tr>
         </thead>
         <tbody>
-          <tr v-for="[d,amt] in dailyMap" :key="d">
+          <tr
+            v-for="[d,amt] in dailyMap"
+            :key="d"
+          >
             <td>{{ dayjs(d).format('M/D（ddd）') }}</td>
             <td>{{ amt.toLocaleString() }} 円</td>
           </tr>
           <tr v-if="!dailyMap.length">
-            <td colspan="2" class="text-center text-muted">データなし</td>
+            <td
+              colspan="2"
+              class="text-center text-muted"
+            >
+              データなし
+            </td>
           </tr>
         </tbody>
       </table>

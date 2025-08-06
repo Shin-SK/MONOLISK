@@ -45,33 +45,43 @@ const displayName = computed(() =>
 <template>
   <header class="header">
     <div class="header__wrap container d-flex justify-content-between align-items-center">
-
-        <!-- アバター（メニュー開閉トグル） -->
-      <button class="avatar-icon btn p-0 border-0 bg-transparent"
-          data-bs-toggle="offcanvas"
-          data-bs-target="#appSidebar"
-          aria-controls="appSidebar">
-        <img  :src="userStore.avatar" class="rounded-circle" width="40" height="40"/>
+      <!-- アバター（メニュー開閉トグル） -->
+      <button
+        class="avatar-icon btn p-0 border-0 bg-transparent"
+        data-bs-toggle="offcanvas"
+        data-bs-target="#appSidebar"
+        aria-controls="appSidebar"
+      >
+        <img
+          :src="userStore.avatar"
+          class="rounded-circle"
+          width="40"
+          height="40"
+        >
       </button>
       <h2>MyPage</h2>
-
-
     </div>
   </header>
 
   <!-- ⬇︎ Off-Canvas メニュー -->
-	<div id="appSidebar"
-		class="offcanvas offcanvas-start"
-		style="--bs-offcanvas-width: min(50vw, 300px);"
-		tabindex="-1"
-		aria-labelledby="appSidebarLabel">
+  <div
+    id="appSidebar"
+    class="offcanvas offcanvas-start"
+    style="--bs-offcanvas-width: min(50vw, 300px);"
+    tabindex="-1"
+    aria-labelledby="appSidebarLabel"
+  >
+    <div class="offcanvas-header">
+      <button
+        type="button"
+        class="btn-close text-reset"
+        data-bs-dismiss="offcanvas"
+        aria-label="Close"
+      />
+    </div>
 
-		<div class="offcanvas-header">
-			<button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
-		</div>
-
-		<div class="offcanvas-body d-flex flex-column justify-content-between h-100 gap-3">
-			<div class="wrap d-flex flex-column">
+    <div class="offcanvas-body d-flex flex-column justify-content-between h-100 gap-3">
+      <div class="wrap d-flex flex-column">
         <RouterLink
           class="btn btn-outline-primary w-100 d-flex justfy-content-start"
           :to="`${rootPath}/profile`"
@@ -86,17 +96,26 @@ const displayName = computed(() =>
         >
           売上
         </RouterLink>
-			</div>
-			<div class="bottom">
-				<div class="user d-flex gap-2 align-items-center">
-					<img  :src="userStore.avatar" class="rounded-circle" width="40" height="40"/>
-					<div class="fw-semibold small">
-						{{ displayName }}
-					</div>
-				</div>
-				<button class="btn btn-outline-danger w-100" @click="logout">ログアウト</button>
-			</div>
-		</div>
-
-	</div>
+      </div>
+      <div class="bottom">
+        <div class="user d-flex gap-2 align-items-center">
+          <img
+            :src="userStore.avatar"
+            class="rounded-circle"
+            width="40"
+            height="40"
+          >
+          <div class="fw-semibold small">
+            {{ displayName }}
+          </div>
+        </div>
+        <button
+          class="btn btn-outline-danger w-100"
+          @click="logout"
+        >
+          ログアウト
+        </button>
+      </div>
+    </div>
+  </div>
 </template>

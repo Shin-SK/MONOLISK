@@ -30,21 +30,35 @@ function toggle(id) {
 </script>
 
 <template>
-  <div class="d-flex flex-wrap gap-3" role="group" aria-label="Casts">
-    <template v-for="c in casts" :key="c.id">
+  <div
+    class="d-flex flex-wrap gap-3"
+    role="group"
+    aria-label="Casts"
+  >
+    <template
+      v-for="c in casts"
+      :key="c.id"
+    >
       <!-- hidden checkbox (Bootstrap の btn-check を流用) -->
-      <input class="btn-check" type="checkbox"
-             :id="`cast-${c.id}`"
-              :checked="modelValue.includes(Number(c.id))"
-              @change="toggle(Number(c.id))">
+      <input
+        :id="`cast-${c.id}`"
+        class="btn-check"
+        type="checkbox"
+        :checked="modelValue.includes(Number(c.id))"
+        @change="toggle(Number(c.id))"
+      >
 
       <!-- 表示用ボタン -->
-      <label class="btn btn-outline-primary d-flex align-items-center gap-2"
-             :class="{ active: modelValue.includes(c.id) }"
-             :for="`cast-${c.id}`">
-        <img :src="c.photo_url || '/static/img/cast-default.png'"
-             class="rounded-circle border"
-             style="width:32px;height:32px;object-fit:cover;">
+      <label
+        class="btn btn-outline-primary d-flex align-items-center gap-2"
+        :class="{ active: modelValue.includes(c.id) }"
+        :for="`cast-${c.id}`"
+      >
+        <img
+          :src="c.photo_url || '/static/img/cast-default.png'"
+          class="rounded-circle border"
+          style="width:32px;height:32px;object-fit:cover;"
+        >
         <span>{{ c.stage_name }}（☆{{ c.star_count }}）</span>
       </label>
     </template>

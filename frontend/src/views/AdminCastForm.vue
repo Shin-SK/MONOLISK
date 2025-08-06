@@ -131,125 +131,226 @@ onMounted(async ()=>{
 </script>
 
 <template>
-<div class="container-fluid py-4" style="max-width:640px">
-
-  <!-- ユーザー名（編集時は readonly） -->
-  <div class="mb-3">
-    <label class="form-label">ユーザー名</label>
-    <input v-model="form.username" class="form-control">
-    <small class="text-muted">
-      ※ 基本的には変更できしません。変更するとログインIDが変わり、集計等に大きな影響が出ます。
-    </small>
-  </div>
-
-  <!-- 源氏名 -->
-  <div class="mb-3">
-    <label class="form-label">源氏名</label>
-    <input v-model="form.stage_name" class="form-control">
-  </div>
-
-
-  <!-- 姓名 -->
-  <div class="row mb-3">
-    <div class="col">
-      <label class="form-label">姓</label>
-      <input v-model="form.last_name" class="form-control">
+  <div
+    class="container-fluid py-4"
+    style="max-width:640px"
+  >
+    <!-- ユーザー名（編集時は readonly） -->
+    <div class="mb-3">
+      <label class="form-label">ユーザー名</label>
+      <input
+        v-model="form.username"
+        class="form-control"
+      >
+      <small class="text-muted">
+        ※ 基本的には変更できしません。変更するとログインIDが変わり、集計等に大きな影響が出ます。
+      </small>
     </div>
-    <div class="col">
-      <label class="form-label">名</label>
-      <input v-model="form.first_name" class="form-control">
+
+    <!-- 源氏名 -->
+    <div class="mb-3">
+      <label class="form-label">源氏名</label>
+      <input
+        v-model="form.stage_name"
+        class="form-control"
+      >
     </div>
-  </div>
 
 
-  <!-- アバター -->
-  <div class="mb-3">
-    <label class="form-label">アバター</label>
-    <div class="d-flex align-items-center gap-3">
-      <img v-if="avatarUrl" :src="avatarUrl" class="rounded"
-           style="width:80px;height:80px;object-fit:cover;">
-      <input type="file" accept="image/*" @change="onAvatarChange"
-             class="form-control" style="max-width:240px;">
-      <button v-if="avatarUrl" type="button"
-              class="btn btn-outline-danger btn-sm"
-              @click="clearAvatar">削除</button>
+    <!-- 姓名 -->
+    <div class="row mb-3">
+      <div class="col">
+        <label class="form-label">姓</label>
+        <input
+          v-model="form.last_name"
+          class="form-control"
+        >
+      </div>
+      <div class="col">
+        <label class="form-label">名</label>
+        <input
+          v-model="form.first_name"
+          class="form-control"
+        >
+      </div>
     </div>
-  </div>
 
-  <div class="mb-3">
+
+    <!-- アバター -->
+    <div class="mb-3">
+      <label class="form-label">アバター</label>
+      <div class="d-flex align-items-center gap-3">
+        <img
+          v-if="avatarUrl"
+          :src="avatarUrl"
+          class="rounded"
+          style="width:80px;height:80px;object-fit:cover;"
+        >
+        <input
+          type="file"
+          accept="image/*"
+          class="form-control"
+          style="max-width:240px;"
+          @change="onAvatarChange"
+        >
+        <button
+          v-if="avatarUrl"
+          type="button"
+          class="btn btn-outline-danger btn-sm"
+          @click="clearAvatar"
+        >
+          削除
+        </button>
+      </div>
+    </div>
+
+    <div class="mb-3">
       <label class="form-label">時給 (円)</label>
       <input
-          v-model.number="form.hourly_wage"
-          type="number"
-          class="form-control"
-          min="0"
-          placeholder="例: 3000"
+        v-model.number="form.hourly_wage"
+        type="number"
+        class="form-control"
+        min="0"
+        placeholder="例: 3000"
       >
-  </div>
+    </div>
 
-  <!-- バック率 -->
-  <div class="mb-3">
-    <label class="form-label">個別指名等バック率 (%)</label>
-    <div class="row g-2">
-      <div class="col">
-        <input type="number" v-model.number="form.back_rate_free_override"
-               placeholder="フリー" class="form-control" min="0" max="100">
-      </div>
-      <div class="col">
-        <input type="number" v-model.number="form.back_rate_nomination_override"
-               placeholder="指名" class="form-control" min="0" max="100">
-      </div>
-      <div class="col">
-        <input type="number" v-model.number="form.back_rate_inhouse_override"
-               placeholder="場内" class="form-control" min="0" max="100">
+    <!-- バック率 -->
+    <div class="mb-3">
+      <label class="form-label">個別指名等バック率 (%)</label>
+      <div class="row g-2">
+        <div class="col">
+          <input
+            v-model.number="form.back_rate_free_override"
+            type="number"
+            placeholder="フリー"
+            class="form-control"
+            min="0"
+            max="100"
+          >
+        </div>
+        <div class="col">
+          <input
+            v-model.number="form.back_rate_nomination_override"
+            type="number"
+            placeholder="指名"
+            class="form-control"
+            min="0"
+            max="100"
+          >
+        </div>
+        <div class="col">
+          <input
+            v-model.number="form.back_rate_inhouse_override"
+            type="number"
+            placeholder="場内"
+            class="form-control"
+            min="0"
+            max="100"
+          >
+        </div>
       </div>
     </div>
+
+
+    <div class="mb-4">
+      <label class="form-label fw-bold">カテゴリ別バック率 (%)</label>
+      <table class="table table-sm align-middle">
+        <thead class="table-light">
+          <tr>
+            <th style="width:140px">
+              カテゴリ
+            </th>
+            <th>フリー</th><th>本指名</th><th>場内</th><th style="width:60px" />
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="(r,idx) in form.category_rates"
+            :key="idx"
+          >
+            <!-- ▼カテゴリ選択（code をバインド） -->
+            <td>
+              <select
+                v-model="r.category"
+                class="form-select form-select-sm"
+              >
+                <option
+                  disabled
+                  value=""
+                >
+                  選択…
+                </option>
+                <option
+                  v-for="c in categories"
+                  :key="c.code"
+                  :value="c.code"
+                >
+                  {{ c.name }}
+                </option>
+              </select>
+            </td>
+            <td>
+              <input
+                v-model.number="r.rate_free"
+                type="number"
+                min="0"
+                max="100"
+                class="form-control form-control-sm"
+              >
+            </td>
+            <td>
+              <input
+                v-model.number="r.rate_nomination"
+                type="number"
+                min="0"
+                max="100"
+                class="form-control form-control-sm"
+              >
+            </td>
+            <td>
+              <input
+                v-model.number="r.rate_inhouse"
+                type="number"
+                min="0"
+                max="100"
+                class="form-control form-control-sm"
+              >
+            </td>
+            <td class="text-center">
+              <button
+                class="btn btn-danger btn-sm"
+                @click="removeRateRow(idx)"
+              >
+                ✕
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        @click="addRateRow"
+      >
+        + 行を追加
+      </button>
+    </div>
+
+    <!-- 操作ボタン -->
+    <div class="d-flex gap-2">
+      <button
+        class="btn btn-primary"
+        @click="save"
+      >
+        保存
+      </button>
+      <button
+        v-if="isEdit"
+        class="btn btn-outline-danger"
+        @click="remove"
+      >
+        削除
+      </button>
+    </div>
   </div>
-
-
-  <div class="mb-4">
-    <label class="form-label fw-bold">カテゴリ別バック率 (%)</label>
-    <table class="table table-sm align-middle">
-      <thead class="table-light">
-        <tr>
-          <th style="width:140px">カテゴリ</th>
-          <th>フリー</th><th>本指名</th><th>場内</th><th style="width:60px"></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="(r,idx) in form.category_rates" :key="idx">
-          <!-- ▼カテゴリ選択（code をバインド） -->
-          <td>
-            <select v-model="r.category" class="form-select form-select-sm">
-              <option disabled value="">選択…</option>
-              <option v-for="c in categories" :key="c.code" :value="c.code">
-                {{ c.name }}
-              </option>
-            </select>
-          </td>
-          <td><input v-model.number="r.rate_free"
-                    type="number" min="0" max="100" class="form-control form-control-sm"></td>
-          <td><input v-model.number="r.rate_nomination"
-                    type="number" min="0" max="100" class="form-control form-control-sm"></td>
-          <td><input v-model.number="r.rate_inhouse"
-                    type="number" min="0" max="100" class="form-control form-control-sm"></td>
-          <td class="text-center">
-            <button class="btn btn-danger btn-sm"
-                    @click="removeRateRow(idx)">✕</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <button class="btn btn-outline-secondary btn-sm" @click="addRateRow">
-      + 行を追加
-    </button>
-  </div>
-
-  <!-- 操作ボタン -->
-  <div class="d-flex gap-2">
-    <button class="btn btn-primary" @click="save">保存</button>
-    <button v-if="isEdit" class="btn btn-outline-danger" @click="remove">削除</button>
-  </div>
-
-</div>
 </template>

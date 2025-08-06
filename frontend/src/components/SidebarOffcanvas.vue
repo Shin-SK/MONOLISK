@@ -29,50 +29,130 @@ async function logout () {
 
 <template>
   <teleport to="body">
-    <div id="appSidebar"
-         class="offcanvas offcanvas-start"
-         style="--bs-offcanvas-width: min(50vw,300px);" tabindex="-1">
+    <div
+      id="appSidebar"
+      class="offcanvas offcanvas-start"
+      style="--bs-offcanvas-width: min(50vw,300px);"
+      tabindex="-1"
+    >
       <div class="offcanvas-header">
-        <button class="btn-close" data-bs-dismiss="offcanvas"></button>
+        <button
+          class="btn-close"
+          data-bs-dismiss="offcanvas"
+        />
       </div>
 
       <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
         <!-- -------- ナビ ---------- -->
         <nav class="nav flex-column h-100">
-          <RouterLink class="nav-link" to="/" @click="closeSidebar">ダッシュボード</RouterLink>
-          <!-- <RouterLink class="nav-link" to="/bills"  @click="closeSidebar">伝票一覧</RouterLink> -->
-          <RouterLink class="nav-link" to="/bills/pl/daily" @click="closeSidebar">PL/日次</RouterLink>
-          <RouterLink class="nav-link" to="/bills/pl/monthly" @click="closeSidebar">PL/月次</RouterLink>
-          <RouterLink class="nav-link" to="/bills/pl/yearly" @click="closeSidebar">PL/年次</RouterLink>
-          <RouterLink class="nav-link" to="/bills/cast-shift" @click="closeSidebar">キャストシフト</RouterLink>
-          <RouterLink class="nav-link" to="/cast-sales" @click="closeSidebar">キャスト売上</RouterLink>
-          <RouterLink class="nav-link" to="/ranking" @click="closeSidebar">ランキング</RouterLink>
+          <RouterLink
+            class="nav-link"
+            to="/"
+            @click="closeSidebar"
+          >
+            ダッシュボード
+          </RouterLink>
+          <RouterLink
+            class="nav-link"
+            to="/bills/pl/daily"
+            @click="closeSidebar"
+          >
+            PL/日次
+          </RouterLink>
+          <RouterLink
+            class="nav-link"
+            to="/bills/pl/monthly"
+            @click="closeSidebar"
+          >
+            PL/月次
+          </RouterLink>
+          <RouterLink
+            class="nav-link"
+            to="/bills/pl/yearly"
+            @click="closeSidebar"
+          >
+            PL/年次
+          </RouterLink>
+          <RouterLink
+            class="nav-link"
+            to="/bills/cast-shift"
+            @click="closeSidebar"
+          >
+            キャストシフト
+          </RouterLink>
+          <RouterLink
+            class="nav-link"
+            to="/cast-sales"
+            @click="closeSidebar"
+          >
+            キャスト売上
+          </RouterLink>
+          <RouterLink
+            class="nav-link"
+            to="/ranking"
+            @click="closeSidebar"
+          >
+            ランキング
+          </RouterLink>
           <!-- <RouterLink class="nav-link" to="/expense/form" @click="closeSidebar">経費申請</RouterLink> -->
           <button
             class="nav-link d-flex justify-content-between align-items-center fw-semibold"
             data-bs-toggle="collapse"
             data-bs-target="#shiftCollapse"
             :class="{ collapsed: !shiftActive }" 
-            type="button">
+            type="button"
+          >
             設定
-           <i class="bi bi-chevron-right"></i>
+            <IconChevronRight />
           </button>
 
-          <div id="shiftCollapse" class="collapse ps-3" :class="{ show: shiftActive }">
-            <RouterLink class="nav-link" to="/casts" @click="closeSidebar">キャスト情報</RouterLink>
-            <RouterLink class="nav-link" to="/staff" @click="closeSidebar">スタッフ情報</RouterLink>
+          <div
+            id="shiftCollapse"
+            class="collapse ps-3"
+            :class="{ show: shiftActive }"
+          >
+            <RouterLink
+              class="nav-link"
+              to="/casts"
+              @click="closeSidebar"
+            >
+              キャスト情報
+            </RouterLink>
+            <RouterLink
+              class="nav-link"
+              to="/staff"
+              @click="closeSidebar"
+            >
+              スタッフ情報
+            </RouterLink>
           </div>
 
-          <RouterLink class="nav-link mt-auto" to="/cast/mypage/1" @click="closeSidebar">キャストマイページ（サンプルID=1）</RouterLink>
+          <RouterLink
+            class="nav-link mt-auto"
+            to="/cast/mypage/1"
+            @click="closeSidebar"
+          >
+            キャストマイページ（サンプルID=1）
+          </RouterLink>
         </nav>
 
         <!-- -------- フッタ ---------- -->
         <div class="mt-auto pt-3 border-top">
           <div class="d-flex align-items-center gap-2 mb-3">
-            <img :src="user.avatar" class="rounded-circle" width="32" height="32" />
+            <img
+              :src="user.avatar"
+              class="rounded-circle"
+              width="32"
+              height="32"
+            >
             <span>{{ user.name }}</span>
           </div>
-          <button class="btn btn-outline-danger w-100" @click.prevent="logout">ログアウト</button>
+          <button
+            class="btn btn-outline-danger w-100"
+            @click.prevent="logout"
+          >
+            ログアウト
+          </button>
         </div>
       </aside>
     </div>

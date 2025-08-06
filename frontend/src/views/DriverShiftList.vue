@@ -80,18 +80,47 @@ onMounted(async () => {
     <!-- フィルタ -->
     <div class="row g-2 align-items-end mb-3">
       <div class="col-auto">
-        <input type="date" v-model="date" class="form-control" @change="fetchList">
+        <input
+          v-model="date"
+          type="date"
+          class="form-control"
+          @change="fetchList"
+        >
       </div>
       <div class="col-auto">
-        <select v-model="storeId" class="form-select" @change="fetchList">
-          <option value="">全店舗</option>
-          <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+        <select
+          v-model="storeId"
+          class="form-select"
+          @change="fetchList"
+        >
+          <option value="">
+            全店舗
+          </option>
+          <option
+            v-for="s in stores"
+            :key="s.id"
+            :value="s.id"
+          >
+            {{ s.name }}
+          </option>
         </select>
       </div>
       <div class="col-auto">
-        <select v-model="filterId" class="form-select" @change="fetchList">
-          <option value="">全ドライバー</option>
-          <option v-for="d in drivers" :key="d.id" :value="d.id">{{ d.name }}</option>
+        <select
+          v-model="filterId"
+          class="form-select"
+          @change="fetchList"
+        >
+          <option value="">
+            全ドライバー
+          </option>
+          <option
+            v-for="d in drivers"
+            :key="d.id"
+            :value="d.id"
+          >
+            {{ d.name }}
+          </option>
         </select>
       </div>
     </div>
@@ -102,32 +131,45 @@ onMounted(async () => {
         <tr>
           <th>Driver ID</th><th>ドライバー</th><th>店舗</th>
           <th>出勤</th><th>退勤</th>
-          <th class="text-end">総受取金</th>
-          <th class="text-end">差分</th>
-          <th></th>
+          <th class="text-end">
+            総受取金
+          </th>
+          <th class="text-end">
+            差分
+          </th>
+          <th />
         </tr>
       </thead>
 
       <tbody>
-        <tr v-for="r in rows" :key="r.driverId">
+        <tr
+          v-for="r in rows"
+          :key="r.driverId"
+        >
           <td>{{ r.driverId }}</td>
           <td>{{ r.driverName }}</td>
           <td>{{ r.storeName }}</td>
 
-          <td>{{ r.clockInAt  ? new Date(r.clockInAt ).toLocaleTimeString() : '—' }}</td>
+          <td>{{ r.clockInAt ? new Date(r.clockInAt ).toLocaleTimeString() : '—' }}</td>
           <td>{{ r.clockOutAt ? new Date(r.clockOutAt).toLocaleTimeString() : '—' }}</td>
 
-          <td class="text-end">{{ (r.totalReceived || 0).toLocaleString() }}</td>
-          <td class="text-end" :class="{ 'text-danger': (r.diff || 0) !== 0 }">
+          <td class="text-end">
+            {{ (r.totalReceived || 0).toLocaleString() }}
+          </td>
+          <td
+            class="text-end"
+            :class="{ 'text-danger': (r.diff || 0) !== 0 }"
+          >
             {{ (r.diff || 0).toLocaleString() }}
           </td>
 
           <td>
-          <router-link
-            class="btn btn-sm btn-outline-primary"
-            :to="`/driver-shifts/driver/${r.driverId}`">
-            詳細
-          </router-link>
+            <router-link
+              class="btn btn-sm btn-outline-primary"
+              :to="`/driver-shifts/driver/${r.driverId}`"
+            >
+              詳細
+            </router-link>
           </td>
         </tr>
       </tbody>

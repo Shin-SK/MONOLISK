@@ -1,4 +1,4 @@
-import BillList from '@/views/BillList.vue'
+import BillList from '@/views/DashboardList.vue'
 
 export default createRouter({
 	history : createWebHistory(),

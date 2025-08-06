@@ -1,9 +1,9 @@
 # billing/urls.py
 from django.urls import path
-from rest_framework.routers import DefaultRouter
-from rest_framework_nested.routers import NestedSimpleRouter
+from rest_framework.routers          import DefaultRouter
+from rest_framework_nested.routers   import NestedSimpleRouter, NestedDefaultRouter
 from billing.api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
-from .views import StoreViewSet, TableViewSet, ItemMasterViewSet, BillViewSet, BillItemViewSet, CastViewSet, CastSalesView, CastPayoutListView, CastItemDetailView, ItemCategoryViewSet, CastShiftViewSet, CastDailySummaryViewSet, CastRankingView, StaffViewSet
+from .views import StoreViewSet, TableViewSet, ItemMasterViewSet, BillViewSet, BillItemViewSet, CastViewSet, CastSalesView, CastPayoutListView, CastItemDetailView, ItemCategoryViewSet, CastShiftViewSet, CastDailySummaryViewSet, CastRankingView, StaffViewSet, StaffShiftViewSet, BillViewSet, BillStayViewSet
 
 # --- Routers ---
 router = DefaultRouter()
@@ -16,9 +16,13 @@ router.register(r'item-categories',  ItemCategoryViewSet)
 router.register(r'cast-shifts', CastShiftViewSet)
 router.register(r'cast-daily-summaries', CastDailySummaryViewSet, basename='cast-daily-summaries')
 router.register(r'staffs', StaffViewSet, basename='staff')
+router.register(r'staff-shift-plans', StaffShiftViewSet, basename='staff-shift-plan')
 
 bill_items_router = NestedSimpleRouter(router, r'bills', lookup='bill')
 bill_items_router.register(r'items', BillItemViewSet, basename='bill-item')
+
+bills_router = NestedDefaultRouter(router, r'bills', lookup='bill')
+bills_router.register(r'stays', BillStayViewSet, basename='bill-stays')
 
 # --- 追加の PL エンドポイント ---
 extra_patterns = [
@@ -32,4 +36,9 @@ extra_patterns = [
 ]
 
 # --- ぜんぶまとめる ---
-urlpatterns = router.urls + bill_items_router.urls + extra_patterns
+urlpatterns = (
+      router.urls
+    + bill_items_router.urls
+    + bills_router.urls
+    + extra_patterns
+)

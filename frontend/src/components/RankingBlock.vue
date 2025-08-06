@@ -24,7 +24,10 @@ const medalSrc = i => `/img/rank-no${i + 1}.svg`
     <h5>{{ label }}</h5>
 
     <!-- ─── 1-3 位 ─────────────────────── -->
-    <div class="top-three d-flex" v-if="topThree.length">
+    <div
+      v-if="topThree.length"
+      class="top-three d-flex"
+    >
       <div
         v-for="(r,i) in topThree"
         :key="r.cast_id"
@@ -32,37 +35,59 @@ const medalSrc = i => `/img/rank-no${i + 1}.svg`
         :class="'no'+(i+1)"
       >
         <div class="avatar">
-          <img v-if="r.avatar_url" :src="r.avatar_url" />
+          <img
+            v-if="r.avatar_url"
+            :src="r.avatar_url"
+          >
         </div>
-		<div class="wrap d-flex gap-3 align-items-center">
-			<!-- ★ ここで順位ごとの SVG を差し替え -->
-			<img :src="medalSrc(i)" :alt="`No.${i+1}`" class="medal" />
-			<div class="content">
-				<div class="name">{{ r.stage_name }}</div>
-				<span class="fw-bold">{{ yen(r.revenue) }}</span>
-			</div>
-		</div>
-
+        <div class="wrap d-flex gap-3 align-items-center">
+          <!-- ★ ここで順位ごとの SVG を差し替え -->
+          <img
+            :src="medalSrc(i)"
+            :alt="`No.${i+1}`"
+            class="medal"
+          >
+          <div class="content">
+            <div class="name">
+              {{ r.stage_name }}
+            </div>
+            <span class="fw-bold">{{ yen(r.revenue) }}</span>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- ─── 4 位以下 ─────────────────────── -->
-    <div v-if="others.length" class="others px-4 py-2 bg-white">
+    <div
+      v-if="others.length"
+      class="others px-4 py-2 bg-white"
+    >
       <div
         v-for="(r,i) in others"
         :key="r.cast_id"
         class="other-item d-flex align-items-center mb-2 gap-2"
       >
         <span class="rank-index">No.{{ i + 4 }}</span>
-        <div class="avatar"><img v-if="r.avatar_url" :src="r.avatar_url" /></div>
+        <div class="avatar">
+          <img
+            v-if="r.avatar_url"
+            :src="r.avatar_url"
+          >
+        </div>
         <span class="flex-grow-1">{{ r.stage_name }}</span>
-        <div class="bar flex-grow-1" :style="{ width: barW(r) }"></div>
+        <div
+          class="bar flex-grow-1"
+          :style="{ width: barW(r) }"
+        />
         <span class="fw-bold">{{ yen(r.revenue) }}</span>
       </div>
     </div>
 
     <!-- 4 位以下データ無し -->
-    <div v-else class="others-empty text-muted text-center py-3">
+    <div
+      v-else
+      class="others-empty text-muted text-center py-3"
+    >
       集計されていません
     </div>
   </div>

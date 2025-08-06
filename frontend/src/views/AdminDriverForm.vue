@@ -120,77 +120,134 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="container-fluid py-4" style="max-width:640px">
+  <div
+    class="container-fluid py-4"
+    style="max-width:640px"
+  >
     <!-- <h1 class="h4 mb-3">{{ isEdit ? 'ドライバー編集' : 'ドライバー登録' }}</h1> -->
 
     <!-- 基本情報 -->
     <div class="mb-3">
       <label class="form-label">ユーザー</label>
-      <input v-model="form.user_name" class="form-control" :disabled="isEdit">
+      <input
+        v-model="form.user_name"
+        class="form-control"
+        :disabled="isEdit"
+      >
     </div>
 
     <div class="mb-3">
       <label class="form-label">店舗</label>
-      <select v-model="form.store" class="form-select">
-        <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+      <select
+        v-model="form.store"
+        class="form-select"
+      >
+        <option
+          v-for="s in stores"
+          :key="s.id"
+          :value="s.id"
+        >
+          {{ s.name }}
+        </option>
       </select>
     </div>
 
     <div class="row mb-3">
       <div class="col-md-4">
         <label class="form-label">電話番号</label>
-        <input v-model="form.phone" class="form-control">
+        <input
+          v-model="form.phone"
+          class="form-control"
+        >
       </div>
       <div class="col-md-4">
         <label class="form-label">車種</label>
-        <input v-model="form.car_type" class="form-control">
+        <input
+          v-model="form.car_type"
+          class="form-control"
+        >
       </div>
       <div class="col-md-4">
         <label class="form-label">ナンバー</label>
-        <input v-model="form.number" class="form-control">
+        <input
+          v-model="form.number"
+          class="form-control"
+        >
       </div>
     </div>
 
     <!-- ★ 時給入力 -->
     <div class="mb-3 col-md-4">
       <label class="form-label">時給 (¥)</label>
-      <input type="number" v-model.number="hourly_rate"
-             class="form-control" min="0">
+      <input
+        v-model.number="hourly_rate"
+        type="number"
+        class="form-control"
+        min="0"
+      >
     </div>
 
     <div class="mb-3">
       <label class="form-label">メモ</label>
-      <textarea v-model="form.memo" rows="3" class="form-control"></textarea>
+      <textarea
+        v-model="form.memo"
+        rows="3"
+        class="form-control"
+      />
     </div>
 
     <!-- NG キャスト -->
     <div class="mb-3 position-relative">
       <label class="form-label">NG キャスト</label>
-      <input v-model="kw" @input="searchCast" class="form-control mb-1"
-             placeholder="キャスト名検索で追加">
+      <input
+        v-model="kw"
+        class="form-control mb-1"
+        placeholder="キャスト名検索で追加"
+        @input="searchCast"
+      >
 
       <!-- 選択済み -->
-      <div class="mt-2" v-if="form.ng_casts.length">
-        <span v-for="id in form.ng_casts" :key="id"
-              class="badge bg-secondary me-2">
+      <div
+        v-if="form.ng_casts.length"
+        class="mt-2"
+      >
+        <span
+          v-for="id in form.ng_casts"
+          :key="id"
+          class="badge bg-secondary me-2"
+        >
           {{ casts.find(c => c.id === id)?.stage_name || id }}
-          <button class="btn-close btn-close-white btn-sm ms-1"
-                  @click="removeNg(id)"></button>
+          <button
+            class="btn-close btn-close-white btn-sm ms-1"
+            @click="removeNg(id)"
+          />
         </span>
       </div>
 
       <!-- 検索候補 -->
-      <ul v-if="showCand"
-          class="list-group position-absolute w-100" style="z-index:5">
-        <li v-for="c in cand" :key="c.id"
-            class="list-group-item list-group-item-action"
-            @click="addNg(c)">
+      <ul
+        v-if="showCand"
+        class="list-group position-absolute w-100"
+        style="z-index:5"
+      >
+        <li
+          v-for="c in cand"
+          :key="c.id"
+          class="list-group-item list-group-item-action"
+          @click="addNg(c)"
+        >
           {{ c.stage_name }} / {{ c.store_name }}
         </li>
       </ul>
     </div>
 
-    <button type="button" class="btn btn-primary" @click="save">保存</button>
+    <button
+      type="button"
+      class="btn btn-primary"
+      @click="save"
+    >
+      保存
+    </button>
   </div>
 </template>
 

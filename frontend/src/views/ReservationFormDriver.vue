@@ -71,110 +71,179 @@ async function save () {
 
 
 <template>
+  <div
+    v-if="rsv"
+    class="container py-4"
+  >
+    <h1 class="h4 mb-4">
+      予約 #{{ rsv.id }}（ドライバー）
+    </h1>
 
-<div class="container py-4" v-if="rsv">
-  <h1 class="h4 mb-4">予約 #{{ rsv.id }}（ドライバー）</h1>
+    <table class="table">
+      <tbody>
+        <tr><th>キャスト</th><td>{{ rsv.cast_names.join(', ') }}</td></tr>
+        <tr><th>開始</th><td>{{ new Date(rsv.start_at).toLocaleString() }}</td></tr>
 
-<table class="table">
-	<tbody>
-		<tr><th>キャスト</th><td>{{ rsv.cast_names.join(', ') }}</td></tr>
-		<tr><th>開始</th><td>{{ new Date(rsv.start_at).toLocaleString() }}</td></tr>
+        <!-- ▼ 追加した 3 行 -->
+        <tr v-if="rsv.course_minutes">
+          <th>コース</th>
+          <td>{{ rsv.course_minutes }} 分</td>
+        </tr>
 
-		<!-- ▼ 追加した 3 行 -->
-		<tr v-if="rsv.course_minutes">
-			<th>コース</th>
-			<td>{{ rsv.course_minutes }} 分</td>
-		</tr>
+        <tr v-if="rsv.customer_address">
+          <th>住所</th>
+          <td>{{ rsv.customer_address }}</td>
+        </tr>
 
-		<tr v-if="rsv.customer_address">
-			<th>住所</th>
-			<td>{{ rsv.customer_address }}</td>
-		</tr>
+        <tr v-if="rsv.charges.length">
+          <th>オプション</th>
+          <td>
+            <span
+              v-for="ch in rsv.charges"
+              :key="ch.id"
+              class="badge bg-secondary me-1"
+            >
+              {{ ch.option_name }} {{ ch.amount }}円
+            </span>
+          </td>
+        </tr>
+        <!-- ▲ ここまで -->
+        <tr><th>お客様名</th><td>{{ rsv.customer_name }}</td></tr>
+        <tr><th>見積</th><td>{{ rsv.expected_amount.toLocaleString() }} 円</td></tr>
+      </tbody>
+    </table>
 
-		<tr v-if="rsv.charges.length">
-			<th>オプション</th>
-			<td>
-				<span
-					v-for="ch in rsv.charges"
-					:key="ch.id"
-					class="badge bg-secondary me-1"
-				>
-					{{ ch.option_name }} {{ ch.amount }}円
-				</span>
-			</td>
-		</tr>
-		<!-- ▲ ここまで -->
-		<tr><th>お客様名</th><td>{{ rsv.customer_name }}</td></tr>
-		<tr><th>見積</th><td>{{ rsv.expected_amount.toLocaleString() }} 円</td></tr>
-	</tbody>
-</table>
-
-	<!-- ◆ 支払い方法 ◆ -->
-	<div class="area">
-	<div class="h5">支払い</div>
-	<div class="row g-3">
-		<div class="col-md-3">
-		<label class="form-label">カード</label>
-		<input type="number" class="form-control"
-				v-model.number="form.pay_card" min="0" />
-		</div>
-		<div class="col-md-3">
-		<label class="form-label">現金</label>
-		<input type="number" class="form-control"
-				v-model.number="form.pay_cash" min="0" />
-		</div>
-	</div>
-	</div>
-
-
-	<!-- ◆ マニュアル売上 ◆ -->
-	<div class="area">
-	<div class="h5">マニュアル売上</div>
-	<div v-for="(row,i) in form.revenues" :key="i" class="row g-2 mb-2">
-		<div class="col">
-		<input v-model="row.label" placeholder="ラベル" class="form-control" />
-		</div>
-		<div class="col">
-		<input v-model.number="row.amount" type="number" min="0"
-				placeholder="金額" class="form-control" />
-		</div>
-		<div class="col-auto">
-		<button class="btn btn-outline-danger"
-				@click="form.revenues.splice(i,1)"
-				v-if="form.revenues.length>1">－</button>
-		</div>
-	</div>
-	<button class="btn btn-sm btn-outline-primary"
-			@click="form.revenues.push({label:'',amount:0})">＋ 行を追加</button>
-	</div>
-
-	<!-- ◆ マニュアル経費 ◆ -->
-	<div class="area">
-	<div class="h5">マニュアル経費</div>
-	<div v-for="(row,i) in form.expenses" :key="i" class="row g-2 mb-2">
-		<div class="col">
-		<input v-model="row.label" placeholder="ラベル" class="form-control" />
-		</div>
-		<div class="col">
-		<input v-model.number="row.amount" type="number" min="0"
-				placeholder="金額" class="form-control" />
-		</div>
-		<div class="col-auto">
-		<button class="btn btn-outline-danger"
-				@click="form.expenses.splice(i,1)"
-				v-if="form.expenses.length>1">－</button>
-		</div>
-	</div>
-	<button class="btn btn-sm btn-outline-primary"
-			@click="form.expenses.push({label:'',amount:0})">＋ 行を追加</button>
-	</div>
+    <!-- ◆ 支払い方法 ◆ -->
+    <div class="area">
+      <div class="h5">
+        支払い
+      </div>
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">カード</label>
+          <input
+            v-model.number="form.pay_card"
+            type="number"
+            class="form-control"
+            min="0"
+          >
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">現金</label>
+          <input
+            v-model.number="form.pay_cash"
+            type="number"
+            class="form-control"
+            min="0"
+          >
+        </div>
+      </div>
+    </div>
 
 
-  <div class="mb-3">
-    <label class="form-label">受取金額</label>
-    <input type="number" class="form-control" v-model.number="received" />
+    <!-- ◆ マニュアル売上 ◆ -->
+    <div class="area">
+      <div class="h5">
+        マニュアル売上
+      </div>
+      <div
+        v-for="(row,i) in form.revenues"
+        :key="i"
+        class="row g-2 mb-2"
+      >
+        <div class="col">
+          <input
+            v-model="row.label"
+            placeholder="ラベル"
+            class="form-control"
+          >
+        </div>
+        <div class="col">
+          <input
+            v-model.number="row.amount"
+            type="number"
+            min="0"
+            placeholder="金額"
+            class="form-control"
+          >
+        </div>
+        <div class="col-auto">
+          <button
+            v-if="form.revenues.length>1"
+            class="btn btn-outline-danger"
+            @click="form.revenues.splice(i,1)"
+          >
+            －
+          </button>
+        </div>
+      </div>
+      <button
+        class="btn btn-sm btn-outline-primary"
+        @click="form.revenues.push({label:'',amount:0})"
+      >
+        ＋ 行を追加
+      </button>
+    </div>
+
+    <!-- ◆ マニュアル経費 ◆ -->
+    <div class="area">
+      <div class="h5">
+        マニュアル経費
+      </div>
+      <div
+        v-for="(row,i) in form.expenses"
+        :key="i"
+        class="row g-2 mb-2"
+      >
+        <div class="col">
+          <input
+            v-model="row.label"
+            placeholder="ラベル"
+            class="form-control"
+          >
+        </div>
+        <div class="col">
+          <input
+            v-model.number="row.amount"
+            type="number"
+            min="0"
+            placeholder="金額"
+            class="form-control"
+          >
+        </div>
+        <div class="col-auto">
+          <button
+            v-if="form.expenses.length>1"
+            class="btn btn-outline-danger"
+            @click="form.expenses.splice(i,1)"
+          >
+            －
+          </button>
+        </div>
+      </div>
+      <button
+        class="btn btn-sm btn-outline-primary"
+        @click="form.expenses.push({label:'',amount:0})"
+      >
+        ＋ 行を追加
+      </button>
+    </div>
+
+
+    <div class="mb-3">
+      <label class="form-label">受取金額</label>
+      <input
+        v-model.number="received"
+        type="number"
+        class="form-control"
+      >
+    </div>
+
+    <button
+      class="btn btn-primary"
+      @click="save"
+    >
+      保存
+    </button>
   </div>
-
-  <button class="btn btn-primary" @click="save">保存</button>
-</div>
 </template>

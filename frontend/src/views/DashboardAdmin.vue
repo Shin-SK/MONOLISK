@@ -1,11 +1,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
-
-import GanttChart from '@/components/GanttChart.vue'
 import BillModal  from '@/components/BillModal.vue'
 import BillListTable  from '@/components/BillListTable.vue'
-import BillList  from '@/views/BillList.vue'
+
 
 import { api, createBill, fetchBill } from '@/api'
 
@@ -53,105 +51,20 @@ function setToday(){ selectedDate.value = dayjs() }
 /* ───────── Gantt ref ───────── */
 const ganttRef = ref(null)
 
-/* ───────── タブ切り替え───────── */
-const activeTab = ref('gantt')              // 'gantt' | 'tables' | 'lists'
-const show = (tab) => { activeTab.value = tab }
 
 </script>
 
 <template>
-<div class="dashboard-admin container-fluid">
-  <nav>
-    <ul class="nav nav-tabs mb-3">
-      <li class="nav-item">
-        <button class="nav-link"
-                :class="{active:activeTab==='gantt'}"
-                @click="show('gantt')">
-          <i class="bi bi-diagram-3"></i>タイムライン
-        </button>
-      </li>
-      <li class="nav-item">
-        <button class="nav-link"
-                :class="{active:activeTab==='tables'}"
-                @click="show('tables')">
-          <i class="bi bi-grid-3x3-gap-fill"></i>テーブル
-        </button>
-      </li>
-      <li class="nav-item">
-        <button class="nav-link"
-                :class="{active:activeTab==='lists'}"
-                @click="show('lists')">
-          <i class="bi bi-card-list"></i>リスト
-        </button>
-      </li>
-    </ul>
-  </nav>
-
-  <div class="guant" v-if="activeTab==='gantt'">
-
-  <!-- ▼ 日付ヘッダー -->
-  <header class="gc-header position-relative mb-1">
-    <div class="d-flex align-items-center justify-content-between gap-3 w-100">
-      <div class="d-flex gap-3">
-        <button class="btn btn-outline-secondary" :class="{active:isSame(dayjs().subtract(1,'day'))}" @click="go(-1)">
-          <i class="bi bi-arrow-left"/>
-        </button>
-        <button class="btn btn-outline-primary" :class="{active:isSame(dayjs())}" @click="setToday">今日</button>
-        <button class="btn btn-outline-secondary" :class="{active:isSame(dayjs().add(1,'day'))}" @click="go(1)">
-          <i class="bi bi-arrow-right"/>
-        </button>
-        <input type="date" class="form-control form-control-sm bg-white ms-2" v-model="selectedDateStr"/>
-      </div>
-
-      <div class="position-absolute top-50 start-50 translate-middle fs-5 fw-bold">
-        {{ headerLabel }}
-      </div>
-
-      <div>
-        <button class="btn btn-success" @click="handleNewBill({ tableId:1 })">＋ 新規伝票</button>
-      </div>
+  <div class="dashboard">
+    <div class="tables">
+      <BillListTable />
     </div>
-  </header>
-  <div class="d-flex gap-1 mt-5 mb-2">
-      <div class="item badge text-white bg-danger">本指名</div>
-      <div class="item badge text-white bg-success">場内</div>
-      <div class="item badge text-white bg-blue">フリー(~10分)</div>
-      <div class="item badge text-white bg-warning">フリー(~20分)</div>
-      <div class="item badge text-white bg-orange">フリー(~30分)</div>
-  </div>
-
-  <!-- ▼ Gantt Chart -->
-  <GanttChart
-    ref="ganttRef"
-    :date="selectedDateStr"
-    :store-id="myStoreId"
-    :start-hour="10"
-    :hours-per-chart="24"
-    @bill-click="openBillEditor"
-    @request-new="handleNewBill"
-  />
-
-    
-  </div>
-
-  <div class="tables" v-else-if="activeTab==='tables'" >
-
-    <BillListTable />
+    <!-- ▼ Bill 編集モーダル -->
+    <BillModal
+      v-model="showModal"
+      :bill="currentBill"
+      @saved="handleSaved"
+    />
 
   </div>
-
-  <div class="lists" v-else>
-  
-    <BillList />
-
-  </div>
-
-</div>
-
-<!-- ▼ Bill 編集モーダル -->
-<BillModal
-  v-model="showModal"
-  :bill="currentBill"
-  @saved="handleSaved"
-/>
 </template>

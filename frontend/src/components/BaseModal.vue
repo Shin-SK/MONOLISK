@@ -11,12 +11,21 @@ const close = () => emit('update:modelValue', false)
   <Teleport to="body">
     <!-- backdrop -->
     <transition name="backdrop-fade">
-      <div v-if="modelValue" class="modal-backdrop" @click="close"></div>
+      <div
+        v-if="modelValue"
+        class="modal-backdrop"
+        @click="close"
+      />
     </transition>
 
     <!-- modal 本体 -->
     <transition name="modal-fade">
-      <div v-if="modelValue" class="modal d-block" role="dialog" @keydown.esc="close">
+      <div
+        v-if="modelValue"
+        class="modal d-block"
+        role="dialog"
+        @keydown.esc="close"
+      >
         <div class="modal-dialog modal-fullscreen p-5">
           <div class="modal-content p-3">
             <!-- ヘッダー -->
@@ -27,8 +36,7 @@ const close = () => emit('update:modelValue', false)
 
             <!-- フッター -->
             <slot name="footer">
-              <div class="modal-footer">
-              </div>
+              <div class="modal-footer" />
             </slot>
           </div>
         </div>

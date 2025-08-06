@@ -119,8 +119,11 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': (
         'django_filters.rest_framework.DjangoFilterBackend',   # ★ 追加
     ),
-    # "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
-    # "PAGE_SIZE": 30,           # お好みで
+    'DATETIME_INPUT_FORMATS': [
+        '%Y-%m-%dT%H:%M',   # 例: 2025-08-05T18:00
+        '%Y-%m-%d %H:%M',   # 例: 2025-08-05 18:00
+        'iso-8601',         # 既定（秒付き・タイムゾーン付きなど広め）
+    ],
 }
 REST_SESSION_LOGIN = False 
 

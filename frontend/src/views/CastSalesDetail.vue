@@ -63,71 +63,127 @@ const detailMap = computed(() => {
 
 <template>
   <div class="container-fluid">
-	<div class="d-flex justify-content-between align-items-end">
-		<h4 class="mb-3">{{ castName }}さんの売上</h4>
+    <div class="d-flex justify-content-between align-items-end">
+      <h4 class="mb-3">
+        {{ castName }}さんの売上
+      </h4>
 
-		<!-- 期間指定 -->
-		<div class="d-flex align-items-end gap-2 mb-3">
-		<div>
-			<label class="form-label">開始日</label>
-			<input type="date" v-model="dateFrom" class="form-control" />
-		</div>
-		<div>
-			<label class="form-label">終了日</label>
-			<input type="date" v-model="dateTo" class="form-control" />
-		</div>
-		<button class="btn btn-primary mb-1" @click="load">再表示</button>
-		</div>
-
-	</div>
+      <!-- 期間指定 -->
+      <div class="d-flex align-items-end gap-2 mb-3">
+        <div>
+          <label class="form-label">開始日</label>
+          <input
+            v-model="dateFrom"
+            type="date"
+            class="form-control"
+          >
+        </div>
+        <div>
+          <label class="form-label">終了日</label>
+          <input
+            v-model="dateTo"
+            type="date"
+            class="form-control"
+          >
+        </div>
+        <button
+          class="btn btn-primary mb-1"
+          @click="load"
+        >
+          再表示
+        </button>
+      </div>
+    </div>
 
     <!-- テーブル -->
     <table class="table align-middle">
       <thead class="table-dark">
         <tr>
-          <th class="text-center">T</th>
-          <th></th>
-          <th></th>
-          <th></th>
-          <th class="text-end">テーブル小計</th>
-          <th class="text-end">ギャラ</th>
+          <th class="text-center">
+            T
+          </th>
+          <th />
+          <th />
+          <th />
+          <th class="text-end">
+            テーブル小計
+          </th>
+          <th class="text-end">
+            ギャラ
+          </th>
         </tr>
       </thead>
       <tbody>
-        <template v-for="p in payouts" :key="p.id">
+        <template
+          v-for="p in payouts"
+          :key="p.id"
+        >
           <!-- 親行 -->
           <tr class="fw-bold bg-white">
-            <td class="text-center">{{ p.bill.table_no ?? p.bill.table }}</td>
-            <td></td>
+            <td class="text-center">
+              {{ p.bill.table_no ?? p.bill.table }}
+            </td>
+            <td />
             <td>
-				<div class="d-flex gap-3">
-					<span :class="badgeClass(p)" class="d-flex align-items-center">{{ nomType(p) }}</span>
-					<span>{{ dayjs(p.bill.opened_at).format('YYYY/MM/DD') }}</span>
-					<span>{{ dayjs(p.bill.opened_at).format('HH:mm') }}</span>
-				</div>
-			</td>
-            <td></td>
-            <td class="text-end">{{ yen(p.bill.subtotal) }}</td>
-            <td class="text-end">{{ yen(p.amount) }}</td>
+              <div class="d-flex gap-3">
+                <span
+                  :class="badgeClass(p)"
+                  class="d-flex align-items-center"
+                >{{ nomType(p) }}</span>
+                <span>{{ dayjs(p.bill.opened_at).format('YYYY/MM/DD') }}</span>
+                <span>{{ dayjs(p.bill.opened_at).format('HH:mm') }}</span>
+              </div>
+            </td>
+            <td />
+            <td class="text-end">
+              {{ yen(p.bill.subtotal) }}
+            </td>
+            <td class="text-end">
+              {{ yen(p.amount) }}
+            </td>
           </tr>
 
           <!-- 子行 (= アイテム明細) -->
-          <tr v-for="it in detailMap[p.bill.id] ?? []" :key="it.id" class="bg-light small">
-            <td colspan="3"></td>
-            <td class="text-end">{{ it.name }}×{{ it.qty }}</td>
-            <td class="text-end">{{ yen(it.subtotal) }}</td>
-            <td class="text-end">{{ yen(it.amount) }}</td>
+          <tr
+            v-for="it in detailMap[p.bill.id] ?? []"
+            :key="it.id"
+            class="bg-light small"
+          >
+            <td colspan="3" />
+            <td class="text-end">
+              {{ it.name }}×{{ it.qty }}
+            </td>
+            <td class="text-end">
+              {{ yen(it.subtotal) }}
+            </td>
+            <td class="text-end">
+              {{ yen(it.amount) }}
+            </td>
           </tr>
         </template>
       </tbody>
       <tfoot class="fw-bold table-light">
         <tr>
-          <td colspan="5" class="text-end">売上合計</td>
-          <td class="text-end">{{ yen(payouts.reduce((sum, p) => sum + p.bill.subtotal, 0)) }}</td>
+          <td
+            colspan="5"
+            class="text-end"
+          >
+            売上合計
+          </td>
+          <td class="text-end">
+            {{ yen(payouts.reduce((sum, p) => sum + p.bill.subtotal, 0)) }}
+          </td>
         </tr>
         <tr>
-          <td colspan="5" class="text-end">総ギャラ合計</td>
-          <td class="text-end">{{ yen(totalPayout) }}</td>
+          <td
+            colspan="5"
+            class="text-end"
+          >
+            総ギャラ合計
+          </td>
+          <td class="text-end">
+            {{ yen(totalPayout) }}
+          </td>
         </tr>
       </tfoot>
     </table>

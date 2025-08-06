@@ -164,10 +164,17 @@ onMounted(loadAll)
   <div class="cast-mypage container-fluid mt-4 pb-5">
     <!-- ===== ヘッダ ===== -->
     <div class="d-flex align-items-center mb-4 gap-4">
-      <img v-if="castInfo?.avatar_url" :src="castInfo.avatar_url" alt="avatar"
-           class="rounded-circle" style="width:72px;height:72px;object-fit:cover" />
+      <img
+        v-if="castInfo?.avatar_url"
+        :src="castInfo.avatar_url"
+        alt="avatar"
+        class="rounded-circle"
+        style="width:72px;height:72px;object-fit:cover"
+      >
       <div>
-        <h3 class="mb-1">{{ castInfo?.stage_name || 'キャスト名' }}</h3>
+        <h3 class="mb-1">
+          {{ castInfo?.stage_name || 'キャスト名' }}
+        </h3>
         <p class="mb-0 text-muted">
           あなたは現在 <strong v-if="myRank">{{ myRank }} 位</strong>
           <span v-else>圏外</span> です
@@ -180,7 +187,9 @@ onMounted(loadAll)
       <div class="col-6">
         <div class="card text-bg-light">
           <div class="card-body">
-            <h6 class="card-title mb-1">次のシフト</h6>
+            <h6 class="card-title mb-1">
+              次のシフト
+            </h6>
             <p class="card-text fs-5 mb-0">
               <template v-if="nextShift">
                 <span>{{ nextShiftDate }}</span>
@@ -194,7 +203,9 @@ onMounted(loadAll)
       <div class="col-6">
         <div class="card text-bg-light">
           <div class="card-body">
-            <h6 class="card-title mb-1">今日の売上</h6>
+            <h6 class="card-title mb-1">
+              今日の売上
+            </h6>
             <p class="card-text fs-5 mb-0">
               <span v-if="todaySales !== null">{{ yen(todaySales) }}</span>
               <span v-else>–</span>
@@ -206,54 +217,103 @@ onMounted(loadAll)
 
     <!-- タブ -->
     <nav class="d-flex justify-content-around">
-      <a href="#" :class="{ active: activeTab === 'apply' }" @click.prevent="setTab('apply')">
-        <i class="bi bi-calendar-plus"></i><span>シフト申請</span>
+      <a
+        href="#"
+        :class="{ active: activeTab === 'apply' }"
+        @click.prevent="setTab('apply')"
+      >
+        <IconCalendarPlus /><span>シフト申請</span>
       </a>
-      <a href="#" :class="{ active: activeTab === 'list' }" @click.prevent="setTab('list')">
-        <i class="bi bi-table"></i><span>シフト一覧</span>
+      <a
+        href="#"
+        :class="{ active: activeTab === 'list' }"
+        @click.prevent="setTab('list')"
+      >
+        <IconCalendarWeek /><span>シフト一覧</span>
       </a>
-      <a href="#" :class="{ active: activeTab === 'sales' }" @click.prevent="setTab('sales')">
-        <i class="bi bi-currency-yen"></i><span>売上</span>
+      <a
+        href="#"
+        :class="{ active: activeTab === 'sales' }"
+        @click.prevent="setTab('sales')"
+      >
+        <IconRosetteDiscountCheck /><span>売上</span>
       </a>
-      <a href="#" :class="{ active: activeTab === 'customers' }" @click.prevent="setTab('customers')">
-        <i class="bi bi-people"></i><span>顧客情報</span>
+      <a
+        href="#"
+        :class="{ active: activeTab === 'customers' }"
+        @click.prevent="setTab('customers')"
+      >
+        <IconFaceId /><span>顧客情報</span>
       </a>
     </nav>
 
     <!-- ▼ シフト申請 -->
-    <div v-if="activeTab === 'apply'" class="card mb-5">
-      <div class="card-header fw-bold">シフト申請</div>
+    <div
+      v-if="activeTab === 'apply'"
+      class="card mb-5"
+    >
+      <div class="card-header fw-bold">
+        シフト申請
+      </div>
       <div class="card-body bg-white">
         <div class="row g-3 align-items-end">
           <div class="col-md-5">
             <label class="form-label">開始日時</label>
-            <input type="datetime-local" v-model="form.start" class="form-control" />
+            <input
+              v-model="form.start"
+              type="datetime-local"
+              class="form-control"
+            >
           </div>
           <div class="col-md-5">
             <label class="form-label">終了日時</label>
-            <input type="datetime-local" v-model="form.end" class="form-control" />
+            <input
+              v-model="form.end"
+              type="datetime-local"
+              class="form-control"
+            >
           </div>
           <div class="col-md-2 text-end">
-            <button class="btn btn-outline-secondary w-100" @click="addDraft">追加</button>
+            <button
+              class="btn btn-outline-secondary w-100"
+              @click="addDraft"
+            >
+              追加
+            </button>
           </div>
         </div>
 
-        <table v-if="draftShifts.length" class="table mb-3">
-          <thead><tr><th>#</th><th>開始</th><th>終了</th><th></th></tr></thead>
+        <table
+          v-if="draftShifts.length"
+          class="table mb-3"
+        >
+          <thead><tr><th>#</th><th>開始</th><th>終了</th><th /></tr></thead>
           <tbody>
-            <tr v-for="(d,i) in draftShifts" :key="i">
+            <tr
+              v-for="(d,i) in draftShifts"
+              :key="i"
+            >
               <td>{{ i+1 }}</td>
               <td>{{ fmt(d.plan_start) }}</td>
               <td>{{ fmt(d.plan_end) }}</td>
               <td>
-                <button class="btn" @click="removeDraft(i)"><i class="bi bi-x"></i></button>
+                <button
+                  class="btn"
+                  @click="removeDraft(i)"
+                >
+                  <IconX />
+                </button>
               </td>
             </tr>
           </tbody>
         </table>
 
         <div class="d-flex justify-content-center mt-5">
-          <button class="btn btn-primary" @click="submitAll" :disabled="!draftShifts.length">
+          <button
+            class="btn btn-primary"
+            :disabled="!draftShifts.length"
+            @click="submitAll"
+          >
             {{ draftShifts.length }} 件まとめて申請
           </button>
         </div>
@@ -262,7 +322,9 @@ onMounted(loadAll)
 
     <!-- ▼ 自分のシフト一覧 -->
     <div v-if="activeTab === 'list'">
-      <h4 class="mt-4 mb-2">シフト一覧</h4>
+      <h4 class="mt-4 mb-2">
+        シフト一覧
+      </h4>
       <div class="table-responsive">
         <table class="table align-middle text-nowrap">
           <thead class="table-light">
@@ -272,13 +334,18 @@ onMounted(loadAll)
             </tr>
           </thead>
           <tbody>
-            <tr v-for="s in shifts" :key="s.id">
+            <tr
+              v-for="s in shifts"
+              :key="s.id"
+            >
               <td>{{ s.id }}</td>
               <!-- ★ 予定を 2 行表記 (日付 / 時間帯) -->
               <td>
                 <template v-if="s.plan_start">
                   <div>{{ dayjs(s.plan_start).format('YYYY/MM/DD') }}</div>
-                  <div class="fw-bold">{{ dayjs(s.plan_start).format('HH:mm') }} – {{ dayjs(s.plan_end).format('HH:mm') }}</div>
+                  <div class="fw-bold">
+                    {{ dayjs(s.plan_start).format('HH:mm') }} – {{ dayjs(s.plan_end).format('HH:mm') }}
+                  </div>
                 </template>
                 <span v-else>–</span>
               </td>
@@ -288,12 +355,20 @@ onMounted(loadAll)
               <td>{{ s.payroll_amount ? yen(s.payroll_amount) : '–' }}</td>
             </tr>
             <tr v-if="!shifts.length">
-              <td colspan="6" class="text-center text-muted">シフトがありません</td>
+              <td
+                colspan="6"
+                class="text-center text-muted"
+              >
+                シフトがありません
+              </td>
             </tr>
           </tbody>
         </table>
         <div class="d-flex justify-content-center">
-          <button class="btn btn-outline-primary" @click="setTab('apply')">
+          <button
+            class="btn btn-outline-primary"
+            @click="setTab('apply')"
+          >
             シフト申請
           </button>
         </div>
@@ -305,27 +380,38 @@ onMounted(loadAll)
       <!-- ▼ 売上タブ用：期間フィルタ（スマホ向けにコンパクト） -->
       <div class="d-flex align-items-center gap-2 mb-4">
         <div>
-          <input type="date" v-model="dateFrom"
-                class="form-control form-control-sm" />
+          <input
+            v-model="dateFrom"
+            type="date"
+            class="form-control form-control-sm"
+          >
         </div>
         <div>
           〜
         </div>
         <div>
-          <input type="date" v-model="dateTo"
-                class="form-control form-control-sm" />
+          <input
+            v-model="dateTo"
+            type="date"
+            class="form-control form-control-sm"
+          >
         </div>
         <!-- v-model 変更で自動再読込しているなら @click は不要。
             明示的に押して更新したいなら loadSummary() を呼ぶ -->
-        <button class=""
-                @click="loadSummary">
-          <i class="bi bi-search"></i>
+        <button
+          class=""
+          @click="loadSummary"
+        >
+          <IconSearch />
         </button>
       </div>
 
       <!-- <h4 class="mt-5 mb-3">売上 ({{ dateFrom }} 〜 {{ dateTo }})</h4> -->
 
-      <div v-if="salesBreakdown" class="table-responsive">
+      <div
+        v-if="salesBreakdown"
+        class="table-responsive"
+      >
         <table class="table table-sm text-nowrap align-middle">
           <thead class="table-light">
             <tr>
@@ -333,7 +419,9 @@ onMounted(loadAll)
               <th>本指名</th>
               <th>場内</th>
               <th>フリー</th>
-              <th class="text-end">歩合小計</th>
+              <th class="text-end">
+                歩合小計
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -342,40 +430,78 @@ onMounted(loadAll)
               <td>{{ yen(salesBreakdown.nom) }}</td>
               <td>{{ yen(salesBreakdown.in) }}</td>
               <td>{{ yen(salesBreakdown.free) }}</td>
-              <td class="text-end fw-bold">{{ yen(salesBreakdown.total) }}</td>
+              <td class="text-end fw-bold">
+                {{ yen(salesBreakdown.total) }}
+              </td>
             </tr>
           </tbody>
           <tfoot class="table-light fw-bold">
             <tr>
-              <td colspan="4" class="text-end">時給小計</td>
-              <td class="text-end">{{ yen(salesBreakdown.payroll) }}</td>
+              <td
+                colspan="4"
+                class="text-end"
+              >
+                時給小計
+              </td>
+              <td class="text-end">
+                {{ yen(salesBreakdown.payroll) }}
+              </td>
             </tr>
             <tr>
-              <td colspan="4" class="text-end">支給見込 (歩合+時給)</td>
-              <td class="text-end">{{ yen(salesBreakdown.total + salesBreakdown.payroll) }}</td>
+              <td
+                colspan="4"
+                class="text-end"
+              >
+                支給見込 (歩合+時給)
+              </td>
+              <td class="text-end">
+                {{ yen(salesBreakdown.total + salesBreakdown.payroll) }}
+              </td>
             </tr>
           </tfoot>
         </table>
       </div>
-      <p v-else class="text-muted">売上はまだありません</p>
+      <p
+        v-else
+        class="text-muted"
+      >
+        売上はまだありません
+      </p>
     </div>
 
     <!-- ▼ 売上 -->
     <div v-if="activeTab === 'customers'">
-      <h4 class="mt-5 mb-3">顧客情報</h4>
-      <p class="text-muted">顧客情報はまだありません</p>
+      <h4 class="mt-5 mb-3">
+        顧客情報
+      </h4>
+      <p class="text-muted">
+        顧客情報はまだありません
+      </p>
     </div>
 
     <!-- ▼ 顧客情報 -->
     <div class="notice mt-5">
       <h5>お店からのお知らせ</h5>
-      <ul v-if="notices.length" class="list-group mb-4">
-        <li v-for="n in notices" :key="n.id" class="list-group-item">
+      <ul
+        v-if="notices.length"
+        class="list-group mb-4"
+      >
+        <li
+          v-for="n in notices"
+          :key="n.id"
+          class="list-group-item"
+        >
           {{ n.message }}
           <span class="text-muted small ms-2">{{ dayjs(n.created_at).format('YYYY/MM/DD') }}</span>
         </li>
       </ul>
-      <p v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height: 200px;">現在お知らせはありません</p>
+      <p
+        v-else
+        class="text-muted d-flex align-items-center justify-content-center"
+        style="min-height: 200px;"
+      >
+        現在お知らせはありません
+      </p>
     </div>
 
     <!-- ランキング -->
@@ -385,7 +511,12 @@ onMounted(loadAll)
         label="月間ランキング"
         :rows="monthlyRows"
       />
-      <p v-else class="text-muted text-center">集計されていません</p>
+      <p
+        v-else
+        class="text-muted text-center"
+      >
+        集計されていません
+      </p>
     </div>
   </div>
 </template>

@@ -93,11 +93,16 @@ onMounted(load)
           <th>キャスト</th>
           <th>シフト</th>
           <th>出勤時間</th>
-          <th class="text-end">操作</th>
+          <th class="text-end">
+            操作
+          </th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in rows" :key="row.cast.id">
+        <tr
+          v-for="row in rows"
+          :key="row.cast.id"
+        >
           <td>
             <RouterLink :to="{ name: 'cast-shift-page', params: { id: row.cast.id } }">
               {{ row.cast.stage_name }}
@@ -116,25 +121,36 @@ onMounted(load)
               v-if="!row.shift?.clock_in"
               class="btn btn-primary"
               @click="checkIn(row)"
-            >出勤</button>
+            >
+              出勤
+            </button>
 
             <!-- 退勤 -->
             <button
               v-else-if="!row.shift?.clock_out"
               class="btn btn-danger"
               @click="checkOut(row)"
-            >退勤</button>
+            >
+              退勤
+            </button>
 
             <!-- 削除 (退勤済み) -->
             <button
               v-else
               class="btn btn-outline-secondary"
               @click="removeShift(row)"
-            >削除</button>
+            >
+              削除
+            </button>
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td colspan="4" class="text-center text-muted">本日のシフトはありません</td>
+          <td
+            colspan="4"
+            class="text-center text-muted"
+          >
+            本日のシフトはありません
+          </td>
         </tr>
       </tbody>
     </table>

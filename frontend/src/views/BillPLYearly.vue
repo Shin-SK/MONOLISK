@@ -39,50 +39,88 @@ watchEffect(async () => {
 </script>
 
 <template>
-<div class="pl pl-yearly container-fluid py-4">
-  <!-- ── フィルタ ────────────────────────── -->
-  <div class="d-flex gap-2 mb-3">
-    <input type="number"
-           v-model="year"
-           class="form-control w-auto"
-           min="2000" max="2100">
-  </div>
-
-  <!-- ── 読み込み中 ────────────────────── -->
-  <div v-if="loading">読み込み中…</div>
-
-  <!-- ── 本体 ─────────────────────────── -->
-  <template v-else-if="pl">
-    <!-- YEAR SUMMARY -->
-    <div class="summary-area mb-3">
-      <div class="box"><div class="head">年間売上</div>     <div class="number">{{ yen(pl.totals.sales_total) }}</div></div>
-      <div class="box"><div class="head">総来客数</div>     <div class="number">{{ pl.totals.guest_count }}</div></div>
-      <div class="box"><div class="head">平均客単価</div>   <div class="number">{{ yen(pl.totals.avg_spend) }}</div></div>
-      <div class="box"><div class="head">人件費</div>       <div class="number">{{ yen(pl.totals.labor_cost) }}</div></div>
-      <div class="box"><div class="head">営業利益</div>     <div class="number">{{ yen(pl.totals.operating_profit) }}</div></div>
+  <div class="pl pl-yearly container-fluid py-4">
+    <!-- ── フィルタ ────────────────────────── -->
+    <div class="d-flex gap-2 mb-3">
+      <input
+        v-model="year"
+        type="number"
+        class="form-control w-auto"
+        min="2000"
+        max="2100"
+      >
     </div>
 
-    <!-- MONTH LIST -->
-    <table class="table table-sm table-bordered">
-      <thead class="table-light">
-        <tr>
-          <th>月</th><th>客数</th><th>売上</th><th>平均客単価</th>
-          <th>人件費</th><th>営業利益</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="m in months" :key="m.month">
-          <td>{{ m.month }}</td>
-          <td>{{ m.totals.guest_count }}</td>
-          <td>{{ yen(m.totals.sales_total) }}</td>
-          <td>{{ yen(m.totals.avg_spend) }}</td>
-          <td>{{ yen(m.totals.labor_cost) }}</td>
-          <td>{{ yen(m.totals.operating_profit) }}</td>
-        </tr>
-      </tbody>
-    </table>
-  </template>
-</div>
+    <!-- ── 読み込み中 ────────────────────── -->
+    <div v-if="loading">
+      読み込み中…
+    </div>
+
+    <!-- ── 本体 ─────────────────────────── -->
+    <template v-else-if="pl">
+      <!-- YEAR SUMMARY -->
+      <div class="summary-area mb-3">
+        <div class="box">
+          <div class="head">
+            年間売上
+          </div>     <div class="number">
+            {{ yen(pl.totals.sales_total) }}
+          </div>
+        </div>
+        <div class="box">
+          <div class="head">
+            総来客数
+          </div>     <div class="number">
+            {{ pl.totals.guest_count }}
+          </div>
+        </div>
+        <div class="box">
+          <div class="head">
+            平均客単価
+          </div>   <div class="number">
+            {{ yen(pl.totals.avg_spend) }}
+          </div>
+        </div>
+        <div class="box">
+          <div class="head">
+            人件費
+          </div>       <div class="number">
+            {{ yen(pl.totals.labor_cost) }}
+          </div>
+        </div>
+        <div class="box">
+          <div class="head">
+            営業利益
+          </div>     <div class="number">
+            {{ yen(pl.totals.operating_profit) }}
+          </div>
+        </div>
+      </div>
+
+      <!-- MONTH LIST -->
+      <table class="table table-sm table-bordered">
+        <thead class="table-light">
+          <tr>
+            <th>月</th><th>客数</th><th>売上</th><th>平均客単価</th>
+            <th>人件費</th><th>営業利益</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="m in months"
+            :key="m.month"
+          >
+            <td>{{ m.month }}</td>
+            <td>{{ m.totals.guest_count }}</td>
+            <td>{{ yen(m.totals.sales_total) }}</td>
+            <td>{{ yen(m.totals.avg_spend) }}</td>
+            <td>{{ yen(m.totals.labor_cost) }}</td>
+            <td>{{ yen(m.totals.operating_profit) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </template>
+  </div>
 </template>
 
 <style scoped>

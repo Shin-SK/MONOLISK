@@ -178,54 +178,70 @@ onMounted(() => {
 </script>
 
 <template>
-<div class="gc-wrapper" style="overflow-x:auto;">
-  <div class="gantt-board">
-    <!-- テーブル列 -->
-    <div class="label-col">
-      <div v-for="row in rows" :key="row.id" class="label-row">
-        <span class="label-label">{{ row.label }}</span>
-      </div>
-    </div>
-
-    <!-- チャート -->
-    <div class="chart-col" ref="wrapperRef" :style="{'--grid-step': gridStep + 'px'}">
-      <div class="now-line" :style="{left: nowX + 'px'}"></div>
-
-      <g-gantt-chart
-        :chart-start="chartStart"
-        :chart-end="chartEnd"
-        :row-height="40"
-        precision="hour"
-        :precision-step="10"
-        :width="chartWidth"
-        bar-start="from"
-        bar-end="to"
-        push-on-overlap
-        @click-bar="onBarClick"
-        :style="{ '--grid-step': gridStep + 'px' }"
-      >
-        <g-gantt-row
+  <div
+    class="gc-wrapper"
+    style="overflow-x:auto;"
+  >
+    <div class="gantt-board">
+      <!-- テーブル列 -->
+      <div class="label-col">
+        <div
           v-for="row in rows"
           :key="row.id"
-          :bars="bars.filter(b=>b.rowId===row.id)"
-          @click="e=>onRowClick(e,row.id)"
+          class="label-row"
         >
-          <template #bar-label="{ bar }">
-            <span v-for="stay in bar.stays"
-                  :key="stay.cast.id"
-                  class="badge"
-                  :class="stay.stay_type==='free' ? freeProps(stay).cls : badgeClass(stay)"
-                  :style="stay.stay_type==='free'
-                          ? { '--after-width': freeProps(stay).width }
-                          : {}">
-              {{ stay.cast.stage_name }}
-            </span>
-          </template>
-        </g-gantt-row>
-      </g-gantt-chart>
+          <span class="label-label">{{ row.label }}</span>
+        </div>
+      </div>
+
+      <!-- チャート -->
+      <div
+        ref="wrapperRef"
+        class="chart-col"
+        :style="{'--grid-step': gridStep + 'px'}"
+      >
+        <div
+          class="now-line"
+          :style="{left: nowX + 'px'}"
+        />
+
+        <g-gantt-chart
+          :chart-start="chartStart"
+          :chart-end="chartEnd"
+          :row-height="40"
+          precision="hour"
+          :precision-step="10"
+          :width="chartWidth"
+          bar-start="from"
+          bar-end="to"
+          push-on-overlap
+          :style="{ '--grid-step': gridStep + 'px' }"
+          @click-bar="onBarClick"
+        >
+          <g-gantt-row
+            v-for="row in rows"
+            :key="row.id"
+            :bars="bars.filter(b=>b.rowId===row.id)"
+            @click="e=>onRowClick(e,row.id)"
+          >
+            <template #bar-label="{ bar }">
+              <span
+                v-for="stay in bar.stays"
+                :key="stay.cast.id"
+                class="badge"
+                :class="stay.stay_type==='free' ? freeProps(stay).cls : badgeClass(stay)"
+                :style="stay.stay_type==='free'
+                  ? { '--after-width': freeProps(stay).width }
+                  : {}"
+              >
+                {{ stay.cast.stage_name }}
+              </span>
+            </template>
+          </g-gantt-row>
+        </g-gantt-chart>
+      </div>
     </div>
   </div>
-</div>
 </template>
 
 <style scoped>

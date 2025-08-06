@@ -47,29 +47,57 @@ onMounted(async () => {
 </script>
 
 <template>
-<div class="container-fluid py-4">
-	<div class="d-flex gap-2 mb-3">
-		<select v-model="store" @change="fetch" class="form-select" style="max-width:200px">
-			<option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
-		</select>
-		<input v-model="keyword" @keyup.enter="fetch" class="form-control h-auto w-50" placeholder="源氏名">
-		<RouterLink to="/casts/new" class="d-flex align-items-center btn btn-primary ms-auto">＋ 登録</RouterLink>
-	</div>
+  <div class="container-fluid py-4">
+    <div class="d-flex gap-2 mb-5">
+      <select
+        v-model="store"
+        class="form-select"
+        style="max-width:200px"
+        @change="fetch"
+      >
+        <option
+          v-for="s in stores"
+          :key="s.id"
+          :value="s.id"
+        >
+          {{ s.name }}
+        </option>
+      </select>
+      <input
+        v-model="keyword"
+        class="form-control h-auto w-25"
+        placeholder="源氏名"
+        @keyup.enter="fetch"
+      >
+      <RouterLink
+        to="/casts/new"
+        class="d-flex align-items-center btn btn-primary ms-auto"
+      >
+        新規登録
+      </RouterLink>
+    </div>
 
-	<table class="table table-sm">
-	<thead>
-		<tr><th>ID</th><th>源氏名</th><th>本日シフト</th><th>編集</th></tr>
-	</thead>
-	<tbody>
-		<tr v-for="c in results" :key="c.id">
-			<td>{{ c.id }}</td>
-			<td>{{ c.stage_name }}</td>
-			<td>{{ c.shift }}</td>
-			<td>
-				<RouterLink :to="`/casts/${c.id}`" class="btn btn-sm btn-outline-secondary">編集</RouterLink>
-			</td>
-		</tr>
-	</tbody>
-	</table>
-</div>
+    <table class="table">
+      <thead class="table-dark">
+        <tr><th>ID</th><th>源氏名</th><th>編集</th></tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="c in results"
+          :key="c.id"
+        >
+          <td>{{ c.id }}</td>
+          <td>{{ c.stage_name }}</td>
+          <td class="text-end p-2">
+            <RouterLink
+              :to="`/casts/${c.id}`"
+              class="btn  btn-outline-secondary"
+            >
+              編集
+            </RouterLink>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </template>

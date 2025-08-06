@@ -27,8 +27,13 @@ onMounted(reload)
 </script>
 
 <template>
-  <div class="container py-4" v-if="rsv">
-    <h1 class="h4 mb-4">予約 #{{ rsv.id }}（キャスト）</h1>
+  <div
+    v-if="rsv"
+    class="container py-4"
+  >
+    <h1 class="h4 mb-4">
+      予約 #{{ rsv.id }}（キャスト）
+    </h1>
 
     <table class="table">
       <tbody>
@@ -48,8 +53,11 @@ onMounted(reload)
         <tr v-if="rsv.charges.length">
           <th>オプション</th>
           <td>
-            <span v-for="ch in rsv.charges" :key="ch.id"
-                  class="badge bg-secondary me-1">
+            <span
+              v-for="ch in rsv.charges"
+              :key="ch.id"
+              class="badge bg-secondary me-1"
+            >
               {{ ch.option_name }} {{ ch.amount }}円
             </span>
           </td>

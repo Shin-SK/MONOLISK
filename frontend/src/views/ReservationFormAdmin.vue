@@ -530,580 +530,733 @@ watch(
 
 
 <template>
-<div class="form form-admin container-fluid">
-	<!-- <h1 class="h3 mb-4">
+  <div class="form form-admin container-fluid">
+    <!-- <h1 class="h3 mb-4">
 		{{ isEdit ? `予約編集` : '新規予約' }}
 	</h1> -->
 
-	<div class="form-admin">
-	<div class="form-admin__wrap">
-		<div class="customer-area outer">
+    <div class="form-admin">
+      <div class="form-admin__wrap">
+        <div class="customer-area outer">
+          <div class="search">
+            <div
+              v-if="!selectedCustomer"
+              class="input-area"
+            >
+              <!-- 入力 -->
+              <input
+                v-model="phone"
+                class="form-control"
+                placeholder="090…"
+                @input="fetchCandidates"
+              >
 
-			<div class="search">
-				<div v-if="!selectedCustomer" class="input-area">
-					<!-- 入力 -->
-					<input v-model="phone" @input="fetchCandidates"
-						class="form-control" placeholder="090…" />
+              <div class="add">
+                <button @click="isAddingCustomer = !isAddingCustomer">
+                  <span class="material-symbols-outlined">add_circle</span>
+                </button>
+              </div>
+            </div>
 
-					<div class="add">
-						<button @click="isAddingCustomer = !isAddingCustomer">
-						<span class="material-symbols-outlined">add_circle</span>
-						</button>
-					</div>
-				</div>
+            <!-- ▼ ここが新規顧客入力フォーム -->
+            <div
+              v-if="isAddingCustomer"
+              class="mt-3"
+            >
+              <input
+                v-model="newCustomer.name"
+                class="form-control mb-2"
+                placeholder="顧客名"
+              >
 
-				<!-- ▼ ここが新規顧客入力フォーム -->
-				<div v-if="isAddingCustomer" class="mt-3">
+              <!-- 電話番号は phone をそのまま使うが、修正できるように別 input にしても可 -->
+              <input
+                v-model="phone"
+                class="form-control mb-2"
+                placeholder="電話番号"
+              >
 
-				<input v-model="newCustomer.name"
-						class="form-control mb-2"
-						placeholder="顧客名" />
-
-				<!-- 電話番号は phone をそのまま使うが、修正できるように別 input にしても可 -->
-				<input v-model="phone"
-						class="form-control mb-2"
-						placeholder="電話番号" />
-
-				<button class="btn btn-primary w-100" @click="submitNewCustomer">
-					登録
-				</button>
-				</div>
-
-
-				<div class="list-area"><!-- 候補 -->
-					<ul v-if="showList" class="d-flex gap-4 mt-4 flex-wrap">
-						<li v-for="c in candidates" :key="c.id"
-							class="btn btn-outline-primary"
-							@click="choose(c)">
-							<span class="fw-bold d-block">{{ c.name }}</span>
-							<span class="fs-6">{{ c.phone }}</span>
-						</li>
-					</ul>
-				</div>
-
-
-				<!-- 選択済み表示 -->
-				<div v-if="selectedCustomer" class="selected p-2 bg-white rounded d-flex align-items-center justify-content-between">
-					<div class="btn btn-outline-primary d-flex gap-2">
-						<span class="fw-bold">{{ selectedCustomer.name }}</span>
-						<span class="fs-6">{{ selectedCustomer.phone }}</span>
-					</div>
-					<button class="btn btn-outline-secondary" @click="clearCustomer">
-						変更
-					</button>
-				</div><!-- selected -->
-
-			</div><!-- search -->
+              <button
+                class="btn btn-primary w-100"
+                @click="submitNewCustomer"
+              >
+                登録
+              </button>
+            </div>
 
 
-			<div v-if="latest" class="latest-carte card mt-3">
-				<div class="card-header">前回の予約</div>
-				<div class="card-body">
-					<div class="card-area">
-						<div class="wrap image">
-							<div v-for="rc in latest.casts" :key="rc.cast_profile" class="">
-								<RouterLink :to="`/reservations/${latest.id}`">
-								<img :src="rc.avatar_url || '/static/img/cast-default.png'">
-								</RouterLink>
-							</div>
-						</div>
-						<div class="wrap text">
-							<div class="items">
-								<span class="badge bg-secondary">{{ latest.store_name }}</span>
-							</div>
-							<div class="items">
-								<span class="fw-bold">
-									{{ new Date(latest.start_at).toLocaleString() }}
-								</span>
-							</div>
-							<div v-for="rc in latest.casts" :key="rc.cast_profile" class="items">
-								<span class="fw-bold">{{ rc.stage_name }}</span>
-							</div>
-							<div v-for="c in latest.courses" :key="c.cast" class="items">
-								<span>
-									{{ c.minutes }}分コース
-								</span>
-							</div>
-							<ul class="items">
-								<!-- オプションが1件以上あるとき -->
-								<template v-if="latest.options && latest.options.length">
-									<li
-									v-for="o in latest.options"
-									:key="o.option_id"
-									class="badge bg-secondary"
-									>
-									{{ o.name }}
-									</li>
-								</template>
-
-								<!-- 0件のとき -->
-								<li v-else class="text-muted">
-									オプションはありません
-								</li>
-							</ul>
-							<div class="items">
-								<span>{{ latest.expected_amount.toLocaleString() }} 円</span>
-							</div>
-							<div class="items memo"	v-if="latest.customer_memo">
-								<div class="wrap">
-									<span>
-										{{ latest.customer_memo }}
-									</span>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div><!-- /latest-carte -->
-
-		</div><!-- customer-area	-->
-		<div class="cast-area outer">
-
-			<div class="cast-search">
-				<div class="cast-search__wrap">
-					<div class="wrap">
-						<Multiselect
-							v-model="filter.storeIds" 
-							:options="opts.stores"
-							:object="false"
-							:multiple="true"
-							value-prop="id"
-							:searchable="false"
-							:close-on-select="false"
-							:show-labels="false"
-							label="name"
-							track-by="id"
-							placeholder="店舗"
-						/>
-					</div><!-- wrap -->
-
-					<!-- スタイル（1つだけ選択）-->
-					<div class="wrap">
-						<Multiselect
-							v-model="filter.style"
-							:options="styles"
-							:object="false"
-							:multiple="true"
-							value-prop="id"
-							:searchable="false"
-							:close-on-select="false"
-							:show-labels="false"
-							placeholder="系統"
-							clear
-						/>
-					</div><!-- wrap -->
-
-					<!-- カップサイズ -->	
-					<div class="wrap">
-						<Multiselect
-							v-model="filter.cup"
-							:options="cupSizes"
-							:object="false"
-							:multiple="true"
-							value-prop="id"
-							:searchable="false"
-							:close-on-select="false"
-							:show-labels="false"
-							placeholder="カップ"
-							clear
-						/>
-					</div><!-- wrap -->
-
-					<div class="wrap">
-							<input
-							v-model="filter.keyword"
-							class="form-control"
-							placeholder="キーワード検索"
-							@keyup.enter="fetchCasts"
-						/>
-					</div>
-
-				</div><!-- __wrap -->
-			</div>
-
-			<!-- ◆ キャスト選択 ◆ -->
-			<div class="casts">
-				<div class="bg-white py-4">
-					<ReservationCastSelector
-					:casts="visibleCasts"
-					v-model:modelValue="form.cast_profiles"
-					/>
-				</div>
-			</div>
-		</div>
-		<div class="form-area outer">
-			<div class="form-area__wrap">
-				<div class="area status">
-					<div class="h5">ステータス</div>
-					<div class="wrap d-flex flex-wrap gap-3">
-						<template v-for="opt in choices.status" :key="opt[0]">
-						<!-- opt = ["BOOKED", "Booked"] -->
-						<input class="btn-check"
-								type="radio"
-								:id="`st-${opt[0]}`"
-								v-model="form.status"
-								:value="opt[0]"/>
-						<label class="btn btn-outline-primary"
-								:class="{active: form.status === opt[0]}"
-								:for="`st-${opt[0]}`">
-							{{ opt[1] }}
-						</label>
-						</template>
-					</div>
-				</div>
-				<!-- 送迎場所 -->
-				<div class="area">
-					<div class="h5">送迎場所</div>
-					<div class="wrap">
-						<div class="d-flex flex-wrap gap-3" role="group">
-							<!-- 既存 -->
-							<label
-								v-for="a in addresses"
-								:key="a.id"
-								class="btn btn-outline-primary"
-								:class="{ active: selectedAddress === a.id }"
-							>
-								<input
-									type="radio"
-									class="btn-check"
-									v-model="selectedAddress"
-									:value="a.id"
-								/>
-								{{ a.label }} / {{ a.address }}
-							</label>
-
-							<div class="wrap d-grid gap-3 w-100 align-items-center" style="grid-template-columns:repeat(2,1fr);">
-								<!-- 新規 -->
-								<label
-									class="btn btn-outline-success d-flex justify-content-center align-items-center"
-									style="min-height: 40px;"
-									:class="{ active: selectedAddress === '__new__' }"
-								>
-									<input
-										type="radio"
-										class="btn-check"
-										v-model="selectedAddress"
-										value="__new__"
-									/>
-									＋ 新規住所
-								</label>
-
-								<!-- ☆ホテルセレクト☆ -->
-								<Multiselect
-								v-model="selectedHotel"
-								:options="hotels"
-								label="label"
-								track-by="label"
-								placeholder="いつものホテル"
-								/>
-							</div>
+            <div class="list-area">
+              <!-- 候補 -->
+              <ul
+                v-if="showList"
+                class="d-flex gap-4 mt-4 flex-wrap"
+              >
+                <li
+                  v-for="c in candidates"
+                  :key="c.id"
+                  class="btn btn-outline-primary"
+                  @click="choose(c)"
+                >
+                  <span class="fw-bold d-block">{{ c.name }}</span>
+                  <span class="fs-6">{{ c.phone }}</span>
+                </li>
+              </ul>
+            </div>
 
 
-						</div>
-						<!-- 新規入力フォーム -->
-						<div v-if="selectedAddress === '__new__'" class="mt-3">
-							<div class="row g-2 mb-2 align-items-center">
-								<div class="col-auto">
-									<input
-										v-model="zipcode"
-										class="form-control"
-										placeholder="郵便番号 例 1500041"
-										maxlength="8" />
-								</div>
-								<div class="col text-danger small">{{ zipErr }}</div>
-							</div>
-
-								<textarea
-									v-model="newAddress.address"
-									class="form-control"
-									rows="2"
-									placeholder="番地・建物名まで入力"
-									style="height: 80px;"></textarea>
-
-								<input
-									v-model="newAddress.label"
-									class="form-control mt-2"
-									placeholder="場所の名前" />
-
-						</div><!-- newaddress -->
-					</div><!-- wrap -->
-				</div> <!-- area -->
-
-				<!-- 開始日時 -->
-				<div class="area start-date">
-					<div class="h5">開始日時</div>
-					<!-- 日付ピッカー：手入力も可 -->
-					<div class="wrap">
-						<DatePicker
-							v-model:value="startDate"
-							type="date"
-							value-type="format"
-							format="YYYY-MM-DD"
-							:editable="true"
-							input-class="form-control"
-							clearable
-						/>
-
-						<!-- 時刻は手入力メイン -->
-						<input type="time"
-								v-model="startTime"
-								class="form-control"
-								placeholder="HH:mm" />
-					</div>
-
-				</div>
-
-				<!-- コース -->
-				<div class="area">
-					<div class="h5">コース</div>
-					<div class="d-flex flex-wrap gap-3" role="group" aria-label="Courses">
-						<template v-for="c in opts.courses" :key="c.id">
-						<!-- hidden radio -->
-						<input	class="btn-check" type="radio"
-								:id="`course-${c.id}`"
-								v-model="form.course"
-								:value="c.id" autocomplete="off">
-						<!-- label -->
-						<label class="btn btn-outline-primary"
-								:class="{ active: form.course === c.id }"
-								:for="`course-${c.id}`">
-							{{ c.minutes }}min<span v-if="c.is_pack">（パック）</span>
-						</label>
-						</template>
-					</div>
-				</div>
-
-				<!-- ◆ オプション ◆ -->
-				<div class="area">
-				<div class="h5">オプション</div>
-
-						<!-- vue-multiselect 版（ID 配列をそのまま保持）-->
-					<Multiselect
-						v-model="selectedOptions"
-						:options="opts.options"
-						label="name"
-						track-by="id"
-						:multiple="true"
-						placeholder="オプションを選択"
-					/>
-
-				</div>
-
-				<!-- ドライバー -->
-				<div class="area driver">
-					<div class="h5">ドライバー</div>
-					<div class="wrap">
-						<Multiselect
-						v-model="form.driver_PU"
-						:options="opts.drivers"
-						label="name"
-						track-by="id"
-						placeholder="迎え"
-						:searchable="false"
-						clearable
-						/>
-
-						<!-- ドライバー (Drop-Off) -->
-						<Multiselect
-						v-model="form.driver_DO"
-						:options="opts.drivers"
-						label="name"
-						track-by="id"
-						placeholder="送り"
-						:searchable="false"
-						clearable
-						/>
-					</div>
-				</div>
-
-				<!-- ◆ 予約種類 ◆ -->
-				<div class="area">
-					<div class="h5">予約種類</div>
-					<div class="btn-group" role="group">
-						<input class="btn-check" type="radio" id="type-normal"
-							v-model="form.reservation_type" value="normal">
-						<label class="btn btn-outline-primary"
-							:class="{active: form.reservation_type==='normal'}"
-							for="type-normal">通常予約</label>
-
-						<input class="btn-check" type="radio" id="type-hime"
-							v-model="form.reservation_type" value="hime">
-						<label class="btn btn-outline-danger"
-							:class="{active: form.reservation_type==='hime'}"
-							for="type-hime">姫予約</label>
-					</div>
-				</div>
-
-				<!-- ◆ マニュアル売上 ◆ -->
-				<div class="area d-none"><!-- 今はなしにしておく。必要だってなったら復活させる -->
-					<div class="h5">マニュアル売上</div>
-					<div class="wrap">
-						<div
-							v-for="(row,i) in form.revenues"
-							:key="i"
-							class="row g-2 mb-2 align-items-center"
-						>
-							<div class="col">
-								<input v-model="row.label" placeholder="ラベル" class="form-control" />
-							</div>
-							<div class="col">
-								<input
-									v-model.number="row.amount"
-									type="number"
-									min="0"
-									placeholder="金額"
-									class="form-control"
-								/>
-							</div>
-							<!-- ボタン列 -->
-							<div class="col-auto">
-								<!-- 1 行目だけ「＋」、それ以外は「－」 -->
-								<button
-									v-if="i === 0"
-									class=""
-									@click="form.revenues.push({ label: '', amount: 0 })"
-								>
-									<span class="material-symbols-outlined">
-									add_circle
-									</span>
-								</button>
-								<button
-									v-else
-									class=""
-									@click="form.revenues.splice(i, 1)"
-								>
-									<span class="material-symbols-outlined">
-									do_not_disturb_on
-									</span>
-								</button>
-							</div>
-						</div>
-					</div>
-				</div>
-
-				<!-- ◆ マニュアル経費 ◆ -->
-				<div class="area d-none"><!-- 今はなしにしておく。必要だってなったら復活させる -->
-					<div class="h5">マニュアル経費</div>
-					<div class="wrap">
-						<div
-							v-for="(row,i) in form.expenses"
-							:key="i"
-							class="row g-2 mb-2 align-items-center"
-						>
-							<div class="col">
-								<input v-model="row.label" placeholder="ラベル" class="form-control" />
-							</div>
-							<div class="col">
-								<input
-									v-model.number="row.amount"
-									type="number"
-									min="0"
-									placeholder="金額"
-									class="form-control"
-								/>
-							</div>
-							<!-- ボタン列 -->
-							<div class="col-auto">
-								<button
-									v-if="i === 0"
-									class=""
-									@click="form.expenses.push({ label: '', amount: 0 })"
-								>
-									<span class="material-symbols-outlined">
-									add_circle
-									</span>
-								</button>
-								<button
-									v-else
-									class=""
-									@click="form.expenses.splice(i, 1)"
-								>
-									<span class="material-symbols-outlined">
-									do_not_disturb_on
-									</span>
-								</button>
-							</div>
-						</div>
-					</div>
-				</div>
-
-				<!-- 延長 -->
-				<div class="area">
-					<div class="h5">延長</div>
-					<div class="btn-group" role="group">
-						<input type="radio" class="btn-check" id="ext0" value="0"
-							v-model.number="form.extend_blocks">
-						<label class="btn btn-outline-secondary" for="ext0">なし</label>
-
-						<template v-for="b in [1,2,3]" :key="b">
-						<input type="radio" class="btn-check"
-								:id="`ext${b}`" :value="b"
-								v-model.number="form.extend_blocks">
-						<label class="btn btn-outline-primary"
-								:for="`ext${b}`">{{ b*30 }} 分</label>
-						</template>
-					</div>
-				</div>
-
-			</div><!-- form-area__wrap -->
+            <!-- 選択済み表示 -->
+            <div
+              v-if="selectedCustomer"
+              class="selected p-2 bg-white rounded d-flex align-items-center justify-content-between"
+            >
+              <div class="btn btn-outline-primary d-flex gap-2">
+                <span class="fw-bold">{{ selectedCustomer.name }}</span>
+                <span class="fs-6">{{ selectedCustomer.phone }}</span>
+              </div>
+              <button
+                class="btn btn-outline-secondary"
+                @click="clearCustomer"
+              >
+                変更
+              </button>
+            </div><!-- selected -->
+          </div><!-- search -->
 
 
-			<!-- 見積 -->
-			<div class="summary-area">
-				<div class="alert alert-warning">
-					<span class="head">小計</span>
-					<span class="price">{{ price.toLocaleString() }}</span>
-				</div>
-			</div>
+          <div
+            v-if="latest"
+            class="latest-carte card mt-3"
+          >
+            <div class="card-header">
+              前回の予約
+            </div>
+            <div class="card-body">
+              <div class="card-area">
+                <div class="wrap image">
+                  <div
+                    v-for="rc in latest.casts"
+                    :key="rc.cast_profile"
+                    class=""
+                  >
+                    <RouterLink :to="`/reservations/${latest.id}`">
+                      <img :src="rc.avatar_url || '/static/img/cast-default.png'">
+                    </RouterLink>
+                  </div>
+                </div>
+                <div class="wrap text">
+                  <div class="items">
+                    <span class="badge bg-secondary">{{ latest.store_name }}</span>
+                  </div>
+                  <div class="items">
+                    <span class="fw-bold">
+                      {{ new Date(latest.start_at).toLocaleString() }}
+                    </span>
+                  </div>
+                  <div
+                    v-for="rc in latest.casts"
+                    :key="rc.cast_profile"
+                    class="items"
+                  >
+                    <span class="fw-bold">{{ rc.stage_name }}</span>
+                  </div>
+                  <div
+                    v-for="c in latest.courses"
+                    :key="c.cast"
+                    class="items"
+                  >
+                    <span>
+                      {{ c.minutes }}分コース
+                    </span>
+                  </div>
+                  <ul class="items">
+                    <!-- オプションが1件以上あるとき -->
+                    <template v-if="latest.options && latest.options.length">
+                      <li
+                        v-for="o in latest.options"
+                        :key="o.option_id"
+                        class="badge bg-secondary"
+                      >
+                        {{ o.name }}
+                      </li>
+                    </template>
 
-			<div class="receive-area">
-				<div class="wrap">
+                    <!-- 0件のとき -->
+                    <li
+                      v-else
+                      class="text-muted"
+                    >
+                      オプションはありません
+                    </li>
+                  </ul>
+                  <div class="items">
+                    <span>{{ latest.expected_amount.toLocaleString() }} 円</span>
+                  </div>
+                  <div
+                    v-if="latest.customer_memo"
+                    class="items memo"
+                  >
+                    <div class="wrap">
+                      <span>
+                        {{ latest.customer_memo }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div><!-- /latest-carte -->
+        </div><!-- customer-area	-->
+        <div class="cast-area outer">
+          <div class="cast-search">
+            <div class="cast-search__wrap">
+              <div class="wrap">
+                <Multiselect
+                  v-model="filter.storeIds" 
+                  :options="opts.stores"
+                  :object="false"
+                  :multiple="true"
+                  value-prop="id"
+                  :searchable="false"
+                  :close-on-select="false"
+                  :show-labels="false"
+                  label="name"
+                  track-by="id"
+                  placeholder="店舗"
+                />
+              </div><!-- wrap -->
 
-					<!-- カード -->
-					<div class="area">
-					<div class="h5">カード</div>
-					<input
-						type="number" min="0"
-						v-model.number="form.pay_card"
-						class="form-control"
-					/>
-					</div>
+              <!-- スタイル（1つだけ選択）-->
+              <div class="wrap">
+                <Multiselect
+                  v-model="filter.style"
+                  :options="styles"
+                  :object="false"
+                  :multiple="true"
+                  value-prop="id"
+                  :searchable="false"
+                  :close-on-select="false"
+                  :show-labels="false"
+                  placeholder="系統"
+                  clear
+                />
+              </div><!-- wrap -->
 
-					<!-- ▼ 現金（自動計算・上書き可） -->
-					<div class="area">
-					<div class="h5">現金</div>
-					<span class="form-control-plaintext fw-bold">
-						{{ form.pay_cash.toLocaleString() }} 円
-					</span>
-					</div>
+              <!-- カップサイズ -->	
+              <div class="wrap">
+                <Multiselect
+                  v-model="filter.cup"
+                  :options="cupSizes"
+                  :object="false"
+                  :multiple="true"
+                  value-prop="id"
+                  :searchable="false"
+                  :close-on-select="false"
+                  :show-labels="false"
+                  placeholder="カップ"
+                  clear
+                />
+              </div><!-- wrap -->
+
+              <div class="wrap">
+                <input
+                  v-model="filter.keyword"
+                  class="form-control"
+                  placeholder="キーワード検索"
+                  @keyup.enter="fetchCasts"
+                >
+              </div>
+            </div><!-- __wrap -->
+          </div>
+
+          <!-- ◆ キャスト選択 ◆ -->
+          <div class="casts">
+            <div class="bg-white py-4">
+              <ReservationCastSelector
+                v-model:model-value="form.cast_profiles"
+                :casts="visibleCasts"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="form-area outer">
+          <div class="form-area__wrap">
+            <div class="area status">
+              <div class="h5">
+                ステータス
+              </div>
+              <div class="wrap d-flex flex-wrap gap-3">
+                <template
+                  v-for="opt in choices.status"
+                  :key="opt[0]"
+                >
+                  <!-- opt = ["BOOKED", "Booked"] -->
+                  <input
+                    :id="`st-${opt[0]}`"
+                    v-model="form.status"
+                    class="btn-check"
+                    type="radio"
+                    :value="opt[0]"
+                  >
+                  <label
+                    class="btn btn-outline-primary"
+                    :class="{active: form.status === opt[0]}"
+                    :for="`st-${opt[0]}`"
+                  >
+                    {{ opt[1] }}
+                  </label>
+                </template>
+              </div>
+            </div>
+            <!-- 送迎場所 -->
+            <div class="area">
+              <div class="h5">
+                送迎場所
+              </div>
+              <div class="wrap">
+                <div
+                  class="d-flex flex-wrap gap-3"
+                  role="group"
+                >
+                  <!-- 既存 -->
+                  <label
+                    v-for="a in addresses"
+                    :key="a.id"
+                    class="btn btn-outline-primary"
+                    :class="{ active: selectedAddress === a.id }"
+                  >
+                    <input
+                      v-model="selectedAddress"
+                      type="radio"
+                      class="btn-check"
+                      :value="a.id"
+                    >
+                    {{ a.label }} / {{ a.address }}
+                  </label>
+
+                  <div
+                    class="wrap d-grid gap-3 w-100 align-items-center"
+                    style="grid-template-columns:repeat(2,1fr);"
+                  >
+                    <!-- 新規 -->
+                    <label
+                      class="btn btn-outline-success d-flex justify-content-center align-items-center"
+                      style="min-height: 40px;"
+                      :class="{ active: selectedAddress === '__new__' }"
+                    >
+                      <input
+                        v-model="selectedAddress"
+                        type="radio"
+                        class="btn-check"
+                        value="__new__"
+                      >
+                      ＋ 新規住所
+                    </label>
+
+                    <!-- ☆ホテルセレクト☆ -->
+                    <Multiselect
+                      v-model="selectedHotel"
+                      :options="hotels"
+                      label="label"
+                      track-by="label"
+                      placeholder="いつものホテル"
+                    />
+                  </div>
+                </div>
+                <!-- 新規入力フォーム -->
+                <div
+                  v-if="selectedAddress === '__new__'"
+                  class="mt-3"
+                >
+                  <div class="row g-2 mb-2 align-items-center">
+                    <div class="col-auto">
+                      <input
+                        v-model="zipcode"
+                        class="form-control"
+                        placeholder="郵便番号 例 1500041"
+                        maxlength="8"
+                      >
+                    </div>
+                    <div class="col text-danger small">
+                      {{ zipErr }}
+                    </div>
+                  </div>
+
+                  <textarea
+                    v-model="newAddress.address"
+                    class="form-control"
+                    rows="2"
+                    placeholder="番地・建物名まで入力"
+                    style="height: 80px;"
+                  />
+
+                  <input
+                    v-model="newAddress.label"
+                    class="form-control mt-2"
+                    placeholder="場所の名前"
+                  >
+                </div><!-- newaddress -->
+              </div><!-- wrap -->
+            </div> <!-- area -->
+
+            <!-- 開始日時 -->
+            <div class="area start-date">
+              <div class="h5">
+                開始日時
+              </div>
+              <!-- 日付ピッカー：手入力も可 -->
+              <div class="wrap">
+                <DatePicker
+                  v-model:value="startDate"
+                  type="date"
+                  value-type="format"
+                  format="YYYY-MM-DD"
+                  :editable="true"
+                  input-class="form-control"
+                  clearable
+                />
+
+                <!-- 時刻は手入力メイン -->
+                <input
+                  v-model="startTime"
+                  type="time"
+                  class="form-control"
+                  placeholder="HH:mm"
+                >
+              </div>
+            </div>
+
+            <!-- コース -->
+            <div class="area">
+              <div class="h5">
+                コース
+              </div>
+              <div
+                class="d-flex flex-wrap gap-3"
+                role="group"
+                aria-label="Courses"
+              >
+                <template
+                  v-for="c in opts.courses"
+                  :key="c.id"
+                >
+                  <!-- hidden radio -->
+                  <input
+                    :id="`course-${c.id}`"
+                    v-model="form.course"
+                    class="btn-check"
+                    type="radio"
+                    :value="c.id"
+                    autocomplete="off"
+                  >
+                  <!-- label -->
+                  <label
+                    class="btn btn-outline-primary"
+                    :class="{ active: form.course === c.id }"
+                    :for="`course-${c.id}`"
+                  >
+                    {{ c.minutes }}min<span v-if="c.is_pack">（パック）</span>
+                  </label>
+                </template>
+              </div>
+            </div>
+
+            <!-- ◆ オプション ◆ -->
+            <div class="area">
+              <div class="h5">
+                オプション
+              </div>
+
+              <!-- vue-multiselect 版（ID 配列をそのまま保持）-->
+              <Multiselect
+                v-model="selectedOptions"
+                :options="opts.options"
+                label="name"
+                track-by="id"
+                :multiple="true"
+                placeholder="オプションを選択"
+              />
+            </div>
+
+            <!-- ドライバー -->
+            <div class="area driver">
+              <div class="h5">
+                ドライバー
+              </div>
+              <div class="wrap">
+                <Multiselect
+                  v-model="form.driver_PU"
+                  :options="opts.drivers"
+                  label="name"
+                  track-by="id"
+                  placeholder="迎え"
+                  :searchable="false"
+                  clearable
+                />
+
+                <!-- ドライバー (Drop-Off) -->
+                <Multiselect
+                  v-model="form.driver_DO"
+                  :options="opts.drivers"
+                  label="name"
+                  track-by="id"
+                  placeholder="送り"
+                  :searchable="false"
+                  clearable
+                />
+              </div>
+            </div>
+
+            <!-- ◆ 予約種類 ◆ -->
+            <div class="area">
+              <div class="h5">
+                予約種類
+              </div>
+              <div
+                class="btn-group"
+                role="group"
+              >
+                <input
+                  id="type-normal"
+                  v-model="form.reservation_type"
+                  class="btn-check"
+                  type="radio"
+                  value="normal"
+                >
+                <label
+                  class="btn btn-outline-primary"
+                  :class="{active: form.reservation_type==='normal'}"
+                  for="type-normal"
+                >通常予約</label>
+
+                <input
+                  id="type-hime"
+                  v-model="form.reservation_type"
+                  class="btn-check"
+                  type="radio"
+                  value="hime"
+                >
+                <label
+                  class="btn btn-outline-danger"
+                  :class="{active: form.reservation_type==='hime'}"
+                  for="type-hime"
+                >姫予約</label>
+              </div>
+            </div>
+
+            <!-- ◆ マニュアル売上 ◆ -->
+            <div class="area d-none">
+              <!-- 今はなしにしておく。必要だってなったら復活させる -->
+              <div class="h5">
+                マニュアル売上
+              </div>
+              <div class="wrap">
+                <div
+                  v-for="(row,i) in form.revenues"
+                  :key="i"
+                  class="row g-2 mb-2 align-items-center"
+                >
+                  <div class="col">
+                    <input
+                      v-model="row.label"
+                      placeholder="ラベル"
+                      class="form-control"
+                    >
+                  </div>
+                  <div class="col">
+                    <input
+                      v-model.number="row.amount"
+                      type="number"
+                      min="0"
+                      placeholder="金額"
+                      class="form-control"
+                    >
+                  </div>
+                  <!-- ボタン列 -->
+                  <div class="col-auto">
+                    <!-- 1 行目だけ「＋」、それ以外は「－」 -->
+                    <button
+                      v-if="i === 0"
+                      class=""
+                      @click="form.revenues.push({ label: '', amount: 0 })"
+                    >
+                      <span class="material-symbols-outlined">
+                        add_circle
+                      </span>
+                    </button>
+                    <button
+                      v-else
+                      class=""
+                      @click="form.revenues.splice(i, 1)"
+                    >
+                      <span class="material-symbols-outlined">
+                        do_not_disturb_on
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ◆ マニュアル経費 ◆ -->
+            <div class="area d-none">
+              <!-- 今はなしにしておく。必要だってなったら復活させる -->
+              <div class="h5">
+                マニュアル経費
+              </div>
+              <div class="wrap">
+                <div
+                  v-for="(row,i) in form.expenses"
+                  :key="i"
+                  class="row g-2 mb-2 align-items-center"
+                >
+                  <div class="col">
+                    <input
+                      v-model="row.label"
+                      placeholder="ラベル"
+                      class="form-control"
+                    >
+                  </div>
+                  <div class="col">
+                    <input
+                      v-model.number="row.amount"
+                      type="number"
+                      min="0"
+                      placeholder="金額"
+                      class="form-control"
+                    >
+                  </div>
+                  <!-- ボタン列 -->
+                  <div class="col-auto">
+                    <button
+                      v-if="i === 0"
+                      class=""
+                      @click="form.expenses.push({ label: '', amount: 0 })"
+                    >
+                      <span class="material-symbols-outlined">
+                        add_circle
+                      </span>
+                    </button>
+                    <button
+                      v-else
+                      class=""
+                      @click="form.expenses.splice(i, 1)"
+                    >
+                      <span class="material-symbols-outlined">
+                        do_not_disturb_on
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 延長 -->
+            <div class="area">
+              <div class="h5">
+                延長
+              </div>
+              <div
+                class="btn-group"
+                role="group"
+              >
+                <input
+                  id="ext0"
+                  v-model.number="form.extend_blocks"
+                  type="radio"
+                  class="btn-check"
+                  value="0"
+                >
+                <label
+                  class="btn btn-outline-secondary"
+                  for="ext0"
+                >なし</label>
+
+                <template
+                  v-for="b in [1,2,3]"
+                  :key="b"
+                >
+                  <input
+                    :id="`ext${b}`"
+                    v-model.number="form.extend_blocks"
+                    type="radio"
+                    class="btn-check"
+                    :value="b"
+                  >
+                  <label
+                    class="btn btn-outline-primary"
+                    :for="`ext${b}`"
+                  >{{ b*30 }} 分</label>
+                </template>
+              </div>
+            </div>
+          </div><!-- form-area__wrap -->
 
 
-					<!-- ▼ 受取金 -->
-					<div class="area">
-						<div class="h5">受取金</div>
-						<input
-							type="number" min="0"
-							v-model.number="form.received_amount"
-							class="form-control"
-							@input="isRecvManual = true"
-						/>
-					</div>
+          <!-- 見積 -->
+          <div class="summary-area">
+            <div class="alert alert-warning">
+              <span class="head">小計</span>
+              <span class="price">{{ price.toLocaleString() }}</span>
+            </div>
+          </div>
 
-					<!-- 釣り銭 -->
-					<div class="area">
-						<div class="h5">お釣り</div>
-						<input
-							type="number" min="0"
-							v-model.number="form.change_amount"
-							class="form-control"
-							:placeholder="suggestedChange.toLocaleString()"
-						/>
-					</div>
+          <div class="receive-area">
+            <div class="wrap">
+              <!-- カード -->
+              <div class="area">
+                <div class="h5">
+                  カード
+                </div>
+                <input
+                  v-model.number="form.pay_card"
+                  type="number"
+                  min="0"
+                  class="form-control"
+                >
+              </div>
 
-				</div>
+              <!-- ▼ 現金（自動計算・上書き可） -->
+              <div class="area">
+                <div class="h5">
+                  現金
+                </div>
+                <span class="form-control-plaintext fw-bold">
+                  {{ form.pay_cash.toLocaleString() }} 円
+                </span>
+              </div>
 
-				<!-- ▼ バリデーションメッセージ -->
-				<!-- <div v-if="paymentDiff !== 0" class="mt-2">
+
+              <!-- ▼ 受取金 -->
+              <div class="area">
+                <div class="h5">
+                  受取金
+                </div>
+                <input
+                  v-model.number="form.received_amount"
+                  type="number"
+                  min="0"
+                  class="form-control"
+                  @input="isRecvManual = true"
+                >
+              </div>
+
+              <!-- 釣り銭 -->
+              <div class="area">
+                <div class="h5">
+                  お釣り
+                </div>
+                <input
+                  v-model.number="form.change_amount"
+                  type="number"
+                  min="0"
+                  class="form-control"
+                  :placeholder="suggestedChange.toLocaleString()"
+                >
+              </div>
+            </div>
+
+            <!-- ▼ バリデーションメッセージ -->
+            <!-- <div v-if="paymentDiff !== 0" class="mt-2">
 					<div
 					:class="[
 						'alert',
@@ -1115,17 +1268,20 @@ watch(
 					{{ paymentDiff > 0 ? '超過' : '不足' }}があります
 					</div>
 				</div> -->
-			</div>
+          </div>
 
 
-			<div class="save-area">
-				<button class="btn btn-primary" @click="save">保存</button>
-			</div>
-		</div><!-- form-area -->
-	</div><!-- from-admin__wrap -->
-	</div><!-- form-admin -->
-
-
-</div>
+          <div class="save-area">
+            <button
+              class="btn btn-primary"
+              @click="save"
+            >
+              保存
+            </button>
+          </div>
+        </div><!-- form-area -->
+      </div><!-- from-admin__wrap -->
+    </div><!-- form-admin -->
+  </div>
 </template>
 

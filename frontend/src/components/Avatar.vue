@@ -7,7 +7,10 @@
     :style="{ width: sizePx, height: sizePx }"
     class="rounded-circle object-fit-cover"
   >
-  <i v-else class="bi bi-person-circle" :style="{ fontSize: sizePx }"></i>
+  <IconUserFilled
+    v-else
+    :style="{ fontSize: sizePx }"
+  />
 </template>
 
 <script setup>

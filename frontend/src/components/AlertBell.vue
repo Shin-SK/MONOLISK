@@ -19,26 +19,36 @@ const unread = computed(() =>
 <template>
   <div class="dropdown">
     <!-- 鈴 -->
-    <button class="btn btn-link p-0 position-relative" data-bs-toggle="dropdown">
-      <i class="bi bi-bell fs-4"></i>
+    <button
+      class="btn btn-link p-0 position-relative"
+      data-bs-toggle="dropdown"
+    >
+      <IconBell />
       <!-- 未読バッジ -->
-      <span v-if="unread"
-            class="position-absolute top-0 start-100 translate-middle
-                   badge rounded-pill bg-danger">
+      <span
+        v-if="unread"
+        class="position-absolute top-0 start-100 translate-middle
+                   badge rounded-pill bg-danger"
+      >
         {{ unread }}
       </span>
     </button>
 
     <!-- 一覧ドロップダウン -->
     <ul class="dropdown-menu bg-white">
-      <li v-if="!alerts.length" class="dropdown-item text-muted">
+      <li
+        v-if="!alerts.length"
+        class="dropdown-item text-muted"
+      >
         アラートはありません
       </li>
 
-      <li v-for="a in alerts"
-          :key="a.driver_id"
-          class="dropdown-item small"
-          :class="{ 'text-muted': dismissed.has(a.driver_id) }">
+      <li
+        v-for="a in alerts"
+        :key="a.driver_id"
+        class="dropdown-item small"
+        :class="{ 'text-muted': dismissed.has(a.driver_id) }"
+      >
         <div class="d-flex">
           <span class="text-muted me-2">{{ a.time }}</span>
           <span>{{ a.driver_name }} さん – {{ yen(a.cash) }} 円</span>

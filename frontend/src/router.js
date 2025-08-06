@@ -35,7 +35,6 @@ const routes = [
     component: AdminLayout,
     meta: { requiresAuth: true, adminOnly: true },
     children: [
-      { path: 'dashboard',   component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'DASHBOARD' }},          // /admin
       { path: 'reservations', component: ReservationList, meta: { title: '予約一覧' } },
       { path: 'reservations/new',     component: ReservationFormAdmin, meta: { title: '新規予約' } },
       { path: 'reservations/:id',     component: ReservationFormAdmin, name: 'admin-reservation-detail', meta: { title: '予約詳細' } },
@@ -72,17 +71,6 @@ const routes = [
     ],
   },
 
-  /* ---------- スタッフ（予約管理だけ欲しい場合） ---------- */
-  // {
-  //   path: '/staff',
-  //   component: ReservationLayout,      // サイドバーなどスタッフ用外枠
-  //   meta: { requiresAuth: true },
-  //   children: [
-  //     { path: 'reservations',          component: ReservationList },    // /reservation
-  //     { path: 'reservations/:id',       component: ReservationFormAdmin, name: 'staff-reservation-detail' },
-  //     { path: 'reservations/new',       component: ReservationFormAdmin },
-  //   ],
-  // },
 
   /* ---------- ドライバー ---------- */
   {
@@ -108,7 +96,10 @@ const routes = [
     component: AdminLayout,
     meta: { requiresAuth: true, adminOnly: true },
     children: [
-          { path: '', component: () => import('@/views/BillList.vue'), meta: { title: '伝票' }},
+          { path: '/dashboard',   component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'DASHBOARD' }},
+          { path: '/dashboard/list',   component: () => import('@/views/DashboardList.vue'), meta: { title: 'DASHBOARD-LIST' }},
+          { path: '/dashboard/timeline',   component: () => import('@/views/DashboardGantt.vue'), meta: { title: 'DASHBOARD-TIMELINE' }},
+          { path: '', component: () => import('@/views/DashboardList.vue'), meta: { title: '伝票' }},
           { path: 'pl/daily', component: () => import('@/views/BillPLDaily.vue'), meta: { title: '売上-日次' }},
           { path: 'pl/Monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次' }},
           { path: 'pl/yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次' } },
@@ -119,6 +110,8 @@ const routes = [
           { path: 'cast-shift/:id/shifts', component: () => import('@/views/CastShiftPage.vue'), props: true ,name: 'cast-shift-page', meta: { title: 'シフト管理' } },
           { path: '/ranking', component: () => import('@/views/CastRanking.vue'), props: true, meta: { title: 'ランキング' } },
           { path: '/staff', component: () => import('@/views/AdminStaffList.vue'), props: true, meta: { title: 'スタッフ情報' } },
+          { path: '/staff/:id', component: () => import('@/views/AdminStaffForm.vue'), props: true, meta: { title: 'スタッフ情報-詳細' } },
+          { path: '/table', component: () => import('@/components/BillListTable.vue'), props: true, meta: { title: 'テーブルビュー' }},
     ],
   },
 

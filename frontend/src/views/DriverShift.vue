@@ -137,7 +137,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="container-fluid py-4" style="max-width:720px">
+  <div
+    class="container-fluid py-4"
+    style="max-width:720px"
+  >
     <!-- <h3 class="mb-4">
       {{ driverName ? `${driverName} 日報` : 'ドライバー日報' }}
       <template v-if="!driverName && driverId">#{{ driverId }}</template>
@@ -146,30 +149,44 @@ onMounted(async () => {
 
     <!-- 出勤カード -->
     <div class="card mb-4">
-      <div class="card-header bg-primary text-white">出勤</div>
+      <div class="card-header bg-primary text-white">
+        出勤
+      </div>
       <div class="card-body">
-<label class="form-label">出勤時刻</label>
-<input type="datetime-local"
-       v-model="clockInAtInput"
-       class="form-control mb-3"
-       :disabled="isReadonly">
+        <label class="form-label">出勤時刻</label>
+        <input
+          v-model="clockInAtInput"
+          type="datetime-local"
+          class="form-control mb-3"
+          :disabled="isReadonly"
+        >
         <label class="form-label">釣り銭</label>
         <div class="input-group mb-2">
-          <input v-model.number="shift.float_start" type="number"
-                 min="0" class="form-control" :readonly="isReadonly" />
+          <input
+            v-model.number="shift.float_start"
+            type="number"
+            min="0"
+            class="form-control"
+            :readonly="isReadonly"
+          >
           <span class="input-group-text">円</span>
         </div>
         <div class="btn-group mb-3">
-          <button v-for="p in presets" :key="p"
-                  class="btn btn-outline-secondary"
-                  :disabled="isReadonly"
-                  @click="shift.float_start = p">
+          <button
+            v-for="p in presets"
+            :key="p"
+            class="btn btn-outline-secondary"
+            :disabled="isReadonly"
+            @click="shift.float_start = p"
+          >
             ¥{{ p.toLocaleString() }}
           </button>
         </div>
-        <button class="btn btn-success w-100"
-                :disabled="isReadonly"
-                @click="doClockIn">
+        <button
+          class="btn btn-success w-100"
+          :disabled="isReadonly"
+          @click="doClockIn"
+        >
           {{ hasClockedIn ? '保存' : '出勤する' }}
         </button>
       </div>
@@ -186,43 +203,86 @@ onMounted(async () => {
 
       <div class="card-body">
         <div class="row g-3 mb-3">
-          <div v-for="f in autoFields" :key="f.label" class="col-6">
+          <div
+            v-for="f in autoFields"
+            :key="f.label"
+            class="col-6"
+          >
             <div class="bg-light p-2 rounded">
-              <div class="text-muted small">{{ f.label }}</div>
-              <div class="fw-bold">¥{{ (+f.value).toLocaleString() }}</div>
+              <div class="text-muted small">
+                {{ f.label }}
+              </div>
+              <div class="fw-bold">
+                ¥{{ (+f.value).toLocaleString() }}
+              </div>
             </div>
           </div>
         </div>
 
         <!-- 手入力 -->
         <div class="row g-3 mb-3">
-          <InputNumber v-model="shift.expenses"       label="経費"          :readonly="isReadonly"/>
-          <InputNumber v-model="shift.actual_cash"    label="実際の所持金" :readonly="isReadonly"/>
-          <InputNumber v-model="shift.actual_deposit" label="店舗入金額"   :readonly="isReadonly"/>
-          <InputNumber v-model="shift.float_end"      label="締め釣り銭"   :readonly="isReadonly"/>
+          <InputNumber
+            v-model="shift.expenses"
+            label="経費"
+            :readonly="isReadonly"
+          />
+          <InputNumber
+            v-model="shift.actual_cash"
+            label="実際の所持金"
+            :readonly="isReadonly"
+          />
+          <InputNumber
+            v-model="shift.actual_deposit"
+            label="店舗入金額"
+            :readonly="isReadonly"
+          />
+          <InputNumber
+            v-model="shift.float_end"
+            label="締め釣り銭"
+            :readonly="isReadonly"
+          />
         </div>
 
-        <div class="alert" :class="diff===0 ? 'alert-success':'alert-danger'">
+        <div
+          class="alert"
+          :class="diff===0 ? 'alert-success':'alert-danger'"
+        >
           差分：{{ diff.toLocaleString() }} 円
         </div>
 
-        <div v-if="diff!==0" class="mb-3">
+        <div
+          v-if="diff!==0"
+          class="mb-3"
+        >
           <label class="form-label">差分理由</label>
-          <textarea v-model="shift.diff_reason" rows="2"
-                    class="form-control" :readonly="isReadonly"/>
+          <textarea
+            v-model="shift.diff_reason"
+            rows="2"
+            class="form-control"
+            :readonly="isReadonly"
+          />
         </div>
 
         <div class="form-check form-switch mb-3">
-          <input type="checkbox" id="mgr" class="form-check-input"
-                 v-model="shift.manager_checked" :disabled="isReadonly">
-          <label class="form-check-label" for="mgr">店長チェック済み</label>
+          <input
+            id="mgr"
+            v-model="shift.manager_checked"
+            type="checkbox"
+            class="form-check-input"
+            :disabled="isReadonly"
+          >
+          <label
+            class="form-check-label"
+            for="mgr"
+          >店長チェック済み</label>
         </div>
 
-        <button class="btn btn-primary w-100"
-                :disabled="isReadonly || hasClockedOut || disableSubmit"
-                @click="doClockOut">
+        <button
+          class="btn btn-primary w-100"
+          :disabled="isReadonly || hasClockedOut || disableSubmit"
+          @click="doClockOut"
+        >
           退勤する
-
         </button>
       </div>
     </div>

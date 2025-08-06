@@ -101,52 +101,131 @@ onMounted(async () => {
 </script>
 
 <template>
-<div class="container-fluid py-4">
-  <h1 class="h4 mb-3">シフト管理</h1>
+  <div class="container-fluid py-4">
+    <h1 class="h4 mb-3">
+      シフト管理
+    </h1>
 
-  <div class="d-flex gap-3 mb-3">
-    <input type="date" v-model="date"  @change="fetchAll" class="form-control" style="max-width:180px">
-    <select v-model="store" @change="fetchAll" class="form-select" style="max-width:200px">
-      <option value="">全店舗</option>      <!-- ← 既存と同じ -->
-      <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
-    </select>
-    <button class="btn btn-primary" @click="addRow">＋ 追加</button>
+    <div class="d-flex gap-3 mb-3">
+      <input
+        v-model="date"
+        type="date"
+        class="form-control"
+        style="max-width:180px"
+        @change="fetchAll"
+      >
+      <select
+        v-model="store"
+        class="form-select"
+        style="max-width:200px"
+        @change="fetchAll"
+      >
+        <option value="">
+          全店舗
+        </option>      <!-- ← 既存と同じ -->
+        <option
+          v-for="s in stores"
+          :key="s.id"
+          :value="s.id"
+        >
+          {{ s.name }}
+        </option>
+      </select>
+      <button
+        class="btn btn-primary"
+        @click="addRow"
+      >
+        ＋ 追加
+      </button>
+    </div>
+
+    <table class="table table-sm align-middle">
+      <thead class="table-dark">
+        <tr><th>日付</th><th>キャスト</th><th>開始</th><th>終了</th><th>状態</th><th>操作</th></tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="(r,i) in list"
+          :key="i"
+        >
+          <td>
+            <input
+              v-model="r.date"
+              type="date"
+              class="form-control"
+            >
+          </td>
+
+          <td>
+            <select
+              v-model="r.cast_profile"
+              class="form-select"
+            >
+              <option
+                value=""
+                disabled
+              >
+                選択
+              </option>
+              <option
+                v-for="c in casts"
+                :key="c.id"
+                :value="c.id"
+              >
+                {{ c.stage_name }}
+              </option>
+            </select>
+          </td>
+
+          <td>
+            <input
+              v-model="r.start_at"
+              type="time"
+              class="form-control"
+            >
+          </td>
+          <td>
+            <input
+              v-model="r.end_at"
+              type="time"
+              class="form-control"
+            >
+          </td>
+
+          <td>
+            <span
+              v-if="r.is_checked_in"
+              class="badge bg-success"
+            >IN</span>
+            <span
+              v-else
+              class="badge bg-secondary"
+            >未</span>
+          </td>
+
+          <td class="d-flex gap-2">
+            <button
+              class="btn btn-sm btn-primary"
+              @click="save(r)"
+            >
+              保存
+            </button>
+            <button
+              class="btn btn-sm btn-outline-danger"
+              @click="del(r,i)"
+            >
+              削除
+            </button>
+            <button
+              class="btn btn-sm"
+              :class="r.is_checked_in ? 'btn-warning' : 'btn-success'"
+              @click="toggleCheck(r)"
+            >
+              {{ r.is_checked_in ? '退勤' : '出勤' }}
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
-
-  <table class="table table-sm align-middle">
-    <thead class="table-dark">
-      <tr><th>日付</th><th>キャスト</th><th>開始</th><th>終了</th><th>状態</th><th>操作</th></tr>
-    </thead>
-    <tbody>
-      <tr v-for="(r,i) in list" :key="i">
-        <td><input type="date" v-model="r.date" class="form-control"></td>
-
-        <td>
-        <select v-model="r.cast_profile" class="form-select">
-          <option value="" disabled>選択</option>
-          <option v-for="c in casts" :key="c.id" :value="c.id">{{ c.stage_name }}</option>
-        </select>
-        </td>
-
-        <td><input type="time" v-model="r.start_at" class="form-control"></td>
-        <td><input type="time" v-model="r.end_at"   class="form-control"></td>
-
-        <td>
-          <span v-if="r.is_checked_in" class="badge bg-success">IN</span>
-          <span v-else                 class="badge bg-secondary">未</span>
-        </td>
-
-        <td class="d-flex gap-2">
-          <button class="btn btn-sm btn-primary"         @click="save(r)">保存</button>
-          <button class="btn btn-sm btn-outline-danger"  @click="del(r,i)">削除</button>
-          <button class="btn btn-sm"
-                  :class="r.is_checked_in ? 'btn-warning' : 'btn-success'"
-                  @click="toggleCheck(r)">
-            {{ r.is_checked_in ? '退勤' : '出勤' }}
-          </button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
 </template>
