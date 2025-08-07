@@ -32,7 +32,7 @@ const routes = [
           { path: '/staff', component: () => import('@/views/AdminStaffList.vue'), props: true, meta: { title: 'スタッフ情報' } },
           { path: '/staff/:id', component: () => import('@/views/AdminStaffForm.vue'), props: true, meta: { title: 'スタッフ情報-詳細' } },
           { path: '/table', component: () => import('@/components/BillListTable.vue'), props: true, meta: { title: 'テーブルビュー' }},
-    ],
+          { path: '/customers', component: () => import('@/views/CustomerPage.vue'), props: true, meta: { title: '顧客情報' }},    ],
   },
 
   // ---------- キャスト ---------- //

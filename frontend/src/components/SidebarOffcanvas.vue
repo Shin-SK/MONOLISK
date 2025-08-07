@@ -94,6 +94,14 @@ async function logout () {
           >
             ランキング
           </RouterLink>
+          <RouterLink
+            class="nav-link"
+            to="/customers"
+            @click="closeSidebar"
+          >
+            顧客情報
+          </RouterLink>
+
           <!-- <RouterLink class="nav-link" to="/expense/form" @click="closeSidebar">経費申請</RouterLink> -->
           <button
             class="nav-link d-flex justify-content-between align-items-center fw-semibold"
