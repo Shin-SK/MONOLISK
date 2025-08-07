@@ -30,6 +30,8 @@ async function logout () {
   }
 }
 
+const avatarUrl = computed(() => userStore.info?.avatar_url || '')
+
 
 /* ---------- ナビボタン ---------- */
 function goTimeline () { router.push(`${rootPath.value}/mypage`) }
@@ -52,12 +54,7 @@ const displayName = computed(() =>
         data-bs-target="#appSidebar"
         aria-controls="appSidebar"
       >
-        <img
-          :src="userStore.avatar"
-          class="rounded-circle"
-          width="40"
-          height="40"
-        >
+        <Avatar :url="avatarUrl" :size="40" class="rounded-circle"/>
       </button>
       <h2>MyPage</h2>
     </div>

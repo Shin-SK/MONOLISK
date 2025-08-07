@@ -15,7 +15,12 @@ const others   = computed(() => props.rows.slice(3))
 const max      = computed(() => props.rows[0]?.revenue || 1)
 const barW     = r => `${(r.revenue / max.value * 100).toFixed(0)}%`
 
-// ★ メダル SVG の絶対パスを返すヘルパ
+
+// ★ 各順位ごとのアバターサイズ（px）
+const sizeByRank = [240, 200, 160]        // 1位,2位,3位
+const avatarSize = i => sizeByRank[i]  // helper
+
+//  メダル SVG の絶対パスを返すヘルパ
 const medalSrc = i => `/img/rank-no${i + 1}.svg`
 </script>
 
@@ -35,13 +40,13 @@ const medalSrc = i => `/img/rank-no${i + 1}.svg`
         :class="'no'+(i+1)"
       >
         <div class="avatar">
-          <img
-            v-if="r.avatar_url"
-            :src="r.avatar_url"
-          >
+          <Avatar
+            :url="r.avatar_url"
+            :size="avatarSize(i)"
+          />
         </div>
         <div class="wrap d-flex gap-3 align-items-center">
-          <!-- ★ ここで順位ごとの SVG を差し替え -->
+          <!--  ここで順位ごとの SVG を差し替え -->
           <img
             :src="medalSrc(i)"
             :alt="`No.${i+1}`"
@@ -69,10 +74,7 @@ const medalSrc = i => `/img/rank-no${i + 1}.svg`
       >
         <span class="rank-index">No.{{ i + 4 }}</span>
         <div class="avatar">
-          <img
-            v-if="r.avatar_url"
-            :src="r.avatar_url"
-          >
+          <Avatar :url="r.avatar_url" :size="40" class="rounded-circle" />
         </div>
         <span class="flex-grow-1">{{ r.stage_name }}</span>
         <div

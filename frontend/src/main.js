@@ -17,6 +17,8 @@ import 'vue-datepicker-next/index.css'
 import '@/assets/scss/main.scss'
 import '@/plugins/dayjs'
 
+import Avatar from '@/components/Avatar.vue' 
+
 import { yen } from '@/utils/money'
 
 import Sortable, { Swap } from 'sortablejs'
@@ -33,6 +35,7 @@ const app = createApp(App)
   app.config.globalProperties.$yen = yen
   app.component('Multiselect', Multiselect)  // グローバル登録
   app.component('DatePicker', DatePicker)
+  app.component('Avatar', Avatar)  
   
 import * as TablerIcons from '@tabler/icons-vue'        // ← 追加ここだけ
 

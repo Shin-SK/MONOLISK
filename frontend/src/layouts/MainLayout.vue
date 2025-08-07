@@ -40,7 +40,7 @@ async function logout () {
     <div class="sidebar d-flex flex-column gap-5 align-items-center">
       <button class="avatar-icon btn p-0 border-0 bg-transparent"
               @click="openSidebar">
-        <img :src="avatarSrc" class="rounded-circle" width="40" height="40" />
+        <Avatar :url="user.avatar_url" :size="40" class="rounded-circle" />
       </button>
 
       <RouterLink

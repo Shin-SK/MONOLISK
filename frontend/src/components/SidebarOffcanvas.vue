@@ -147,12 +147,7 @@ async function logout () {
         <!-- -------- フッタ ---------- -->
         <div class="mt-auto pt-3 border-top">
           <div class="d-flex align-items-center gap-2 mb-3">
-            <img
-              :src="user.avatar"
-              class="rounded-circle"
-              width="32"
-              height="32"
-            >
+            <Avatar :url="user.avatar_url" :size="40" class="rounded-circle"/>
             <span>{{ user.name }}</span>
           </div>
           <button

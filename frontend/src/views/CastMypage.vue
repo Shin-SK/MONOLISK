@@ -19,6 +19,7 @@ import {
   fetchCastMypage,
   fetchStoreNotices
 } from '@/api'
+import { useUser } from '@/stores/useUser'
 import { yen } from '@/utils/money'
 
 /* ---------- パラメータ ---------- */
@@ -35,6 +36,7 @@ const dateTo   = ref(dayjs().format('YYYY-MM-DD'))
 const todayStr = dayjs().format('YYYY-MM-DD')
 
 /* ---------- 状態 ---------- */
+const userStore  = useUser()   
 const castInfo    = ref(null)
 const shifts      = ref([])            // 自分のシフト一覧
 const summary     = ref(null)          // 期間サマリ（売上）
@@ -97,6 +99,11 @@ async function loadAll () {
     loadRankings(), loadNotices()
   ])
 }
+
+
+const avatarUrl = computed(() =>
+  castInfo.value?.avatar_url || userStore.info?.avatar_url || ''
+)
 
 /* ---------- 計算 ---------- */
 const myRank = computed(() => {
@@ -164,13 +171,7 @@ onMounted(loadAll)
   <div class="cast-mypage container-fluid mt-4 pb-5">
     <!-- ===== ヘッダ ===== -->
     <div class="d-flex align-items-center mb-4 gap-4">
-      <img
-        v-if="castInfo?.avatar_url"
-        :src="castInfo.avatar_url"
-        alt="avatar"
-        class="rounded-circle"
-        style="width:72px;height:72px;object-fit:cover"
-      >
+      <Avatar :url="avatarUrl" :size="72" class="rounded-circle"/>
       <div>
         <h3 class="mb-1">
           {{ castInfo?.stage_name || 'キャスト名' }}
