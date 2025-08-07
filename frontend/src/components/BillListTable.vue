@@ -134,9 +134,9 @@ async function handleToggleStay({ castId, billId, nextKind }) {
   if (![...lists.freeIds, ...lists.inIds, ...lists.nomIds].includes(castId)) {
     push(castId, nextKind)                    // 新しい kind で追加
   }
-
   /* 3) 3 配列まとめて送信 → 上書きされても全員残る */
   await updateBillCasts(billId, lists)
+
   await billsStore.loadAll()            // UI / モーダルを同期
 }
 // ────────────────────────────────
@@ -163,42 +163,47 @@ function makeLists(bill, extra = []) {
 
 /* ───────── DnD ハンドラ改修 ───────── */
 async function handleUpdateStay({ castId, fromBillId, toBillId, toTableId }) {
-
-  /* ① 元 Bill : 抜けた子を除いた配列で上書き */
+  /* --------------------------------------------
+   * ① 同じ Bill 内の並び替え
+   * -------------------------------------------- */
+  if (fromBillId && fromBillId === toBillId) {
+    const bill = billsStore.list.find(b => b.id === fromBillId)
+    if (bill) {
+      /* 並び順だけ最新にして丸ごと送信 */
+      const lists = makeLists(bill)
+      await updateBillCasts(fromBillId, lists)
+      await billsStore.loadAll()
+    }
+    return                                  // ← ここで完結
+  }
+  /* ② 元 Bill : 抜けた子を除いて再送信 --------- */
   if (fromBillId) {
     const bill = billsStore.list.find(b => b.id === fromBillId)
     if (bill) {
-      const lists = makeLists(
-        bill,
-        []                          // 追加無し ⇒ 出て行った子は除外
-      )
-      // 抜けた子が freeIds に残っていたら取り除く
-      ['freeIds','inIds','nomIds'].forEach(k => {
+      const lists = makeLists(bill)          // 現状を丸ごと取得
+      ['freeIds','inIds','nomIds'].forEach(k=>{
         lists[k] = lists[k].filter(id => id !== castId)
       })
       await updateBillCasts(fromBillId, lists)
     }
   }
 
-  /* ② 先 Bill : 既存＋新しい子をまとめて送る */
+  /* ③ 先 Bill : 既存＋新しい子を free で追加 ---- */
   if (toBillId) {
     const bill = billsStore.list.find(b => b.id === toBillId)
     if (bill) {
-      const lists = makeLists(
-        bill,
-        [castId]                    // 新しい子を free 扱いで追加
-      )
+      const lists = makeLists(bill, [castId])  // extra に新ID
       await updateBillCasts(toBillId, lists)
     }
   }
 
-  /* ③ 空卓 → 新規 Bill は従来通り */
-  else if (toTableId) {
+  /* ④ 空卓 → 新規 Bill を作って free で追加 ---- */
+  if (!toBillId && toTableId) {
     const newBill = await createBill({ table_id: toTableId })
     await updateBillCasts(newBill.id, { freeIds: [castId] })
   }
 
-  /* ④ フロントを同期 */
+  /* ⑤ 最後にストアを同期 ------------------------ */
   await billsStore.loadAll()
 }
 
@@ -225,6 +230,12 @@ const closeModal = async () => {
     loadCasts()
   ])
 }
+
+/* BillModal からの @updated 用 : 伝票だけ再取得  */
+async function refreshBills () {
+  await billsStore.loadAll()
+}
+
 
 // 重複チェック（ダミー）
 function checkDuplicates () {}

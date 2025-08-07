@@ -324,13 +324,19 @@ export const fetchCasts = storeId =>
 export const updateBillCasts = (
   billId,
   { nomIds = [], inIds = [], freeIds = [] }
-) =>
-  api.patch(`billing/bills/${billId}/`, {
-    // ── バックエンドのフィールド名に合わせて変換 ──
-    nominated_casts : nomIds,        // ← 本指名
-    inhouse_casts_w : inIds,         // ← 場内
-    free_ids        : freeIds,       // ← フリー
-  }).then(r => r.data)
+) => {
+  return api
+    .patch(`billing/bills/${billId}/`, {
+      nominated_casts : nomIds,   // 本指名
+      inhouse_casts_w : inIds,    // 場内
+      free_ids        : freeIds,  // フリー
+    })
+    .then(res => res.data)        // 成功時は data だけ返す
+    .catch(err => {               // ここで拾っておけば呼び出し側で表示できる
+      throw err
+    })
+}
+
 export const setInhouseStatus = updateBillCasts; //ローダー用にエイリアス
 
 export const fetchTables = storeId =>

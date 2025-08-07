@@ -26,7 +26,7 @@ const props = defineProps({
   serviceRate : { type: Number, default: 0.3 },
   taxRate     : { type: Number, default: 0.1 },
 })
-const emit  = defineEmits(['update:modelValue','saved'])
+const emit  = defineEmits(['update:modelValue','saved','updated'])
 
 /* ── v‑model（開閉） ─────────────────────────── */
 const visible = computed({
@@ -455,27 +455,34 @@ const preview = computed(() => {
   return { sub, svc, tax, total: sub + svc + tax }
 })
 
-/* ---------- 伝票読み込み時 ---------- */
-watch(() => props.bill, b => {
-  /* ── 伝票がまだ null の瞬間は何もしない ── */
-  if (!b) return
-  if (Array.isArray(b.customers)) {
-     b.customers = b.customers.map(asId)   // ID 配列に統一
-   }
-  const active   = b.stays?.filter(s => !s.left_at) ?? []
+/* ---------- 伝票 or stays 変更時 ---------- */
+watch(
+  // ❶ 参照・長さだけをトラック（deep にはしない）
+  () => [props.bill, props.bill?.stays?.length],
+  () => {
+    const b = props.bill
+    if (!b) return
 
-  const stayNom  = active.filter(s => s.stay_type==='nom').map(s => s.cast.id)
-  const stayFree = active.filter(s => s.stay_type==='free').map(s => s.cast.id)
-  const stayIn   = active.filter(s => s.stay_type==='in').map(s => s.cast.id)
+    /* ── customers を ID 配列へ統一 ── */
+    if (Array.isArray(b.customers)) b.customers = b.customers.map(asId)
 
-mainCastIds.value  = stayNom
-freeCastIds.value  = [...new Set([...stayFree, ...stayIn])]
-inhouseSet.value   = new Set(stayIn)
+    /* ── 現在アクティブな stays を抽出 ── */
+    const active   = (b.stays ?? []).filter(s => !s.left_at)
+    const stayNom  = active.filter(s => s.stay_type === 'nom' ).map(s => s.cast.id)
+    const stayFree = active.filter(s => s.stay_type === 'free').map(s => s.cast.id)
+    const stayIn   = active.filter(s => s.stay_type === 'in'  ).map(s => s.cast.id)
 
-form.table_id = b.table?.id ?? b.table_id_hint ?? null
-originalCustIds.value    = [...(b.customers ?? [])]
+    /* ── reactive 変数へ反映 ── */
+    mainCastIds.value  = stayNom
+    freeCastIds.value  = [...new Set([...stayFree, ...stayIn])]
+    inhouseSet.value   = new Set(stayIn)
 
-}, { immediate:true })
+    form.table_id         = b.table?.id ?? b.table_id_hint ?? null
+    originalCustIds.value = [...(b.customers ?? [])]
+  },
+  { immediate: true }          // deep を外して再帰ループを回避
+)
+
 
 /* ---------- ウォッチャー ---------- */
 /* main が変わったら free から除去 */

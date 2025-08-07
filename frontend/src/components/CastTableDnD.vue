@@ -16,7 +16,7 @@ const props = defineProps({
   subtotal   : { type: [Number, null], default: null },
 })
 const kinds = ['free', 'in', 'nom']
-const emit = defineEmits(['updateStay', 'toggleStay'])
+const emit = defineEmits(['update-stay', 'toggle-stay'])
 
 
 /* --- Draggable 用ローカル配列 --- */
@@ -63,7 +63,7 @@ const dragOptions = {
 
 
 function remove(el){
-  emit('updateStay',{
+  emit('update-stay',{
     castId      : el.id,
     fromBillId  : props.billId  ?? null,
     toBillId    : null,                // ベンチへ
@@ -80,7 +80,7 @@ function toggleKind(el){
   const idx  = kinds.indexOf(el.kind)
   el.kind    = kinds[(idx + 1) % kinds.length]   // ローカル即時更新
 
-  emit('toggleStay', {            // 親に通知
+  emit('toggle-stay', {            // 親に通知
     castId      : el.id,
     billId      : props.billId,
     nextKind    : el.kind
@@ -93,7 +93,7 @@ function toggleKind(el){
 //   const fromTableId = evt.from?.dataset.tableId? Number(evt.from.dataset.tableId) : null
 //   const moved = evt.item.__vue__?.element ?? null
 //   if (!moved) return
-//   setTimeout(() => emit('updateStay',{
+//   setTimeout(() => emit('update-stay',{
 //     castId,
 //     fromBillId,
 //     toBillId   : props.billId  ?? null,
@@ -106,17 +106,24 @@ function toggleKind(el){
 
 /* ---------- ドロップ確定 ---------- */
 function onDragEnd (evt) {
-  const el = evt.item.__vue__?.element
-  if (!el) return
-  setTimeout(() => {
-    emit('updateStay', {                  // 親が期待する形で送る
-      castId:      el.id,
-      fromBillId:  evt.from.dataset.billId ? Number(evt.from.dataset.billId) : null,
-      toBillId:    evt.to.dataset.billId   ? Number(evt.to.dataset.billId)   : null,
-      fromTableId: evt.from.dataset.tableId? Number(evt.from.dataset.tableId): null,
-      toTableId:   evt.to.dataset.tableId  ? Number(evt.to.dataset.tableId)  : null
-    })
-  }, dragOptions.animation)
+  /* ────────────────
+   * 並び順だけが変わったケースでも
+   * サーバに最新 state を送るため **必ず emit** する
+   * ──────────────── */
+
+  // ── DOM の data-id 属性からキャスト ID を得る ──
+  const castId = Number(evt.item.dataset.id)
+  if (!castId) return     
+
+  const payload = {
+    castId,
+    fromBillId:  evt.from.dataset.billId  ? Number(evt.from.dataset.billId)  : null,
+    toBillId:    evt.to.dataset.billId    ? Number(evt.to.dataset.billId)    : null,
+    fromTableId: evt.from.dataset.tableId ? Number(evt.from.dataset.tableId) : null,
+    toTableId:   evt.to.dataset.tableId   ? Number(evt.to.dataset.tableId)   : null
+  }
+  /* アニメーションが終わるタイミングで送る */
+  setTimeout(() => emit('update-stay', payload), dragOptions.animation)
 }
 
 const isVacant = computed(() => !props.billId && !props.benchArea)
