@@ -2,8 +2,9 @@
 
 .ranking-block{
 	margin-bottom: 80px;
-	aspect-ratio: 1/1;
-	min-height: 100%;
+	min-height: 300px;
+	display: flex;
+	flex-direction: column;
 	h5{
 		@include flex();
 		font-weight: bold;

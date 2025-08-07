@@ -103,9 +103,6 @@ function liveCasts (b) {
 
 </script>
 
-
-
-
 <template>
   <div class="dashboard list d-flex flex-column">
     <div class="outer flex-fill position-relative">

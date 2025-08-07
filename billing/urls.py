@@ -1,9 +1,9 @@
-# billing/urls.py
+# billing/urls.pyhttps://desktop.postman.com/?desktopVersion=11.56.4&webVersion=11.56.4-ui-250801-0111&userId=37159453&teamId=0&region=us
 from django.urls import path
 from rest_framework.routers          import DefaultRouter
 from rest_framework_nested.routers   import NestedSimpleRouter, NestedDefaultRouter
 from billing.api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
-from .views import StoreViewSet, TableViewSet, ItemMasterViewSet, BillViewSet, BillItemViewSet, CastViewSet, CastSalesView, CastPayoutListView, CastItemDetailView, ItemCategoryViewSet, CastShiftViewSet, CastDailySummaryViewSet, CastRankingView, StaffViewSet, StaffShiftViewSet, BillViewSet, BillStayViewSet
+from .views import StoreViewSet, TableViewSet, ItemMasterViewSet, BillViewSet, BillItemViewSet, CastViewSet, CastSalesView, CastPayoutListView, CastItemDetailView, ItemCategoryViewSet, CastShiftViewSet, CastDailySummaryViewSet, CastRankingView, StaffViewSet, StaffShiftViewSet, BillViewSet, BillStayViewSet, CustomerViewSet
 
 # --- Routers ---
 router = DefaultRouter()
@@ -17,6 +17,8 @@ router.register(r'cast-shifts', CastShiftViewSet)
 router.register(r'cast-daily-summaries', CastDailySummaryViewSet, basename='cast-daily-summaries')
 router.register(r'staffs', StaffViewSet, basename='staff')
 router.register(r'staff-shift-plans', StaffShiftViewSet, basename='staff-shift-plan')
+router.register(r'customers', CustomerViewSet)
+
 
 bill_items_router = NestedSimpleRouter(router, r'bills', lookup='bill')
 bill_items_router.register(r'items', BillItemViewSet, basename='bill-item')
@@ -42,3 +44,4 @@ urlpatterns = (
     + bills_router.urls
     + extra_patterns
 )
+

@@ -15,11 +15,14 @@ from django.db.models import Sum, F, Q, IntegerField, ExpressionWrapper, Value
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models.functions import Coalesce
 from datetime import date
+from django.db import models
 
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, Cast, BillCastStay, Cast, CastPayout ,BillItem, ItemCategory, CastShift, CastDailySummary, Staff, StaffShift
-from .serializers import CastSalesSummarySerializer, CastPayoutDetailSerializer, CastItemDetailSerializer, CastSerializer, ItemCategorySerializer, StoreSerializer, TableSerializer, BillSerializer, ItemMasterSerializer, BillItemSerializer, CastSerializer, CastShiftSerializer, CastDailySummarySerializer, CastRankingSerializer, StaffSerializer, StaffShiftSerializer, BillCastStayMiniSerializer
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, Cast, BillCastStay, Cast, CastPayout ,BillItem, ItemCategory, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog
+from .serializers import CastSalesSummarySerializer, CastPayoutDetailSerializer, CastItemDetailSerializer, CastSerializer, ItemCategorySerializer, StoreSerializer, TableSerializer, BillSerializer, ItemMasterSerializer, BillItemSerializer, CastSerializer, CastShiftSerializer, CastDailySummarySerializer, CastRankingSerializer, StaffSerializer, StaffShiftSerializer, BillCastStayMiniSerializer, CustomerSerializer, CustomerLogSerializer
 from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales ,sync_nomination_fees
+from billing.utils.customer_log import log_customer_change
+
 
 
 StoreModel = apps.get_model(settings.STORE_MODEL)    # billing.Store を取得
@@ -474,3 +477,43 @@ class BillStayViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin, mixins.D
             ser = self.get_serializer(instance)
             return Response(ser.data, status=status.HTTP_200_OK)
         return super().partial_update(request, *args, **kwargs)
+
+
+class CustomerViewSet(viewsets.ModelViewSet):
+    """
+    /api/customers/
+    名前・あだ名・電話番号で ?q= による部分一致検索
+    """
+    queryset         = Customer.objects.all().order_by('-updated_at')
+    serializer_class = CustomerSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q  = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(
+                models.Q(full_name__icontains=q) |
+                models.Q(alias__icontains=q)     |
+                models.Q(phone__icontains=q)
+            )
+        return qs
+
+    # /customers/{id}/logs/ で更新履歴を返す
+    @action(detail=True, methods=['get'])
+    def logs(self, request, pk=None):
+        logs = CustomerLog.objects.filter(customer_id=pk).order_by('-at')
+        page = self.paginate_queryset(logs)
+        ser  = CustomerLogSerializer(page, many=True)
+        return self.get_paginated_response(ser.data)
+
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        log_customer_change(self.request.user, instance, 'create', {}, serializer.data)
+
+    def perform_update(self, serializer):
+        before = CustomerSerializer(instance=serializer.instance).data
+        instance = serializer.save()
+        after  = CustomerSerializer(instance=instance).data
+        log_customer_change(self.request.user, instance, 'update', before, after)

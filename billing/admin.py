@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from .models import (
     Store, Table, ItemCategory, ItemMaster, Bill, BillItem,
-    BillCastStay, Cast, CastPayout, ItemStock, BillingUser, CastCategoryRate
+    BillCastStay, Cast, CastPayout, ItemStock, BillingUser, CastCategoryRate, Customer
 )
 from django.contrib import admin
 from .models import Store
@@ -15,6 +15,9 @@ from import_export.admin import ImportExportModelAdmin
 from .resources import ItemCategoryRes, ItemMasterRes
 
 User = get_user_model()  
+
+
+
 
 
 class CastCategoryRateInline(admin.TabularInline):
@@ -189,3 +192,7 @@ class CastPayoutAdmin(admin.ModelAdmin):
 
 
 
+@admin.register(Customer)
+class CustomerAdmin(admin.ModelAdmin):
+    list_display = ('id', 'display_name', 'phone', 'updated_at')
+    search_fields = ('full_name', 'alias', 'phone')

@@ -331,6 +331,7 @@ export const updateBillCasts = (
     inhouse_casts_w : inIds,         // ← 場内
     free_ids        : freeIds,       // ← フリー
   }).then(r => r.data)
+export const setInhouseStatus = updateBillCasts; //ローダー用にエイリアス
 
 export const fetchTables = storeId =>
   api.get('billing/tables/', { params:{ store:storeId } }).then(r=>r.data)
@@ -548,3 +549,30 @@ export const staffCheckIn  = (shiftId, at = dayjs().toISOString()) =>
 
 export const staffCheckOut = (shiftId, at = dayjs().toISOString()) =>
   patchStaffShift(shiftId, { clock_out: at })
+
+
+
+// ──────────── Bills patch 共通 ────────────
+export const patchBill = (id, payload) =>
+  api.patch(`billing/bills/${id}/`, payload).then(r => r.data)
+
+// --- granular wrapper ----------------------
+export const updateBillTimes = (id, { opened_at, expected_out }) =>
+  patchBill(id, { opened_at, expected_out })
+
+export const updateBillCustomers = (id, customer_ids = []) =>
+  patchBill(id, { customer_ids })
+
+export const updateBillTable = (id, table_id = null) =>
+  patchBill(id, { table_id })
+
+export const toggleBillInhouse = (billId, { cast_id, inhouse }) =>
+  api.post(`billing/bills/${billId}/toggle-inhouse/`, { cast_id, inhouse })
+     .then(r => r.data)
+
+// ──────────── 顧客 ────────────
+export const fetchCustomer = id =>
+  api.get(`billing/customers/${id}/`).then(r => r.data)
+
+export const fetchCustomers = (params = {}) =>
+  api.get('billing/customers/', { params }).then(r => r.data)

@@ -202,13 +202,54 @@ class ItemStock(models.Model):
     qty  = models.IntegerField(default=0)
     def __str__(self): return f'{self.item.name}: {self.qty}'
 
+
+
+
+class Customer(models.Model):
+    full_name  = models.CharField(max_length=100, blank=True)  # 名前
+    alias      = models.CharField(max_length=100, blank=True)  # あだ名
+    phone      = models.CharField(max_length=30,  blank=True)
+    birthday   = models.DateField(null=True, blank=True)
+    photo      = models.ImageField(upload_to='cust/', null=True, blank=True)
+    memo       = models.TextField(blank=True)
+
+    # 自動で書き戻すフィールド
+    last_drink = models.CharField(max_length=100, blank=True)
+    last_cast  = models.ForeignKey('Cast', null=True, blank=True,
+                                   on_delete=models.SET_NULL)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def display_name(self):
+        return self.alias or self.full_name or f'Guest-{self.id:06d}'
+
+
+class CustomerLog(models.Model):
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    user     = models.ForeignKey(settings.AUTH_USER_MODEL,
+                                 on_delete=models.SET_NULL, null=True)
+    action   = models.CharField(max_length=20)      # create / update
+    payload  = models.JSONField()                   # 変更後の値
+    at       = models.DateTimeField(auto_now_add=True)
+
+
+
+
+
 # ───────── 伝票 ─────────
 class Bill(models.Model):
     table = models.ForeignKey('billing.Table', on_delete=models.CASCADE, null=True, blank=True)
     opened_at = models.DateTimeField(default=timezone.now)
     closed_at = models.DateTimeField(null=True, blank=True)
     expected_out = models.DateTimeField('退店予定', null=True, blank=True)
-
+    customers = models.ManyToManyField(
+        'billing.Customer',
+        through='billing.BillCustomer',
+        related_name='bills',
+        blank=True,
+    )
     main_cast = models.ForeignKey(
         'billing.Cast', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='main_bills',
@@ -683,3 +724,13 @@ class DiscountRule(models.Model):
         if self.percent_off:
             return f"{self.name}: -{float(self.percent_off)*100}%"
         return self.name
+
+
+class BillCustomer(models.Model):
+    bill      = models.ForeignKey('billing.Bill', on_delete=models.CASCADE)
+    customer  = models.ForeignKey('billing.Customer', on_delete=models.PROTECT)
+    # 今後用に好きなカラムを足せる（同伴者区分 / ボトル番号 など）
+    # joined_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ('bill', 'customer')   # 同じ客を重複登録させない

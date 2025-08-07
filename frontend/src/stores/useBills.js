@@ -1,22 +1,63 @@
 // stores/useBills.js
 import { defineStore } from 'pinia'
-import * as api from '@/api'
-
+import { fetchBills, fetchBill, addBillItem, closeBill,
+         setInhouseStatus } from '@/api'
+import { useLoading } from '@/stores/useLoading'
+console.log('[useBills] store loaded')
 export const useBills = defineStore('bills', {
-  state  : () => ({ list: [], current: null }),
-  actions: {
-    async reload() {                         // ← この名前だけに統一
-      if (this.current)
-        this.current = await api.fetchBill(this.current.id)
-    },
-    async loadAll () { this.list = await api.fetchBills() },
-    async open (id)  { this.current = await api.fetchBill(id) },
-    async addItem (p){ await api.addBillItem(this.current.id, p); await this.reload() },
-    async closeCurrent(){ await api.closeBill(this.current.id);     await this.reload() },
+  state : () => ({ list: [], current: null }),
 
-    async setInhouseStatus(castIds){
-      await api.setInhouseStatus(this.current.id, castIds)
-      await this.reload()
-    }
-  }
+  actions: {
+    /* 一覧 ---------------------------------------------------- */
+    
+    async loadAll () {
+      console.log('[useBills] loadAll start')
+      this.list = await fetchBills()      // ← インターセプタが start/end する
+       console.log('[useBills] loadAll end')
+    },
+
+    /* 1 伝票 -------------------------------------------------- */
+    async open (id) {
+      const loading = useLoading()
+      loading.start()
+      try {
+        this.current = await fetchBill(id)
+      } finally {
+        loading.end()
+      }
+    },
+    async reload () { this.current && await this.open(this.current.id) },
+
+    /* 明細追加・クローズなど ---------------------------------- */
+    async addItem (payload) {
+      const loading = useLoading()
+      loading.start()
+      try {
+        await addBillItem(this.current.id, payload)
+        await this.reload()
+      } finally {
+        loading.end()
+      }
+    },
+    async closeCurrent () {
+      const loading = useLoading()
+      loading.start()
+      try {
+        await closeBill(this.current.id)
+        await this.reload()
+      } finally {
+        loading.end()
+      }
+    },
+    async setInhouseStatus (castIds) {
+      const loading = useLoading()
+      loading.start()
+      try {
+        await setInhouseStatus(this.current.id, castIds)
+        await this.reload()
+      } finally {
+        loading.end()
+      }
+    },
+  },
 })

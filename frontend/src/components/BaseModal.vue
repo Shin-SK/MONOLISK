@@ -26,7 +26,7 @@ const close = () => emit('update:modelValue', false)
         role="dialog"
         @keydown.esc="close"
       >
-        <div class="modal-dialog modal-fullscreen p-5">
+        <div class="modal-dialog modal-dialog-scrollable modal-fullscreen p-5">
           <div class="modal-content p-3">
             <!-- ヘッダー -->
             <slot name="header" />

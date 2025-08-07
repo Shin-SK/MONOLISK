@@ -1,16 +1,18 @@
 // src/router.js
+import { nextTick } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
-import { useUser } from '@/stores/useUser'
 
 /* --- レイアウト --- */
-import AdminLayout      from '@/layouts/AdminLayout.vue'
+import MainLayout      from '@/layouts/MainLayout.vue'
 import CastLayout       from '@/layouts/CastLayout.vue'
+
+import { useLoading } from '@/stores/useLoading'
 
 const routes = [
   // ---------- キャバクラ版 ---------- //
   {
   path: '/bills',
-    component: AdminLayout,
+    component: MainLayout,
     meta: { requiresAuth: true, adminOnly: true },
     children: [
           { path: '/', redirect: '/dashboard' },
@@ -57,33 +59,42 @@ const router = createRouter({
 
 
 /* ---- ルートガード（ほぼ元のまま／親メタを見るだけ） ---- */
-router.beforeEach(async (to, _from, next) => {
-  const userStore = useUser()
-  await userStore.fetch()
+// router.beforeEach(async (to, _from, next) => {
+//   const userStore = useUser()
+//   await userStore.fetch()
 
-  const loggedIn = Object.keys(userStore.info || {}).length > 0
-  if (!loggedIn && to.path !== '/login') return next('/login')
+//   const loggedIn = Object.keys(userStore.info || {}).length > 0
+//   if (!loggedIn && to.path !== '/login') return next('/login')
 
-  /* 親も含めたメタ判定 */
-  const meta = (key) => to.matched.some(r => r.meta[key])
+//   /* 親も含めたメタ判定 */
+//   const meta = (key) => to.matched.some(r => r.meta[key])
 
-  const defaultPath =
-    userStore.isCast   ? '/cast/mypage'  :
-    userStore.isDriver ? '/driver/mypage'         :
-    userStore.isStaff  ? '/reservations' 
-                            : '/staff/reservations';
+//   const defaultPath =
+//     userStore.isCast   ? '/cast/mypage'  :
+//     userStore.isDriver ? '/driver/mypage'         :
+//     userStore.isStaff  ? '/reservations' 
+//                             : '/staff/reservations';
 
-    if (to.path === '/' || (to.path === '/login' && loggedIn))
-    return next(defaultPath)
+//     if (to.path === '/' || (to.path === '/login' && loggedIn))
+//     return next(defaultPath)
 
-  if (meta('adminOnly')  && !userStore.isStaff)  return next(defaultPath)
-  if (meta('castOnly')   && !userStore.isCast)   return next(defaultPath)
-  if (meta('driverOnly') && !userStore.isDriver) return next(defaultPath)
+//   if (meta('adminOnly')  && !userStore.isStaff)  return next(defaultPath)
+//   if (meta('castOnly')   && !userStore.isCast)   return next(defaultPath)
+//   if (meta('driverOnly') && !userStore.isDriver) return next(defaultPath)
 
-  next()
-})
+//   next()
+// })
+
+
+
+// router.beforeEach((to, from, next) => {
+//   useLoading().start()
+//   next()
+// })
+// router.afterEach(async () => {
+//   await nextTick()
+//   await new Promise(r => setTimeout(r, 0))
+//   useLoading().end()
+// })
 
 export default router
-
-
-

@@ -1,3 +1,4 @@
+<!--/layouts/MainLayout -->
 <script setup>
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -6,7 +7,9 @@ import { api } from '@/api'
 import { openSidebar } from '@/utils/offcanvas'
 import dayjs from 'dayjs'
 import { useNow } from '@vueuse/core'
-
+import { useLoading } from '@/stores/useLoading'
+import PageLoader from '@/components/PageLoader.vue'
+const loading = useLoading()
 
 
 /* stores / router */
@@ -77,10 +80,33 @@ async function logout () {
             <span class="today text-muted">{{ today }}</span>
           </div>
         </header>
-
+        <div class="position-relative flex-fill">
         <!-- ページ本体 -->
-        <router-view />
+          <router-view v-slot="{ Component }">
+            <Suspense>
+              <!-- fallback は空にする ★ -->
+              <template #default>
+                <component :is="Component" />
+              </template>
+            </Suspense>
+          </router-view>
+          <PageLoader :active="useLoading().globalLoading" />
+
+        </div>
       </div>
     </main>
   </div>
 </template>
+
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity .1s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>

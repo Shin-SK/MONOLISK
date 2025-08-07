@@ -1,7 +1,6 @@
 # billing/serializer.py
 from rest_framework import serializers
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift
-from django.utils import timezone
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog
 from dj_rest_auth.serializers import UserDetailsSerializer
 from .models import User
 from cloudinary.utils import cloudinary_url
@@ -11,6 +10,7 @@ from django.utils.crypto import get_random_string
 from datetime import date
 from .services import sync_nomination_fees
 from django.templatetags.static import static
+from django.utils import timezone
 
 
 class StoreSerializer(serializers.ModelSerializer):
@@ -49,8 +49,8 @@ class BillItemMiniSerializer(serializers.ModelSerializer):
 class BillMiniSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Bill
-        fields = ['id', 'opened_at', 'closed_at',               # ← opened_at を追加
-                  'grand_total','subtotal','table',                                # ← 伝票の総額
+        fields = ['id', 'opened_at', 'closed_at', 
+                  'grand_total','subtotal','table', 'expected_out',
                   'table']
         
 class TableMiniSerializer(serializers.ModelSerializer):
@@ -388,8 +388,23 @@ class BillCastStaySerializer(serializers.ModelSerializer):
         fields = ("cast", "entered_at", "left_at", "stay_type")
 
 
+
+class CustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Customer
+        fields = '__all__'       # 気になるなら explicit に並べる
+        read_only_fields = ('last_drink', 'last_cast', 'created_at', 'updated_at')
+
+class CustomerLogSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model  = CustomerLog
+        fields = ('id', 'action', 'user_name', 'payload', 'at')
+
+
+
 class BillSerializer(serializers.ModelSerializer):
-    # ---------- READ ----------
     table        = TableMiniSerializer(read_only=True)     # ネスト表示用
     items        = BillItemSerializer(read_only=True, many=True)
     stays        = BillCastStaySerializer(read_only=True, many=True)
@@ -398,13 +413,21 @@ class BillSerializer(serializers.ModelSerializer):
     tax          = serializers.SerializerMethodField()
     grand_total  = serializers.SerializerMethodField()
     inhouse_casts = CastSerializer(many=True, read_only=True)
-    expected_out = serializers.DateTimeField(read_only=True)
+    opened_at     = serializers.DateTimeField(required=False, allow_null=True)
+    expected_out  = serializers.DateTimeField(required=False, allow_null=True)
     set_rounds   = serializers.IntegerField(read_only=True)
     ext_minutes  = serializers.IntegerField(read_only=True)
     main_cast      = serializers.PrimaryKeyRelatedField(
         queryset=Cast.objects.all(), allow_null=True, required=False
     )
     main_cast_obj  = CastMiniSerializer(source='main_cast', read_only=True)
+    customer_ids = serializers.PrimaryKeyRelatedField(
+        source='customers', many=True,
+        queryset=Customer.objects.all(),
+        required=False, write_only=True
+    )
+    customers = CustomerSerializer(many=True, read_only=True)
+    customer_display_name = serializers.SerializerMethodField()
     # ---------- WRITE ----------
     # “卓番号” を受け取る専用フィールド
     table_id = serializers.PrimaryKeyRelatedField(
@@ -446,12 +469,29 @@ class BillSerializer(serializers.ModelSerializer):
             "inhouse_casts_w",      # WRITE
             "free_ids","set_rounds","ext_minutes", 'main_cast',      # WRITE 用 (id)
             'main_cast_obj',  # READ 用 ({id,stage_name})
+            'customers',      # READ
+            'customer_ids',   # WRITE
+            'customer_display_name',
         )
         read_only_fields = (
             "subtotal", "service_charge", "tax", "grand_total", "total",
-            "opened_at", "closed_at", "settled_total","expected_out","set_rounds","ext_minutes",
+            "closed_at", "settled_total","set_rounds","ext_minutes",
         )
         depth = 2
+
+    # ───────── 顧客情報取得 ──────────
+    # 先頭 1 名だけバッジに出す用途
+    def get_customer_display_name(self, obj):
+        first = obj.customers.first()
+        return first.display_name if first else ''
+    
+    
+    def to_representation(self, obj):
+        rep = super().to_representation(obj)
+        # 先頭 1 件だけ代表名を返す
+        first = obj.customers.first()
+        rep['customer_display_name'] = first.display_name if first else ''
+        return rep
 
     # ───────── READ helpers ──────────
     def get_inhouse_casts(self, obj):
@@ -487,13 +527,18 @@ class BillSerializer(serializers.ModelSerializer):
     # --------------------------------------------------
     # billing/serializers.py  ── BillSerializer.update
 
-
     def update(self, instance, validated_data):
-        """
-        本指名・場内・フリーをまとめて更新する。
-        ・再入店は新しい stay 行を追加。
-        ・退席は left_at を付与して履歴を残す。
-        """
+            
+        # POST/PATCH で送られて来るのは customer_ids なので注意
+        cust_ids = validated_data.pop('customer_ids', None)
+
+        # 通常フィールドを parent へ
+        instance = super().update(instance, validated_data)
+
+        # 顧客 ID が来ていれば ManyToMany を入れ替え
+        if cust_ids is not None:
+            instance.customers.set(cust_ids)
+    
         # ---------- 0. 差分検出用に現状をキャッシュ ----------
         prev_main = set(instance.nominated_casts.values_list("id", flat=True))
         prev_in   = set(
@@ -612,6 +657,7 @@ class BillSerializer(serializers.ModelSerializer):
             prev_main, new_main,
             prev_in,   new_in,
         )
+
         return instance
 
     def _store_rates(self, obj):
@@ -813,3 +859,7 @@ class StaffShiftSerializer(serializers.ModelSerializer):
                 validated['store'] = st
 
         return super().create(validated)
+
+
+
+

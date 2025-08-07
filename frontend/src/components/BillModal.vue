@@ -4,8 +4,20 @@
 import { reactive, ref, watch, computed, onMounted } from 'vue'
 import BaseModal      from '@/components/BaseModal.vue'
 import Avatar      from '@/components/Avatar.vue'
-import { api, updateBillCasts, fetchCasts, fetchMasters, fetchTables, addBillItem, deleteBillItem, closeBill } from '@/api'
+import { useCustomers } from '@/stores/useCustomers'
+import {
+  api,
+  updateBillCasts,
+  updateBillTimes,
+  updateBillCustomers,
+  updateBillTable,
+  toggleBillInhouse,
+  fetchCasts, fetchMasters, fetchTables,
+  addBillItem, deleteBillItem, closeBill
+} from '@/api'
+
 import dayjs from 'dayjs'
+import CustomerModal from '@/components/CustomerModal.vue'
 
 /* ── props / emit ─────────────────────────────── */
 const props = defineProps({
@@ -22,6 +34,9 @@ const visible = computed({
   set : v  => emit('update:modelValue', v)
 })
 
+// --- 共通ヘルパー
+const asId = v => (typeof v === 'object' && v) ? v.id : v
+
 // --- ① 共通ユーティリティ -----------------------------
 const catCode      = m => typeof m.category === 'string'
                         ? m.category               // "drink"
@@ -36,6 +51,8 @@ const onDutySet  = ref(new Set())
 const masters = ref([])
 const tables   = ref([])
 const castKeyword = ref('')
+const customers = useCustomers()
+
 
 onMounted(async () => {
   try {
@@ -62,9 +79,27 @@ onMounted(async () => {
 const mainCastIds  = ref([])
 const freeCastIds  = ref([])
 const inhouseSet   = ref(new Set())
-
-
-
+const originalCustIds = ref([...(props.bill?.customers ?? [])])
+const activeCustId  = ref(null)
+const showCustModal = ref(false)
+function openCustModal (id = null) {     // ★共通オープナー
+  activeCustId.value = asId(id)          // ← 正しい変数名
+  showCustModal.value = true
+}
+function clearCustomer(target) {          // ★Object/ID どちらでも OK
+  const id = asId(target)
+  props.bill.customers = props.bill.customers.filter(c => asId(c) !== id)
+  props.bill.customer_display_name =
+    props.bill.customers.length
+      ? props.bill.customer_display_name       // 先頭は残る
+      : ''
+  api.patch(`billing/bills/${props.bill.id}/`,
+            { customer_ids: props.bill.customers })
+     .catch(e => { 
+        console.error('toggle inhouse failed', e)
+        alert('場内フラグの更新に失敗しました')
+      })
+}
 /*
  * ▶ 場内トグル
  * ------------------------------------------------
@@ -74,15 +109,11 @@ const inhouseSet   = ref(new Set())
 async function toggleInhouse (cid) {
   const nowIn = inhouseSet.value.has(cid)
   try {
-    const { data } = await api.post(
-      `billing/bills/${props.bill.id}/toggle-inhouse/`,
-      {
-        cast_id : cid,
-        inhouse : !nowIn,
-      }
-    )
+    const { stay_type } = await toggleBillInhouse(props.bill.id, {
+      cast_id: cid, inhouse: !nowIn
+    })
     // data.stay_type: "in" | "free"
-    if (data.stay_type === 'in') {
+    if (stay_type === 'in') {
       inhouseSet.value.add(cid)
       if (!freeCastIds.value.includes(cid)) freeCastIds.value.push(cid)
     } else {
@@ -97,6 +128,31 @@ async function toggleInhouse (cid) {
 }
 
 
+/* ---------- 顧客情報を即反映 ---------- */
+async function handleCustPicked (cust) {
+  const ids = new Set((props.bill.customers ?? []).map(asId)) // ★ID だけ集める
+  ids.add(cust.id)
+  props.bill.customers = [...ids]            // フロント側も ID 配列に
+  props.bill.customer_display_name =
+    cust.alias?.trim() || cust.full_name || `#${cust.id}`
+  try {
+    await updateBillCustomers(props.bill.id, props.bill.customers)
+    originalCustIds.value = [...props.bill.customers]
+  } catch (e) {
+		console.error('settle failed', e)
+		alert('顧客情報の取得に失敗しました')
+  }
+  showCustModal.value = false
+}
+
+function handleCustSaved(cust) {          // ★新規作成／編集
+   const ids = new Set(props.bill.customers ?? [])
+   ids.add(cust.id)
+   props.bill.customers = [...ids]
+   props.bill.customer_display_name =
+       cust.alias?.trim() || cust.full_name || `#${cust.id}`
+  showCustModal.value = false
+}
 
 /* ---------- オーダー ---------- */
 
@@ -151,6 +207,12 @@ const draftQty      = ref(1)      // 数量
 /* ── 編集フォーム（卓番号 & nominated_casts だけ） ─ */
 const form = reactive({
   table_id        : null,
+  opened_at: props.bill?.opened_at
+              ? dayjs(props.bill.opened_at).format('YYYY-MM-DDTHH:mm')
+              : dayjs().format('YYYY-MM-DDTHH:mm'),
+  expected_out: props.bill?.expected_out
+              ? dayjs(props.bill.expected_out).format('YYYY-MM-DDTHH:mm')
+              : '',
   nominated_casts : [],
   inhouse_casts   : []  
 })
@@ -191,7 +253,7 @@ async function chooseCourse(opt){           // opt = {id, code, label}
     // ② フロント側に即反映
     props.bill.items.push(newItem)
 
-    // ★ ③ expected_out が返ってきたらローカルで更新
+    //  ③ expected_out が返ってきたらローカルで更新
     emit('updated', props.bill.id)
 
     // ③ テーブルが変更されていれば PATCH で確定
@@ -339,6 +401,31 @@ const headerInfo = computed(() => {
 })
 
 
+/* ---------- time-edit toggle ---------- */
+const editingTime = ref(false)
+
+/* 変更をサーバへ送る  */
+async function saveTimes () {
+  const openedISO   = form.opened_at    ? dayjs(form.opened_at).toISOString()    : null
+  const expectedISO = form.expected_out ? dayjs(form.expected_out).toISOString() : null
+  if (openedISO === props.bill.opened_at &&
+      expectedISO === props.bill.expected_out) {
+    editingTime.value = false
+    return
+  }
+  try {
+    await updateBillTimes(props.bill.id, { opened_at: openedISO, expected_out: expectedISO })
+    props.bill.opened_at    = openedISO
+    props.bill.expected_out = expectedISO
+    editingTime.value = false
+  } catch (e) { 
+    console.error('settle failed', e)
+		alert('保存に失敗しました')
+   }
+}
+
+
+
 /* ------- 現状（確定済み）計算 ------------------- */
 const current = computed(() => {
   const sub = props.bill.items.reduce(
@@ -370,8 +457,11 @@ const preview = computed(() => {
 
 /* ---------- 伝票読み込み時 ---------- */
 watch(() => props.bill, b => {
+  /* ── 伝票がまだ null の瞬間は何もしない ── */
   if (!b) return
-
+  if (Array.isArray(b.customers)) {
+     b.customers = b.customers.map(asId)   // ID 配列に統一
+   }
   const active   = b.stays?.filter(s => !s.left_at) ?? []
 
   const stayNom  = active.filter(s => s.stay_type==='nom').map(s => s.cast.id)
@@ -383,6 +473,8 @@ freeCastIds.value  = [...new Set([...stayFree, ...stayIn])]
 inhouseSet.value   = new Set(stayIn)
 
 form.table_id = b.table?.id ?? b.table_id_hint ?? null
+originalCustIds.value    = [...(b.customers ?? [])]
+
 }, { immediate:true })
 
 /* ---------- ウォッチャー ---------- */
@@ -426,7 +518,7 @@ async function save () {
       }
       const newItem = await addBillItem(props.bill.id, payload)
       props.bill.items.push(newItem)                     // フロントへ即反映
-    // ★ expected_out をローカル更新
+    //  expected_out をローカル更新
     if (newItem.bill?.expected_out) {
       props.bill.expected_out = newItem.bill.expected_out
     }
@@ -449,19 +541,37 @@ async function save () {
     alert('キャスト情報の更新に失敗しました')
   }
 
+  /* ▼ 顧客配列が変わっていたら PATCH ------------------ */
+  if (JSON.stringify(props.bill.customers ?? []) !==
+      JSON.stringify(originalCustIds.value)) {
+     try {
+      await api.patch(
+        `billing/bills/${props.bill.id}/`,
+        { customer_ids: props.bill.customers ?? [] }
+      )
+      originalCustIds.value = [...(props.bill.customers ?? [])]
+    } catch (e) {
+      console.error('customer patch failed', e)
+      alert('顧客情報の更新に失敗しました')
+    }
+  }
+
+
   /* 3. 卓番号が変更されていれば PATCH */
   /* 新規伝票直後は currentTableId が null になるので、その場合も必ず PATCH を走らせる */
   const currentTableId = props.bill.table?.id ?? props.bill.table ?? null
   if (currentTableId === null || form.table_id !== currentTableId) {
-    try {
-      await api.patch(`billing/bills/${props.bill.id}/`, {
-        table_id: form.table_id                       // 数値 or null
-      })
+    try { await updateBillTable(props.bill.id, form.table_id)
     } catch (e) {
       console.error('table patch failed', e)
       alert('卓番号の更新に失敗しました')
     }
   }
+
+  await api.patch(`billing/bills/${props.bill.id}/`, {
+  opened_at    : form.opened_at    ? dayjs(form.opened_at).toISOString()    : null,
+  expected_out : form.expected_out ? dayjs(form.expected_out).toISOString() : null,
+})
 
   /* 4. 親へ通知してモーダルを閉じる */
   emit('saved', props.bill.id)
@@ -475,104 +585,187 @@ async function save () {
     v-if="props.bill"
     v-model="visible"
   >
-    <template #header>
-      <div class="modal-header align-items-center justify-content-end gap-3">
-        <div class="d-flex flex-wrap gap-3">
-          <span class="fs-3 fw-bold">
-            {{ headerInfo.sets }}SET 
-          </span>
-
-          <span class="fs-3 fw-bold">
-            {{ headerInfo.start }} 〜 {{ headerInfo.end }}
-          </span>
-
-          <span v-if="headerInfo.extCnt">
-            延長 <b>{{ headerInfo.extCnt }}</b> 回
-          </span>
-        </div>
-
-        <button
-          class="btn-close"
-          style="margin-left: unset;"
-          @click="visible = false"
-        />
-      </div>
-    </template>
 
     <div
       class="position-relative p-4 d-grid gap-4 h-100"
-      style="grid-template-columns:auto 1fr 1fr;"
+      style="grid-template-columns:200px 1fr 1fr;"
     >
-      <div class="outer d-flex flex-column gap-4">
+      <button
+        class="btn-close position-absolute"
+        style="margin-left: unset; top:8px; right:8px;"
+        @click="visible = false"
+      /> <!-- 閉じるボタン -->
+
+      <div class="sidebar outer d-flex flex-column gap-4">
         <!-- 伝票番号 -->
-        <div class="d-flex flex-column align-items-center gap-2">
-          <span class="badge bg-primary text-light">伝票番号</span>
-          <span>{{ props.bill.id }}</span>
+        <div class="wrap">
+          <div class="title"><IconNotes/>伝票番号</div>
+          <div class="items">
+            <span>{{ props.bill.id }}</span>
+          </div>
+
         </div>
         <!-- テーブル番号 -->
-        <div class="wrap d-flex flex-column align-items-center gap-2">
-          <div class="badge bg-primary text-light">
-            テーブル
+        <div class="wrap">
+          <div class="title"><IconPinned/>テーブル</div>
+          <div class="items">
+            <select
+              v-model.number="form.table_id"
+              class="form-select text-end"
+              style="width: 80px;"
+            >
+              <option
+                class="text-center"
+                :value="null"
+              >
+                -
+              </option>
+              <option
+                v-for="t in tables"
+                :key="t.id"
+                class="text-center"
+                :value="t.id"
+              >
+                {{ t.number }}
+              </option>
+            </select>
           </div>
-          <select
-            v-model.number="form.table_id"
-            class="form-select text-end"
-            style="width: 80px;"
-          >
-            <option
-              class="text-center"
-              :value="null"
-            >
-              -
-            </option>
-            <option
-              v-for="t in tables"
-              :key="t.id"
-              class="text-center"
-              :value="t.id"
-            >
-              {{ t.number }}
-            </option>
-          </select>
         </div>
         <!-- 人数 -->
-        <div class="wrap d-flex flex-column align-items-center gap-2">
-          <div class="badge bg-primary text-light">
-            人数
-          </div>
-          <select
-            v-model.number="pax"
-            class="form-select text-center"
-            style="width: 80px;"
-          >
-            <option
-              v-for="n in 12"
-              :key="n"
-              :value="n"
+        <div class="wrap">
+          <div class="title"><IconUsers/>人数</div>
+          <div class="items">
+            <select
+              v-model.number="pax"
+              class="form-select text-center"
+              style="width: 80px;"
             >
-              {{ n }}
-            </option>
-          </select>
+              <option
+                v-for="n in 12"
+                :key="n"
+                :value="n"
+              >
+                {{ n }}
+              </option>
+            </select>
+          </div>
         </div>
 
         <!-- コース -->
-        <div class="wrap d-flex flex-column align-items-center gap-2">
-          <div class="badge bg-primary text-light">
-            セット
+        <div class="wrap">
+          <div class="title"><IconHistoryToggle/>セット</div>
+          <div class="items">
+            <div class="">
+              <div
+                v-for="c in courseOptions"
+                :key="c.code"
+                class="btn btn-light"
+                style="cursor: pointer;"
+                @click="chooseCourse(c)"
+              >
+                <IconCheck
+                  class="me-1"
+                  :size="14"
+                 />
+                {{ c.label }}
+              </div>
+            </div>
           </div>
-          <div class="d-flex flex-column gap-2">
-            <button
-              v-for="c in courseOptions"
-              :key="c.code"
-              class="btn btn-outline-dark d-flex justify-content-center"
-              @click="chooseCourse(c)"
-            >
-              {{ c.label }}
-            </button>
+
+        </div>
+
+        <div class="wrap">
+          <div class="title position-relative">
+            <IconUserScan/>顧客
+            <div
+              class="position-absolute top-0 bottom-0 end-0 margin-auto p-1"
+              role="button"
+              @click="openCustModal()"
+              >
+              <IconSearch :size="16"/>
+            </div><!-- 検索ボタン -->
+          
+          </div>
+
+            <div class="items">
+            <div
+            v-if="props.bill.customers?.length"
+            class="d-flex flex-wrap gap-2">
+
+            <div
+              v-for="cid in props.bill.customers"
+              :key="cid">
+
+              <!-- 個別削除 -->
+              <IconX
+                :size="12"
+                role="button"
+                class="me-2"
+                @click.stop="clearCustomer(cid)"
+              />
+              <span
+                @click="openCustModal(cid)"
+                style="cursor:pointer;"
+              >
+                {{ customers.getLabel(cid) }}
+              </span>
+
+
+            </div>
+            </div><!-- 選択済み顧客 -->
+
           </div>
         </div>
       </div>
+
       <div class="outer d-flex flex-column gap-4">
+        <div class="box">
+          <div class="d-flex flex-wrap gap-3 align-items-center">
+              <!-- ▼ 表示モード -->
+              <template v-if="!editingTime">
+                <div class="d-flex align-items-center gap-2 me-4">
+                  <span class="fs-1 fw-bold" style=" line-height: 100%;">
+                    {{ headerInfo.start }} – {{ headerInfo.end }}
+                  </span>
+                  <IconPencil :size="20" role="button" @click="editingTime = true" />
+                </div>
+              </template>
+              
+
+              <!-- ▼ 編集モード -->
+              <template v-else>
+                <div class="d-flex align-items-center gap-2 me-4">
+                  <input type="datetime-local"
+                        v-model="form.opened_at"
+                        class="form-control form-control-sm w-auto" />
+                  ～
+                  <input type="datetime-local"
+                        v-model="form.expected_out"
+                        class="form-control form-control-sm w-auto" />
+
+                  <button @click="saveTimes" class="text-success p-0">
+                    <IconCircleDashedCheck />
+                  </button>
+                  <button @click="editingTime = false" class="text-danger p-0">
+                    <IconCircleDashedX  />
+                  </button>
+                </div>
+              </template>
+
+              <div class="d-flex align-items-center gap-1">
+                <IconCoinYen /> {{ current.sub.toLocaleString() }}
+              </div>
+
+              <div class="d-flex align-items-center gap-1">
+                <IconUsers />{{ pax }}
+              </div>
+
+              <div class="d-flex align-items-center gap-1">
+                <IconRefresh /> {{ headerInfo.extCnt }}
+              </div>
+          </div>
+
+        </div>
         <!-- 現在ついているキャストエリア ------------------------------- -->
         <div class="mb-3">
           <!-- (D) 誰もいない時 -->
@@ -601,6 +794,7 @@ async function save () {
               >
                 <!-- ✕ボタン：単なるアイコンに click を付与 -->
                 <IconX
+                  :size="12"
                   class="me-2"
                   role="button"
                   @click.stop="removeCast(c.id)"
@@ -626,6 +820,7 @@ async function save () {
               >
                 <!-- ✕アイコン -->
                 <IconX
+                  :size="12"
                   class="me-2"
                   role="button"
                   @click.stop="removeCast(c.id)"
@@ -667,7 +862,7 @@ async function save () {
               class="d-flex align-items-center p-2"
               @click="castKeyword=''"
             >
-              <IconX />
+              <IconX :size="12" />
             </button>
           </div>
           <div class="d-flex flex-wrap gap-2">
@@ -716,7 +911,7 @@ async function save () {
           </div>
         </div>
 
-        <!-- ★ IN / OUT タイムライン -->
+        <!--  IN / OUT タイムライン -->
         <div class="history bg-light rounded p-3 mt-auto">
           <h6 class="fw-bold mb-2">
             <IconHistoryToggle class="me-1" />着席履歴
@@ -964,6 +1159,7 @@ async function save () {
               <!-- キャンセル -->
               <td class="text-center">
                 <IconX
+                  :size="12"
                   class="text-danger"
                   role="button"
                   @click="cancelItem(idx, it)"
@@ -1026,6 +1222,12 @@ async function save () {
         </div>
       </div>
     </div>
+  <CustomerModal
+    v-model="showCustModal"
+    :customer-id="activeCustId"
+    @picked="handleCustPicked" 
+    @saved="handleCustSaved"
+  />
   </BaseModal>
 </template>
 

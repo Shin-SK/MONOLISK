@@ -65,7 +65,7 @@ const medalSrc = i => `/img/rank-no${i + 1}.svg`
       <div
         v-for="(r,i) in others"
         :key="r.cast_id"
-        class="other-item d-flex align-items-center mb-2 gap-2"
+        class="other-item d-flex align-items-center gap-2"
       >
         <span class="rank-index">No.{{ i + 4 }}</span>
         <div class="avatar">
@@ -86,7 +86,7 @@ const medalSrc = i => `/img/rank-no${i + 1}.svg`
     <!-- 4 位以下データ無し -->
     <div
       v-else
-      class="others-empty text-muted text-center py-3"
+      class="others-empty text-muted p-3 d-flex align-items-center justify-content-center flex-fill"
     >
       集計されていません
     </div>
