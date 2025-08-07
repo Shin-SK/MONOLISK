@@ -37,7 +37,11 @@ def attach_customer_and_snapshot(sender, instance: Bill, created, **kw):
     # ② クローズ時：先頭顧客へ snapshot 保存
     if instance.closed_at and instance.customers.exists():
         cust = instance.customers.first()
-        cust.last_drink = ', '.join(i.item.name for i in instance.items.all())
+        # BillItem は item_master(FK) を持つ想定
+        cust.last_drink = ', '.join(
+            i.item_master.name if i.item_master else i.name   # ← FK があれば master 名、無ければ行の name
+            for i in instance.items.all()
+        )
         cust.last_cast  = (
             instance.nominated_casts.last() or
             instance.stays.filter(stay_type='in').last() or

@@ -12,6 +12,7 @@ import { useRoute } from 'vue-router'
 import RankingBlock from '@/components/RankingBlock.vue'
 import dayjs from 'dayjs'
 import {
+  fetchBills,
   createCastShift,
   fetchCastShiftHistory,
   fetchCastDailySummaries,
@@ -45,6 +46,7 @@ const rankings    = ref([])            // 店全体ランキング
 const monthlyRows = computed(() => rankings.value)
 const notices     = ref([])            // 店舗お知らせ
 const draftShifts = ref([])            // シフト申請カート
+const customerBills = ref([])          // [{id,opened_at,customer_display_name,subtotal}]
 
 /* ---------- タブ ---------- */
 const activeTab = ref(null)
@@ -96,10 +98,17 @@ async function loadAll () {
   await Promise.all([
     loadCast(), loadShifts(),
     loadSummary(), loadToday(),
-    loadRankings(), loadNotices()
+    loadRankings(), loadNotices(),
+    loadCustomerBills()
   ])
 }
 
+/* ── キャストが関与した伝票を取得 ───────────── */
+async function loadCustomerBills () {
+  // stays.cast.id=◯ でフィルタ出来る想定。無ければ簡易の /bills/?cast=◯ などに置換
+  customerBills.value = (await fetchBills({ cast: castId }))
+    .filter(b => (b.customer_display_name ?? '').trim().length)   // ★顧客付きだけ
+}
 
 const avatarUrl = computed(() =>
   castInfo.value?.avatar_url || userStore.info?.avatar_url || ''
@@ -464,21 +473,37 @@ onMounted(loadAll)
       </div>
       <p
         v-else
-        class="text-muted"
+        class="text-muted d-flex align-items-center justify-content-center"
+        style="min-height: 200px;"
       >
         売上はまだありません
       </p>
     </div>
 
     <!-- ▼ 売上 -->
-    <div v-if="activeTab === 'customers'">
-      <h4 class="mt-5 mb-3">
-        顧客情報
-      </h4>
-      <p class="text-muted">
-        顧客情報はまだありません
-      </p>
-    </div>
+      <!-- ▼ 顧客情報 -->
+      <div v-if="activeTab === 'customers'">
+        <h5>顧客情報</h5>
+
+        <table v-if="customerBills.length" class="table align-middle">
+          <thead class="table-light">
+            <tr><th>日時</th><th>顧客名</th><th class="text-end">小計</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="b in customerBills" :key="b.id" role="button" @click="open(b.id)">
+              <td>{{ dayjs(b.opened_at).format('YYYY/MM/DD HH:mm') }}</td>
+              <td>{{ b.customer_display_name || '-' }}</td>
+              <td class="text-end">{{ yen(b.subtotal) }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p v-else
+          class="text-muted d-flex align-items-center justify-content-center"
+          style="min-height: 200px;">
+          あなたが担当した顧客情報はまだありません
+        </p>
+      </div>
 
     <!-- ▼ 顧客情報 -->
     <div class="notice mt-5">

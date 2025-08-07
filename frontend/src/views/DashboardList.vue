@@ -36,7 +36,7 @@ async function open(id) {
 /* ───── モーダル側から emit('saved') を受ける ───── */
 function handleSaved() {
   showModal.value = false
-  bills.loadAll()
+  bills.loadAll(true)
 }
 
 /* ───── 新規伝票 ───── */
