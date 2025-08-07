@@ -191,8 +191,8 @@ const showDetail = computed(() => !isVacant.value)
             <Avatar
               :url="element.avatar"
               :alt="element.name"
-              :size="28"
-              class="me-1"
+              :size="40"
+              class="me-1 rounded-circle"
             />
             {{ element.name }}
           </div>

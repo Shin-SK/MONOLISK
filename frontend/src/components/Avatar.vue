@@ -6,7 +6,7 @@ import { avatarUrl } from '@/utils/cloudinary.js'
 const props = defineProps({
   url : { type: String, default: '' },
   alt : { type: String, default: '' },
-  size: { type: Number, default: 32 },
+  size: { type: Number, default: 40 },
 })
 
 const sizePx = computed(() => `${props.size}px`)
