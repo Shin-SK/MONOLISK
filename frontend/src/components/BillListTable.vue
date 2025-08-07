@@ -13,18 +13,22 @@ import CastTableDnD    from '@/components/CastTableDnD.vue'
 import {
   fetchBill,
   createBill,
-  fetchTables,
-  getBillingCasts,
   fetchCastShifts,
   updateBillCasts,
 } from '@/api'
+import { useTables }  from '@/stores/useTables'
+import { useCasts }   from '@/stores/useCasts'
 
 // ────────────────────────────────
 //  state
 // ────────────────────────────────
 const billsStore  = useBills()
-const tables      = ref([])
+const tables      = computed(() => tablesStore.list)
 const castsAll    = ref([])
+
+const tablesStore = useTables()
+const castsStore  = useCasts()
+
 const shiftsToday = ref([])
 const currentBill = ref(null)
 const showModal   = ref(false)
@@ -33,23 +37,19 @@ const todayISO    = dayjs().format('YYYY-MM-DD')
 // ────────────────────────────────
 //  初期ロード
 // ────────────────────────────────
-async function loadTables () {
-  tables.value = await fetchTables()
-}
-async function loadCasts () {
-  const [casts, shifts] = await Promise.all([
-    getBillingCasts({ simple: 1 }),
+async function loadCastsAndShifts () {                    // ★名前そのまま
+  await Promise.all([
+    castsStore.fetch(),                                   // キャスト一覧
     fetchCastShifts({ date: todayISO })
+      .then(r => (shiftsToday.value = r)),                // 今日のシフト
   ])
-  castsAll.value    = Array.isArray(casts) ? casts : casts.results ?? []
-  shiftsToday.value = shifts
 }
 
-onMounted(async () => {
+onMounted(async () => {                                   // ★tablesStore.fetch だけ
   await Promise.all([
     billsStore.loadAll(),
-    loadTables(),
-    loadCasts()
+    tablesStore.fetch(),          // テーブル一覧
+    loadCastsAndShifts(),         // キャスト＋シフト
   ])
   checkDuplicates()
 })
@@ -94,7 +94,7 @@ const unassigned = computed(() => {
     shiftsToday.value.filter(s => !s.clock_out)
       .map(s => Number(s.cast.id))
   )
-  return castsAll.value
+  return castsStore.list
     .filter(c => presentIds.has(Number(c.id)) && !stayIds.has(Number(c.id)))
     .map(c => ({
       id:     c.id,
@@ -227,7 +227,7 @@ const closeModal = async () => {
   // ❷ キャストの出勤・空き状況も更新
   await Promise.all([
     billsStore.loadAll(),
-    loadCasts()
+    loadCastsAndShifts()
   ])
 }
 

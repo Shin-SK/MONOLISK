@@ -2,7 +2,8 @@
 /* ───────── imports ───────── */
 import { ref, watch, computed, nextTick, onMounted } from 'vue'
 import dayjs from 'dayjs'
-import { fetchTables, fetchBills } from '@/api'
+import { useTables } from '@/stores/useTables'
+import { useBills  } from '@/stores/useBills'
 
 /* ───────── props ───────── */
 const props = defineProps({
@@ -21,8 +22,39 @@ const chartEnd = computed(() =>
 )
 
 /* ───────── state ───────── */
-const rows = ref([])   // [{id,label}]
-const bars = ref([])   // [{rowId,from,to,stays,billId,ganttBarConfig}]
+ const tablesStore = useTables()
+ const billsStore  = useBills()
+
+ /* rows / bars は「計算結果」として computed に変える */
+ const rows = computed(() =>
+   tablesStore.list
+     .slice()                           // ★ソート前にコピー
+     .sort((a,b)=>a.number-b.number)
+     .map(t=>({ id:t.id, label:`${t.number}` }))
+ )
+
+ const bars = computed(() =>
+   billsStore.list
+     .filter(b => b.table && !b.closed_at)      // 伝票が開いているものだけ
+     .map(b => {
+       const rowId = typeof b.table==='object'? b.table.id : b.table
+       const from  = new Date(b.opened_at)
+       const to    = new Date( +from + (b.set_rounds ? 60 : 0) * 60_000)
+       const extPx = b.ext_minutes * pxPerMinute.value
+       return {
+         rowId, from, to,
+         billId : b.id,
+         stays  : b.stays || [],
+         ganttBarConfig:{
+           id:`bill_${b.id}`,
+           label:'',
+           class: b.ext_minutes ? 'has-ext' : '',
+           style:{ '--ext-width':`${extPx}px` }
+         },
+         isClosed:false,
+       }
+     })
+ )
 
 /* ★追加：内部フラグ */
 let firstCenterDone = false
@@ -108,8 +140,14 @@ async function fetchBars(){
 }
 
 /* ───────── まとめて更新 ───────── */
-async function refresh(){ await fetchRows(); await fetchBars(); nextTick(resizeAll) }
-watch(()=>[props.date,props.storeId], refresh, { immediate:true })
+ async function refresh () {
+   await Promise.all([
+     tablesStore.fetch(props.storeId),          // キャッシュ付
+     billsStore.loadAll(true),                  // 伝票は毎回更新
+   ])
+   nextTick(resizeAll)
+ }
+ watch(()=>[props.date,props.storeId], refresh, { immediate:true })
 
 /* ───────── now‑line ───────── */
 const nowX = ref(0)

@@ -7,15 +7,16 @@ import Avatar      from '@/components/Avatar.vue'
 import { useCustomers } from '@/stores/useCustomers'
 import {
   api,
-  updateBillCasts,
   updateBillTimes,
   updateBillCustomers,
   updateBillTable,
+  updateBillCasts,
   toggleBillInhouse,
-  fetchCasts, fetchMasters, fetchTables,
   addBillItem, deleteBillItem, closeBill
 } from '@/api'
-
+import { useCasts }     from '@/stores/useCasts'
+import { useMasters }   from '@/stores/useMasters'
+import { useTables }    from '@/stores/useTables'
 import dayjs from 'dayjs'
 import CustomerModal from '@/components/CustomerModal.vue'
 
@@ -46,10 +47,14 @@ const showInMenu   = m => typeof m.category === 'object'
                         : true                     // 文字列なら表示OK
 
 /* ── キャスト一覧を API からロード ─────────────── */
-const casts = ref([])               // [{id, stage_name, …}]
-const onDutySet  = ref(new Set())
+const casts   = ref([])
 const masters = ref([])
-const tables   = ref([])
+const tables  = ref([])
+
+const castsStore   = useCasts()
+const onDutySet  = ref(new Set())
+const mastersStore = useMasters()
+const tablesStore  = useTables()
 const castKeyword = ref('')
 const customers = useCustomers()
 
@@ -57,7 +62,11 @@ const customers = useCustomers()
 onMounted(async () => {
   try {
     const storeId = props.bill?.table?.store ?? ''   // ← 無ければ全店
-    casts.value   = await fetchCasts(storeId)
+      await Promise.all([
+        castsStore.fetch(storeId),
+        mastersStore.fetch(storeId),
+        tablesStore.fetch(storeId),
+      ])
       /* ─ 今日シフト IN のキャスト一覧を取るだけ ───────── */
       const today = dayjs().format('YYYY-MM-DD')
       const { data: todayShifts } = await api.get('billing/cast-shifts/', {
@@ -68,8 +77,9 @@ onMounted(async () => {
           .filter(s => s.clock_in && !s.clock_out)   // ← ここがポイント
           .map(s => s.cast.id)
       )
-	  masters.value   = await fetchMasters(storeId)
-    tables.value  = await fetchTables(storeId)
+      casts.value   = castsStore.list
+      masters.value = mastersStore.list
+      tables.value  = tablesStore.list
   } catch (e) {
     console.error('casts fetch failed', e)
   }

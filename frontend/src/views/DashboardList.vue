@@ -6,7 +6,7 @@ import dayjs              from 'dayjs'          // ← 忘れずに
 import { useBills }       from '@/stores/useBills'
 import BillModal          from '@/components/BillModal.vue'
 import Avatar        from '@/components/Avatar.vue'
-import { fetchBill, createBill, deleteBill } from '@/api'
+import { createBill, deleteBill } from '@/api'
 
 /* ───── reactive state ───── */
 const bills       = useBills()
@@ -19,8 +19,8 @@ onMounted(() => bills.loadAll())
 
 /* ★ opened_at が新しい順に並べ替えた配列 */
 const sorted = computed(() =>
-  [...bills.list].sort((a, b) =>
-    new Date(b.opened_at || 0) - new Date(a.opened_at || 0)
+  [...bills.list].sort(
+    (a, b) => new Date(b.opened_at || 0) - new Date(a.opened_at || 0)
   )
 )
 
@@ -28,7 +28,8 @@ const MAP_SET = { setVIP:60, setMale:60, setFemale:60, set60:60 }
 
 /* ───── 一覧クリック → 1件取得してモーダル ───── */
 async function open(id) {
-  currentBill.value = await fetchBill(id)
+  await bills.open(id)                // useBills の open() が current に入れる
+  currentBill.value = bills.current   // 参照を渡すだけ
   showModal.value   = true
 }
 
@@ -41,7 +42,8 @@ function handleSaved() {
 /* ───── 新規伝票 ───── */
 async function newBill () {
   const bill = await createBill({ table_id: 1, nominated_casts: [], inhouse_casts_w: [] })
-  currentBill.value = bill
+  await bills.open(bill.id)           // 取った直後に open() で current へ
+  currentBill.value = bills.current
   showModal.value   = true
 }
 
@@ -54,9 +56,15 @@ function toggle(id){
 async function bulkDelete () {
   if (!selectedIds.value.size) return
   if (!window.confirm(`${selectedIds.value.size} 件を削除しますか？`)) return
-  for (const id of selectedIds.value) await deleteBill(id)
+  // 1. まとめて並列で削除
+  const ids = [...selectedIds.value]
+  await Promise.all(ids.map(id => deleteBill(id)))
+
+  // 2. UI 側の選択状態をクリア
   selectedIds.value.clear()
-  bills.loadAll()
+
+  // 3. キャッシュ無視で最新一覧を取得
+  await bills.loadAll(true)
 }
 
 /* ---------- 伝票内ユーティリティ ---------- */
