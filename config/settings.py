@@ -103,11 +103,12 @@ REST_AUTH = {
     'USER_DETAILS_SERIALIZER': 'accounts.serializers.UserDetailsWithStoreSerializer',
 }
 # allauth のログインは username のみ許可
-ACCOUNT_AUTHENTICATION_METHOD = "username"
+ACCOUNT_LOGIN_METHODS = ['username']
 ACCOUNT_EMAIL_REQUIRED        = True
 ACCOUNT_USERNAME_REQUIRED     = True
 ACCOUNT_EMAIL_VERIFICATION    = "none"     # ← 面倒を避けるなら
 
+REST_USE_JWT = False
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (

@@ -5,10 +5,12 @@ import { useRouter } from 'vue-router'
 import { useUser }   from '@/stores/useUser'
 import { api }       from '@/api'
 import { closeSidebar } from '@/utils/offcanvas'
+import { useAuth }   from '@/stores/useAuth'
 
 const router = useRouter()
 const route  = useRoute() 
 const user   = useUser()
+const auth   = useAuth()
 
 /* ------------- 各セクションが「アクティブかどうか」を決める ------------- */
 const shiftActive = computed(() =>
@@ -21,9 +23,9 @@ const settingsActive = computed(() =>
 
 
 async function logout () {
-  try { await api.post('dj-rest-auth/logout/') } catch {/* ignore */}
-  user.clear()
+  await auth.logout()         // ストアの共通ロジックを呼ぶ
   router.push('/login')
+  closeSidebar()              // off-canvas を閉じる
 }
 </script>
 

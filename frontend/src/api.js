@@ -73,19 +73,36 @@ api.interceptors.request.use(cfg => {
 /* ------------------------------------------------------------------ */
 
 export async function login(username, password) {
-  localStorage.removeItem('token')
-  localStorage.removeItem('store_id')
+  const { data } = await api.post('dj-rest-auth/login/', {
+    username,
+    password,
+  });
 
-  const { data } = await api.post('dj-rest-auth/login/', { username, password })
+  // ▼ ここに入れる！ ──────────────────────────────
+  //   - 新仕様 (token) と旧仕様 (key) の両方を許容
+  //   - どちらも無いならエラーを投げる
+  const token = data.key || data.token 
+  if (!token) {
+    throw new Error('login: token not returned');
+  }
 
-  localStorage.setItem('token', data.key)
-  if (data.store_id) localStorage.setItem('store_id', String(data.store_id))
+  // ③ 好きな場所に保存（例: localStorage）
+  localStorage.setItem('authToken', token);
+
+  // ④ axios 既定ヘッダをセット
+  api.defaults.headers.common.Authorization = `Token ${token}`;
+
+  return token;
 }
 
-
+// ⑤ ログアウト例（参考）
 export async function logout() {
-  try { await api.post('dj-rest-auth/logout/') } catch (_) {}
-  clearAuth()
+  try {
+    await api.post('dj-rest-auth/logout/');
+  } finally {
+    localStorage.removeItem('authToken');
+    delete api.defaults.headers.common.Authorization;
+  }
 }
 
 /* ------------------------------------------------------------------ */
