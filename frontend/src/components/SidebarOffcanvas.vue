@@ -135,13 +135,25 @@ async function logout () {
             </RouterLink>
           </div>
 
-          <RouterLink
-            class="nav-link mt-auto"
-            to="/cast/mypage/1"
-            @click="closeSidebar"
-          >
-            キャストマイページ（サンプルID=1）
-          </RouterLink>
+          <div class="mt-auto">
+            <a href="https://studio-color.jp/" class="d-flex text-black justify-content-between align-items-center">
+              <div class="wrap d-flex flex-column">
+                <span style="font-size: 12px;">キャスト撮影やコンテンツ制作なら</span>  
+                <span class="fw-bold fs-5">スタジオカラー</span>
+              </div>
+              <IconChevronRight />
+            </a>
+
+            <RouterLink
+              class="nav-link mt-auto"
+              to="/cast/mypage/1"
+              @click="closeSidebar"
+            >
+              キャストマイページ（サンプルID=1）
+            </RouterLink>
+          </div>
+
+
         </nav>
 
         <!-- -------- フッタ ---------- -->
