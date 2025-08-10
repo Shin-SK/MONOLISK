@@ -878,6 +878,7 @@ from django.utils import timezone
 from .models import StoreNotice
 
 class StoreNoticeSerializer(serializers.ModelSerializer):
+    store = serializers.PrimaryKeyRelatedField(read_only=True)
     cover_url = serializers.SerializerMethodField()
     cover_clear = serializers.BooleanField(required=False, write_only=True, default=False)
 
@@ -889,7 +890,7 @@ class StoreNoticeSerializer(serializers.ModelSerializer):
             'is_published', 'publish_at', 'pinned',
             'created_at', 'updated_at',
         )
-        read_only_fields = ('created_at', 'updated_at')
+        read_only_fields = ('store','created_at', 'updated_at')
 
     def get_cover_url(self, obj):
         try:

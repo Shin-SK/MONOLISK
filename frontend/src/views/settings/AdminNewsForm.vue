@@ -7,8 +7,14 @@ import { getStoreNotice, createStoreNotice, updateStoreNotice, deleteStoreNotice
 
 const route  = useRoute()
 const router = useRouter()
-const id     = computed(() => Number(route.params.id || 0))
-const isEdit = computed(() => !!route.params.id)
+const rawId = computed(() => route.params.id)
+const id    = computed(() => {
+  const v = rawId.value
+  if (v == null) return 0
+  if (typeof v === 'object') return Number(v.id ?? v.pk ?? v.value ?? 0)
+  return Number(v)
+})
+const isEdit = computed(() => Number.isFinite(id.value) && id.value > 0)
 
 const form = reactive({
   title: '',
@@ -68,7 +74,7 @@ async function save(){
       if (form.publish_at) payload.append('publish_at', toISOorNull(form.publish_at))
       payload.append('pinned', String(!!form.pinned))
       if (coverFile.value) payload.append('cover', coverFile.value)
-	  if (isEdit && form.cover_clear) payload.append('cover_clear', 'true')
+	  if (isEdit.value && form.cover_clear) payload.append('cover_clear', 'true')
     } else {
       payload = {
         title: form.title,
@@ -78,9 +84,9 @@ async function save(){
         pinned: !!form.pinned,
       }
     }
-	console.log('payload', payload instanceof FormData ? Array.from(payload.entries()) : payload)
-    const saved = isEdit
-      ? await updateStoreNotice(id, payload)
+console.warn('[TRACE:form.save] id.value=', id.value, 'typeof=', typeof id.value, 'route.params.id=', route.params.id, 'typeof=', typeof route.params.id)
+    const saved = isEdit.value
+      ? await updateStoreNotice(id.value, payload)
       : await createStoreNotice(payload)
 
     alert('保存しました')
@@ -102,9 +108,9 @@ async function save(){
 
 
 async function removeRow(){
-  if (!isEdit) return
+  if (!isEdit.value) return
   if (!confirm('この記事を削除しますか？')) return
-  await deleteStoreNotice(id)
+  await deleteStoreNotice(id.value)
   router.push({ name: 'settings-news-list' })
 }
 

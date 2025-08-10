@@ -15,6 +15,7 @@ from django.db.models import Sum, F, Q, IntegerField, ExpressionWrapper, Value
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models.functions import Coalesce
 from datetime import date
+from rest_framework.exceptions import ValidationError
 from django.db import models
 
 from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, Cast, BillCastStay, Cast, CastPayout ,BillItem, ItemCategory, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog
@@ -549,13 +550,27 @@ class StoreNoticeViewSet(viewsets.ModelViewSet):
     ordering_fields = ['publish_at', 'created_at', 'pinned']
     ordering = ['-pinned', '-publish_at', '-created_at']
 
+    def _resolve_store_id(self, request):
+        # 優先度: (スタッフのみ) ?store_id → request.store.id → user.store_id → DEFAULT_STORE_ID
+        sid = None
+        if request.user and request.user.is_staff:
+            sid = request.query_params.get('store_id') or request.data.get('store_id')
+        sid = sid or getattr(request, 'store', None)
+        try:
+            # request.store がモデルなら id を取る
+            if hasattr(sid, 'id'):
+                sid = sid.id
+        except Exception:
+            pass
+        sid = sid or getattr(getattr(request, 'user', None), 'store_id', None)
+        sid = sid or getattr(settings, 'DEFAULT_STORE_ID', None)
+        return sid
+
     def get_queryset(self):
         qs = super().get_queryset()
-
-        # store 絞り込み（フロントの interceptor が ?store_id=… を付ける想定）
-        store_id = self.request.query_params.get('store_id') or self.request.data.get('store_id')
-        if store_id:
-            qs = qs.filter(store_id=store_id)
+        sid = self._resolve_store_id(self.request)
+        if sid:
+            qs = qs.filter(store_id=sid)
 
         # 一般（キャスト等）は “見えるものだけ”
         if not (self.request.user and self.request.user.is_staff):
@@ -591,12 +606,14 @@ class StoreNoticeViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        store_id = (
-            self.request.data.get('store') or
-            self.request.data.get('store_id') or
-            self.request.query_params.get('store_id')
-        )
-        if not store_id:
-            # ここで 400 を返せば 500 にはならない
+        sid = self._resolve_store_id(self.request)
+        if not sid:
             raise ValidationError({'store': 'このフィールドは必須です。'})
-        serializer.save(store_id=store_id)
+        serializer.save(store_id=sid)
+
+    def perform_update(self, serializer):
+        # 既存行の store を強制固定（任意で、変えたくないならこうする）
+        sid = self._resolve_store_id(self.request)
+        if not sid:
+            raise ValidationError({'store': 'このフィールドは必須です。'})
+        serializer.save(store_id=sid)

@@ -11,7 +11,7 @@ import dayjs from 'dayjs'
 import { getToken, getStoreId, clearAuth } from './auth'
 
 
-
+console.warn('__MARK__ api.js loaded', new Date().toISOString())
 /* ---------------------------------------- */
 /* 共通レスポンスインターセプタ & パーサ          */
 /* ---------------------------------------- */
@@ -63,7 +63,6 @@ api.interceptors.request.use(cfg => {
       cfg.data.store_id ??= storeId
     }
   }
-
   return cfg
 })
 
@@ -634,8 +633,8 @@ export const fetchCustomers = (params = {}) =>
  }
 
 // 1件取得
-export const getStoreNotice = id =>
-  api.get(`billing/store-notices/${id}/`).then(r => r.data);
+export const getStoreNotice = (id) =>
+  api.get(`billing/store-notices/${_nid(id)}/`).then(r => r.data)
 
 
 export const createStoreNotice = (payload) => {
@@ -653,9 +652,25 @@ export const createStoreNotice = (payload) => {
   return api.post('billing/store-notices/', p).then(r => r.data);
 };
 
-export const updateStoreNotice = (id, payload) =>
-  api.patch(`billing/store-notices/${id}/`, payload).then(r => r.data)
+export const updateStoreNotice = (id, payload) => {
+  const nid = (typeof id === 'object') ? (id?.id ?? id?.pk ?? id?.value) : id
+  const s = String(nid)
+  console.warn('[TRACE:updateStoreNotice]', {
+    rawId: id, normalized: s,
+    isDigits: /^\d+$/.test(s),
+    isFormData: payload instanceof FormData,
+    keys: payload instanceof FormData ? Array.from(payload.keys()) : Object.keys(payload || {})
+  })
+  console.trace('[TRACE:updateStoreNotice] call stack')
+  return api.patch(`billing/store-notices/${s}/`, payload).then(r => r.data)
+}
 
 // 削除
 export const deleteStoreNotice = id =>
   api.delete(`billing/store-notices/${id}/`);
+
+
+function _nid(id){
+  if (id == null) throw new Error('invalid id: ' + id)
+  return (typeof id === 'object') ? (id.id ?? id.pk ?? id.value) : id
+}

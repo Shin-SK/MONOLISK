@@ -84,7 +84,7 @@ onActivated(fetchList)
         <tbody>
           <tr v-for="r in rows" :key="r.id">
             <td>
-              <RouterLink :to="{name:'settings-news-form', params:{id:r.id}}">{{ r.title || '(無題)' }}</RouterLink>
+              <RouterLink :to="{name:'settings-news-form', params:{ id: String(r.id) }}">{{ r.title || '(無題)' }}</RouterLink>
             </td>
             <td class="text-center">
               <span class="badge" :class="r.is_published ? 'bg-success' : 'bg-secondary'">
