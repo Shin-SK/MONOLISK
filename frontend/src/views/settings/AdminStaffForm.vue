@@ -45,14 +45,14 @@ async function saveProfile () {
   const res = isEdit
         ? await updateStaff(staffId, payload)
         : await createStaff(payload)
-  if (!isEdit) router.replace(`/staffs/${res.id}`)
-  else router.push('/staff')
+  if (!isEdit) router.replace({ name: 'settings-staff-form', params: { id: res.id } })
+  else router.push({ name: 'settings-staff-list' }) 
 }
 
 async function removeProfile () {
   if (!confirm('本当に削除しますか？')) return
   await deleteStaff(staffId)
-  router.push('/staff')
+  router.push({ name: 'settings-staff-list' })
 }
 
 /* ------------------------------------------------------------------
@@ -315,7 +315,7 @@ onMounted(async ()=>{
                       class="btn"
                       @click="removeDraft(i)"
                     >
-                      <IconX />
+                      <IconX :size="12" />
                     </button>
                   </td>
                 </tr>
@@ -395,7 +395,7 @@ onMounted(async ()=>{
                 title="予定削除"
                 @click="clearPlan(r)"
               >
-                <IconX />
+                <IconX :size="12" />
               </button>
             </template>
             <template v-else>
@@ -422,7 +422,7 @@ onMounted(async ()=>{
               title="出退勤クリア"
               @click="clearAttendance(r)"
             >
-              <IconX />
+              <IconX :size="12" />
             </button>
           </td>
           <td v-else>

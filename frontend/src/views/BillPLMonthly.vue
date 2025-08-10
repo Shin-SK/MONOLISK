@@ -47,36 +47,24 @@ watchEffect(async () => {
         <div class="box">
           <div class="head">
             粗利益
-          </div>        <div class="number">
+          </div>
+          <div class="number">
             {{ yen(total.gross_profit) }}
           </div>
         </div>
         <div class="box">
           <div class="head">
             売上
-          </div>          <div class="number">
+          </div>
+          <div class="number">
             {{ yen(total.sales_total) }}
           </div>
         </div>
         <div class="box">
           <div class="head">
-            キャスト人件費
+            人件費
           </div><div class="number">
             {{ yen(total.cast_labor) }}
-          </div>
-        </div>
-        <div class="box">
-          <div class="head">
-            ドライバー人件費
-          </div><div class="number">
-            {{ yen(total.driver_labor) }}
-          </div>
-        </div>
-        <div class="box">
-          <div class="head">
-            カスタム経費
-          </div>  <div class="number">
-            {{ yen(total.custom_expense) }}
           </div>
         </div>
       </div>
@@ -86,24 +74,12 @@ watchEffect(async () => {
         <table class="table table-sm align-middle table-striped">
           <thead class="table-dark">
             <tr>
-              <th>日付</th><th class="text-end">
-                現金
-              </th><th class="text-end">
-                カード
-              </th>
-              <th class="text-end">
-                売上
-              </th><th class="text-end">
-                キャスト
-              </th>
-              <th class="text-end">
-                ドライバー
-              </th><th class="text-end">
-                経費
-              </th>
-              <th class="text-end">
-                粗利益
-              </th>
+              <th>日付</th>
+              <th class="text-end">現金</th>
+              <th class="text-end">カード</th>
+              <th class="text-end">売上（現金/カード）</th>
+              <th class="text-end">キャスト</th>
+              <th class="text-end">粗利益</th>
             </tr>
           </thead>
           <tbody>
@@ -119,16 +95,11 @@ watchEffect(async () => {
                 {{ yen(d.sales_card) }}
               </td>
               <td class="text-end">
-                {{ yen(d.sales_total) }}
+                <span class="fw-bold">{{ yen(d.sales_total) }}</span>
+                ({{ yen(d.sales_cash) }}/{{ yen(d.sales_card) }})
               </td>
               <td class="text-end">
                 {{ yen(d.cast_labor) }}
-              </td>
-              <td class="text-end">
-                {{ yen(d.driver_labor) }}
-              </td>
-              <td class="text-end">
-                {{ yen(d.custom_expense) }}
               </td>
               <td
                 class="text-end fw-semibold"
@@ -150,16 +121,10 @@ watchEffect(async () => {
                 {{ yen(total.sales_card) }}
               </td>
               <td class="text-end">
-                {{ yen(total.sales_total) }}
+                {{ yen(total.sales_total) }}({{ yen(total.sales_card) }}/{{ yen(total.sales_card) }})
               </td>
               <td class="text-end">
                 {{ yen(total.cast_labor) }}
-              </td>
-              <td class="text-end">
-                {{ yen(total.driver_labor) }}
-              </td>
-              <td class="text-end">
-                {{ yen(total.custom_expense) }}
               </td>
               <td class="text-end">
                 {{ yen(total.gross_profit) }}

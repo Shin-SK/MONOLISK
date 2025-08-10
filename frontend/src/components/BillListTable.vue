@@ -211,16 +211,30 @@ async function handleUpdateStay({ castId, fromBillId, toBillId, toTableId }) {
 // ────────────────────────────────
 //  Bill モーダル
 // ────────────────────────────────
-async function openModal (table) {
+function openModal (table) {
   const hit = getOpenBill(table.id)
   if (hit) {
-    currentBill.value = { ...(await fetchBill(hit.id)), table_id_hint: table.id }
-  } else {
-    const created = await createBill({ table_id: table.id })
-    currentBill.value = { ...(await fetchBill(created.id)), table_id_hint: table.id }
+    fetchBill(hit.id).then(b => {
+      currentBill.value = { ...b, table_id_hint: table.id }
+      showModal.value = true
+    })
+    return
+  }
+  // 新規：ここでは作らない。ドラフトを渡すだけ
+  currentBill.value = {
+    id: null,                      // ← BillModal 側の isNew が true になる
+    table: { id: table.id, number: table.number, store: table.store },
+    table_id_hint: table.id,
+    items: [],
+    stays: [],
+    customers: [],
+    opened_at: dayjs().toISOString(),
+    expected_out: null,
+    grand_total: 0,
   }
   showModal.value = true
 }
+
 const closeModal = async () => {
   showModal.value = false
   // ❶ Bill 一覧を再取得

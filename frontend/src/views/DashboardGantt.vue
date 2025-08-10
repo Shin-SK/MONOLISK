@@ -4,7 +4,8 @@ import { ref, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import GanttChart from '@/components/GanttChart.vue'
 import BillModal  from '@/components/BillModal.vue'
-import { api, createBill, fetchBill } from '@/api'
+import { buildBillDraft } from '@/utils/draftbills'
+import { api, fetchBill } from '@/api'
 
 /* ───────── 店舗 ID ───────── */
 const myStoreId = ref(null)
@@ -20,13 +21,13 @@ const showModal   = ref(false)
 const currentBill = ref(null)
 
 async function openBillEditor({ billId }) {
-  currentBill.value = await fetchBill(billId)
+  const bill = await fetchBill(billId)
+  currentBill.value = bill
   showModal.value   = true
 }
 
-async function handleNewBill({ tableId }) {
-  const bill = await createBill(tableId)
-  currentBill.value = bill
+function handleNewBill({ tableId }) {
+  currentBill.value = buildBillDraft({ tableId, storeId: myStoreId.value })
   showModal.value   = true
 }
 

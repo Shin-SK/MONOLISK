@@ -266,14 +266,6 @@ export const getExpenseCategories = (params = {}) =>
 /* ---------- P/L API（デイリー／マンスリー／イヤーリー） ---------- */
 
 /**
- * デイリー P/L
- *   date  : 'YYYY-MM-DD'
- *   store : 店舗ID もしくは '' (全店)
- */
-export const getDailyPL = (date, store = '') =>
-  api.get('pl/daily/', { params: { date, store } }).then(r => r.data)
-
-/**
  * マンスリー P/L
  *   month : 'YYYY-MM'
  */
@@ -286,7 +278,6 @@ export const getMonthlyPL = (month, store = '') =>
  */
 export const getYearlyPL = (year, store = '') =>
   api.get('pl/yearly/', { params: { year, store } }).then(r => r.data)
-
 
 
 
@@ -367,36 +358,71 @@ export const getStore  = id => api.get(`billing/stores/${id}/`).then(r => r.data
 
 //PL
 
-export const getBillDailyPL  = (date)       => api.get('billing/pl/daily/',  { params:{ date } }).then(r=>r.data)
-
-export const getBillYearlyPL = (year) =>
-  api.get('billing/pl/yearly/', { params: { year } })
-    .then(r => {
-      const d = r.data
-
-      /* ── 年間トータルを UI 互換のキーに寄せる ─────────── */
-      const totals = {
-        sales_total      : d.sales_total      ?? 0,
-        guest_count      : d.guest_count      ?? 0,
-        avg_spend        : d.avg_spend        ?? 0,
-        labor_cost       : d.labor_cost       ?? 0,
-        operating_profit : d.operating_profit ?? 0,
-      }
-
-      /* ── months 配列はそのまま返す（0 埋めは vue 側に任せる） */
-      const months = Array.isArray(d.months) ? d.months : []
-
-      return { year: d.year, totals, months }
-    })
+export async function getBillDailyPL(date, storeId) {
+  const params = { date };
+  if (storeId) params.store_id = storeId;
+  const { data } = await api.get('billing/pl/daily/', { params });
+  return {
+    sales_cash: 0,
+    sales_card: 0,
+    sales_total: 0,
+    cast_labor: 0,
+    driver_labor: 0,
+    custom_expense: 0,
+    gross_profit: 0,
+    ...data,
+  };
+}
 
 export const getBillMonthlyPL = (monthStr) => {
   const [year, month] = monthStr.split('-').map(Number)
   return api.get('billing/pl/monthly/', { params: { year, month } })
-          .then(r => ({
-            days:          r.data.days          ?? [],   // 常に配列で返す
-            monthly_total: r.data.monthly_total ?? {},   // 常に Obj で返す
-          }))
+    .then(r => {
+      const days = (r.data.days ?? []).map(d => ({
+        sales_cash: 0, sales_card: 0, sales_total: 0,
+        cast_labor: 0, driver_labor: 0, custom_expense: 0, gross_profit: 0,
+        ...d,
+      }))
+      const mt = {
+        sales_cash: 0, sales_card: 0, sales_total: 0,
+        cast_labor: 0, driver_labor: 0, custom_expense: 0, gross_profit: 0,
+        ...r.data.monthly_total,
+      }
+      return { days, monthly_total: mt }
+    })
 }
+
+
+export const getBillYearlyPL = (year) =>
+  api.get('billing/pl/yearly/', { params: { year } })
+    .then(r => {
+      const d = r.data ?? {}
+      // 年間トータルは d.totals に入ってくる想定（営業日対応版）
+      const totals = {
+        sales_cash       : d.totals?.sales_cash       ?? 0,
+        sales_card       : d.totals?.sales_card       ?? 0,
+        sales_total      : d.totals?.sales_total      ?? 0,
+        guest_count      : d.totals?.guest_count      ?? 0,
+        avg_spend        : d.totals?.avg_spend        ?? 0,
+        labor_cost       : d.totals?.labor_cost       ?? 0,
+        operating_profit : d.totals?.operating_profit ?? 0,
+      }
+      // months は {month, totals:{...}} の配列
+      const months = (Array.isArray(d.months) ? d.months : []).map(m => ({
+        month: m.month,
+        totals: {
+          sales_cash       : m.totals?.sales_cash       ?? 0,
+          sales_card       : m.totals?.sales_card       ?? 0,
+          sales_total      : m.totals?.sales_total      ?? 0,
+          guest_count      : m.totals?.guest_count      ?? 0,
+          avg_spend        : m.totals?.avg_spend        ?? 0,
+          labor_cost       : m.totals?.labor_cost       ?? 0,
+          operating_profit : m.totals?.operating_profit ?? 0,
+          // ほか（cast_labor 等）は来てなくても OK。Vue 側 blankTotals で 0 埋め
+        }
+      }))
+      return { year: d.year, totals, months }
+    })
 
 
 // キャスト系
@@ -499,21 +525,15 @@ export const fetchCastRankings = (params = {}) =>
 export const fetchCastMypage = id =>
   api.get(`billing/casts/${id}/`).then(r => r.data)
 
-/**
- * 店舗お知らせ
- *  ─ MVP: API 未実装なので常に空配列を返すダミー
- *  ─ 実装後は 'billing/store-notices/' などに置換するだけで済む
- * - ここはいずれ実装するから、実装するときはここを読んで修正してね
- */
-export const fetchStoreNotices = () =>
-  axios.get('billing/store-notices/', {
-    baseURL: api.defaults.baseURL,          // 共通の /api/ を使う
-    headers: api.defaults.headers.common,   // 認証ヘッダなど継承
-    validateStatus: () => true              // 404 でも reject させない
-  })
-  .then(res => (res.status === 200 ? res.data : []))  // 200 以外は空配列
-  .catch(() => []);                                   // ネットワークエラーも無視
-
+export const fetchStoreNotices = (params = {}) =>
+  api.get('billing/store-notices/', {
+    params: {
+      status: 'published',                           // 公開のみ
+      ordering: '-pinned,-publish_at,-created_at',   // 並び
+      limit: 20,                                     // 件数（必要に応じて）
+      ...params,
+    },
+  }).then(r => r.data?.results ?? r.data ?? []);
 
 // ─────────────────────────────────────────────
 //  Staff APIs  ★ここから下を api.js のどこかに追記
@@ -599,3 +619,43 @@ export const fetchCustomer = id =>
 
 export const fetchCustomers = (params = {}) =>
   api.get('billing/customers/', { params }).then(r => r.data)
+
+
+
+/* ---------- Store Notices (店舗ニュース) ---------- */
+// 一覧（管理側・公開側どっちでも使える）
+ export const listStoreNotices = async (params = {}) => {
+   const { data } = await api.get('billing/store-notices/', { params })
+   // ページネーション有無／items系 どれでも配列化して返す
+   if (Array.isArray(data?.results)) return data.results
+   if (Array.isArray(data?.items))   return data.items
+   if (Array.isArray(data))          return data
+   return [] // どれでもなければ空配列
+ }
+
+// 1件取得
+export const getStoreNotice = id =>
+  api.get(`billing/store-notices/${id}/`).then(r => r.data);
+
+
+export const createStoreNotice = (payload) => {
+  const sid = getStoreId();
+  if (payload instanceof FormData) {
+    // create では cover_clear は送らない
+    payload.delete?.('cover_clear');
+    return api.post('billing/store-notices/', payload, {
+      params: sid ? { store_id: sid } : {},
+    }).then(r => r.data);
+  }
+  const p = { ...payload };
+  delete p.store;       // 送らない
+  delete p.cover_clear; // 送らない
+  return api.post('billing/store-notices/', p).then(r => r.data);
+};
+
+export const updateStoreNotice = (id, payload) =>
+  api.patch(`billing/store-notices/${id}/`, payload).then(r => r.data)
+
+// 削除
+export const deleteStoreNotice = id =>
+  api.delete(`billing/store-notices/${id}/`);

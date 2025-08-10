@@ -104,41 +104,10 @@ async function logout () {
             顧客情報
           </RouterLink>
 
-          <!-- <RouterLink class="nav-link" to="/expense/form" @click="closeSidebar">経費申請</RouterLink> -->
-          <button
-            class="nav-link d-flex justify-content-between align-items-center fw-semibold"
-            data-bs-toggle="collapse"
-            data-bs-target="#shiftCollapse"
-            :class="{ collapsed: !shiftActive }" 
-            type="button"
-          >
-            設定
-            <IconChevronRight />
-          </button>
-
-          <div
-            id="shiftCollapse"
-            class="collapse ps-3"
-            :class="{ show: shiftActive }"
-          >
-            <RouterLink
-              class="nav-link"
-              to="/casts"
-              @click="closeSidebar"
-            >
-              キャスト情報
-            </RouterLink>
-            <RouterLink
-              class="nav-link"
-              to="/staff"
-              @click="closeSidebar"
-            >
-              スタッフ情報
-            </RouterLink>
-          </div>
+          <RouterLink class="nav-link" to="/settings" @click="closeSidebar">設定</RouterLink>
 
           <div class="mt-auto">
-            <a href="https://studio-color.jp/" class="d-flex text-black justify-content-between align-items-center">
+            <a href="https://studio-color.jp/" class="d-flex text-black justify-content-between align-items-center" target="_black">
               <div class="wrap d-flex flex-column">
                 <span style="font-size: 12px;">キャスト撮影やコンテンツ制作なら</span>  
                 <span class="fw-bold fs-5">スタジオカラー</span>

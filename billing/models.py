@@ -15,6 +15,7 @@ from datetime import timedelta
 from django.db.models.signals import post_save
 from django.core.exceptions import ValidationError
 from .calculator import BillCalculator
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 
 User = get_user_model()
@@ -36,6 +37,11 @@ class Store(models.Model):
     nom_pool_rate = models.DecimalField(  # 0.50 = 50 %
         max_digits=4, decimal_places=2, default=Decimal("0.50"),
         verbose_name="本指名率")
+    business_day_cutoff_hour = models.PositiveSmallIntegerField(
+        default=6,
+        validators=[MinValueValidator(0), MaxValueValidator(12)],
+        help_text="営業日の切替時刻（例: 6 = 朝6時締め。20:00-26:00 の場合は 6 推奨）",
+    )
 
     def __str__(self): return self.name
 
@@ -269,7 +275,19 @@ class Bill(models.Model):
         null=True, blank=True,
         on_delete=models.SET_NULL
     )
-    
+    paid_cash = models.PositiveIntegerField(default=0)  # 現金受領
+    paid_card = models.PositiveIntegerField(default=0)  # カード請求
+
+    @property
+    def paid_total(self):
+        return (self.paid_cash or 0) + (self.paid_card or 0)
+
+    @property
+    def change_due(self):
+        st = self.settled_total if self.settled_total is not None else self.grand_total
+        st = st or 0
+        return max(0, self.paid_total - st)
+
     @property
     def set_rounds(self):
         """SET 行の行数（ラウンド数）"""
@@ -328,6 +346,10 @@ class Bill(models.Model):
     def close(self, settled_total: int | None = None):
         """伝票を締め、金額・CastPayout・日次サマリを確定保存"""
         result = BillCalculator(self).execute()
+
+        # ← ここを追加
+        if settled_total is None and self.paid_total:
+            settled_total = int(self.paid_total)
 
         # ─ 金額フィールド更新 ─
         self.subtotal       = result.subtotal
@@ -645,6 +667,7 @@ class CastDailySummary(models.Model):
     sales_in    = models.PositiveIntegerField(default=0)
     sales_nom   = models.PositiveIntegerField(default=0)
     sales_champ = models.PositiveIntegerField(default=0)
+    business_date = models.DateField(null=True, blank=True, db_index=True)
 
     class Meta:
         unique_together = ('store', 'cast', 'work_date')
@@ -734,3 +757,43 @@ class BillCustomer(models.Model):
 
     class Meta:
         unique_together = ('bill', 'customer')   # 同じ客を重複登録させない
+
+
+
+
+class StoreNotice(models.Model):
+    store = models.ForeignKey('billing.Store', on_delete=models.CASCADE, related_name='notices')
+
+    title = models.CharField(max_length=200)
+    body  = models.TextField(blank=True)
+
+    # カバー画像（1枚）
+    cover = models.ImageField(upload_to='store_notices/%Y/%m/', blank=True, null=True)
+
+    # 公開制御
+    is_published = models.BooleanField(default=False)
+    publish_at   = models.DateTimeField(blank=True, null=True)   # 予約公開対応
+    pinned       = models.BooleanField(default=False)            # 一覧上部固定
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-pinned', '-publish_at', '-created_at']
+        indexes = [
+            models.Index(fields=['store', 'is_published', 'publish_at']),
+            models.Index(fields=['pinned']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f'[{self.store}] {self.title}'
+
+    @property
+    def is_visible(self):
+        """一般（キャスト側）に見せて良いか"""
+        if not self.is_published:
+            return False
+        if self.publish_at is None:
+            return True
+        return self.publish_at <= timezone.now()

@@ -454,6 +454,9 @@ class BillSerializer(serializers.ModelSerializer):
     nominated_casts = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Cast.objects.all(), required=False
     )
+    change_due  = serializers.SerializerMethodField()
+    paid_total  = serializers.IntegerField(read_only=True)
+
 
     class Meta:
         model = Bill
@@ -462,6 +465,7 @@ class BillSerializer(serializers.ModelSerializer):
             "id", "table", "table_id", "opened_at", "closed_at",
             # ---- 金額 ----
             "subtotal", "service_charge", "tax", "grand_total", "total",
+            "paid_cash","paid_card","paid_total","change_due",
             # ---- 関連 ----
             "items", "stays","expected_out",
             "nominated_casts", "settled_total",
@@ -476,8 +480,14 @@ class BillSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "subtotal", "service_charge", "tax", "grand_total", "total",
             "closed_at", "settled_total","set_rounds","ext_minutes",
+            "paid_total","change_due",
         )
         depth = 2
+
+    def get_change_due(self, obj):
+        st = obj.settled_total if obj.settled_total is not None else obj.grand_total
+        st = st or 0
+        return max(0, obj.paid_total - st)
 
     # ───────── 顧客情報取得 ──────────
     # 先頭 1 名だけバッジに出す用途
@@ -863,3 +873,52 @@ class StaffShiftSerializer(serializers.ModelSerializer):
 
 
 
+from rest_framework import serializers
+from django.utils import timezone
+from .models import StoreNotice
+
+class StoreNoticeSerializer(serializers.ModelSerializer):
+    cover_url = serializers.SerializerMethodField()
+    cover_clear = serializers.BooleanField(required=False, write_only=True, default=False)
+
+    class Meta:
+        model = StoreNotice
+        fields = (
+            'id', 'store', 'title', 'body',
+            'cover', 'cover_url', 'cover_clear',
+            'is_published', 'publish_at', 'pinned',
+            'created_at', 'updated_at',
+        )
+        read_only_fields = ('created_at', 'updated_at')
+
+    def get_cover_url(self, obj):
+        try:
+            url = obj.cover.url
+        except Exception:
+            return None
+        request = self.context.get('request')
+        return request.build_absolute_uri(url) if request else url
+
+    def validate(self, attrs):
+        # is_published が True で publish_at 未指定なら “今” を自動設定（管理画面の使い勝手向上）
+        if attrs.get('is_published') and not attrs.get('publish_at'):
+            attrs['publish_at'] = timezone.now()
+        return attrs
+    
+    def create(self, validated_data):
+        # ★ ここが肝：モデルに無いフィールドを取り除く
+        validated_data.pop('cover_clear', None)
+        return super().create(validated_data)
+
+
+    def update(self, instance, validated_data):
+        clear = validated_data.pop('cover_clear', False)
+        # cover を新規アップロードしつつ clear 指定は無視する
+        inst = super().update(instance, validated_data)
+        if clear and 'cover' not in validated_data:
+            # 既存ファイルを削除してフィールドを空に
+            if inst.cover:
+                inst.cover.delete(save=False)
+            inst.cover = None
+            inst.save(update_fields=['cover'])
+        return inst

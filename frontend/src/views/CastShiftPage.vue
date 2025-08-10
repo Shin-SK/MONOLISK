@@ -184,7 +184,7 @@ onMounted(load)
                       class="btn"
                       @click="removeDraft(i)"
                     >
-                      <IconX />
+                      <IconX :size="12" />
                     </button>
                   </td>
                 </tr>
@@ -268,7 +268,7 @@ onMounted(load)
                 title="予定削除"
                 @click="clearPlan(r)"
               >
-                <IconX />
+                <IconX :size="12" />
               </button>
             </template>
             <template v-else>
@@ -296,7 +296,7 @@ onMounted(load)
               title="出退勤クリア"
               @click="clearAttendance(r)"
             >
-              <IconX />
+              <IconX :size="12" />
             </button>
           </td>
           <td v-else>

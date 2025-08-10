@@ -1,11 +1,12 @@
+<!-- src/views/BillPLYearly.vue -->
 <script setup>
 import { ref, watchEffect } from 'vue'
 import { getBillYearlyPL }  from '@/api'
 
 /* -------- state -------- */
 const year     = ref(new Date().getFullYear())
-const pl       = ref(null)      // API 全体
-const months   = ref([])        // 1-12 行
+const pl       = ref(null)
+const months   = ref([])
 const loading  = ref(false)
 const yen      = n => `¥${(+n || 0).toLocaleString()}`
 
@@ -40,82 +41,47 @@ watchEffect(async () => {
 
 <template>
   <div class="pl pl-yearly container-fluid py-4">
-    <!-- ── フィルタ ────────────────────────── -->
+    <!-- フィルタ -->
     <div class="d-flex gap-2 mb-3">
-      <input
-        v-model="year"
-        type="number"
-        class="form-control w-auto"
-        min="2000"
-        max="2100"
-      >
+      <input v-model="year" type="number" class="form-control w-auto" min="2000" max="2100">
     </div>
 
-    <!-- ── 読み込み中 ────────────────────── -->
-    <div v-if="loading">
-      読み込み中…
-    </div>
+    <div v-if="loading">読み込み中…</div>
 
-    <!-- ── 本体 ─────────────────────────── -->
     <template v-else-if="pl">
       <!-- YEAR SUMMARY -->
       <div class="summary-area mb-3">
-        <div class="box">
-          <div class="head">
-            年間売上
-          </div>     <div class="number">
-            {{ yen(pl.totals.sales_total) }}
-          </div>
-        </div>
-        <div class="box">
-          <div class="head">
-            総来客数
-          </div>     <div class="number">
-            {{ pl.totals.guest_count }}
-          </div>
-        </div>
-        <div class="box">
-          <div class="head">
-            平均客単価
-          </div>   <div class="number">
-            {{ yen(pl.totals.avg_spend) }}
-          </div>
-        </div>
-        <div class="box">
-          <div class="head">
-            人件費
-          </div>       <div class="number">
-            {{ yen(pl.totals.labor_cost) }}
-          </div>
-        </div>
-        <div class="box">
-          <div class="head">
-            営業利益
-          </div>     <div class="number">
-            {{ yen(pl.totals.operating_profit) }}
-          </div>
-        </div>
+        <div class="box"><div class="head">年間売上</div><div class="number">{{ yen(pl.totals.sales_total) }}</div></div>
+        <div class="box"><div class="head">総来客数</div><div class="number">{{ pl.totals.guest_count }}</div></div>
+        <div class="box"><div class="head">平均客単価</div><div class="number">{{ yen(pl.totals.avg_spend) }}</div></div>
+        <div class="box"><div class="head">人件費</div><div class="number">{{ yen(pl.totals.labor_cost) }}</div></div>
+        <div class="box"><div class="head">営業利益</div><div class="number">{{ yen(pl.totals.operating_profit) }}</div></div>
       </div>
 
       <!-- MONTH LIST -->
       <table class="table table-sm table-bordered">
         <thead class="table-light">
           <tr>
-            <th>月</th><th>客数</th><th>売上</th><th>平均客単価</th>
-            <th>人件費</th><th>営業利益</th>
+            <th>月</th>
+            <th class="text-end">売上（現金/カード）</th>
+            <th class="text-end">客数</th>
+            <th class="text-end">平均客単価</th>
+            <th class="text-end">人件費</th>
+            <th class="text-end">営業利益</th>
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="m in months"
-            :key="m.month"
-          >
+          <tr v-for="m in months" :key="m.month">
             <td>{{ m.month }}</td>
-            <td>{{ m.totals.guest_count }}</td>
-            <td>{{ yen(m.totals.sales_total) }}</td>
-            <td>{{ yen(m.totals.avg_spend) }}</td>
-            <td>{{ yen(m.totals.labor_cost) }}</td>
-            <td>{{ yen(m.totals.operating_profit) }}</td>
+            <td class="text-end">
+              <span class="fw-bold">{{ yen(m.totals.sales_total) }}</span>
+              ({{ yen(m.totals.sales_cash) }}/{{ yen(m.totals.sales_card) }})</td>
+            <td class="text-end">{{ m.totals.guest_count }}</td>
+            <td class="text-end">{{ yen(m.totals.avg_spend) }}</td>
+            <td class="text-end">{{ yen(m.totals.labor_cost) }}</td>
+            <td class="text-end" :class="{ 'fw-semibold': true, 'text-danger': m.totals.operating_profit < 0 }">
+              {{ yen(m.totals.operating_profit) }}
+            </td>
           </tr>
         </tbody>
       </table>
@@ -124,9 +90,5 @@ watchEffect(async () => {
 </template>
 
 <style scoped>
-.summary-area { display:flex; flex-wrap:wrap; gap:1rem }
-.summary-area .box { background:#f5f5f5; padding:1rem; border-radius:.5rem; min-width:120px; flex:1 }
-.summary-area .head   { font-size:.8rem; color:#555 }
-.summary-area .number { font-size:1.1rem; font-weight:700 }
 .pl-yearly input { min-width:130px }
 </style>

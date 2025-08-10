@@ -3,9 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import BillModal  from '@/components/BillModal.vue'
 import BillListTable  from '@/components/BillListTable.vue'
-
-
-import { api, createBill, fetchBill } from '@/api'
+import { api, fetchBill } from '@/api'
+import { buildBillDraft } from '@/utils/draftbills.js'
 
 /* ───────── 自店舗 ID ───────── */
 const myStoreId = ref(null)
@@ -25,18 +24,19 @@ async function openBillEditor({ billId }){
   showModal.value   = true
 }
 
-async function handleNewBill({ tableId }){
-  const bill = await createBill(tableId)
-  currentBill.value = bill
+function handleNewBill({ tableId }){
+  currentBill.value = buildBillDraft({ tableId, storeId: myStoreId.value })
   showModal.value   = true
 }
 
+const tableRef = ref(null)  // ← 一覧の再読込用
+
 function handleSaved(){
   showModal.value = false
-  ganttRef.value?.reload?.()
+  tableRef.value?.reload?.()  // ← BillListTable 側に reload() がある前提
 }
 
-/* ───────── 日付操作 ───────── */
+/* ───────── 日付操作（必要ならこのまま） ───────── */
 const selectedDate = ref(dayjs())
 const selectedDateStr = computed({
   get:()=>selectedDate.value.format('YYYY-MM-DD'),
@@ -46,25 +46,23 @@ const headerLabel = computed(()=>selectedDate.value.format('M月D日(ddd)'))
 const isSame = d => selectedDate.value.isSame(d,'day')
 function go(d){ selectedDate.value = selectedDate.value.add(d,'day') }
 function setToday(){ selectedDate.value = dayjs() }
-
-
-/* ───────── Gantt ref ───────── */
-const ganttRef = ref(null)
-
-
 </script>
 
 <template>
   <div class="dashboard">
     <div class="tables">
-      <BillListTable />
+      <BillListTable
+        ref="tableRef"
+        @bill-click="openBillEditor"
+        @request-new="handleNewBill"
+      />
     </div>
+
     <!-- ▼ Bill 編集モーダル -->
     <BillModal
       v-model="showModal"
       :bill="currentBill"
       @saved="handleSaved"
     />
-
   </div>
 </template>

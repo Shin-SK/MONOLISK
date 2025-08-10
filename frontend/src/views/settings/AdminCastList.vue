@@ -1,7 +1,7 @@
 <!-- src/views/CastList.vue -->
 <script setup>
 import { ref, onMounted } from 'vue'
-import { api, getShiftPlans } from '@/api'
+import { api, fetchCastShifts } from '@/api'
 
 const keyword	= ref('')
 const store		= ref('')
@@ -14,30 +14,33 @@ async function fetchStores() {
 	store.value  = ''
 }
 
+const fmt = iso => iso ? new Date(iso).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : ''
+
 async function fetch() {
-	/* 1) キャスト一覧（Billing） */
-	const { data: casts } = await api.get('billing/casts/', {
-		params: {
-			store      : store.value || undefined,
-			stage_name : keyword.value
-		}
-	})
+  // 1) キャスト一覧
+  const { data: casts } = await api.get('billing/casts/', {
+    params: {
+      store      : store.value || undefined,
+      stage_name : keyword.value || undefined,
+    }
+  })
 
-	/* 2) 今日の出勤予定（旧 core エンドポイントを暫定利用） */
-	const today  = new Date().toISOString().slice(0, 10)
-	const shifts = await getShiftPlans({
-		store: store.value || undefined,
-		date : today
-	})
-	const byCast = Object.fromEntries(shifts.map(s => [s.cast_profile, s]))
+  // 2) 今日のシフト（cast-shifts を日付絞り）
+  const today  = new Date().toISOString().slice(0, 10)
+  const shifts = await fetchCastShifts({
+    date : today,
+    store: store.value || undefined,
+  })
+  const byCast = Object.fromEntries(shifts.map(s => [s.cast_id, s]))
 
-	/* 3) マージして表示用データに変換 */
-	results.value = casts.map(c => ({
-		...c,
-		shift: byCast[c.id]
-			? `${byCast[c.id].start_at}-${byCast[c.id].end_at}`
-			: '―'
-	}))
+  // 3) 表示用
+  results.value = casts.map(c => {
+    const sh = byCast[c.id]
+    return {
+      ...c,
+      shiftLabel: sh ? `${fmt(sh.plan_start)}-${fmt(sh.plan_end)}` : '—',
+    }
+  })
 }
 
 onMounted(async () => {
@@ -70,11 +73,9 @@ onMounted(async () => {
         @keyup.enter="fetch"
       >
       <RouterLink
-        to="/casts/new"
+        :to="{ name: 'settings-cast-new' }"
         class="d-flex align-items-center btn btn-primary ms-auto"
-      >
-        新規登録
-      </RouterLink>
+      >新規登録</RouterLink>
     </div>
 
     <table class="table">
@@ -90,11 +91,9 @@ onMounted(async () => {
           <td>{{ c.stage_name }}</td>
           <td class="text-end p-2">
             <RouterLink
-              :to="`/casts/${c.id}`"
-              class="btn  btn-outline-secondary"
-            >
-              編集
-            </RouterLink>
+              :to="{ name:'settings-cast-form', params:{ id:c.id }}"
+              class="btn btn-outline-secondary"
+            >編集</RouterLink>
           </td>
         </tr>
       </tbody>

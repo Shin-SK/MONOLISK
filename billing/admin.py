@@ -39,14 +39,13 @@ class StoreForm(forms.ModelForm):
 class StoreAdmin(admin.ModelAdmin):
     form = StoreForm
 
-    list_display  = ("name", "service_rate", "tax_rate", "nom_pool_rate")
-    list_editable = ("service_rate", "tax_rate", "nom_pool_rate")  # 一覧で即編集しても OK
+    list_display  = ("name", "service_rate", "tax_rate", "nom_pool_rate", "business_day_cutoff_hour")  # ← スペース除去
+    list_editable = ("service_rate", "tax_rate", "nom_pool_rate")
 
     fieldsets = (
-        (None,               {"fields": ("name", "slug")}),
-        ("各種レート",        {"fields": ("service_rate",
-                                      "tax_rate",
-                                      "nom_pool_rate")}),
+        ("営業日設定", {"fields": ("business_day_cutoff_hour",)}),  # ← カンマを付けてタプル化
+        (None, {"fields": ("name", "slug")}),
+        ("各種レート", {"fields": ("service_rate","tax_rate","nom_pool_rate")}),
     )
 
 @admin.register(Table)
@@ -196,3 +195,22 @@ class CastPayoutAdmin(admin.ModelAdmin):
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ('id', 'display_name', 'phone', 'updated_at')
     search_fields = ('full_name', 'alias', 'phone')
+    
+
+
+from django.contrib import admin
+from .models import StoreNotice
+
+@admin.register(StoreNotice)
+class StoreNoticeAdmin(admin.ModelAdmin):
+    list_display  = ('title', 'store', 'is_published', 'publish_at', 'pinned', 'created_at')
+    list_filter   = ('store', 'is_published', 'pinned')
+    search_fields = ('title', 'body')
+    date_hierarchy = 'publish_at'
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        (None, {'fields': ('store', 'title', 'body')}),
+        ('Cover', {'fields': ('cover',)}),
+        ('Publish', {'fields': ('is_published', 'publish_at', 'pinned')}),
+        ('System', {'fields': ('created_at', 'updated_at')}),
+    )

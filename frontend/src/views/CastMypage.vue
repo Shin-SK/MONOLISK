@@ -1,12 +1,5 @@
+<!-- CastMypage.vue -->
 <script setup>
-/*
- * MVP キャスト用マイページ
- *  1. シフト申請（予定の新規登録）
- *  2. 今月の売上 & 給与サマリ
- *  3. 自分のシフト一覧（期間フィルタ可）
- *  4. 自分のランキング順位
- *  5. 店全体のランキング
- */
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import RankingBlock from '@/components/RankingBlock.vue'
@@ -92,8 +85,10 @@ async function loadRankings () {
   })
 }
 async function loadNotices () {
-  notices.value = await fetchStoreNotices()
+  const data = await fetchStoreNotices({ status:'published', ordering:'-pinned,-publish_at,-created_at', limit:20 })
+  notices.value = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
 }
+
 async function loadAll () {
   await Promise.all([
     loadCast(), loadShifts(),
@@ -480,55 +475,60 @@ onMounted(loadAll)
       </p>
     </div>
 
-    <!-- ▼ 売上 -->
-      <!-- ▼ 顧客情報 -->
-      <div v-if="activeTab === 'customers'">
-        <h5>顧客情報</h5>
-
-        <table v-if="customerBills.length" class="table align-middle">
-          <thead class="table-light">
-            <tr><th>日時</th><th>顧客名</th><th class="text-end">小計</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="b in customerBills" :key="b.id" role="button" @click="open(b.id)">
-              <td>{{ dayjs(b.opened_at).format('YYYY/MM/DD HH:mm') }}</td>
-              <td>{{ b.customer_display_name || '-' }}</td>
-              <td class="text-end">{{ yen(b.subtotal) }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <p v-else
-          class="text-muted d-flex align-items-center justify-content-center"
-          style="min-height: 200px;">
-          あなたが担当した顧客情報はまだありません
-        </p>
-      </div>
-
     <!-- ▼ 顧客情報 -->
+    <div v-if="activeTab === 'customers'">
+      <h5>顧客情報</h5>
+
+      <table v-if="customerBills.length" class="table align-middle">
+        <thead class="table-light">
+          <tr><th>日時</th><th>顧客名</th><th class="text-end">小計</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="b in customerBills" :key="b.id" role="button" @click="open(b.id)">
+            <td>{{ dayjs(b.opened_at).format('YYYY/MM/DD HH:mm') }}</td>
+            <td>{{ b.customer_display_name || '-' }}</td>
+            <td class="text-end">{{ yen(b.subtotal) }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p v-else
+        class="text-muted d-flex align-items-center justify-content-center"
+        style="min-height: 200px;">
+        あなたが担当した顧客情報はまだありません
+      </p>
+    </div>
+
+    <!-- ▼ お店からのお知らせ -->
     <div class="notice mt-5">
       <h5>お店からのお知らせ</h5>
-      <ul
-        v-if="notices.length"
-        class="list-group mb-4"
-      >
+
+      <ul v-if="notices.length" class="list-group mb-4">
         <li
           v-for="n in notices"
           :key="n.id"
-          class="list-group-item"
+          class="list-group-item d-flex align-items-center justify-content-between"
         >
-          {{ n.message }}
-          <span class="text-muted small ms-2">{{ dayjs(n.created_at).format('YYYY/MM/DD') }}</span>
+          <!-- ▼ ここをリンク化して NewsDetail へ -->
+          <RouterLink
+            :to="{ name: 'news-detail', params: { id: n.id } }"
+            class="text-decoration-none"
+          >
+            <span v-if="n.pinned" class="badge bg-warning text-dark me-2">PIN</span>
+            <strong>{{ n.title || n.message || '(無題)' }}</strong>
+          </RouterLink>
+
+          <span class="text-muted small ms-2">
+            {{ dayjs(n.publish_at || n.created_at).format('YYYY/MM/DD') }}
+          </span>
         </li>
       </ul>
-      <p
-        v-else
-        class="text-muted d-flex align-items-center justify-content-center"
-        style="min-height: 200px;"
-      >
+
+      <p v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height: 200px;">
         現在お知らせはありません
       </p>
     </div>
+
 
     <!-- ランキング -->
     <div class="container mt-4">

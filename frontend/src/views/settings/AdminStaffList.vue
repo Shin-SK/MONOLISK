@@ -1,28 +1,32 @@
-<!-- src/views/AdminStaffList.vue -->
 <script setup>
 import { ref, onMounted } from 'vue'
 import dayjs from 'dayjs'
-import { fetchStaffs, fetchStaffShifts } from '@/api'
+import {
+  fetchStaffs, fetchStaffShifts,
+  createStaffShift, deleteStaffShift,
+  staffCheckIn, staffCheckOut,
+} from '@/api'
+import { getStoreId } from '@/auth'
 
 const keyword = ref('')
 const results = ref([])
 
-/* ---------- util ---------- */
-const ensureShift = async (row) => {
+const fmt = d => d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '—'
+
+async function ensureShift (row) {
   if (!row.shift) {
     row.shift = await createStaffShift({
       staff_id : row.id,
-      store_id : row.stores[0] ?? getStoreId(),
+      store_id : row.stores?.[0] ?? getStoreId(),
     })
   }
 }
 
-/* ---------- 操作 ---------- */
 async function checkIn (row) {
   await ensureShift(row)
-  if (!row.shift.clock_in) {
+  if (!row.shift?.clock_in) {
     await staffCheckIn(row.shift.id)
-    fetchList()
+    await fetchList()
   }
 }
 
@@ -31,36 +35,32 @@ async function checkOut (row) {
     if (!confirm('退勤しますか？')) return
     await staffCheckOut(row.shift.id)
     alert('退勤処理が完了しました！')
-    fetchList()     // 退勤済み行は条件から外れる
+    await fetchList()
   }
 }
 
 async function removeShift (row) {
   if (row.shift && confirm('本当に削除しますか？')) {
     await deleteStaffShift(row.shift.id)
-    fetchList()
+    await fetchList()
   }
 }
 
-
 async function fetchList () {
-  /* ① スタッフ一覧 */
   const staffs = await fetchStaffs({ name: keyword.value })
-
-  /* ② 今日のシフト取得 */
   const today   = dayjs().format('YYYY-MM-DD')
   const shifts  = await fetchStaffShifts({ date: today })
   const byStaff = Object.fromEntries(shifts.map(s => [s.staff_id, s]))
 
-  /* ③ マージして表示用配列生成 */
   results.value = staffs.map(s => {
-    const sh = byStaff[s.id]
+    const sh = byStaff[s.id] || null
     return {
       ...s,
-      name : s.full_name || s.username,  
-      shift: sh
+      name: s.full_name || s.username,
+      shift: sh, // ← オブジェクトのまま（clock_in/clock_out を見る）
+      shiftLabel: sh
         ? `${dayjs(sh.plan_start).format('YYYY/MM/DD HH:mm')}-${dayjs(sh.plan_end).format('HH:mm')}`
-        : '—'               // シフト無し
+        : '—',
     }
   })
 }
@@ -68,10 +68,8 @@ async function fetchList () {
 onMounted(fetchList)
 </script>
 
-
 <template>
   <div class="container-fluid py-4 staff-list">
-    <!-- 検索フォーム -->
     <div class="d-flex gap-2 mb-5">
       <input
         v-model="keyword"
@@ -79,15 +77,11 @@ onMounted(fetchList)
         placeholder="スタッフ名"
         @keyup.enter="fetchList"
       >
-      <RouterLink
-        to="/staffs/new"
-        class="btn btn-primary ms-auto d-flex align-items-center"
-      >
+      <RouterLink :to="{ name: 'settings-staff-new' }" class="btn btn-primary ms-auto">
         新規登録
       </RouterLink>
     </div>
 
-    <!-- 一覧テーブル -->
     <table class="table align-middle">
       <thead class="table-dark">
         <tr>
@@ -99,39 +93,18 @@ onMounted(fetchList)
         </tr>
       </thead>
       <tbody>
-        <tr
-          v-for="s in results"
-          :key="s.id"
-        >
+        <tr v-for="s in results" :key="s.id">
           <td>{{ s.id }}</td>
           <td>
-            <RouterLink :to="`/staff/${s.id}`">
+            <RouterLink :to="{ name: 'settings-staff-form', params: { id: s.id } }">
               {{ s.name }}
             </RouterLink>
           </td>
           <td>{{ s.role_label || '―' }}</td>
-          <td>{{ s.shift }}</td>
-          <!-- ★操作列を追加 -->
+          <td>{{ s.shiftLabel }}</td>
           <td class="text-end p-2">
-            <!-- 出勤 -->
-            <button
-              v-if="!s.shift?.clock_in"
-              class="btn btn-outline-primary"
-              @click="checkIn(s)"
-            >
-              出勤
-            </button>
-
-            <!-- 退勤 -->
-            <button
-              v-else-if="!s.shift?.clock_out"
-              class="btn btn-outline-success"
-              @click="checkOut(s)"
-            >
-              退勤
-            </button>
-
-            <!-- 削除 -->
+            <button v-if="!s.shift?.clock_in" @click="checkIn(s)">出勤</button>
+            <button v-else-if="!s.shift?.clock_out" @click="checkOut(s)">退勤</button>
             <button
               v-else
               class="btn btn-outline-secondary"
@@ -142,14 +115,8 @@ onMounted(fetchList)
           </td>
         </tr>
 
-        <!-- データ無し -->
         <tr v-if="!results.length">
-          <td
-            colspan="5"
-            class="text-center text-muted"
-          >
-            スタッフがいません
-          </td>
+          <td colspan="5" class="text-center text-muted">スタッフがいません</td>
         </tr>
       </tbody>
     </table>

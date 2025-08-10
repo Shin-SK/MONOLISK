@@ -26,10 +26,39 @@ const sorted = computed(() =>
 
 const MAP_SET = { setVIP:60, setMale:60, setFemale:60, set60:60 }
 
+/* ───── 初回をドラフトにするやつ ───── */
+function newBillDraft () {
+  const draft = {
+    id: null,                 // ← これで isNew 判定できる
+    items: [],
+    customers: [],
+    stays: [],
+    table: null,              // or { id:null, number:null }
+    opened_at: null,          // BillModal 側の form で now が入る
+    expected_out: null,
+    grand_total: 0,
+    paid_cash: 0,
+    paid_card: 0,
+    set_rounds: 0,
+    ext_minutes: 0,
+    // 必要なら table_id_hint なども
+  }
+  // いままでAPIで作っていた open() を、そのままドラフトで
+  open(draft)
+}
+
+
 /* ───── 一覧クリック → 1件取得してモーダル ───── */
-async function open(id) {
-  await bills.open(id)                // useBills の open() が current に入れる
-  currentBill.value = bills.current   // 参照を渡すだけ
+async function open(target) {
+  // ドラフト（idなしオブジェクト）の場合はそのまま開く
+  if (typeof target === 'object' && !target?.id) {
+    currentBill.value = target
+    showModal.value   = true
+    return
+  }
+  // 既存IDの場合だけストアから取得
+  await bills.open(target)
+  currentBill.value = bills.current
   showModal.value   = true
 }
 
@@ -116,6 +145,7 @@ function liveCasts (b) {
     <div class="outer flex-fill position-relative">
       <header class="d-flex justify-content-between">
         <div class="d-flex gap-1 mb-2">
+          <!-- リストだけリアルタイムってかリストって感じで -->
           <div class="item badge text-white bg-danger">
             本指名
           </div>
@@ -123,14 +153,14 @@ function liveCasts (b) {
             場内
           </div>
           <div class="item badge text-white bg-blue">
-            フリー(~10分)
+            フリー
           </div>
-          <div class="item badge text-white bg-warning">
+          <!-- <div class="item badge text-white bg-warning">
             フリー(~20分)
           </div>
           <div class="item badge text-white bg-orange">
             フリー(~30分)
-          </div>
+          </div> -->
         </div>
       </header>
       
@@ -286,7 +316,7 @@ function liveCasts (b) {
       <div class="add-button position-fixed">
         <button
           class="btn btn-success rounded-circle"
-          @click="newBill"
+          @click="newBillDraft"
         >
           <IconPlus />
         </button>

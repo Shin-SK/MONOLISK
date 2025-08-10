@@ -30,6 +30,7 @@
 		.g-gantt-bar-label {
 		overflow: visible;        /* ← これが無いと外側が切られる */
 		gap: 4px;
+		background-color: rgba($color: #2fd120, $alpha: 0.3);
 		}
 
 		/* ─── 中央 (#ID) ─── */

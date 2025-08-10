@@ -1,7 +1,7 @@
 <!-- BillModal.vue -->
 <script setup>
 /* ── 必要最小限のインポート ───────────────────── */
-import { reactive, ref, watch, computed, onMounted } from 'vue'
+import { reactive, ref, watch, computed, onMounted, toRef, unref } from 'vue'
 import BaseModal      from '@/components/BaseModal.vue'
 import Avatar      from '@/components/Avatar.vue'
 import { useCustomers } from '@/stores/useCustomers'
@@ -27,7 +27,7 @@ const props = defineProps({
   serviceRate : { type: Number, default: 0.3 },
   taxRate     : { type: Number, default: 0.1 },
 })
-const emit  = defineEmits(['update:modelValue','saved','updated'])
+const emit  = defineEmits(['update:modelValue','saved','updated','closed'])
 
 /* ── v‑model（開閉） ─────────────────────────── */
 const visible = computed({
@@ -46,17 +46,36 @@ const showInMenu   = m => typeof m.category === 'object'
                         ? m.category.show_in_menu  // true / false
                         : true                     // 文字列なら表示OK
 
-/* ── キャスト一覧を API からロード ─────────────── */
+/* ── status ─────────────── */
 const casts   = ref([])
 const masters = ref([])
 const tables  = ref([])
-
+const bill = toRef(props, 'bill')
 const castsStore   = useCasts()
 const onDutySet  = ref(new Set())
 const mastersStore = useMasters()
 const tablesStore  = useTables()
 const castKeyword = ref('')
 const customers = useCustomers()
+const fmt = (n) => (Number(unref(n)) || 0).toLocaleString()
+
+/* ── 初回 ─────────────── */
+const isNew = computed(() => !props.bill?.id)
+
+// ×ボタンのハンドラ
+function tryClose(){
+  const dirty = isNew.value && (
+    pending.value.length ||
+    mainCastIds.value.length ||
+    freeCastIds.value.length ||
+    inhouseSet.value.size ||
+    (props.bill.customers?.length ?? 0) ||
+    form.table_id != null ||
+    !!form.expected_out
+  )
+  if (dirty && !confirm('未保存の内容を破棄します。よろしいですか？')) return
+  visible.value = false
+}
 
 
 onMounted(async () => {
@@ -96,19 +115,16 @@ function openCustModal (id = null) {     // ★共通オープナー
   activeCustId.value = asId(id)          // ← 正しい変数名
   showCustModal.value = true
 }
-function clearCustomer(target) {          // ★Object/ID どちらでも OK
+
+function clearCustomer(target) {
   const id = asId(target)
-  props.bill.customers = props.bill.customers.filter(c => asId(c) !== id)
-  props.bill.customer_display_name =
-    props.bill.customers.length
-      ? props.bill.customer_display_name       // 先頭は残る
-      : ''
-  api.patch(`billing/bills/${props.bill.id}/`,
-            { customer_ids: props.bill.customers })
-     .catch(e => { 
-        console.error('toggle inhouse failed', e)
-        alert('場内フラグの更新に失敗しました')
-      })
+  props.bill.customers = (props.bill.customers || []).filter(c => asId(c) !== id)
+  props.bill.customer_display_name = props.bill.customers.length ? props.bill.customer_display_name : ''
+  if (!isNew.value) {
+    updateBillCustomers(props.bill.id, props.bill.customers)
+      .then(() => { originalCustIds.value = [...props.bill.customers] })
+      .catch(e => { console.error(e); alert('顧客更新に失敗しました') })
+  }
 }
 /*
  * ▶ 場内トグル
@@ -117,40 +133,39 @@ function clearCustomer(target) {          // ★Object/ID どちらでも OK
  *  2. レスポンス stay_type でローカル更新
  */
 async function toggleInhouse (cid) {
+  if (isNew.value) {
+    const nowIn = inhouseSet.value.has(cid)
+    if (nowIn) inhouseSet.value.delete(cid); else inhouseSet.value.add(cid)
+    if (!freeCastIds.value.includes(cid)) freeCastIds.value.push(cid)
+    return
+  }
+  // 既存のみAPI
   const nowIn = inhouseSet.value.has(cid)
   try {
-    const { stay_type } = await toggleBillInhouse(props.bill.id, {
-      cast_id: cid, inhouse: !nowIn
-    })
-    // data.stay_type: "in" | "free"
+    const { stay_type } = await toggleBillInhouse(props.bill.id, { cast_id: cid, inhouse: !nowIn })
     if (stay_type === 'in') {
       inhouseSet.value.add(cid)
       if (!freeCastIds.value.includes(cid)) freeCastIds.value.push(cid)
     } else {
       inhouseSet.value.delete(cid)
-      // free には残す（stay_type==free）
       if (!freeCastIds.value.includes(cid)) freeCastIds.value.push(cid)
     }
-  } catch (e) {
-    console.error('toggle inhouse failed', e)
-    alert('場内フラグの更新に失敗しました')
-  }
+  } catch (e) { console.error(e); alert('場内フラグの更新に失敗しました') }
 }
 
 
 /* ---------- 顧客情報を即反映 ---------- */
 async function handleCustPicked (cust) {
-  const ids = new Set((props.bill.customers ?? []).map(asId)) // ★ID だけ集める
+  const ids = new Set((props.bill.customers ?? []).map(asId))
   ids.add(cust.id)
-  props.bill.customers = [...ids]            // フロント側も ID 配列に
-  props.bill.customer_display_name =
-    cust.alias?.trim() || cust.full_name || `#${cust.id}`
-  try {
-    await updateBillCustomers(props.bill.id, props.bill.customers)
-    originalCustIds.value = [...props.bill.customers]
-  } catch (e) {
-		console.error('settle failed', e)
-		alert('顧客情報の取得に失敗しました')
+  props.bill.customers = [...ids]
+  props.bill.customer_display_name = cust.alias?.trim() || cust.full_name || `#${cust.id}`
+
+  if (!isNew.value) {
+    try {
+      await updateBillCustomers(props.bill.id, props.bill.customers)
+      originalCustIds.value = [...props.bill.customers]
+    } catch (e) { console.error(e); alert('顧客情報の取得に失敗しました') }
   }
   showCustModal.value = false
 }
@@ -191,6 +206,61 @@ const orderMasters = computed(() =>
   masters.value.filter(m => catCode(m) === selectedCat.value)
 )
 
+/* ── フォーム ─────────────────────────── */
+
+const form = reactive({
+  // 基本編集
+  table_id: props.bill?.table?.id ?? props.bill?.table ?? null,
+  opened_at: props.bill?.opened_at
+    ? dayjs(props.bill.opened_at).format('YYYY-MM-DDTHH:mm')
+    : dayjs().format('YYYY-MM-DDTHH:mm'),
+  expected_out: props.bill?.expected_out
+    ? dayjs(props.bill.expected_out).format('YYYY-MM-DDTHH:mm')
+    : '',
+  nominated_casts: [],
+  inhouse_casts: [],
+
+  // 支払い（←ここを統合）
+  paid_cash: props.bill?.paid_cash ?? 0,
+  paid_card: props.bill?.paid_card ?? 0,
+  settled_total: props.bill?.settled_total ?? (props.bill?.grand_total || 0),
+})
+
+/* ── 会計処理 ─────────────────────────── */
+
+const displayGrandTotal = computed(() => bill.value?.grand_total ?? 0)
+
+const paidTotal   = computed(() => (form.paid_cash || 0) + (form.paid_card || 0))
+const targetTotal = computed(() => form.settled_total || displayGrandTotal.value)
+const diff        = computed(() => paidTotal.value - targetTotal.value)
+const overPay     = computed(() => Math.max(0, diff.value))
+const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= targetTotal.value)
+
+function useGrandTotal () { form.settled_total = displayGrandTotal.value }
+function fillRemainderToCard () {
+  const need = Math.max(0, targetTotal.value - (form.paid_cash || 0))
+  form.paid_card = need
+}
+
+const diffClass = computed(() => ({
+  'text-danger': diff.value !== 0,
+  'text-success': diff.value === 0,
+}))
+
+async function confirmClose(){
+  // 支払内訳 → クローズ（props は書き換えない）
+  await api.patch(`billing/bills/${props.bill.id}/`, {
+    paid_cash: form.paid_cash || 0,
+    paid_card: form.paid_card || 0,
+  })
+  await api.post(`billing/bills/${props.bill.id}/close/`, {
+    settled_total: form.settled_total || displayGrandTotal.value,
+  })
+  emit('updated', props.bill.id)
+  emit('closed')
+}
+
+
 
 /* --- 会計確定処理 --- */
 const settleAmount = ref(null)
@@ -214,18 +284,6 @@ const draftMasterId = ref(null)   // 品名
 const draftCastId   = ref(null)   // 誰が注文したか（任意）
 const draftQty      = ref(1)      // 数量
 
-/* ── 編集フォーム（卓番号 & nominated_casts だけ） ─ */
-const form = reactive({
-  table_id        : null,
-  opened_at: props.bill?.opened_at
-              ? dayjs(props.bill.opened_at).format('YYYY-MM-DDTHH:mm')
-              : dayjs().format('YYYY-MM-DDTHH:mm'),
-  expected_out: props.bill?.expected_out
-              ? dayjs(props.bill.expected_out).format('YYYY-MM-DDTHH:mm')
-              : '',
-  nominated_casts : [],
-  inhouse_casts   : []  
-})
 
 
 async function cancelItem(idx, item){
@@ -252,33 +310,20 @@ const courseOptions = computed(() =>
 )
 
 
-/* ── コースを直通で伝票へ載せる ── */
-async function chooseCourse(opt){           // opt = {id, code, label}
-  try {
-    // ① 伝票へ即 POST
-    const newItem = await addBillItem(props.bill.id, {
-      item_master : opt.id,
-      qty         : pax.value           // ← 人数をそのまま使う
-    })
-    // ② フロント側に即反映
-    props.bill.items.push(newItem)
-
-    //  ③ expected_out が返ってきたらローカルで更新
-    emit('updated', props.bill.id)
-
-    // ③ テーブルが変更されていれば PATCH で確定
-    if (form.table_id !== props.bill.table?.id) {
-      await api.patch(`billing/bills/${props.bill.id}/`, {
-        table_id: form.table_id
-      })
-    }
-
-  } catch(e){
-    console.error('add course failed', e)
-    alert('コース追加に失敗しました')
+// コース追加（新規は pending へ積むだけ）
+async function chooseCourse(opt){
+  if (isNew.value) {
+    pending.value.push({ master_id: opt.id, qty: pax.value, cast_id: null })
+    return
+  }
+  // 既存は即POST
+  const newItem = await addBillItem(props.bill.id, { item_master: opt.id, qty: pax.value })
+  props.bill.items.push(newItem)
+  emit('updated', props.bill.id)
+  if (form.table_id !== props.bill.table?.id) {
+    await api.patch(`billing/bills/${props.bill.id}/`, { table_id: form.table_id })
   }
 }
-
 
 /* ------- コース追加ボタン専用 ------- */
 function addCourse () {
@@ -414,25 +459,20 @@ const headerInfo = computed(() => {
 /* ---------- time-edit toggle ---------- */
 const editingTime = ref(false)
 
-/* 変更をサーバへ送る  */
 async function saveTimes () {
   const openedISO   = form.opened_at    ? dayjs(form.opened_at).toISOString()    : null
   const expectedISO = form.expected_out ? dayjs(form.expected_out).toISOString() : null
-  if (openedISO === props.bill.opened_at &&
-      expectedISO === props.bill.expected_out) {
-    editingTime.value = false
-    return
+  if (isNew.value) { editingTime.value = false; return }   // ← 新規はサーバ送らない
+  if (openedISO === props.bill.opened_at && expectedISO === props.bill.expected_out) {
+    editingTime.value = false; return
   }
   try {
     await updateBillTimes(props.bill.id, { opened_at: openedISO, expected_out: expectedISO })
-    props.bill.opened_at    = openedISO
-    props.bill.expected_out = expectedISO
+    props.bill.opened_at = openedISO; props.bill.expected_out = expectedISO
     editingTime.value = false
-  } catch (e) { 
-    console.error('settle failed', e)
-		alert('保存に失敗しました')
-   }
+  } catch (e) { console.error(e); alert('保存に失敗しました') }
 }
+
 
 
 
@@ -472,6 +512,12 @@ watch(
   () => {
     const b = props.bill
     if (!b) return
+    form.table_id = b.table?.id ?? b.table_id_hint ?? null
+
+    // 支払いも同期
+    form.paid_cash     = b.paid_cash ?? 0
+    form.paid_card     = b.paid_card ?? 0
+    form.settled_total = b.settled_total ?? b.grand_total ?? 0
 
     /* ── customers を ID 配列へ統一 ── */
     if (Array.isArray(b.customers)) b.customers = b.customers.map(asId)
@@ -524,75 +570,70 @@ function removeCast(id) {
 }
 
 /* ── 保存ボタン ─────────────────────────────── */
+const saving = ref(false)
+
 async function save () {
-  /* 1. 未送信の注文（pending）をまず確定 */
-  for (const it of pending.value) {
-    try {
-      const payload = {
-        item_master       : it.master_id,
-        qty               : it.qty,
-        served_by_cast_id : it.cast_id ?? undefined      // null は送らない
-      }
-      const newItem = await addBillItem(props.bill.id, payload)
-      props.bill.items.push(newItem)                     // フロントへ即反映
-    //  expected_out をローカル更新
-    if (newItem.bill?.expected_out) {
-      props.bill.expected_out = newItem.bill.expected_out
-    }
-    } catch (e) {
-      console.error('add item failed', e)
-      alert('注文の送信に失敗しました')
-    }
-  }
-  pending.value = []   // クリア
+  if (saving.value) return
+  saving.value = true
 
-  /* 2. 指名・場内・フリー配列を同期 */
+  const wasNew = isNew.value
+  let billId = props.bill.id
+
   try {
-    await updateBillCasts(props.bill.id, {
-      nomIds  : [...mainCastIds.value],
-      inIds   : [...inhouseSet.value],
-      freeIds : [...freeCastIds.value],
-    })
+    // ❶ 新規POST（customersは後から）
+    if (wasNew) {
+      const { data: created } = await api.post('billing/bills/', {
+        table_id    : form.table_id ?? null,
+        opened_at   : form.opened_at ? dayjs(form.opened_at).toISOString() : null,
+        expected_out: form.expected_out ? dayjs(form.expected_out).toISOString() : null,
+      })
+      billId = created.id
+      props.bill.id = billId
+      if ((props.bill.customers?.length ?? 0) > 0) {
+        await updateBillCustomers(billId, props.bill.customers)
+        originalCustIds.value = [...props.bill.customers]
+      }
+    } else {
+      // 既存のみ：卓/時刻のPATCH
+      const currentTableId = props.bill.table?.id ?? props.bill.table ?? null
+      if (currentTableId === null || form.table_id !== currentTableId) {
+        await updateBillTable(billId, form.table_id)
+      }
+      await api.patch(`billing/bills/${billId}/`, {
+        opened_at   : form.opened_at    ? dayjs(form.opened_at).toISOString()    : null,
+        expected_out: form.expected_out ? dayjs(form.expected_out).toISOString() : null,
+      })
+    }
+
+    // ❷ キャスト
+    if (mainCastIds.value.length || inhouseSet.value.size || freeCastIds.value.length) {
+      await updateBillCasts(billId, {
+        nomIds  : [...mainCastIds.value],
+        inIds   : [...inhouseSet.value],
+        freeIds : [...freeCastIds.value],
+      })
+    }
+
+    // ❸ pending 注文
+    for (const it of pending.value) {
+      await addBillItem(billId, {
+        item_master: it.master_id,
+        qty: it.qty,
+        served_by_cast_id: it.cast_id ?? undefined
+      })
+    }
+    pending.value = []
+
+    emit('saved', billId)
   } catch (e) {
-    console.error('updateBillCasts failed', e)
-    alert('キャスト情報の更新に失敗しました')
+    console.error(e)
+    alert('保存に失敗しました')
+  } finally {
+    saving.value = false
   }
-
-  /* ▼ 顧客配列が変わっていたら PATCH ------------------ */
-  if (JSON.stringify(props.bill.customers ?? []) !==
-      JSON.stringify(originalCustIds.value)) {
-     try {
-      await api.patch(
-        `billing/bills/${props.bill.id}/`,
-        { customer_ids: props.bill.customers ?? [] }
-      )
-      originalCustIds.value = [...(props.bill.customers ?? [])]
-    } catch (e) {
-      console.error('customer patch failed', e)
-      alert('顧客情報の更新に失敗しました')
-    }
-  }
-
-
-  /* 3. 卓番号が変更されていれば PATCH */
-  /* 新規伝票直後は currentTableId が null になるので、その場合も必ず PATCH を走らせる */
-  const currentTableId = props.bill.table?.id ?? props.bill.table ?? null
-  if (currentTableId === null || form.table_id !== currentTableId) {
-    try { await updateBillTable(props.bill.id, form.table_id)
-    } catch (e) {
-      console.error('table patch failed', e)
-      alert('卓番号の更新に失敗しました')
-    }
-  }
-
-  await api.patch(`billing/bills/${props.bill.id}/`, {
-  opened_at    : form.opened_at    ? dayjs(form.opened_at).toISOString()    : null,
-  expected_out : form.expected_out ? dayjs(form.expected_out).toISOString() : null,
-})
-
-  /* 4. 親へ通知してモーダルを閉じる */
-  emit('saved', props.bill.id)
 }
+
+
 
 </script>
 
@@ -610,7 +651,7 @@ async function save () {
       <button
         class="btn-close position-absolute"
         style="margin-left: unset; top:8px; right:8px;"
-        @click="visible = false"
+        @click="tryClose"
       /> <!-- 閉じるボタン -->
 
       <div class="sidebar outer d-flex flex-column gap-4">
@@ -618,7 +659,7 @@ async function save () {
         <div class="wrap">
           <div class="title"><IconNotes/>伝票番号</div>
           <div class="items">
-            <span>{{ props.bill.id }}</span>
+            <span>{{ isNew ? '未保存' : props.bill.id }}</span>
           </div>
 
         </div>
@@ -999,11 +1040,8 @@ async function save () {
 
 
 
-        <button
-          class="btn btn-primary w-100 "
-          @click="save"
-        >
-          保存
+        <button class="btn btn-primary w-100" @click="save" :disabled="saving">
+        {{ isNew ? '作成して保存' : '保存' }}
         </button>
       </div>
       <div class="outer">
@@ -1149,10 +1187,7 @@ async function save () {
         </table>
 
         <div class="d-flex my-5">
-          <button
-            class="btn btn-warning flex-fill"
-            @click="save"
-          >
+          <button class="btn btn-warning flex-fill" @click="save" :disabled="saving">
             注文
           </button>
         </div>
@@ -1221,7 +1256,48 @@ async function save () {
           </tbody>
         </table>
 
-        <div class="d-flex align-items-center gap-2 mt-4">
+        <!-- BillModal.vue のフッター付近などに追記 -->
+        <div class="card mt-3">
+          <div class="card-header">会計</div>
+          <div class="card-body">
+            <div class="row g-2">
+              <div class="col-4">
+                <label class="form-label">現金</label>
+                <input type="number" min="0" class="form-control"
+                      v-model.number="form.paid_cash">
+              </div>
+              <div class="col-4">
+                <label class="form-label">カード</label>
+                <input type="number" min="0" class="form-control"
+                      v-model.number="form.paid_card">
+              </div>
+              <div class="col-4">
+                <label class="form-label">会計金額（上書き可）</label>
+                <input type="number" min="0" class="form-control"
+                      v-model.number="form.settled_total">
+              </div>
+            </div>
+
+            <div class="mt-2 small text-muted">
+              伝票合計: ¥{{ fmt(displayGrandTotal) }} /
+              受領合計: ¥{{ fmt(paidTotal) }} /
+              差額: <span :class="diffClass">¥{{ fmt(diff) }}</span>
+              <button class="btn btn-sm btn-outline-secondary ms-2"
+                      @click="fillRemainderToCard">残額をカードへ</button>
+              <button class="btn btn-sm btn-outline-secondary ms-2"
+                      @click="useGrandTotal">会計金額＝伝票合計</button>
+            </div>
+
+            <div class="mt-3 d-flex gap-2">
+              <button class="btn btn-primary"
+                      :disabled="!canClose"
+                      @click="confirmClose">会計確定</button>
+              <div v-if="overPay" class="text-danger small">※お釣り発生: ¥{{ fmt(overPay) }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- <div class="d-flex align-items-center gap-2 mt-4">
           <label class="fw-bold mb-0">会計金額</label>
           <input
             v-model.number="settleAmount"
@@ -1236,7 +1312,7 @@ async function save () {
           >
             会計
           </button>
-        </div>
+        </div> -->
       </div>
     </div>
   <CustomerModal

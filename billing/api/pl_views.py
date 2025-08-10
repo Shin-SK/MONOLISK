@@ -1,3 +1,4 @@
+# api/pl_views.py
 from __future__ import annotations
 """
 P/L API 3 種（日次・月次・年次）
@@ -7,7 +8,7 @@ P/L API 3 種（日次・月次・年次）
 - フロント (BillPLDaily / BillPLMonthly / BillPLYearly.vue)
   が期待するダミー項目も 0 で埋めておく。
 """
-
+from django.conf import settings
 from datetime import date, timedelta
 from typing    import Any, Dict, List
 
@@ -59,14 +60,15 @@ def _resolve_store(request, raw) -> int | None:
 
 # フロント互換のダミー列をマージする
 def _add_front_stubs(rec: Dict[str, Any]) -> Dict[str, Any]:
-    rec |= {
-        "sales_cash":     0,
-        "sales_card":     0,
-        "cast_labor":     rec.get("labor_cost", 0),
-        "driver_labor":   0,
-        "custom_expense": 0,
-        "gross_profit":   rec.get("operating_profit", 0),
-    }
+    # 既存値は尊重。無いキーだけデフォルトを補う
+    if "sales_cash" not in rec:
+        rec["sales_cash"] = 0
+    if "sales_card" not in rec:
+        rec["sales_card"] = 0
+    rec.setdefault("cast_labor",   rec.get("labor_cost", 0))
+    rec.setdefault("driver_labor", 0)
+    rec.setdefault("custom_expense", 0)
+    rec.setdefault("gross_profit", rec.get("operating_profit", 0))
     return rec
 
 # ───────────────────────────────
@@ -139,15 +141,16 @@ class YearlyPLAPIView(APIView):
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
 
-        store_id = (
-            request.query_params.get('store_id')           # ① 明示指定
-            or request.user.store_id                       # ② ログインユーザーの店舗
-            or settings.BILL_PL_DEFAULT_STORE              # ③ Fallback
-        )
+        store_id = _resolve_store(request, data.get("store_id"))
         if store_id is None:
             return Response({"detail": "store_id を指定してください"}, status=400)
 
         ypl = get_yearly_pl(data["year"], store_id=store_id)
-        yearly_total = _add_front_stubs(ypl)
 
-        return Response(yearly_total)
+        # totals と months[*].totals にだけダミー埋め
+        ypl["totals"] = _add_front_stubs(ypl.get("totals", {}))
+        for m in ypl.get("months", []):
+            m["totals"] = _add_front_stubs(m.get("totals", {}))
+
+        return Response(ypl)
+

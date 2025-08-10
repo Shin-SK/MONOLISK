@@ -86,41 +86,53 @@ async function save () {
     const body = { ...form }
     let res
 
-    /* multipart か JSON か判定 */
+    // ここで必要なら 0-100 → 0-1 変換（APIが 0.50 形式なら）
+    // for (const k of ['back_rate_free_override','back_rate_nomination_override','back_rate_inhouse_override']) {
+    //   if (body[k] != null) body[k] = Number(body[k]) / 100
+    // }
+
     if (avatarFile.value || form.avatar_clear) {
+      // ---- multipart（画像 or クリアあり）----
       const fd = new FormData()
-      Object.entries(body).forEach(([k,v])=>{
+      // primitives
+      for (const [k, v] of Object.entries(body)) {
+        if (k === 'category_rates') continue           // ← ここは別で JSON 化
         if (v !== null && v !== undefined) fd.append(k, v)
-      })
+      }
+      // nested 配列は JSON で送る
+      fd.append('category_rates', JSON.stringify(form.category_rates || []))
+
       if (avatarFile.value instanceof File) fd.append('avatar', avatarFile.value)
       if (form.avatar_clear) fd.append('avatar_clear', 'true')
 
       res = isEdit
         ? await api.put(`billing/casts/${route.params.id}/`, fd)
-        : await api.post('billing/casts/',                   fd)
+        : await api.post('billing/casts/', fd)
     } else {
+      // ---- JSON ----
       res = isEdit
         ? await api.put(`billing/casts/${route.params.id}/`, body)
-        : await api.post('billing/casts/',                   body)
+        : await api.post('billing/casts/', body)
     }
 
-    /* 新規登録後は編集モードで残る */
+    // 遷移（名前付きルート）
     if (!isEdit) {
-      router.replace(`/casts/${res.data.id}`)
-      return
+      router.replace({ name: 'settings-cast-form', params: { id: res.data.id } })
+    } else {
+      router.push({ name: 'settings-cast-list' })
     }
-    router.push('/casts')
   } catch (e) {
     console.error(e)
     alert(e.response?.data?.detail || '保存に失敗しました')
   }
 }
 
+
 /* ---------- 削除 ---------- */
 async function remove () {
   if (!confirm('本当に削除しますか？')) return
   await api.delete(`billing/casts/${route.params.id}/`)
-  router.push('/casts')
+  router.push({ name: 'settings-cast-list' })   // ← ここだけ変更
 }
 
 /* ---------- 起動 ---------- */

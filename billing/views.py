@@ -517,3 +517,86 @@ class CustomerViewSet(viewsets.ModelViewSet):
         instance = serializer.save()
         after  = CustomerSerializer(instance=instance).data
         log_customer_change(self.request.user, instance, 'update', before, after)
+        
+        
+from django.utils import timezone
+from rest_framework import viewsets, permissions, filters
+from rest_framework.pagination import LimitOffsetPagination
+from django.db.models import Q
+from .models import StoreNotice
+from .serializers import StoreNoticeSerializer
+
+class NewsPagination(LimitOffsetPagination):
+    default_limit = 20
+    max_limit = 100  # `?limit=5` などに対応（フロントから使いやすい）
+
+class IsStaffOrReadOnly(permissions.BasePermission):
+    """
+    スタッフはCRUD可、その他（キャスト等）は読み取りのみ。
+    """
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return bool(request.user and request.user.is_staff)
+
+class StoreNoticeViewSet(viewsets.ModelViewSet):
+    queryset = StoreNotice.objects.all()
+    serializer_class = StoreNoticeSerializer
+    permission_classes = [IsStaffOrReadOnly]
+    pagination_class = NewsPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['title', 'body']
+    ordering_fields = ['publish_at', 'created_at', 'pinned']
+    ordering = ['-pinned', '-publish_at', '-created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        # store 絞り込み（フロントの interceptor が ?store_id=… を付ける想定）
+        store_id = self.request.query_params.get('store_id') or self.request.data.get('store_id')
+        if store_id:
+            qs = qs.filter(store_id=store_id)
+
+        # 一般（キャスト等）は “見えるものだけ”
+        if not (self.request.user and self.request.user.is_staff):
+            now = timezone.now()
+            qs = qs.filter(is_published=True).filter(Q(publish_at__isnull=True) | Q(publish_at__lte=now))
+
+        # 追加フィルタ
+        # - status: draft|scheduled|published（管理側一覧用）
+        status_ = self.request.query_params.get('status')
+        if status_ and self.request.user and self.request.user.is_staff:
+            now = timezone.now()
+            if status_ == 'draft':
+                qs = qs.filter(is_published=False)
+            elif status_ == 'scheduled':
+                qs = qs.filter(is_published=True, publish_at__gt=now)
+            elif status_ == 'published':
+                qs = qs.filter(is_published=True).filter(Q(publish_at__isnull=True) | Q(publish_at__lte=now))
+
+        # is_published/pinned などの素直なフィルタにも対応
+        ip = self.request.query_params.get('is_published')
+        if ip is not None:
+            if ip in ('1','true','True'):
+                qs = qs.filter(is_published=True)
+            elif ip in ('0','false','False'):
+                qs = qs.filter(is_published=False)
+
+        pinned = self.request.query_params.get('pinned')
+        if pinned in ('1','true','True'):
+            qs = qs.filter(pinned=True)
+        elif pinned in ('0','false','False'):
+            qs = qs.filter(pinned=False)
+
+        return qs
+
+    def perform_create(self, serializer):
+        store_id = (
+            self.request.data.get('store') or
+            self.request.data.get('store_id') or
+            self.request.query_params.get('store_id')
+        )
+        if not store_id:
+            # ここで 400 を返せば 500 にはならない
+            raise ValidationError({'store': 'このフィールドは必須です。'})
+        serializer.save(store_id=store_id)
