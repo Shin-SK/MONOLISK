@@ -49,6 +49,7 @@ onMounted(fetchList)
 onActivated(fetchList)
 </script>
 
+
 <template>
   <div class="container-fluid py-4">
     <div class="d-flex align-items-center gap-2 mb-3">
