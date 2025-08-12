@@ -8,7 +8,11 @@ export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
 })
 import dayjs from 'dayjs'
-import { getToken, getStoreId, clearAuth } from './auth'
+
+const TOKEN_KEY='token', STORE_KEY='store_id'
+const getToken   = () => localStorage.getItem(TOKEN_KEY)
+const getStoreId = () => localStorage.getItem(STORE_KEY)
+const clearAuth  = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(STORE_KEY) }
 
 
 console.warn('__MARK__ api.js loaded', new Date().toISOString())
@@ -71,38 +75,7 @@ api.interceptors.request.use(cfg => {
 /* 認証 API                                                            */
 /* ------------------------------------------------------------------ */
 
-export async function login(username, password) {
-  const { data } = await api.post('dj-rest-auth/login/', {
-    username,
-    password,
-  });
-
-  // ▼ ここに入れる！ ──────────────────────────────
-  //   - 新仕様 (token) と旧仕様 (key) の両方を許容
-  //   - どちらも無いならエラーを投げる
-  const token = data.key || data.token 
-  if (!token) {
-    throw new Error('login: token not returned');
-  }
-
-  // ③ 好きな場所に保存（例: localStorage）
-  localStorage.setItem('authToken', token);
-
-  // ④ axios 既定ヘッダをセット
-  api.defaults.headers.common.Authorization = `Token ${token}`;
-
-  return token;
-}
-
-// ⑤ ログアウト例（参考）
-export async function logout() {
-  try {
-    await api.post('dj-rest-auth/logout/');
-  } finally {
-    localStorage.removeItem('authToken');
-    delete api.defaults.headers.common.Authorization;
-  }
-}
+/* 認証系はauth.jsで統一 */
 
 /* ------------------------------------------------------------------ */
 /* 401 ハンドリング                                                     */

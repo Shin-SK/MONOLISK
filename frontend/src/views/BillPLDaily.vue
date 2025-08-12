@@ -4,15 +4,12 @@ import { ref, onMounted } from 'vue'
 import { getBillDailyPL, getStores } from '@/api'
 
 const dateStr = ref(new Date().toISOString().slice(0, 10))
-const storeId = ref(null)               // ← 初期値 null
-const stores  = ref([])
 const pl      = ref(null)
 
 const yen = n => `¥${(+n || 0).toLocaleString()}`
 
 async function fetchData () {
-  if (!storeId.value) return            // 店舗未選択なら何もしない
-  pl.value = await getBillDailyPL(dateStr.value, storeId.value)
+  pl.value = await getBillDailyPL(dateStr.value)  // store_idはInterceptor任せ
 }
 
 async function loadStores () {

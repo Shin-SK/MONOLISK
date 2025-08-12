@@ -21,11 +21,13 @@ export function clearAuth  ()      { localStorage.removeItem(TOKEN_KEY); localSt
  *  - 失敗時: throw で呼び出し側に通知（api インターセプタが alert 済み）
  */
 export async function login(username, password) {
-  clearAuth()                                          // 念のため全クリア
+  clearAuth()
   const { data } = await api.post('dj-rest-auth/login/', { username, password })
   localStorage.setItem(TOKEN_KEY, data.key)
+  api.defaults.headers.common.Authorization = `Token ${data.key}`  // ← これ追加
   if (data.store_id) setStoreId(data.store_id)
 }
+
 
 /** ログアウト（常に成功扱い） */
 export async function logout() {

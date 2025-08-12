@@ -1,7 +1,7 @@
 // src/stores/useUser.js
 import { defineStore } from 'pinia';
-import { api, login as apiLogin, logout as apiLogout } from '@/api';
-
+import { api } from '@/api'
+import { login as authLogin, logout as authLogout } from '@/auth'
 /**
  * ログイン状態と /dj-rest-auth/user/ の情報を管理するストア
  */
@@ -57,14 +57,14 @@ export const useUser = defineStore('user', {
      * @param {string} password
      */
     async login(username, password) {
-      await apiLogin(username, password); // token を保存 （api.js 内）
+      await authLogin(username, password);
       this.info = null;                  // キャッシュクリア
       await this.fetch();                // 取得し直し
     },
 
     /** ログアウト */
     async logout() {
-      await apiLogout(); // token 破棄＆サーバ側ログアウト（失敗しても無視）
+      await authLogout();
       this.clear();
     },
 

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { login as apiLogin, logout as apiLogout, api } from '@/api'
+import { api } from '@/api'
+import { login as authLogin, logout as authLogout } from '@/auth'
 import { useUser } from '@/stores/useUser'
 
 export const useAuth = defineStore('auth', {
@@ -12,13 +13,8 @@ export const useAuth = defineStore('auth', {
     //  ログイン
     //------------------------------------------------------
     async login (username, password) {
-      /* apiLogin は { token } を返す想定 */
-      const token = await apiLogin(username, password)
-
-      /* クライアント側に保持 */
-      this.token = token
-      localStorage.setItem('token', token)
-      api.defaults.headers.common.Authorization = `Token ${token}`
+      await authLogin(username, password)                 // 保存とヘッダ設定は auth.js 側でやる
+      this.token = localStorage.getItem('token') || null  // 状態だけ同期
 
       /* ユーザー情報を改めてロード */
       const userStore = useUser()
@@ -31,7 +27,7 @@ export const useAuth = defineStore('auth', {
     //------------------------------------------------------
     async logout () {
       /* サーバ側セッションを無効化（失敗しても無視） */
-      try { await apiLogout() } catch { /* already gone → ignore */ }
+      try { await authLogout() } catch {}
 
       /* クライアント側クリーンアップ */
       this.token = null
