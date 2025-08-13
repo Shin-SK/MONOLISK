@@ -1,6 +1,7 @@
 // src/router.js
 import { nextTick } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
+import { getToken, getStoreId } from '@/auth'
 
 /* --- レイアウト --- */
 import MainLayout      from '@/layouts/MainLayout.vue'
@@ -93,10 +94,33 @@ const routes = [
 
 ]
 
+// src/router.js
+import { createRouter, createWebHistory } from 'vue-router'
+import { getToken, getStoreId } from '@/auth'   // ← 追加
+
+// グローバルガード
 const router = createRouter({
   history: createWebHistory(),
   routes,
 })
 
+router.beforeEach((to, from, next) => {
+  const token   = getToken()
+  const storeId = getStoreId()
+  const requiresAuth = to.matched.some(r => r.meta.requiresAuth)
+
+  // /login だけはフリーパス（揃ってたらダッシュボードへ）
+  if (to.path === '/login') {
+    if (token && storeId) return next('/dashboard')  // 好きな初期画面に
+    return next()
+  }
+
+  // 認証必須なら token も store_id も必須
+  if (requiresAuth && (!token || !storeId)) {
+    return next({ path: '/login', query: { next: to.fullPath } })
+  }
+
+  next()
+})
 
 export default router

@@ -12,8 +12,11 @@ import dayjs from 'dayjs'
 const TOKEN_KEY='token', STORE_KEY='store_id'
 const getToken   = () => localStorage.getItem(TOKEN_KEY)
 const getStoreId = () => localStorage.getItem(STORE_KEY)
-const clearAuth  = () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(STORE_KEY) }
-
+const clearAuth  = () => {
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(STORE_KEY)
+  delete api.defaults.headers.common.Authorization   // ← 追加
+}
 
 console.warn('__MARK__ api.js loaded', new Date().toISOString())
 /* ---------------------------------------- */
@@ -43,23 +46,20 @@ const SKIP_AUTH = [
   'dj-rest-auth/password/reset/',
 ]
 
+// request 側（401処理は置かない）
 api.interceptors.request.use(cfg => {
   const loading = useLoading()
   loading.start()
   NProgress.start()
-  // FormData 用ヘッダ調整
   if (cfg.data instanceof FormData) delete cfg.headers['Content-Type']
 
-  // ---- Token 付加 ---------------------------------
   if (!SKIP_AUTH.some(p => cfg.url.includes(p))) {
     const t = getToken()
     if (t) cfg.headers.Authorization = `Token ${t}`
   }
 
-  // ---- store_id 自動付加 ---------------------------
   const storeId = getStoreId()
   if (storeId) {
-    // GET → query, それ以外 → body
     if ((cfg.method ?? 'get').toLowerCase() === 'get') {
       cfg.params ??= {}
       cfg.params.store_id ??= storeId
@@ -69,6 +69,31 @@ api.interceptors.request.use(cfg => {
   }
   return cfg
 })
+
+// response 側（ここで401を拾ってクリア＆リダイレクト）
+api.interceptors.response.use(
+  res => {
+    const loading = useLoading()
+    loading.end()
+    NProgress.done()
+    return res
+  },
+  err => {
+    const loading = useLoading()
+    loading.end()
+    NProgress.done()
+    if (err.response?.status === 401) {
+      clearAuth()
+      // ログイン系URL以外でだけリダイレクト
+      if (!SKIP_AUTH.some(p => err.config?.url?.includes(p)) && location.pathname !== '/login') {
+        const next = encodeURIComponent(location.pathname + location.search)
+        location.assign(`/login?next=${next}`)
+      }
+    }
+    return Promise.reject(err)
+  }
+)
+
 
 
 /* ------------------------------------------------------------------ */
@@ -95,173 +120,6 @@ api.interceptors.response.use(
     return Promise.reject(err)
   }
 )
-
-
-/* ------------------------------------------------------------------ */
-/* Reservations いずれ整理する                                          */
-/* ------------------------------------------------------------------ */
-
-export const getReservations = (params = {}) => {
-  const cleaned = Object.fromEntries(
-    Object.entries(params).filter(([, v]) => v !== '' && v != null)
-  );
-  return api.get('reservations/', { params: cleaned }).then(r => r.data);
-};
-
-
-export const getReservation    = id      => api.get(`reservations/${id}/`).then(r => r.data)
-export const createReservation = payload => api.post('reservations/', payload).then(r => r.data)
-export const updateReservation = (id, p) => api.patch(`reservations/${id}/`, p)
-export const deleteReservations = (ids) =>
-  axios.delete('/reservations/bulk-delete/', { data: { ids } })
-
-export const getLatestReservation = id =>
-  api.get(`customers/${id}/latest_reservation/`).then(r => r.data)
-
-export const getCustomerAddresses = custId =>
-	api.get(`customers/${custId}/addresses/`).then(r => r.data)
-
-export const createCustomerAddress = (custId, payload) =>
-	api.post(`customers/${custId}/addresses/`, payload).then(r => r.data)
-
-/* ---------- マスター ---------- */
-const simple = r => r.data
-export const getStores = () => api.get('billing/stores/?simple=1').then(r => r.data)
-export const getCustomers = () => api.get('customers/?simple=1').then(simple)
-export const getDrivers   = () => api.get('drivers/?simple=1').then(simple)
-export const getCourses   = () => api.get('courses/?simple=1').then(simple)
-export const getOptions   = () => api.get('options/').then(r => r.data)
-
-/* ---------- キャスト & 料金 ---------- */
-export const getCastProfiles = (params = {}) =>
-  // api.get('cast-profiles/', { params }).then(r => r.data);
-  api.get('cast-profiles/', { params })
-     .then(r => r.data.results ?? r.data)   // ← ここだけ
-	export function getPrice(params) {
-	  return api.get('pricing/', {            // ← api インスタンスで /api/pricing/
-	    params,
-	    paramsSerializer: p => qs.stringify(p, { arrayFormat: 'repeat' }),
-	  }).then(r => r.data.price)
-	}
-
-/* ---------- ステータス ----------*/
-export async function getReservationChoices() {
-  const res = await api.options('reservations/');
-  return {
-   status: res.data.actions.POST.status.choices.map(c => [c.value, c.display_name])
-  };
-}
-
-/* ---------- 顧客 ---------- */
-export const searchCustomers = q =>
-  api.get('customers/', { params: { phone: q } }).then(r => r.data)
-
-export const createCustomer = p           => api.post('customers/', p).then(r => r.data)
-export const updateCustomer = (id, p)     => api.put(`customers/${id}/`, p).then(r => r.data)
-export const deleteCustomer = id          => api.delete(`customers/${id}/`)
-export const getCustomer    = id          => api.get(`customers/${id}/`).then(r => r.data)
-
-export const getReservationsByCustomer = id =>
-	api.get('reservations/', {
-		params:{ customer:id, ordering:'-start_at' }
-	}).then(r => r.data)
-
-/* ---------- キャストオプション ---------- */
-export const getCastOptions  = castId => api.get('cast-options/', { params: { cast_profile: castId } }).then(r => r.data)
-export const patchCastOption = (id, p) => api.patch(`cast-options/${id}/`, p).then(r => r.data)
-
-
-/* ---------- シフト ---------- */
-// 予定
-export const getShiftPlans = (params={}) =>
-  api.get('shift-plans/', { params }).then(r=>r.data)
-export const createShiftPlan = payload =>
-  api.post('shift-plans/', payload).then(r => r.data);
-export const updateShiftPlan = (id, p) =>
-  api.patch(`shift-plans/${id}/`, p).then(r => r.data);
-export const deleteShiftPlan = id =>
-  api.delete(`shift-plans/${id}/`);
-
-// 実出勤（打刻）
-export const getShiftAttendance = params =>
-  api.get('shift-attendances/', { params }).then(r => r.data);
-export const postCheckIn = id =>
-  api.post(`shift-attendance/${id}/checkin/`).then(r => r.data);
-
-export const createShiftAttendance = payload =>
-  api.post('shift-attendances/', payload).then(r => r.data)
-
-export const checkIn  = (id, at) =>
-  api.post(`shift-attendances/${id}/checkin/`,  { at }).then(r => r.data);
-export const checkOut = (id, at) =>
-  api.post(`shift-attendances/${id}/checkout/`, { at }).then(r => r.data);
-
-
-// ドライバー勤怠
-
-export const getDriver = (id) =>
-  api.get(`drivers/${id}/`).then(r => r.data)
-
-export const getDriverShift = shiftId =>
-  api.get(`driver-shifts/${shiftId}/`).then(r => r.data)
-
-/* ★ 一覧（STAFF 権限で全員分） */
-export const getAllDriverShifts = (params = {}) =>
-  api.get('driver-shifts/', { params }).then(r => r.data)
-
-export function clockIn(driverId, { float_start = 0, at = null }) {
-  // 共通の api インスタンスを使う！（token も baseURL も自動付与）
-  return api.post(
-    `driver-shifts/${driverId}/clock_in/`,
-    { float_start, at }
-  ).then(r => r.data)
-}
-
-export const clockOut = (shiftId, payload) =>
-  api.patch(`driver-shifts/${shiftId}/clock_out/`, payload).then(r => r.data)
-
-
-
-// 経費
-export const createExpenseEntry  = payload      => api.post('expenses/',      payload).then(r => r.data);
-export const updateExpenseEntry  = (id, payload) => api.patch(`expenses/${id}/`, payload).then(r => r.data);
-
-export const deleteExpenseEntry  = id           => api.delete(`expenses/${id}/`);
-
-export const getExpenseEntries = params =>
-  api.get('expenses/', { params }).then(r => r.data);
-
-export const getExpenseCategories = (params = {}) =>
-  api.get('expense-categories/', { params }).then(r => r.data);
-
-
-/* ---------- P/L API（デイリー／マンスリー／イヤーリー） ---------- */
-
-/**
- * マンスリー P/L
- *   month : 'YYYY-MM'
- */
-export const getMonthlyPL = (month, store = '') =>
-  api.get('pl/monthly/', { params: { month, store } }).then(r => r.data)
-
-/**
- * イヤーリー P/L（12ヶ月サマリ）
- *   year : 2025 など数値
- */
-export const getYearlyPL = (year, store = '') =>
-  api.get('pl/yearly/', { params: { year, store } }).then(r => r.data)
-
-
-
-// 予約―ドライバー取得
-export const getReservationDrivers = params =>
-  api.get('reservation-drivers/', { params }).then(r => r.data)
-
-// 追加・更新・削除
-export const createReservationDriver = p => api.post('reservation-drivers/', p)
-export const updateReservationDriver = (id, p) => api.patch(`reservation-drivers/${id}/`, p)
-export const deleteReservationDriver = id => api.delete(`reservation-drivers/${id}/`)
-
 
 
 

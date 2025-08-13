@@ -17,7 +17,6 @@ from django.core.exceptions import ValidationError
 from .calculator import BillCalculator
 from django.core.validators import MinValueValidator, MaxValueValidator
 
-
 User = get_user_model()
 
 
@@ -27,6 +26,7 @@ class BillingUser(User):
         app_label = 'billing'       # ★ここを偽装するとサイドバーの見出しが billing になる
         verbose_name = 'User'
         verbose_name_plural = 'Users'
+        
 
 # ───────── マスター ─────────
 class Store(models.Model):
@@ -495,12 +495,6 @@ class BillItem(models.Model):
         bill.update_expected_out(save=True)
 
 
-# ─── 保険：post_delete シグナル（save 内で更新しているので省略可） ─
-@receiver(post_delete, sender=BillItem)
-def _billitem_deleted_recalc(sender, instance, **kwargs):
-    instance.bill.update_expected_out(save=True)
-
-
 
 class BillCastStay(models.Model):
     STAY_TYPE = [
@@ -527,12 +521,6 @@ class BillCastStay(models.Model):
  
     class Meta:
         ordering = ['entered_at']
-
-
-# ──────────── 信号 (念のため) ────────────
-@receiver(post_delete, sender=BillItem)
-def _recalc_expected_out_on_delete(sender, instance, **kwargs):
-    instance.bill.update_expected_out(save=True)
 
 
 
@@ -588,15 +576,6 @@ def rate_from_cast_category(cast, category, is_nom: bool, is_in: bool) -> Decima
     if is_in:
         return category.back_rate_inhouse
     return category.back_rate_free
-
-
-@receiver(post_delete, sender=BillItem)
-def _billitem_post_delete(sender, instance: 'BillItem', **kwargs):
-    instance.bill.update_expected_out(save=True)
-
-
-
-
 
 
 class CastShift(models.Model):
@@ -797,3 +776,16 @@ class StoreNotice(models.Model):
         if self.publish_at is None:
             return True
         return self.publish_at <= timezone.now()
+
+
+
+@receiver(post_delete, sender=BillItem)
+def _update_expected_out_on_delete(sender, instance, **kwargs):
+    # Bill がまだ存在しているケースのみ再計算（親Billを一緒に消してる時の無駄撃ち防止）
+    if getattr(instance, "bill_id", None):
+        try:
+            instance.bill.update_expected_out(save=True)
+        except Exception:
+            # 親Billが消滅済み等は無視
+            pass
+
