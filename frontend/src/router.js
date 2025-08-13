@@ -1,5 +1,4 @@
 // src/router.js
-import { nextTick } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { getToken, getStoreId } from '@/auth'
 
@@ -93,10 +92,6 @@ const routes = [
 { path: '/casts/new', redirect: { name: 'settings-cast-new' } },
 
 ]
-
-// src/router.js
-import { createRouter, createWebHistory } from 'vue-router'
-import { getToken, getStoreId } from '@/auth'   // ← 追加
 
 // グローバルガード
 const router = createRouter({

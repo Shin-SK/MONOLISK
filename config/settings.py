@@ -89,7 +89,7 @@ INSTALLED_APPS = [
     "dal_select2",
     "django_extensions",
 
-    "core.apps.CoreConfig",   # ※最終的に削除予定（今日は残す）
+    # "core.apps.CoreConfig",
     "accounts",
     "billing",
 ]
@@ -164,8 +164,7 @@ REST_AUTH = {
     "USER_DETAILS_SERIALIZER": "accounts.serializers.UserDetailsWithStoreSerializer",
 }
 ACCOUNT_LOGIN_METHODS     = ["username"]
-ACCOUNT_EMAIL_REQUIRED    = True
-ACCOUNT_USERNAME_REQUIRED = True
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
 ACCOUNT_EMAIL_VERIFICATION = "none"
 REST_USE_JWT = False
 
