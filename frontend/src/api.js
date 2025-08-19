@@ -259,6 +259,7 @@ export const getBillYearlyPL = (year) =>
 
 export const getBillingStores = () =>
 	api.get('billing/stores/').then(r => r.data)
+export const getStores = getBillingStores
 
 export const getBillingCasts = (params = {}) =>
 	api.get('billing/casts/', { params }).then(r => r.data)
