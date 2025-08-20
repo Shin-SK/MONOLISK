@@ -806,3 +806,14 @@ def _update_expected_out_on_delete(sender, instance, **kwargs):
         except Exception:
             pass
 
+
+
+# billing/models.py 末尾に追記
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=BillItem)
+def _ensure_expected_out_on_item_save(sender, instance, **kw):
+    code = (instance.code or "").lower()
+    if code.startswith(("set","extension","ext")):
+        instance.bill.update_expected_out(save=True)

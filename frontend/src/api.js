@@ -134,9 +134,14 @@ export const fetchBills   = (params={}) =>
   api.get('billing/bills/', { params }).then(r=>r.data)
 
 export const fetchBill    = id      => api.get(`billing/bills/${id}/`).then(r=>r.data)
-
-export const createBill = (tableId = 1) =>
-  api.post('billing/bills/', { table: tableId }).then(r => r.data)
+// src/api.js
+export const createBill = (arg) => {
+  // 数字でも {table_id: n} でもOKにする保険
+  const payload = typeof arg === 'number'
+    ? { table_id: arg }
+    : (arg?.table_id ? arg : { table_id: arg?.table });
+  return api.post('billing/bills/', payload).then(r => r.data)
+}
 
  export const deleteBill = id =>
    api.delete(`billing/bills/${id}/`)
