@@ -211,6 +211,23 @@ async function handleUpdateStay({ castId, fromBillId, toBillId, toTableId }) {
 // ────────────────────────────────
 //  Bill モーダル
 // ────────────────────────────────
+
+async function handleSaved(payload) {
+  const fresh = typeof payload === 'number' ? await fetchBill(payload) : payload
+  if (!fresh) return
+
+  // upsert（置換 or 追加）
+  const idx = billsStore.list.findIndex(b => b.id === fresh.id)
+  if (idx >= 0) billsStore.list[idx] = fresh
+  else billsStore.list.push(fresh)
+
+  // ついでに当日のシフト/空きも同期（表示の色分け用）
+  await loadCastsAndShifts()
+
+  // 最後にモーダルを閉じる
+  showModal.value = false
+}
+
 function openModal (table) {
   const hit = getOpenBill(table.id)
   if (hit) {
@@ -309,7 +326,7 @@ function checkDuplicates () {}
     <BillModal
       v-model="showModal"
       :bill="currentBill"
-      @saved="closeModal"
+      @saved="handleSaved"
       @updated="refreshBills"
     />
   </section>

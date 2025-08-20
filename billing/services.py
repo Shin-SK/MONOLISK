@@ -223,8 +223,16 @@ def sync_nomination_fees(
         cast_ids_removed=prev_in - new_in,
         item_code=_INHOUSE_FEE_CODE,
     )
-
-    # 金額の再計算は 1 回で OK
-    bill.recalc(save=True)
+    apply_bill_calculation(bill)
 
 
+from .calculator import BillCalculator
+
+def apply_bill_calculation(bill):
+    """BillCalculatorの結果をBillに反映して保存"""
+    r = BillCalculator(bill).execute()
+    bill.subtotal       = r.subtotal
+    bill.service_charge = r.service_fee
+    bill.tax            = r.tax
+    bill.grand_total    = r.total
+    bill.save(update_fields=['subtotal','service_charge','tax','grand_total'])

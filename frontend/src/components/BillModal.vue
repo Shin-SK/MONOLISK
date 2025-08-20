@@ -12,7 +12,8 @@ import {
   updateBillTable,
   updateBillCasts,
   toggleBillInhouse,
-  addBillItem, deleteBillItem, closeBill
+  addBillItem, deleteBillItem, closeBill,
+  fetchBill
 } from '@/api'
 import { useCasts }     from '@/stores/useCasts'
 import { useMasters }   from '@/stores/useMasters'
@@ -247,17 +248,31 @@ const diffClass = computed(() => ({
   'text-success': diff.value === 0,
 }))
 
+
+const closing = ref(false)
 async function confirmClose(){
-  // 支払内訳 → クローズ（props は書き換えない）
-  await api.patch(`billing/bills/${props.bill.id}/`, {
-    paid_cash: form.paid_cash || 0,
-    paid_card: form.paid_card || 0,
-  })
-  await api.post(`billing/bills/${props.bill.id}/close/`, {
-    settled_total: form.settled_total || displayGrandTotal.value,
-  })
-  emit('updated', props.bill.id)
-  emit('closed')
+  if (closing.value) return
+  closing.value = true
+  try{
+    // 支払内訳 → クローズ
+    await api.patch(`billing/bills/${props.bill.id}/`, {
+      paid_cash: form.paid_cash || 0,
+      paid_card: form.paid_card || 0,
+    })
+    await api.post(`billing/bills/${props.bill.id}/close/`, {
+      settled_total: form.settled_total || displayGrandTotal.value,
+    })
+    // 最新Billを取得して親へ渡す（親側でclose & 再描画）
+    const fresh = await fetchBill(props.bill.id).catch(()=>null)
+    emit('saved', fresh || props.bill.id)
+    // 自分でも即閉じる（v-model）
+    visible.value = false
+  }catch(e){
+    console.error(e)
+    alert('会計に失敗しました')
+  }finally{
+    closing.value = false
+  }
 }
 
 
@@ -624,7 +639,9 @@ async function save () {
     }
     pending.value = []
 
-    emit('saved', billId)
+    // ❹ 最新のBillを単発フェッチしてemit
+    const fresh = await fetchBill(billId)   // ← stays/items/合計を含む最新
+    emit('saved', fresh)                    // ← idではなく中身を渡す
   } catch (e) {
     console.error(e)
     alert('保存に失敗しました')
@@ -632,6 +649,7 @@ async function save () {
     saving.value = false
   }
 }
+
 
 
 
@@ -1290,8 +1308,11 @@ async function save () {
 
             <div class="mt-3 d-flex gap-2">
               <button class="btn btn-primary"
-                      :disabled="!canClose"
-                      @click="confirmClose">会計確定</button>
+                      :disabled="closing || !canClose"
+                      @click="confirmClose">
+                <span v-if="closing" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                会計確定
+              </button>
               <div v-if="overPay" class="text-danger small">※お釣り発生: ¥{{ fmt(overPay) }}</div>
             </div>
           </div>

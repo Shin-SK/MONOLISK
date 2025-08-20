@@ -14,7 +14,6 @@ from django.dispatch import receiver
 from datetime import timedelta
 from django.db.models.signals import post_save
 from django.core.exceptions import ValidationError
-from .calculator import BillCalculator
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 User = get_user_model()
@@ -344,6 +343,7 @@ class Bill(models.Model):
 
     
     def close(self, settled_total: int | None = None):
+        from .calculator import BillCalculator
         """伝票を締め、金額・CastPayout・日次サマリを確定保存"""
         result = BillCalculator(self).execute()
 
@@ -418,6 +418,17 @@ class Bill(models.Model):
 
 
 
+def _recalc_bill_after_items_change(bill):
+    from .calculator import BillCalculator
+    r = BillCalculator(bill).execute()
+    bill.subtotal       = r.subtotal
+    bill.service_charge = r.service_fee
+    bill.tax            = r.tax
+    bill.grand_total    = r.total
+    bill.save(update_fields=['subtotal','service_charge','tax','grand_total'])
+
+
+
 # ───────── 品目行 ─────────
 class BillItem(models.Model):
     bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name='items')
@@ -478,21 +489,28 @@ class BillItem(models.Model):
         self.is_nomination = bool(self.is_nomination)
         self.is_inhouse    = bool(self.is_inhouse)
         if self.item_master:
-            self.name = self.name or self.item_master.name
+            self.name  = self.name  or self.item_master.name
             self.price = self.price or self.item_master.price_regular
             if self.item_master.exclude_from_payout:
                 self.exclude_from_payout = True
 
         super().save(*args, **kwargs)
 
-        # SET / EXTENSION 系なら退店予定を即時更新
+        # SET/EXT なら退店予定更新
         if self.code.startswith(('set', 'extension', 'ext')):
             self.bill.update_expected_out(save=True)
+
+        # ★ ここで金額を再計算（OPEN中でも常に最新に）
+        _recalc_bill_after_items_change(self.bill)
 
     def delete(self, *args, **kwargs):
         bill = self.bill
         super().delete(*args, **kwargs)
         bill.update_expected_out(save=True)
+        # ★ 削除時も再計算
+        _recalc_bill_after_items_change(bill)
+
+
 
 
 
@@ -781,11 +799,10 @@ class StoreNotice(models.Model):
 
 @receiver(post_delete, sender=BillItem)
 def _update_expected_out_on_delete(sender, instance, **kwargs):
-    # Bill がまだ存在しているケースのみ再計算（親Billを一緒に消してる時の無駄撃ち防止）
     if getattr(instance, "bill_id", None):
         try:
             instance.bill.update_expected_out(save=True)
+            _recalc_bill_after_items_change(instance.bill)   # ★ 追加
         except Exception:
-            # 親Billが消滅済み等は無視
             pass
 
