@@ -49,8 +49,8 @@ const SKIP_AUTH = [
 // request 側（401処理は置かない）
 api.interceptors.request.use(cfg => {
   const loading = useLoading()
-  loading.start()
-  NProgress.start()
+  const silent = cfg.headers?.['X-Silent'] === '1' || cfg.meta?.silent
+  if (!silent) { loading.start(); NProgress.start() }
   if (cfg.data instanceof FormData) delete cfg.headers['Content-Type']
 
   if (!SKIP_AUTH.some(p => cfg.url.includes(p))) {
@@ -74,14 +74,14 @@ api.interceptors.request.use(cfg => {
 api.interceptors.response.use(
   res => {
     const loading = useLoading()
-    loading.end()
-    NProgress.done()
+    const silent = res.config?.headers?.['X-Silent'] === '1' || res.config?.meta?.silent
+    if (!silent) { loading.end(); NProgress.done() }
     return res
   },
   err => {
     const loading = useLoading()
-    loading.end()
-    NProgress.done()
+    const silent = err.config?.headers?.['X-Silent'] === '1' || err.config?.meta?.silent
+    if (!silent) { loading.end(); NProgress.done() }
     if (err.response?.status === 401) {
       clearAuth()
       // ログイン系URL以外でだけリダイレクト
@@ -101,26 +101,6 @@ api.interceptors.response.use(
 /* ------------------------------------------------------------------ */
 
 /* 認証系はauth.jsで統一 */
-
-/* ------------------------------------------------------------------ */
-/* 401 ハンドリング                                                     */
-/* ------------------------------------------------------------------ */
-api.interceptors.response.use(
-  res => {
-    const loading = useLoading()
-    loading.end()
-    NProgress.done()
-     return res
-  },
-  err => {
-    const loading = useLoading()
-    loading.end()
-    NProgress.done()
-    if (err.response?.status === 401) clearAuth()
-    return Promise.reject(err)
-  }
-)
-
 
 
 /* ------------------------------------------------------------------ */
@@ -289,8 +269,11 @@ export const fetchCastItemDetails = (castId, params = {}) =>
  * 一覧取得
  *   params: { cast, date, ordering, ... }
  */
-export const fetchCastShifts = (params = {}) =>
-    api.get('billing/cast-shifts/', { params }).then(r => r.data)
+export const fetchCastShifts = (params = {}, { silent=false } = {}) =>
+  api.get('billing/cast-shifts/', {
+    params,
+    ...(silent ? { meta: { silent: true } } : {})
+  }).then(r => r.data)
 
 /**
  * 予定＋実績の新規作成

@@ -5,7 +5,7 @@
 <!-- ──────────────────────────────────────────────── -->
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import dayjs from 'dayjs'
 import { useBills }    from '@/stores/useBills'
 import BillModal       from '@/components/BillModal.vue'
@@ -62,12 +62,46 @@ function calcRemainMin(bill) {
 }
 
 // ────────────────────────────────
-//  周期リロード（1 分）
+//  周期リロード（白フラ防止版）
+//   - 一覧は store 側で差分パッチ＆参照維持
+//   - モーダル開いてる間は停止、閉じたら即1回だけ更新して再開
 // ────────────────────────────────
-setInterval(async () => {
-  await billsStore.loadAll()
-  shiftsToday.value = await fetchCastShifts({ date: todayISO })
-}, 60_000)
+let shiftTimer = null
+async function refreshShifts() {
+  shiftsToday.value = await fetchCastShifts({ date: todayISO }, { silent: true })
+}
+function startPolling() {
+  billsStore.startPolling(60_000)
+  if (!shiftTimer) shiftTimer = setInterval(refreshShifts, 60_000)
+}
+function stopPolling() {
+  billsStore.stopPolling()
+  if (shiftTimer) { clearInterval(shiftTimer); shiftTimer = null }
+}
+
+// モーダル表示中は止める → 閉じた瞬間に即同期してから再開
+watch(showModal, async (v) => {
+  if (v) {
+    stopPolling()
+  } else {
+    await billsStore.loadAll()
+    await refreshShifts()
+    startPolling()
+  }
+})
+
+// タブ非表示中は停止（復帰時に即同期）
+function onVis() {
+  if (document.hidden) stopPolling()
+  else { billsStore.loadAll(); refreshShifts(); startPolling() }
+}
+document.addEventListener('visibilitychange', onVis)
+
+onMounted(() => { startPolling() })
+onBeforeUnmount(() => {
+  stopPolling()
+  document.removeEventListener('visibilitychange', onVis)
+})
 
 // ────────────────────────────────
 //  Bill マップ

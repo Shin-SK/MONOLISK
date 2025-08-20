@@ -807,8 +807,6 @@ def _update_expected_out_on_delete(sender, instance, **kwargs):
             pass
 
 
-
-# billing/models.py 末尾に追記
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
