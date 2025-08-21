@@ -26,37 +26,34 @@ cloudinary.config(
 if DEBUG:
     ALLOWED_HOSTS = ["*"]
 else:
-    # 既定でサブドメイン含め許可（必要なら .env で上書き）
-    ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[".monolisk.app"])
+    ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[".monolisk-app.com"])
 
-SESSION_COOKIE_SECURE   = not DEBUG
-CSRF_COOKIE_SECURE      = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
-CSRF_COOKIE_SAMESITE    = "None" if not DEBUG else "Lax"
+CSRF_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
 
-
-# ---------- CORS / CSRF ----------
 CORS_ALLOW_CREDENTIALS = True
-
-# 個別ドメイン
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'https://monolisk.app',
-    'https://www.monolisk.app',
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://monolisk-app.com",
+    "https://www.monolisk-app.com",
 ]
-
-# ワイルドカードサブドメイン対応
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r'^https:\/\/[A-Za-z0-9-]+\.monolisk\.app$',
+    r"^https:\/\/([a-z0-9-]+\.)?monolisk-app\.com$",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'https://monolisk.app',
-    'https://*.monolisk.app',   # DjangoはワイルドカードOK
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://monolisk-app.com",
+    "https://*.monolisk-app.com",
+    "https://api.monolisk-app.com",
 ]
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = not DEBUG
 
 
 # ── Apps ────────────────────────────────────────────────────────────
