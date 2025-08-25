@@ -650,7 +650,8 @@ async function save () {
   }
 }
 
-
+const pane = ref('base')
+watch(visible, v => { if (v) pane.value = 'base' })
 
 
 </script>
@@ -661,137 +662,135 @@ async function save () {
     v-if="props.bill"
     v-model="visible"
   >
-
+    <button
+      class="btn-close position-absolute"
+      style="margin-left: unset; top:8px; right:8px;"
+      @click="tryClose"
+    /> <!-- 閉じるボタン -->
     <div
-      class="position-relative p-4 d-grid gap-4 h-100"
-      style="grid-template-columns:200px 1fr 1fr;"
+      class="p-2 d-md-flex d-grid flex-column flex-md-row gap-4 h-100"
     >
-      <button
-        class="btn-close position-absolute"
-        style="margin-left: unset; top:8px; right:8px;"
-        @click="tryClose"
-      /> <!-- 閉じるボタン -->
-
-      <div class="sidebar outer d-flex flex-column gap-4">
-        <!-- 伝票番号 -->
-        <div class="wrap">
-          <div class="title"><IconNotes/>伝票番号</div>
-          <div class="items">
-            <span>{{ isNew ? '未保存' : props.bill.id }}</span>
+      <div class="modal-sidebar outer d-flex flex-md-column flex-row gap-4">
+          <div class="menu d-md-none">
+            <div class="nav nav-pills nav-fill small gap-2">
+              <button type="button" class="nav-link" :class="{active: pane==='base'}"    @click="pane='base'">基本</button>
+              <button type="button" class="nav-link" :class="{active: pane==='customer'}" @click="pane='customer'">顧客</button>
+            </div>
           </div>
+          <div class="d-flex justify-content-between flex-md-column flex-row " :class="{'d-none d-md-block': pane!=='base'}">
 
-        </div>
-        <!-- テーブル番号 -->
-        <div class="wrap">
-          <div class="title"><IconPinned/>テーブル</div>
-          <div class="items">
-            <select
-              v-model.number="form.table_id"
-              class="form-select text-end"
-              style="width: 80px;"
-            >
-              <option
-                class="text-center"
-                :value="null"
-              >
-                -
-              </option>
-              <option
-                v-for="t in tables"
-                :key="t.id"
-                class="text-center"
-                :value="t.id"
-              >
-                {{ t.number }}
-              </option>
-            </select>
-          </div>
-        </div>
-        <!-- 人数 -->
-        <div class="wrap">
-          <div class="title"><IconUsers/>人数</div>
-          <div class="items">
-            <select
-              v-model.number="pax"
-              class="form-select text-center"
-              style="width: 80px;"
-            >
-              <option
-                v-for="n in 12"
-                :key="n"
-                :value="n"
-              >
-                {{ n }}
-              </option>
-            </select>
-          </div>
-        </div>
-
-        <!-- コース -->
-        <div class="wrap">
-          <div class="title"><IconHistoryToggle/>セット</div>
-          <div class="items">
-            <div class="">
-              <div
-                v-for="c in courseOptions"
-                :key="c.code"
-                class="btn btn-light"
-                style="cursor: pointer;"
-                @click="chooseCourse(c)"
-              >
-                <IconCheck
-                  class="me-1"
-                  :size="14"
-                 />
-                {{ c.label }}
+            <!-- テーブル番号 -->
+            <div class="wrap">
+              <div class="title"><IconPinned/>テーブル</div>
+              <div class="items">
+                <select
+                  v-model.number="form.table_id"
+                  class="form-select text-end"
+                  style="width: 80px;"
+                >
+                  <option
+                    class="text-center"
+                    :value="null"
+                  >
+                    -
+                  </option>
+                  <option
+                    v-for="t in tables"
+                    :key="t.id"
+                    class="text-center"
+                    :value="t.id"
+                  >
+                    {{ t.number }}
+                  </option>
+                </select>
               </div>
             </div>
+
+            <!-- 人数 -->
+            <div class="wrap">
+              <div class="title"><IconUsers/>人数</div>
+              <div class="items">
+                <select
+                  v-model.number="pax"
+                  class="form-select text-center"
+                  style="width: 80px;"
+                >
+                  <option
+                    v-for="n in 12"
+                    :key="n"
+                    :value="n"
+                  >
+                    {{ n }}
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <!-- セット -->
+            <div class="wrap">
+              <div class="title"><IconHistoryToggle/>セット</div>
+              <div class="items">
+                <select
+                  v-model="draftCode"
+                  class="form-select"
+                  @change="draftCode && chooseCourse(draftCode)"
+                >
+                  <option :value="null">- SET -</option>
+                  <option
+                    v-for="c in courseOptions"
+                    :key="c.id"
+                    :value="c"
+                  >
+                    {{ c.label }}
+                  </option>
+                </select>
+              </div>
+            </div>
+            
           </div>
-
-        </div>
-
-        <div class="wrap">
-          <div class="title position-relative">
-            <IconUserScan/>顧客
-            <div
-              class="position-absolute top-0 bottom-0 end-0 margin-auto p-1"
-              role="button"
-              @click="openCustModal()"
-              >
-              <IconSearch :size="16"/>
-            </div><!-- 検索ボタン -->
-          
-          </div>
-
-            <div class="items">
-            <div
-            v-if="props.bill.customers?.length"
-            class="d-flex flex-wrap gap-2">
-
-            <div
-              v-for="cid in props.bill.customers"
-              :key="cid">
-
-              <!-- 個別削除 -->
-              <IconX
-                :size="12"
+          <!-- 顧客 -->
+          <div class="wrap" :class="{'d-none d-md-block': pane!=='customer'}">
+            <div class="title position-relative">
+              <IconUserScan/>顧客
+              <div
+                class="position-absolute top-0 bottom-0 end-0 margin-auto p-1"
                 role="button"
-                class="me-2"
-                @click.stop="clearCustomer(cid)"
-              />
-              <span
-                @click="openCustModal(cid)"
-                style="cursor:pointer;"
-              >
-                {{ customers.getLabel(cid) }}
-              </span>
+                @click="openCustModal()"
+                >
+                <IconSearch :size="16"/>
+              </div><!-- 検索ボタン -->
+            
+            </div>
 
+              <div class="items">
+              <div
+              v-if="props.bill.customers?.length"
+              class="d-flex flex-wrap gap-2">
+
+              <div
+                v-for="cid in props.bill.customers"
+                :key="cid">
+
+                <!-- 個別削除 -->
+                <IconX
+                  :size="12"
+                  role="button"
+                  class="me-2"
+                  @click.stop="clearCustomer(cid)"
+                />
+                <span
+                  @click="openCustModal(cid)"
+                  style="cursor:pointer;"
+                >
+                  {{ customers.getLabel(cid) }}
+                </span>
+
+
+              </div>
+              </div><!-- 選択済み顧客 -->
 
             </div>
-            </div><!-- 選択済み顧客 -->
-
           </div>
-        </div>
       </div>
 
       <div class="outer d-flex flex-column gap-4">
@@ -828,16 +827,22 @@ async function save () {
                 </div>
               </template>
 
-              <div class="d-flex align-items-center gap-1">
-                <IconCoinYen /> {{ current.sub.toLocaleString() }}
-              </div>
+              <div class="d-flex gap-3">
+                <div class="d-flex align-items-center gap-1">
+                  <IconNotes/> {{ isNew ? '未保存' : props.bill.id }}
+                </div>
+                
+                <div class="d-flex align-items-center gap-1">
+                  <IconCoinYen /> {{ current.sub.toLocaleString() }}
+                </div>
 
-              <div class="d-flex align-items-center gap-1">
-                <IconUsers />{{ pax }}
-              </div>
+                <div class="d-flex align-items-center gap-1">
+                  <IconUsers />{{ pax }}
+                </div>
 
-              <div class="d-flex align-items-center gap-1">
-                <IconRefresh /> {{ headerInfo.extCnt }}
+                <div class="d-flex align-items-center gap-1">
+                  <IconRefresh /> {{ headerInfo.extCnt }}
+                </div>
               </div>
           </div>
 
@@ -1015,7 +1020,7 @@ async function save () {
               <!-- 時刻 -->
               <small
                 class="text-muted"
-                style="width:58px;"
+                style="width:40px;"
               >
                 {{ dayjs(ev.when).format('HH:mm') }}
               </small>

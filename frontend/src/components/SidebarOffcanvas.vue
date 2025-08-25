@@ -34,7 +34,7 @@ async function logout () {
     <div
       id="appSidebar"
       class="offcanvas offcanvas-start"
-      style="--bs-offcanvas-width: min(50vw,300px);"
+      style="--bs-offcanvas-width: min(100vw,300px);"
       tabindex="-1"
     >
       <div class="offcanvas-header">

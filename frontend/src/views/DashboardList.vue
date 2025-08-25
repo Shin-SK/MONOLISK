@@ -142,7 +142,7 @@ function liveCasts (b) {
 
 <template>
   <div class="dashboard list d-flex flex-column">
-    <div class="outer flex-fill position-relative">
+    <div class="outer flex-fill position-relative" style="min-width: 0;">
       <header class="d-flex justify-content-between">
         <div class="d-flex gap-1 mb-2">
           <!-- リストだけリアルタイムってかリストって感じで -->
@@ -163,7 +163,7 @@ function liveCasts (b) {
           </div> -->
         </div>
       </header>
-      
+    <div class="table-responsive-md">
       <table
         class="bill-table table table-bordered table-hover align-middle table-striped"
         style="table-layout: fixed;"
@@ -176,7 +176,7 @@ function liveCasts (b) {
           <col style="width:  80px">  <!-- in -->
           <col style="width:  40px">  <!-- 延長 -->
           <col style="width:  80px">  <!-- out -->
-          <col style="width: auto">   <!-- ★ キャスト：残り全部 -->
+          <col style="width: 300px">   <!-- ★ キャスト：残り全部 -->
           <col style="width: 160px">  <!-- 小計 -->
           <col style="width: 160px">  <!-- 合計 -->
         </colgroup>
@@ -265,7 +265,7 @@ function liveCasts (b) {
           
               <td>
                 <!-- ── 今ついているキャスト ─────────────────── -->
-                <div class="d-flex flex-wrap gap-2 mb-1">
+                <div class="d-flex flex-wrap gap-2 mb-1 align-items-start" style="min-width:0">
                   <div
                     v-for="p in liveCasts(b).filter(p => p.present)"
                     :key="p.id"
@@ -275,7 +275,7 @@ function liveCasts (b) {
                     <Avatar
                       :url="p.avatar"
                       :alt="p.name"
-                      :size="28"
+                      :size="16"
                       class="me-1"
                     />
                     <span class="fw-bold">{{ p.name }}</span>
@@ -303,7 +303,7 @@ function liveCasts (b) {
           </template>
         </tbody>
       </table>
-
+    </div>
       <!-- ★ 削除ボタン -->
       <button
         class="btn btn-danger"

@@ -131,3 +131,10 @@ $tip-z    : 1000 !default;
     }
   }
 }
+
+
+.main{
+  @include md{
+    padding-bottom: 80px !important;
+  }
+}

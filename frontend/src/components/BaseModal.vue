@@ -1,7 +1,6 @@
 <!-- components/BaseModal.vue -->
 <script setup>
 import { Teleport } from 'vue'
-
 const props = defineProps({ modelValue: Boolean })
 const emit  = defineEmits(['update:modelValue'])
 const close = () => emit('update:modelValue', false)
@@ -11,28 +10,21 @@ const close = () => emit('update:modelValue', false)
   <Teleport to="body">
     <!-- backdrop -->
     <transition name="backdrop-fade">
-      <div
-        v-if="modelValue"
-        class="modal-backdrop"
-        @click="close"
-      />
+      <div v-if="modelValue" class="modal-backdrop" @click="close" />
     </transition>
 
     <!-- modal 本体 -->
     <transition name="modal-fade">
-      <div
-        v-if="modelValue"
-        class="modal d-block"
-        role="dialog"
-        @keydown.esc="close"
-      >
-        <div class="modal-dialog modal-dialog-scrollable modal-fullscreen p-5">
-          <div class="modal-content p-3">
+      <div v-if="modelValue" class="modal d-block" role="dialog" @keydown.esc="close">
+        <div class="modal-dialog modal-dialog-scrollable modal-fullscreen p-md-5 p-3">
+          <div class="modal-content">
             <!-- ヘッダー -->
             <slot name="header" />
 
-            <!-- 本体 -->
-            <slot />
+            <!-- ★ ここを .modal-body にする -->
+            <div class="modal-body p-3">
+              <slot />
+            </div>
 
             <!-- フッター -->
             <slot name="footer">
@@ -44,6 +36,7 @@ const close = () => emit('update:modelValue', false)
     </transition>
   </Teleport>
 </template>
+
 
 <style scoped>
 /* ---------- ベース ---------- */

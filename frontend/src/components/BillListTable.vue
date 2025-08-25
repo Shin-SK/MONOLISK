@@ -318,7 +318,7 @@ function checkDuplicates () {}
       </div>
     </div>
     <div class="tables">
-      <div class="bench-cast d-flex gap-5 justify-content-center bg-white flex-wrap bg-white p-5 w-100">
+      <div class="bench-cast d-flex justify-content-center bg-white flex-wrap bg-white w-100">
         <!-- 空きキャスト列 -->
         <CastTableDnD
           :bill-id="null"

@@ -22,7 +22,7 @@ cloudinary.config(
     secure     = True,
 )
 
-# ── Hosts / CORS / CSRF（{store}.monolisk.app）──────────────────────
+# ── Hosts / CORS / CSRF ──────────────────────
 if DEBUG:
     ALLOWED_HOSTS = ["*"]
 else:

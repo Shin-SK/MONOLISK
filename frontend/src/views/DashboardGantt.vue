@@ -53,11 +53,11 @@ const ganttRef = ref(null)
 </script>
 
 <template>
-  <div class="gantt dashboard container-fluid d-flex flex-column">
+  <div class="gantt dashboard d-flex flex-column">
     <div class="outer flex-fill position-relative">
       <!-- ▼ 日付ヘッダー -->
-      <header class="gc-header position-relative mb-1">
-        <div class="d-flex align-items-center justify-content-between gap-3 w-100">
+      <header class="gc-header mb-1">
+        <div class="d-flex align-items-center justify-content-between gap-3 w-100 flex-column flex-md-row">
           <!-- 凡例 -->
           <div class="d-flex gap-1">
             <span class="badge bg-danger text-white">本指名</span>
@@ -67,37 +67,41 @@ const ganttRef = ref(null)
             <span class="badge bg-orange text-white">フリー(~30分)</span>
           </div>
 
-          <div class="position-absolute top-50 start-50 translate-middle fs-5 fw-bold">
+          <div class=" fs-5 fw-bold">
             {{ headerLabel }}
           </div>
 
-          <div class="d-flex gap-3">
+          <div class="selectdate d-flex gap-3">
             <input
               v-model="selectedDateStr"
               type="date"
-              class="form-control form-control-sm bg-white ms-2"
+              class="form-control form-control-sm bg-white"
             >
-            <button
-              class="btn btn-outline-secondary"
-              :class="{active:isSame(dayjs().subtract(1,'day'))}"
-              @click="go(-1)"
-            >
-              <IconArrowLeft />
-            </button>
-            <button
-              class="btn btn-outline-primary"
-              :class="{active:isSame(dayjs())}"
-              @click="setToday"
-            >
-              今日
-            </button>
-            <button
-              class="btn btn-outline-secondary"
-              :class="{active:isSame(dayjs().add(1,'day'))}"
-              @click="go(1)"
-            >
-              <IconArrowRight />
-            </button>
+            <div class="area d-flex gap-2">
+
+              <button
+                class="btn btn-sm btn-outline-secondary"
+                :class="{active:isSame(dayjs().subtract(1,'day'))}"
+                @click="go(-1)"
+              >
+                <IconArrowLeft />
+              </button>
+              <button
+                class="btn btn-outline-primary"
+                :class="{active:isSame(dayjs())}"
+                @click="setToday"
+              >
+                今日
+              </button>
+              <button
+                class="btn btn-sm btn-outline-secondary"
+                :class="{active:isSame(dayjs().add(1,'day'))}"
+                @click="go(1)"
+              >
+                <IconArrowRight />
+              </button>
+                          
+            </div>
           </div>
         </div>
       </header>

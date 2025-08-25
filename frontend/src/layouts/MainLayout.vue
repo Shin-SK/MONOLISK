@@ -35,9 +35,10 @@ async function logout () {
 </script>
 
 <template>
-  <div class="base admin d-flex min-vh-100">
+  <div class="base admin d-block d-md-flex min-vh-100">
+
     <!-- ────────── SIDEBAR ────────── -->
-    <div class="sidebar d-flex flex-column gap-5 align-items-center">
+    <div class="sidebar d-flex gap-5 align-items-center">
       <button class="avatar-icon btn p-0 border-0 bg-transparent"
               @click="openSidebar">
         <Avatar :url="user.avatar_url" :size="40" class="rounded-circle" />
@@ -49,7 +50,7 @@ async function logout () {
         :class="isActive('/dashboard')
           ? 'bg-dark text-white'
           : 'bg-white text-dark'">
-        <IconPinned :size="32"/>
+        <IconPinned :size="24"/>
       </RouterLink>
 
       <RouterLink
@@ -58,7 +59,7 @@ async function logout () {
         :class="isActive('/dashboard/list')
           ? 'bg-dark text-white'
           : 'bg-white text-dark'">
-        <IconList :size="32"/>
+        <IconList :size="24"/>
       </RouterLink>
       <RouterLink
         class="nav-link"
@@ -66,7 +67,7 @@ async function logout () {
         :class="isActive('/dashboard/timeline')
           ? 'bg-dark text-white'
           : 'bg-white text-dark'">
-       <IconMenu3 :size="32"/>
+       <IconMenu3 :size="24"/>
       </RouterLink>
 
     </div>

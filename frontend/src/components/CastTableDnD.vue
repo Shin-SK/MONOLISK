@@ -87,23 +87,6 @@ function toggleKind(el){
   })
 }
 
-// function onAdd (evt){
-//   const castId      = Number(evt.item.dataset.id)
-//   const fromBillId  = evt.item.dataset.billId  ? Number(evt.item.dataset.billId)  : null
-//   const fromTableId = evt.from?.dataset.tableId? Number(evt.from.dataset.tableId) : null
-//   const moved = evt.item.__vue__?.element ?? null
-//   if (!moved) return
-//   setTimeout(() => emit('update-stay',{
-//     castId,
-//     fromBillId,
-//     toBillId   : props.billId  ?? null,
-//     fromTableId,
-//     toTableId  : props.tableId ?? null
-//   }),
-//   dragOptions.animation)
-// }
-
-
 /* ---------- ドロップ確定 ---------- */
 function onDragEnd (evt) {
   /* ────────────────
@@ -135,7 +118,7 @@ const showDetail = computed(() => !isVacant.value)
     <!-- ── ヘッダー ── -->
     <h5
       v-if="!benchArea"
-      class="header p-2 bg-dark text-light d-flex align-items-center justify-content-between m-0"
+      class="header p-2 bg-dark text-light d-flex align-items-center justify-content-between m-0 d-md-flex d-none"
     >
       <div class="table-number fs-3 d-flex align-items-center gap-1">
         <IconPinned class="mt-1" />
@@ -172,7 +155,8 @@ const showDetail = computed(() => !isVacant.value)
         v-model="localCasts"
         item-key="id"
         :group="{ name:'casts' }"
-        :class="['casts bg-white p-3 d-flex flex-wrap gap-2', benchArea ? 'bench-zone' : '']"
+        :class="['casts bg-white d-flex flex-wrap gap-2', 
+                benchArea ? 'bench-zone p-0' : 'p-3']"
         :data-bill-id="billId"
         :data-table-id="tableId"
         v-bind="dragOptions"
@@ -202,24 +186,49 @@ const showDetail = computed(() => !isVacant.value)
 
     <!-- フッター -->
     <div
-      v-if="showDetail"
-      class="footer bg-white p-2 d-flex gap-3 justify-content-between"
+      v-if="showDetail && !benchArea"
+      class="footer bg-white p-2 d-flex gap-3 justify-content-between align-items-center"
     >
+      <!-- デバイス用 -->
+      <div class="table-number fs-4 align-items-center gap-1 d-md-none d-flex">
+        <IconPinned :size="20"/>
+        <span>{{ title }}</span>
+      </div>
+
+      <!-- デバイス用 -->
+      <div
+        v-if="billId"
+        class="item d-flex gap-1 align-items-center d-md-none d-flex"
+      >
+        <IconNotes :size="20"/>
+        <span>{{ billId }}</span>
+      </div>
+
+      <!-- デバイス系 -->
+      <div
+        v-if="pax !== null"
+        class="item d-md-none d-flex"
+      >
+        <IconUsers />{{ pax }}
+      </div>
+
       <div
         v-if="remainMin !== null"
-        class="item fs-3 d-flex gap-2 align-items-center"
+        class="item fs-4 d-flex gap-2 align-items-center"
       >
-        <IconHistoryToggle /><span>{{ remainMin }}分</span>
+        <IconHistoryToggle :size="20"/><span>{{ remainMin }}分</span>
       </div>
+
       <div
         v-if="subtotal !== null"
-        class="item d-flex gap-2 align-items-center"
+        class="item d-flex gap-0 align-items-center"
       >
-        <span class="badge bg-primary">小計</span>
-        <span class="d-flex align-items-center fs-3">
-          ¥{{ subtotal.toLocaleString() }}
+        <IconCurrencyYen :size="20"/>
+        <span class="d-flex align-items-center fs-4">
+          {{ subtotal.toLocaleString() }}
         </span>
       </div>
+
     </div>
   </div>
 </template>
@@ -262,7 +271,6 @@ const showDetail = computed(() => !isVacant.value)
 
 .bench-zone{
   min-width: 100%;        /* ベンチ列全体がドロップエリアになる */
-  min-height: 100%;
 }
 .vacant-label{
   opacity:.7;           /* うっすら表示で “空席感” */
