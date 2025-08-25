@@ -26,10 +26,27 @@
 	}
 }
 
-.modal-sidebar{
-	margin-bottom: 24px;
+
+/* ラッパを“コンテナ”化 */
+.sidebar-cq {
+	container-type: inline-size;
+	min-width: 160px;
 }
 
+/* 既定は縦並び（PC想定） */
+.modal-sidebar{
+  display:flex;        /* 念のため明示 */
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ラッパ（祖先コンテナ）の幅で切替える */
+@container (max-width: 200px){
+  .modal-sidebar{
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
 .sidebar{
 	flex-direction: column;
 	padding: 16px;

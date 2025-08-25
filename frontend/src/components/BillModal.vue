@@ -670,7 +670,8 @@ watch(visible, v => { if (v) pane.value = 'base' })
     <div
       class="p-2 d-md-flex d-grid flex-column flex-md-row gap-4 h-100"
     >
-      <div class="modal-sidebar outer d-flex flex-md-column flex-row gap-4">
+    <div class="sidebar-cq d-flex">
+      <div class="modal-sidebar outer">
           <div class="menu d-md-none">
             <div class="nav nav-pills nav-fill small gap-2">
               <button type="button" class="nav-link" :class="{active: pane==='base'}"    @click="pane='base'">基本</button>
@@ -792,7 +793,7 @@ watch(visible, v => { if (v) pane.value = 'base' })
             </div>
           </div>
       </div>
-
+    </div>
       <div class="outer d-flex flex-column gap-4">
         <div class="box">
           <div class="d-flex flex-wrap gap-3 align-items-center">
