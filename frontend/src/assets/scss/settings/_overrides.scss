@@ -45,3 +45,8 @@
     min-height: 100%;
       
 }
+
+button:not(.btn-link):not(.nav-link),
+[type="button"]:not(.btn-link):not(.nav-link) {
+  color: var(--bs-body-color);
+}
