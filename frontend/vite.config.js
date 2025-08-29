@@ -10,12 +10,14 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'auto',          // main.js いじらなくてOK
-      devOptions: { enabled: true },   // 開発中でもSW動かす
+      injectRegister: 'auto',
+      devOptions: { enabled: true },
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       workbox: {
-        navigateFallback: '/index.html',          // SPAルーティング
-        navigateFallbackDenylist: [/^\/api\//],   // APIはSW迂回
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // ★ 2MiB → 6MiB に拡張
+        globIgnores: ['**/*.map'], // 任意: sourcemapはプリキャッシュ対象外
       },
       manifest: {
         name: 'あなたのアプリ名',
@@ -43,12 +45,21 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   server: {
-    proxy: {
-      '/api': { target: 'http://localhost:8000', changeOrigin: true },
-    },
+    proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } },
   },
   css: {
     devSourcemap: true,
     preprocessorOptions: { scss: { quietDeps: true } }
-  }
+  },
+  // （任意）警告抑制や分割を少し入れるなら下記を有効化
+  // build: {
+  //   chunkSizeWarningLimit: 1500,
+  //   rollupOptions: {
+  //     output: {
+  //       manualChunks: {
+  //         vendor: ['vue','vue-router','pinia','axios','dayjs']
+  //       }
+  //     }
+  //   }
+  // }
 })
