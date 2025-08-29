@@ -335,7 +335,7 @@ export const fetchCastDailySummaries = (params = {}) =>
  *   params: { from:'YYYY-MM-DD', to:'YYYY-MM-DD' } 省略時＝当月
  */
 export const fetchCastRankings = (params = {}) =>
-  api.get('billing/cast-rankings/', { params }).then(r => r.data)
+  api.get('billing/cast-ranking/', { params }).then(r => r.data)
 
 
 /* ---------- Cast 詳細 & 店舗お知らせ ---------- */

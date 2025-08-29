@@ -6,20 +6,38 @@ import { getBillDailyPL, getStores } from '@/api'
 const dateStr = ref(new Date().toISOString().slice(0, 10))
 const pl      = ref(null)
 
+// ★ 追加: 未定義だった変数を定義
+const stores  = ref([])
+const storeId = ref(localStorage.getItem('store_id')
+  ? Number(localStorage.getItem('store_id'))
+  : null)
+
 const yen = n => `¥${(+n || 0).toLocaleString()}`
 
 async function fetchData () {
-  pl.value = await getBillDailyPL(dateStr.value)  // store_idはInterceptor任せ
+  // storeId を渡す（Interceptor があるので null でもOK）
+  pl.value = await getBillDailyPL(dateStr.value, storeId.value)
 }
 
 async function loadStores () {
-  stores.value = await getStores()
-  storeId.value = stores.value[0]?.id || null   // ❶ 先頭店舗を必ずセット
+  // すでに store_id があれば取得不要
+  if (storeId.value) return
+  try {
+    const data = await getStores()
+    const list = Array.isArray(data?.results) ? data.results
+               : Array.isArray(data) ? data
+               : []
+    stores.value  = list
+    storeId.value = list[0]?.id ?? null
+    if (storeId.value) localStorage.setItem('store_id', String(storeId.value))
+  } catch (e) {
+    // 取得失敗しても user.store 側で Store-Locked される想定なので続行
+  }
 }
 
 onMounted(async () => {
   await loadStores()
-  await fetchData()                     // ❷ storeId セット後に呼ぶ
+  await fetchData()
 })
 </script>
 

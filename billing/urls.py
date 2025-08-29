@@ -12,6 +12,8 @@ from .views import (
     CustomerViewSet, StoreNoticeViewSet,
 )
 
+from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
+
 router = DefaultRouter()
 router.register(r"stores",               StoreViewSet,           basename="stores")
 router.register(r"tables",               TableViewSet,           basename="tables")
@@ -50,4 +52,9 @@ urlpatterns = [
     path("cast-payouts/",         CastPayoutListView.as_view(),     name="cast-payouts"),
     path("cast-item-details/",    CastItemDetailView.as_view(),     name="cast-item-details"),
     path("cast-ranking/",         CastRankingView.as_view(),        name="cast-ranking"),
+    
+    # ★ 追加: P/L（Daily / Monthly / Yearly）
+    path("pl/daily/",   DailyPLAPIView.as_view(),   name="pl-daily"),
+    path("pl/monthly/", MonthlyPLAPIView.as_view(), name="pl-monthly"),
+    path("pl/yearly/",  YearlyPLAPIView.as_view(),  name="pl-yearly"),
 ]
