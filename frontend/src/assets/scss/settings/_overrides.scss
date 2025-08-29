@@ -46,7 +46,22 @@
       
 }
 
-button:not(.btn-link):not(.nav-link),
-[type="button"]:not(.btn-link):not(.nav-link) {
-  color: var(--bs-body-color);
+/* 生のボタン/入力だけ黒に固定（Bootstrapの .btn は触らない） */
+button:not(.btn):not(.btn-link):not(.nav-link),
+input[type="button"]:not(.btn),
+input[type="submit"]:not(.btn),
+input[type="reset"]:not(.btn),
+input[type="file"]::file-selector-button,
+input[type="file"]::-webkit-file-upload-button {
+  color: #000; /* あるいは var(--bs-body-color) */
+}
+
+
+@media (display-mode: standalone) {
+  .sidebar {
+    padding-bottom : calc(16px + env(safe-area-inset-bottom));
+  }
+  .offcanvas{
+    padding-left : calc(16px + env(safe-area-inset-left));
+  }
 }

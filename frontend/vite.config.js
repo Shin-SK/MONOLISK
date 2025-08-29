@@ -44,9 +44,21 @@ export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
-  server: {
-    proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } },
-  },
+	server: {
+		host: true,           // iPhoneからアクセス可
+		port: 5173,
+		proxy: {
+			'/api': {
+				target: 'http://127.0.0.1:8000', // Django
+				changeOrigin: true,
+				// Django側のURLに /api が不要なら↓を有効化
+				// rewrite: p => p.replace(/^\/api/, ''),
+			},
+			// 画像等をDjangoから直で出すなら必要に応じて
+			// '/media': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+			// '/static': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+		},
+	},
   css: {
     devSourcemap: true,
     preprocessorOptions: { scss: { quietDeps: true } }

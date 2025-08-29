@@ -336,7 +336,7 @@ const handleSave = async () => {
 
     <!-- フッター（既存のまま） -->
     <template #footer>
-      <div class="modal-footer" style="border-top: 1px #f5f5f5 solid ;">
+      <div class="modal-footer p-0" style="border-top: 1px #f5f5f5 solid ;">
         <div class="w-100 px-2 py-2 pb-safe bg-white">
           <div class="nav nav-pills nav-fill small gap-2 pills-flat">
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='base'}"  @click="pane='base'">
