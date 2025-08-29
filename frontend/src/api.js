@@ -432,6 +432,12 @@ export const toggleBillInhouse = (billId, { cast_id, inhouse }) =>
   api.post(`billing/bills/${billId}/toggle-inhouse/`, { cast_id, inhouse })
      .then(r => r.data)
 
+export const patchBillItem = (billId, itemId, payload) =>
+  api.patch(`billing/bills/${billId}/items/${itemId}/`, payload).then(r => r.data)
+
+export const patchBillItemQty = (billId, itemId, qty) =>
+  patchBillItem(billId, itemId, { qty })
+
 // ──────────── 顧客 ────────────
 export const fetchCustomer = id =>
   api.get(`billing/customers/${id}/`).then(r => r.data)

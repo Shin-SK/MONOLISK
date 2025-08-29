@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: 'auto',
-        devOptions: { enabled: true },
+        devOptions: { enabled: false },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         workbox: {
           navigateFallback: '/index.html',

@@ -7,7 +7,7 @@ import useBillEditor from '@/composables/useBillEditor'
 import OrderPanelSP  from '@/components/OrderPanelSP.vue'
 import PayPanelSP    from '@/components/PayPanelSP.vue'
 /* ▼ 保存に必要なAPI */
-import { api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts, fetchBill, deleteBillItem } from '@/api'
+import { api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts, fetchBill, deleteBillItem, patchBillItemQty } from '@/api'
 
 
 const props = defineProps({
@@ -84,6 +84,11 @@ const masterPriceMap = computed(() => {
   return map
 })
 
+const priceOf = (id, fallback = 0) => {
+  const m = masterPriceMap.value[String(id)]
+  return Number.isFinite(m) ? m : Number(fallback) || 0
+}
+
 // 提供者名マップ（id→label）— 上の options に追従
 const servedByMap = computed(() => {
   const map = {}
@@ -98,8 +103,11 @@ const displayGrandTotal = computed(() => props.bill?.grand_total ?? 0)
 const payCurrent = computed(() => {
   const items = Array.isArray(props.bill?.items) ? props.bill.items : []
   const masters = ed.masters?.value || []
-  const priceOf = (id) => masters.find(m => m.id === id)?.price_regular || 0
-  const sub = items.reduce((s,it) => s + (Number(it.qty)||0) * (priceOf(it.item_master) || it.price || 0), 0)
+  const priceOf = (id) => (ed.masters?.value || []).find(m => m.id === id)?.price_regular || 0
+  const sub = items.reduce((s,it) => {
+    const unit = priceOf(it.item_master, it.price)
+    return s + (Number(it.qty)||0) * unit
+  }, 0)
   const svc = Math.round(sub * (props.serviceRate || 0))
   const tax = Math.round((sub + svc) * (props.taxRate || 0))
   return { sub, svc, tax, total: sub + svc + tax }
@@ -119,23 +127,30 @@ const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= t
 // 履歴編集（±/削除）
 const incItem = async (it) => {
   try{
-    await api.patch(`billing/bill-items/${it.id}/`, { qty: Number(it.qty||0)+1 })
-    const fresh = await fetchBill(props.bill.id).catch(()=>null)
-    emit('updated', fresh || props.bill.id)   // ★ saved→updated
+    const newQty = (Number(it.qty)||0) + 1
+    await patchBillItemQty(props.bill.id, it.id, newQty)      // サーバを先に更新
+    // ★ 楽観更新：その場でUI反映（小計も再計算）
+    it.qty = newQty
+    it.subtotal = priceOf(it.item_master, it.price) * newQty
+    const fresh = await fetchBill(props.bill.id).catch(()=>null) // 最終整合
+    emit('updated', fresh || props.bill.id)
   }catch(e){ console.error(e); alert('数量を増やせませんでした') }
 }
 
 const decItem = async (it) => {
   try{
-    const newQty = Number(it.qty||0) - 1
+    const newQty = (Number(it.qty)||0) - 1
     if (newQty <= 0) {
       if (!confirm('削除しますか？')) return
       await deleteBillItem(props.bill.id, it.id)
     } else {
-      await api.patch(`billing/bill-items/${it.id}/`, { qty: newQty })
+      await patchBillItemQty(props.bill.id, it.id, newQty)
+      // ★ 楽観更新
+      it.qty = newQty
+      it.subtotal = priceOf(it.item_master) * newQty
     }
     const fresh = await fetchBill(props.bill.id).catch(()=>null)
-    emit('updated', fresh || props.bill.id)   // ★ saved→updated
+    emit('updated', fresh || props.bill.id)
   }catch(e){ console.error(e); alert('数量を減らせませんでした') }
 }
 

@@ -67,7 +67,7 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-54d0af47'], (function (workbox) { 'use strict';
+define(['./workbox-f8c404e3'], (function (workbox) { 'use strict';
 
   self.skipWaiting();
   workbox.clientsClaim();
@@ -82,12 +82,20 @@ define(['./workbox-54d0af47'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "/index.html",
-    "revision": "0.k5i0sjif60g"
+    "revision": "0.lrv8g3eptug"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("/index.html"), {
     allowlist: [/^\/$/],
     denylist: [/^\/api\//]
   }));
+  workbox.registerRoute(({
+    url
+  }) => url.origin.includes("monolisk") && url.pathname.startsWith("/api"), new workbox.NetworkOnly({
+    "fetchOptions": {
+      "credentials": "include"
+    },
+    plugins: []
+  }), 'GET');
 
 }));

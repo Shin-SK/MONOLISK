@@ -1,45 +1,73 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch, computed } from 'vue'
 import dayjs from 'dayjs'
 
 const props = defineProps({
-  // 履歴リスト（確定済み）
-  items: { type: Array, default: () => [] }, // [{id, name, qty, subtotal, served_by_cast, created_at/ordered_at/served_at?...}]
-
-  // 名前解決
+  items: { type: Array, default: () => [] },
   masterNameMap: { type: Object, default: () => ({}) },
   servedByMap:   { type: Object, default: () => ({}) },
-
-  // 集計表示
   current: { type: Object, default: () => ({ sub:0, svc:0, tax:0, total:0 }) },
   displayGrandTotal: { type: Number, default: 0 },
-
-  // 入力状態
   settledTotal: { type: Number, default: 0 },
   paidCash:     { type: Number, default: 0 },
   paidCard:     { type: Number, default: 0 },
-  billOpenedAt:  { type: String, default: '' },
-  // 便利値
-  diff:     { type: Number, default: 0 },   // paidTotal - targetTotal
+  billOpenedAt: { type: String, default: '' },
+  diff:     { type: Number, default: 0 },
   overPay:  { type: Number, default: 0 },
   canClose: { type: Boolean, default: false },
 })
-
 const emit = defineEmits([
-  // 金額入力
-  'update:settledTotal', 'update:paidCash', 'update:paidCard',
-  'useGrandTotal', 'fillRemainderToCard', 'confirmClose',
-  // 履歴編集
-  'incItem', 'decItem', 'deleteItem'
+  'update:settledTotal','update:paidCash','update:paidCard',
+  'useGrandTotal','fillRemainderToCard','confirmClose',
+  'incItem','decItem','deleteItem'
 ])
 
-// 数字入力ハンドラ（文字列→数値）
+/* ▼ ここから追加：自動同期（手動編集したらロック） */
+const dirtyTotal = ref(false) // true の間は自動同期しない
+
+const calcTotal = computed(() => Number(props.current?.total) || 0)
+
+watch(
+  () => props.current.total,
+  () => { if (!dirtyTotal.value) emit('update:settledTotal', calcTotal.value) },
+  { immediate: true }
+)
+
+const effectiveTotal = computed(() => {
+  const grand = Number(props.displayGrandTotal) || 0
+  const cur   = Number(props.current?.total)   || 0
+  return grand > 0 ? grand : cur
+})
+
+
+const needsUpdate = computed(() =>
+  dirtyTotal.value || Number(props.settledTotal || 0) !== calcTotal.value
+)
+
+const resetToTotal = () => {
+  dirtyTotal.value = false
+  emit('update:settledTotal', calcTotal.value)   // ← 上の「合計」と揃える
+}
+
+/* ▲ ここまで追加 */
+
+const setExactCash = () => {
+  const total = Math.max(0, Number(props.settledTotal) || 0)
+  emit('update:paidCash', total)
+  emit('update:paidCard', 0)
+}
+const setExactCard = () => {
+  const total = Math.max(0, Number(props.settledTotal) || 0)
+  emit('update:paidCash', 0)
+  emit('update:paidCard', total)
+}
+
 const onNum = (e, key) => {
   const v = Number(e.target.value ?? 0)
+  if (key === 'settledTotal') dirtyTotal.value = true   // 手動編集でロック
   emit(`update:${key}`, isNaN(v) ? 0 : v)
 }
 
-// 編集行のトグル
 const editingId = ref(null)
 const toggleEdit = (id) => { editingId.value = (editingId.value === id ? null : id) }
 
@@ -56,11 +84,11 @@ const onDec = (it) => {
   }
 }
 
-// 時刻の選び方（あるもの優先）
 const pickTime = (it) =>
   it?.ordered_at || it?.served_at || it?.created_at || it?.updated_at || props.billOpenedAt || null
 const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
 </script>
+
 
 <template>
   <div class="panel pay">
@@ -110,51 +138,64 @@ const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
 		<div v-if="!items || !items.length" class="text-muted small">履歴はありません</div>
 		</div>
 
-		<!-- ▼ サマリ -->
-		<div class="sum">
-		<div class="d-grid gap-3" style="grid-template-columns: 1fr auto;">
-			<div class="label">小計</div>      <div class="value text-end">¥{{ current.sub.toLocaleString() }}</div>
-			<div class="label">サービス料</div><div class="value text-end">¥{{ current.svc.toLocaleString() }}</div>
-			<div class="label">消費税</div>    <div class="value text-end">¥{{ current.tax.toLocaleString() }}</div>
-			<div class="label fw-bold fs-5">合計</div><div class="value fw-bold text-end fs-5">¥{{ current.total.toLocaleString() }}</div>
-		</div>
-		</div>
+     <!-- ▼ サマリ -->
+      <div class="sum">
+        <div class="d-grid gap-3" style="grid-template-columns: 1fr auto;">
+          <div class="label">小計</div>      <div class="value text-end">¥{{ current.sub.toLocaleString() }}</div>
+          <div class="label">サービス料</div><div class="value text-end">¥{{ current.svc.toLocaleString() }}</div>
+          <div class="label">消費税</div>    <div class="value text-end">¥{{ current.tax.toLocaleString() }}</div>
+          <div class="label fw-bold fs-5">合計</div><div class="value fw-bold text-end fs-5">¥{{ current.total.toLocaleString() }}</div>
+        </div>
+      </div>
 
-		<!-- ▼ 支払い -->
-		<div class="payment d-flex flex-column gap-3">
-		<div class="d-flex">
-			<label class="d-flex align-items-center" style="width: 100px;">会計金額</label>
-			<input class="form-control" type="number" :value="settledTotal" @input="e => onNum(e,'settledTotal')" />
-			<!-- <button class="btn mini ms-2" type="button" @click="$emit('useGrandTotal')">＝伝票合計</button> -->
-		</div>
+      <!-- ▼ 支払い -->
+      <div class="payment d-flex flex-column gap-3">
+        <div class="d-flex">
+          <label class="d-flex align-items-center" style="width: 100px;">会計金額</label>
+          <div class="position-relative w-100">
+            <input class="form-control" type="number" :value="settledTotal" @input="e => onNum(e,'settledTotal')" />
+            <!-- 手動編集 or 乖離時のみ出す。押すと自動同期に戻る -->
+            <button
+              class="position-absolute top-0 bottom-0 end-0 px-2"
+              type="button"
+              @click="resetToTotal"
+              title="合計に合わせる"
+            ><IconRefresh :size="16"/></button>
+          </div>
+        </div>
 
-		<div class="d-flex">
-			<label class="d-flex align-items-center" style="width: 100px;">現金</label>
-			<div class="position-relative w-100">
-			<input class="form-control" type="number" :value="paidCash" @input="e => onNum(e,'paidCash')" />
-			<button class="position-absolute end-0 top-0 bottom-0" type="button" @click="$emit('fillRemainderToCard')">
-				<IconCalculator :size="16" />
-			</button><!-- ★このボタンを押すと、金額関係なく会計金額が直でカードに入っちゃう -->
+        <div class="d-flex">
+          <label class="d-flex align-items-center" style="width: 100px;">現金</label>
+          <div class="position-relative w-100">
+            <input class="form-control" type="number" :value="paidCash" @input="e => onNum(e,'paidCash')" />
+            <button class="position-absolute end-0 top-0 bottom-0" type="button" @click="setExactCash" title="全額を現金で支払い">
+              <IconTransferVertical :size="16" /><!-- ★こっち、支払いの合計金額を入力させるボタンがほしい。一発でぴったりです！みたいなかんじ -->
+            </button>
+          </div>
+        </div>
+
+        <div class="d-flex">
+          <label class="d-flex align-items-center" style="width: 100px;">カード</label>
+		  	<div class="position-relative w-100">
+				<input class="form-control" type="number" :value="paidCard" @input="e => onNum(e,'paidCard')" />
+				<button class="position-absolute end-0 top-0 bottom-0" type="button" @click="$emit('fillRemainderToCard')">
+					<IconCalculator :size="16" />
+				</button>
 			</div>
-		</div>
+        </div>
 
-		<div class="d-flex">
-			<label class="d-flex align-items-center" style="width: 100px;">カード</label>
-			<input class="form-control" type="number" :value="paidCard" @input="e => onNum(e,'paidCard')" />
-		</div>
+        <div class="small text-muted">
+          伝票合計: ¥{{ displayGrandTotal.toLocaleString() }} /
+          受領合計: ¥{{ (Number(paidCash||0)+Number(paidCard||0)).toLocaleString() }} /
+          差額: <span :class="diff===0 ? 'ok' : 'neg'">¥{{ diff.toLocaleString() }}</span>
+          <span v-if="overPay>0" class="text-danger ms-1">（お釣り: ¥{{ overPay.toLocaleString() }}）</span>
+        </div>
+      </div>
 
-		<div class="small text-muted">
-			伝票合計: ¥{{ displayGrandTotal.toLocaleString() }} /
-			受領合計: ¥{{ (Number(paidCash||0)+Number(paidCard||0)).toLocaleString() }} /
-			差額: <span :class="diff===0 ? 'ok' : 'neg'">¥{{ diff.toLocaleString() }}</span>
-			<span v-if="overPay>0" class="text-danger ms-1">（お釣り: ¥{{ overPay.toLocaleString() }}）</span>
-		</div>
-		</div>
-
-		<!-- ▼ 確定 -->
-		<div class="paybutton">
-		<button class="btn btn-primary w-100" type="button" :disabled="!canClose" @click="$emit('confirmClose')">お会計</button>
-		</div>
+      <!-- ▼ 確定 -->
+      <div class="paybutton">
+        <button class="btn btn-primary w-100" type="button" :disabled="!canClose" @click="$emit('confirmClose')">お会計</button>
+      </div>
 	</div>
   </div>
 </template>
