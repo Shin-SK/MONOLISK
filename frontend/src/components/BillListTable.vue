@@ -61,6 +61,30 @@ function calcRemainMin(bill) {
   return Math.max(limit - elapsed, 0)
 }
 
+// ── 追記 ─────────────────────────────
+const CLICK_TOL = 8;                 // 8px以上動いたらドラッグ扱い
+const press = ref(null);             // { id, x, y, moved }
+
+function onPD(t, e) {
+  press.value = { id: t.id, x: e.clientX, y: e.clientY, moved: false }
+}
+function onPM(e) {
+  if (!press.value) return
+  if (Math.abs(e.clientX - press.value.x) > CLICK_TOL ||
+      Math.abs(e.clientY - press.value.y) > CLICK_TOL) {
+    press.value.moved = true
+  }
+}
+function onPU(t) {
+  if (!press.value) return
+  const moved = press.value.moved
+  press.value = null
+  if (!moved) openModal(t)          // ★シングルで開く（PC/スマホ共通）
+}
+function onPC() { press.value = null }
+// ────────────────────────────────────
+
+
 // ────────────────────────────────
 //  周期リロード（白フラ防止版）
 //   - 一覧は store 側で差分パッチ＆参照維持
@@ -331,30 +355,36 @@ function checkDuplicates () {}
 
       <!-- テーブルごとの列 -->
       <div class="tables-main d-grid gap-4 mt-4">
-        <CastTableDnD
+        <div
           v-for="t in tables"
           :key="t.id"
-          :title="`${t.number}`"
-          :bill-id="getOpenBill(t.id)?.id ?? null"
-          :table-id="t.id"
-          :remain-min="calcRemainMin(getOpenBill(t.id))"
-          :pax="getOpenBill(t.id)?.pax ?? null"
-          :subtotal="getOpenBill(t.id)?.subtotal ?? null" 
-          :casts="(getOpenBill(t.id)?.stays || []).filter(s=>!s.left_at).map(s=>({
-            id: s.cast.id,
-            name: s.cast.stage_name,
-            avatar: s.cast.avatar_url,
-            kind: s.stay_type,
-            entered_at: s.entered_at
-          }))"
-          @update-stay="handleUpdateStay"
-          @dblclick.native="openModal(t)"
-          @toggle-stay="handleToggleStay"
-          @click.native="() => { // ★ここ追加
-            if (!getOpenBill(t.id)) openModal(t) // Bill 無ければ新規作成
-          }"
-        />
+          class="table-wrap"
+          @pointerdown="onPD(t, $event)"
+          @pointermove="onPM"
+          @pointerup="onPU(t)"
+          @pointercancel="onPC"
+          @pointerleave="onPC"
+        >
+          <CastTableDnD
+            :title="`${t.number}`"
+            :bill-id="getOpenBill(t.id)?.id ?? null"
+            :table-id="t.id"
+            :remain-min="calcRemainMin(getOpenBill(t.id))"
+            :pax="getOpenBill(t.id)?.pax ?? null"
+            :subtotal="getOpenBill(t.id)?.subtotal ?? null"
+            :casts="(getOpenBill(t.id)?.stays || []).filter(s=>!s.left_at).map(s=>({
+              id: s.cast.id,
+              name: s.cast.stage_name,
+              avatar: s.cast.avatar_url,
+              kind: s.stay_type,
+              entered_at: s.entered_at
+            }))"
+            @update-stay="handleUpdateStay"
+            @toggle-stay="handleToggleStay"
+          />
+        </div>
       </div>
+
     </div>
 
     <BillModal
@@ -367,4 +397,5 @@ function checkDuplicates () {}
 </template>
 
 <style scoped>
+.table-wrap { touch-action: manipulation; } /* ダブルタップズーム/300ms遅延の抑制 */
 </style>

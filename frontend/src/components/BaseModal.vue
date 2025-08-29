@@ -1,6 +1,7 @@
 <!-- components/BaseModal.vue -->
 <script setup>
 import { Teleport } from 'vue'
+defineOptions({ inheritAttrs: false })
 const props = defineProps({ modelValue: Boolean })
 const emit  = defineEmits(['update:modelValue'])
 const close = () => emit('update:modelValue', false)
@@ -15,14 +16,20 @@ const close = () => emit('update:modelValue', false)
 
     <!-- modal 本体 -->
     <transition name="modal-fade">
-      <div v-if="modelValue" class="modal d-block" role="dialog" @keydown.esc="close">
+      <div
+        v-if="modelValue"
+        class="modal d-block"
+        role="dialog"
+        @keydown.esc="close"
+        v-bind="$attrs"
+      >
         <div class="modal-dialog modal-dialog-scrollable modal-fullscreen p-md-5 p-3">
           <div class="modal-content">
             <!-- ヘッダー -->
             <slot name="header" />
 
             <!-- ★ ここを .modal-body にする -->
-            <div class="modal-body p-3">
+            <div class="modal-body d-flex p-3">
               <slot />
             </div>
 

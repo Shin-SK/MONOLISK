@@ -514,9 +514,10 @@ class BillSerializer(serializers.ModelSerializer):
     #                 CREATE
     # --------------------------------------------------
     def create(self, validated_data):
+        if validated_data.get('opened_at') is None:
+            validated_data['opened_at'] = timezone.now()
         nominated = validated_data.pop("nominated_casts", [])
         inhouse   = validated_data.pop("inhouse_casts_w", [])
-        
         bill = Bill.objects.create(**validated_data)
         if nominated:
             bill.nominated_casts.set(nominated)
