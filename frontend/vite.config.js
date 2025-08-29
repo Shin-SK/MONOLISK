@@ -20,8 +20,8 @@ export default defineConfig({
         globIgnores: ['**/*.map'], // 任意: sourcemapはプリキャッシュ対象外
       },
       manifest: {
-        name: 'あなたのアプリ名',
-        short_name: 'AppName',
+        name: 'MONOLISK',
+        short_name: 'MONOLISK',
         start_url: '/',
         scope: '/',
         display: 'standalone',
