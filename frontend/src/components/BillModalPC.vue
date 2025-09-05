@@ -670,9 +670,9 @@ watch(visible, v => { if (v) pane.value = 'base' })
       @click="tryClose"
     /> <!-- 閉じるボタン -->
     <div
-      class="p-2 d-md-flex d-grid flex-column flex-md-row gap-4 h-100"
+      class="p-2 row h-100"
     >
-    <div class="sidebar-cq d-flex">
+    <div class="sidebar-cq d-flex col-2">
       <div class="modal-sidebar outer">
           <div class="menu d-md-none">
             <div class="nav nav-pills nav-fill small gap-2">
@@ -704,7 +704,7 @@ watch(visible, v => { if (v) pane.value = 'base' })
         </div>
       </div>
     </div>
-      <div class="outer d-flex flex-column gap-4">
+      <div class="outer d-flex flex-column gap-4 col">
         <div class="box">
           <div class="d-flex flex-wrap gap-3 align-items-center">
               <!-- ▼ 表示モード -->
@@ -978,7 +978,7 @@ watch(visible, v => { if (v) pane.value = 'base' })
         {{ isNew ? '作成して保存' : '保存' }}
         </button>
       </div>
-      <div class="outer">
+      <div class="outer col">
         <!-- ── 単品注文フォーム ───────────────────────── -->
         <div class="mb-3 border-top pt-3">
           <label class="form-label fw-bold">単品注文</label>
