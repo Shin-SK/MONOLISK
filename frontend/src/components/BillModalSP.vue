@@ -1,11 +1,11 @@
 <script setup>
 import { computed, ref, toRef, watch } from 'vue'
 import BaseModal from '@/components/BaseModal.vue'
-import BasicsPanelSP from '@/components/BasicsPanelSP.vue'
-import CastsPanelSP  from '@/components/CastsPanelSP.vue'
+import BasicsPanelSP from '@/components/spPanel/BasicsPanelSP.vue'
+import CastsPanelSP  from '@/components/spPanel/CastsPanelSP.vue'
+import OrderPanelSP  from '@/components/spPanel/OrderPanelSP.vue'
+import PayPanelSP    from '@/components/spPanel/PayPanelSP.vue'
 import useBillEditor from '@/composables/useBillEditor'
-import OrderPanelSP  from '@/components/OrderPanelSP.vue'
-import PayPanelSP    from '@/components/PayPanelSP.vue'
 /* ▼ 保存に必要なAPI */
 import { api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts, fetchBill, deleteBillItem, patchBillItemQty } from '@/api'
 

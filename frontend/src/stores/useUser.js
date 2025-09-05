@@ -1,7 +1,14 @@
 // src/stores/useUser.js
+import { reactive } from 'vue';
 import { defineStore } from 'pinia';
 import { api } from '@/api'
 import { login as authLogin, logout as authLogout } from '@/auth'
+
+
+const state = reactive({ me:null })
+const can = (cap) => !!state.me?.claims?.includes(cap)
+export { can }
+
 /**
  * ログイン状態と /dj-rest-auth/user/ の情報を管理するストア
  */
@@ -12,8 +19,10 @@ export const useUser = defineStore('user', {
   state: () => ({
     /** 未取得: null / 未ログイン: {} / ログイン済み: ユーザーオブジェクト */
     info: null,
+    me:   null,
   }),
 
+  
   // -------------------------------------------------------------------------
   // getters
   // -------------------------------------------------------------------------
@@ -49,6 +58,12 @@ export const useUser = defineStore('user', {
           throw err;      // その他のエラーは上位へ
         }
       }
+    },
+
+    async fetchMe() {
+      const { data } = await api.get('me/')
+      this.me = data
+      return data
     },
 
     /**

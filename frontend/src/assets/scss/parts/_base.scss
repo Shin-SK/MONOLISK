@@ -138,3 +138,18 @@ $tip-z    : 1000 !default;
     padding-bottom: 80px !important;
   }
 }
+
+
+.sp-footer{
+		padding: 8px;
+		position: fixed;
+		bottom: 0;
+		width: 100%;
+		height: auto;
+		display: flex;
+		align-items: center;
+		justify-content: space-around;
+		flex-direction: row;
+		z-index: 999;
+		background-color: white;
+}

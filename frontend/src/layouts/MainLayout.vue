@@ -9,6 +9,7 @@ import dayjs from 'dayjs'
 import { useNow } from '@vueuse/core'
 import { useLoading } from '@/stores/useLoading'
 import PageLoader from '@/components/PageLoader.vue'
+import StaffSidebar from '@/components/sidebar/StaffSidebar.vue'
 const loading = useLoading()
 
 
@@ -16,6 +17,8 @@ const loading = useLoading()
 const router = useRouter()
 const route  = useRoute()
 const user   = useUser()
+const claims = computed(() => user.me?.claims || [])
+const isStaffUI = computed(() => claims.value.includes('operate_orders'))
 
 /* ページタイトル・日付などはそのまま */
 const pageTitle = computed(() => route.meta.title || 'Untitled')
@@ -39,7 +42,14 @@ async function logout () {
 
     <!-- ────────── SIDEBAR ────────── -->
     <div class="sidebar d-flex gap-5 align-items-center">
-      <button class="avatar-icon btn p-0 border-0 bg-transparent"
+      <!-- ★ スタッフなら staffSidebar を開く。それ以外は既存のoffcanvasを開く -->
+      <button v-if="isStaffUI"
+              class="avatar-icon btn p-0 border-0 bg-transparent"
+              data-bs-toggle="offcanvas" data-bs-target="#staffSidebar" aria-controls="staffSidebar">
+        <Avatar :url="user.avatar_url" :size="40" class="rounded-circle" />
+      </button>
+      <button v-else
+              class="avatar-icon btn p-0 border-0 bg-transparent"
               @click="openSidebar">
         <Avatar :url="user.avatar_url" :size="40" class="rounded-circle" />
       </button>
@@ -92,7 +102,7 @@ async function logout () {
             </Suspense>
           </router-view>
           <PageLoader :active="useLoading().globalLoading" />
-
+          <StaffSidebar v-if="isStaffUI" />
         </div>
       </div>
     </main>

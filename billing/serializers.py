@@ -117,8 +117,8 @@ class ItemMasterSerializer(serializers.ModelSerializer):
             'id', 'name', 'code', 'price_regular',
             'duration_min', 'apply_service',
             'exclude_from_payout', 'track_stock',
-            'category',        # ← READ 用 (obj)
-            'category_id',     # ← WRITE 用 (FK)
+            'category', 'category_id',
+            'route',
         ]
 
 
@@ -135,12 +135,24 @@ class BillCastStayMini(serializers.ModelSerializer):
         fields = ('cast',)           # cast は {id, stage_name} で返る
 
 class BillCastStayMiniSerializer(serializers.ModelSerializer):
-    cast_id    = serializers.PrimaryKeyRelatedField(
+    cast_id = serializers.PrimaryKeyRelatedField(
         source='cast', queryset=Cast.objects.all(), write_only=True
     )
+
+    def create(self, vd):
+        if vd.get('stay_type') == 'nom' and 'is_honshimei' not in vd:
+            vd['is_honshimei'] = True
+        return super().create(vd)
+
+    def update(self, inst, vd):
+        st = vd.get('stay_type', inst.stay_type)
+        if st == 'nom' and vd.get('is_honshimei') is None:
+            vd['is_honshimei'] = True
+        return super().update(inst, vd)
+
     class Meta:
         model  = BillCastStay
-        fields = ('id', 'cast_id', 'stay_type', 'entered_at', 'left_at')
+        fields = ('id', 'cast_id', 'stay_type', 'is_honshimei', 'entered_at', 'left_at')
         read_only_fields = ('entered_at', 'left_at')
 
 
@@ -381,11 +393,10 @@ class CastSerializer(serializers.ModelSerializer):
 
 
 class BillCastStaySerializer(serializers.ModelSerializer):
-    cast = CastMiniSerializer()                   # ← ネストに置き換え
-
+    cast = CastMiniSerializer()
     class Meta:
         model  = BillCastStay
-        fields = ("cast", "entered_at", "left_at", "stay_type")
+        fields = ("cast", "stay_type", "is_honshimei", "entered_at", "left_at")
 
 
 
@@ -585,16 +596,30 @@ class BillSerializer(serializers.ModelSerializer):
                 if not stay:
                     BillCastStay.objects.create(
                         bill=instance, cast_id=cid,
-                        entered_at=timezone.now(), stay_type="nom"
+                        entered_at=timezone.now(),
+                        stay_type="nom",
+                        is_honshimei=True,              # ★ 追加：新規は必ずTrueで作成
                     )
-                elif stay.stay_type != "nom":
+                else:
+                    # nom へ格上げ／復帰
                     stay.stay_type = "nom"
                     stay.left_at   = None
-                    stay.save(update_fields=["stay_type", "left_at"])
+                    upd = ["stay_type", "left_at"]
+                    if not stay.is_honshimei:
+                        stay.is_honshimei = True       # ★ 追加：Trueへ補正
+                        upd.append("is_honshimei")
+                    stay.save(update_fields=upd)
+
+            # nom から外れたキャストは in/free へ降格し、旗を下ろす
             for cid, stay in stay_map.items():
                 if cid not in nominated_ids and stay.stay_type == "nom":
                     stay.stay_type = "in" if cid in inhouse_ids else "free"
-                    stay.save(update_fields=["stay_type"])
+                    upd = ["stay_type"]
+                    if stay.is_honshimei:
+                        stay.is_honshimei = False      # ★ 追加：Falseへ補正
+                        upd.append("is_honshimei")
+                    stay.save(update_fields=upd)
+
 
         # ===============================================================
         #  B. 場内 (in)
@@ -924,3 +949,90 @@ class StoreNoticeSerializer(serializers.ModelSerializer):
             inst.cover = None
             inst.save(update_fields=['cover'])
         return inst
+    
+    
+    
+    
+# billing/serializers.py
+from rest_framework import serializers
+from .models import OrderTicket
+
+class OrderTicketSerializer(serializers.ModelSerializer):
+    table_no     = serializers.SerializerMethodField()
+    item_name    = serializers.SerializerMethodField()
+    ordered_by   = serializers.SerializerMethodField()
+    elapsed_sec  = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = OrderTicket
+        fields = ('id', 'route', 'state', 'created_at',
+                  'table_no', 'item_name', 'ordered_by', 'elapsed_sec')
+
+    def get_table_no(self, obj):
+        try:
+            return obj.bill_item.bill.table.number
+        except Exception:
+            return None
+
+    def get_item_name(self, obj):
+        # BillItem.name を優先（価格確定後の名前）
+        name = getattr(obj.bill_item, 'name', None)
+        if name:
+            return name
+        im = getattr(obj.bill_item, 'item_master', None)
+        return getattr(im, 'name', None)
+
+    def get_ordered_by(self, obj):
+        return 'cast' if obj.created_by_cast else 'staff'
+
+    def get_elapsed_sec(self, obj):
+        from django.utils import timezone
+        return int((timezone.now() - obj.created_at).total_seconds())
+
+
+from rest_framework import serializers
+from .models import Staff
+
+class StaffMiniSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Staff
+        fields = ('id', 'name', 'role')
+
+    def get_name(self, obj):
+        u = getattr(obj, 'user', None)
+        return getattr(u, 'username', None) or f'ID:{obj.pk}'
+
+
+
+# 末尾などに追記
+from rest_framework import serializers
+from .models import OrderTicket
+
+class OrderTicketHistorySerializer(serializers.ModelSerializer):
+    table_no   = serializers.SerializerMethodField()
+    item_name  = serializers.SerializerMethodField()
+    staff_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = OrderTicket
+        fields = ('id', 'table_no', 'item_name', 'staff_name', 'taken_at')
+
+    def get_table_no(self, obj):
+        try:
+            return obj.bill_item.bill.table.number
+        except Exception:
+            return None
+
+    def get_item_name(self, obj):
+        name = getattr(obj.bill_item, 'name', None)
+        if name:
+            return name
+        im = getattr(obj.bill_item, 'item_master', None)
+        return getattr(im, 'name', None)
+
+    def get_staff_name(self, obj):
+        st = getattr(obj, 'taken_by_staff', None)
+        u  = getattr(st, 'user', None)
+        return getattr(u, 'username', None) or (st and f'ID:{st.pk}') or '-'

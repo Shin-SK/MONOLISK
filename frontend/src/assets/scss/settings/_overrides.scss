@@ -58,7 +58,7 @@ input[type="file"]::-webkit-file-upload-button {
 
 
 @media (display-mode: standalone) {
-  .sidebar {
+  .sidebar, .sp-footer {
     padding-bottom : 40px !important;
   }
   .offcanvas{

@@ -53,3 +53,28 @@ class CustomUserAdmin(ImportExportModelAdmin, BaseUserAdmin):
     @admin.display(description="源氏名")
     def get_stage_name(self, obj):
         return getattr(obj.cast, "stage_name", "—")
+
+
+
+# accounts/admin.py
+from django.contrib import admin
+from django.contrib.auth import get_user_model
+from .models import StoreMembership, StoreRole
+
+User = get_user_model()
+
+@admin.action(description='主所属に設定（他は解除）')
+def make_primary(modeladmin, request, queryset):
+    for m in queryset:
+        StoreMembership.objects.filter(user=m.user).exclude(pk=m.pk).update(is_primary=False)
+        if not m.is_primary:
+            m.is_primary = True
+            m.save(update_fields=['is_primary'])
+
+@admin.register(StoreMembership)
+class StoreMembershipAdmin(admin.ModelAdmin):
+    list_display  = ('user', 'store', 'role', 'is_primary')
+    list_filter   = ('role', 'is_primary', 'store')
+    search_fields = ('user__username', 'user__email', 'store__name')
+    autocomplete_fields = ('user', 'store')
+    actions = [make_primary]

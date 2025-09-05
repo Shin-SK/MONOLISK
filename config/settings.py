@@ -58,7 +58,6 @@ SECURE_SSL_REDIRECT = not DEBUG
 
 # ── Apps ────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
-    # "jazzmin",
     "django.contrib.postgres",
     "django.contrib.admin",
     "django.contrib.auth",

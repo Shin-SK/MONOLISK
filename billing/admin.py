@@ -39,15 +39,15 @@ class StoreForm(forms.ModelForm):
 class StoreAdmin(admin.ModelAdmin):
     form = StoreForm
 
-    list_display  = ("name", "service_rate", "tax_rate", "nom_pool_rate", "business_day_cutoff_hour")  # ← スペース除去
+    list_display  = ("name", "service_rate", "tax_rate", "nom_pool_rate", "business_day_cutoff_hour")
     list_editable = ("service_rate", "tax_rate", "nom_pool_rate")
+    search_fields = ("name", "slug")  # ★追加：autocomplete用の検索項目
 
     fieldsets = (
-        ("営業日設定", {"fields": ("business_day_cutoff_hour",)}),  # ← カンマを付けてタプル化
+        ("営業日設定", {"fields": ("business_day_cutoff_hour",)}),
         (None, {"fields": ("name", "slug")}),
         ("各種レート", {"fields": ("service_rate","tax_rate","nom_pool_rate")}),
     )
-
 @admin.register(Table)
 class TableAdmin(admin.ModelAdmin):
 	list_display  = ('store', 'number')
@@ -118,19 +118,28 @@ class CastAdmin(admin.ModelAdmin):
 class ItemCategoryAdmin(ImportExportModelAdmin):
     resource_classes = [ItemCategoryRes]
     list_display = ("code", "name", "show_in_menu",
-                    "back_rate_free", "back_rate_nomination", "back_rate_inhouse")
-    list_editable = ("back_rate_free", "back_rate_nomination", "back_rate_inhouse")
+                    "back_rate_free", "back_rate_nomination", "back_rate_inhouse",
+                    "route")  # ←追加
+    list_editable = ("back_rate_free", "back_rate_nomination", "back_rate_inhouse",
+                     "route")  # ←追加
 
 
-# 改訂版 ItemMaster
 @admin.register(ItemMaster)
 class ItemMasterAdmin(ImportExportModelAdmin):
     resource_classes = [ItemMasterRes]
     list_display  = ("store", "category", "code", "name",
-                     "price_regular", "duration_min",
+                     "price_regular", "duration_min", "route", "effective_route",
                      "track_stock", "exclude_from_payout")
-    list_filter   = ("store", "category", "track_stock", "exclude_from_payout")
-    search_fields = ("name", "code")
+    list_filter   = ("store", "category", "track_stock", "exclude_from_payout", "route")
+    search_fields = ("name", "code", "category__name")
+
+    def effective_route(self, obj):
+        from .models import ROUTE_INHERIT
+        if obj.route == ROUTE_INHERIT:
+            return getattr(obj.category, 'route', 'none')
+        return obj.route
+    effective_route.short_description = "実ルート"
+
 
 
 @admin.register(ItemStock)
@@ -214,3 +223,95 @@ class StoreNoticeAdmin(admin.ModelAdmin):
         ('Publish', {'fields': ('is_published', 'publish_at', 'pinned')}),
         ('System', {'fields': ('created_at', 'updated_at')}),
     )
+
+
+
+from .models import OrderTicket
+
+@admin.register(OrderTicket)
+class OrderTicketAdmin(admin.ModelAdmin):
+    list_display  = ('id','store','route','state','created_by_cast',
+                     'created_at','acked_at','ready_at','taken_by_staff','taken_at','archived_at')
+    list_filter   = ('store','route','state','created_by_cast','taken_by_staff')
+    search_fields = ('bill_item__bill__id',)
+    date_hierarchy = 'created_at'
+
+
+# billing/admin.py（必要なimportを追加）
+from django.utils import timezone
+from django.contrib import messages
+from .models import Staff, StaffShift
+
+# ───────────────── StaffShift Inline（スタッフ詳細からも編集できるように）
+class StaffShiftInline(admin.TabularInline):
+    model = StaffShift
+    extra = 0
+    fields = ('store', 'plan_start', 'plan_end', 'clock_in', 'clock_out')
+    show_change_link = True
+
+# ───────────────── Staff を管理画面に登録（未登録なら）
+@admin.register(Staff)
+class StaffAdmin(admin.ModelAdmin):
+    list_display  = ('id', 'user', 'role', 'hourly_wage')
+    list_filter   = ('role', 'stores')
+    search_fields = ('user__username', 'user__email')
+    filter_horizontal = ('stores',)
+    inlines = [StaffShiftInline]
+
+# ───────────────── StaffShift 管理画面
+class ActiveShiftFilter(admin.SimpleListFilter):
+    title = '稼働状態'
+    parameter_name = 'active'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('planned', '予定のみ'),
+            ('active',  '出勤中'),
+            ('done',    '退勤済'),
+        )
+
+    def queryset(self, request, qs):
+        v = self.value()
+        if v == 'planned':
+            return qs.filter(clock_in__isnull=True)
+        if v == 'active':
+            return qs.filter(clock_in__isnull=False, clock_out__isnull=True)
+        if v == 'done':
+            return qs.filter(clock_out__isnull=False)
+        return qs
+
+@admin.action(description='選択したレコードを「いま出勤」にする')
+def action_clock_in_now(modeladmin, request, queryset):
+    now = timezone.now()
+    n = 0
+    for sh in queryset:
+        if sh.clock_in is None:
+            sh.clock_in = now
+            sh.save(update_fields=['clock_in'])
+            n += 1
+    messages.success(request, f'{n}件を出勤にしました')
+
+@admin.action(description='選択したレコードを「いま退勤」にする')
+def action_clock_out_now(modeladmin, request, queryset):
+    now = timezone.now()
+    n = 0
+    for sh in queryset:
+        if sh.clock_in and sh.clock_out is None:
+            sh.clock_out = now
+            sh.save(update_fields=['clock_out'])
+            n += 1
+    messages.success(request, f'{n}件を退勤にしました')
+
+@admin.action(description='選択の出退勤をクリア（打刻なし）')
+def action_clear_attendance(modeladmin, request, queryset):
+    n = queryset.update(clock_in=None, clock_out=None, worked_min=None, payroll_amount=None)
+    messages.info(request, f'{n}件の出退勤をクリアしました')
+
+@admin.register(StaffShift)
+class StaffShiftAdmin(admin.ModelAdmin):
+    list_display  = ('id', 'store', 'staff', 'plan_start', 'plan_end', 'clock_in', 'clock_out', 'worked_min', 'payroll_amount')
+    list_filter   = ('store', 'staff', ActiveShiftFilter)
+    search_fields = ('staff__user__username', 'staff__user__email')
+    date_hierarchy = 'plan_start'
+    autocomplete_fields = ('staff', 'store')
+    actions = [action_clock_in_now, action_clock_out_now, action_clear_attendance]

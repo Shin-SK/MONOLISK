@@ -12,6 +12,7 @@ const props = defineProps({
   masterNameMap:     { type: Object, default: () => ({}) },
   servedByMap:       { type: Object, default: () => ({}) },
   masterPriceMap:  { type: Object, default: () => ({}) },
+  readonly: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -177,8 +178,9 @@ const cartSubtotal = computed(() =>
       </div>
 
       <div class="orderbutton mt-5 d-flex flex-column justify-content-center">
-        <button class="btn btn-warning w-100" @click="$emit('placeOrder')">注文</button>
-        <button type="button" class="clear btn btn-sm" @click="emit('clearPending')">クリア</button>
+        <!-- ★ 仮会計では注文ボタンを隠す -->
+        <button v-if="!props.readonly" class="btn btn-warning w-100" @click="$emit('placeOrder')">注文</button>
+        <button type="button" class="clear btn btn-sm mt-2" @click="emit('clearPending')">クリア</button>
       </div>
     </div>
   </div>

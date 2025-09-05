@@ -1,8 +1,10 @@
+# billing/apps.py
 from django.apps import AppConfig
 
 class BillingConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
     name = 'billing'
 
     def ready(self):
-        # ここで signals を読み込む（下記で統合）
-        import billing.signals  # noqa
+        # signals の登録（アプリ起動時に一度だけ）
+        from . import signals  # noqa: F401

@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.exceptions import ValidationError, PermissionDenied
 
-
+from .permissions import RequireCap, CastHonshimeiForBill, CanOrderBillItem
 
 from .models import (
     Store, Table, Bill, ItemMaster, BillItem, BillCastStay,
@@ -265,7 +265,7 @@ class BillViewSet(viewsets.ModelViewSet):
         # ③ 差分にもとづき fee 行を同期
         sync_nomination_fees(
             bill,
-            prev_main, prev_main,   # 本指名は不変
+            prev_main, prev_main,
             prev_in, new_in,
         )
         return Response({"stay_type": stay.stay_type}, status=status.HTTP_200_OK)
@@ -276,7 +276,7 @@ class BillViewSet(viewsets.ModelViewSet):
 # ────────────────────────────────────────────────────────────────────
 class BillItemViewSet(viewsets.ModelViewSet):
     serializer_class = BillItemSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, CanOrderBillItem]
 
     def get_queryset(self):
         sid = StoreScopedModelViewSet.require_store(self, self.request)
@@ -287,14 +287,29 @@ class BillItemViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        sid = StoreScopedModelViewSet.require_store(self, self.request)
+        request = self.request
+        sid = StoreScopedModelViewSet.require_store(self, request)
         bill = get_object_or_404(Bill.objects.select_related("table__store"), pk=self.kwargs["bill_pk"])
         if bill.table.store_id != sid:
             raise PermissionDenied("他店舗の伝票です。")
+
+        # ★ オブジェクト（bill）に対する権限判定
+        self.check_object_permissions(request, bill)
+
+        # 商品の所属チェックは従来通り
         im = serializer.validated_data.get("item_master")
         if im and getattr(im, "store_id", None) not in (None, bill.table.store_id):
             raise ValidationError({"item_master": "他店舗の商品は使用できません。"})
-        serializer.save(bill=bill)
+
+        # served_by_cast の自動補完（従来通り）
+        extra = {}
+        user = request.user
+        cast = Cast.objects.filter(user=user).first()
+        is_staff_user = Staff.objects.filter(user=user).exists()
+        if cast and not is_staff_user and not serializer.validated_data.get("served_by_cast"):
+            extra["served_by_cast"] = cast
+
+        serializer.save(bill=bill, **extra)
 
 
 
@@ -496,6 +511,7 @@ class StaffShiftViewSet(StoreScopedModelViewSet):
 # ────────────────────────────────────────────────────────────────────
 # 在席行（stays）
 # ────────────────────────────────────────────────────────────────────
+
 class BillStayViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin,
                       mixins.DestroyModelMixin, viewsets.GenericViewSet):
     serializer_class = BillCastStayMiniSerializer
@@ -511,14 +527,31 @@ class BillStayViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin,
         )
 
     def perform_create(self, serializer):
-        sid = StoreScopedModelViewSet.require_store(self, self.request)
+        sid  = StoreScopedModelViewSet.require_store(self, self.request)
         bill = get_object_or_404(Bill.objects.select_related("table__store"), pk=self.kwargs["bill_pk"])
         if bill.table.store_id != sid:
             raise PermissionDenied("他店舗の伝票です。")
         cast = serializer.validated_data.get("cast")
         if cast and cast.store_id != bill.table.store_id:
             raise ValidationError({"cast": "他店舗のキャストは追加できません。"})
-        serializer.save(bill=bill, entered_at=timezone.now())
+
+        stay = serializer.save(bill=bill, entered_at=timezone.now())
+
+        if stay.stay_type == "nom" and not stay.is_honshimei:
+            stay.is_honshimei = True
+            stay.save(update_fields=["is_honshimei"])
+
+    def perform_update(self, serializer):
+        sid = StoreScopedModelViewSet.require_store(self, self.request)
+        inst = serializer.instance
+        if inst.bill.table.store_id != sid:
+            raise PermissionDenied("他店舗の伝票です。")
+
+        stay = serializer.save()
+        if stay.stay_type == "nom" and not stay.is_honshimei:
+            stay.is_honshimei = True
+            stay.save(update_fields=["is_honshimei"])
+
 
 # ────────────────────────────────────────────────────────────────────
 # 顧客
@@ -632,3 +665,5 @@ class StoreNoticeViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         sid = StoreScopedModelViewSet.require_store(self, self.request)
         serializer.save(store_id=sid)
+
+

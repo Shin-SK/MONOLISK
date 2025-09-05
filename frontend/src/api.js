@@ -45,15 +45,18 @@ const SKIP_AUTH = [
   'dj-rest-auth/registration/',
   'dj-rest-auth/password/reset/',
 ]
-
 // request 側（401処理は置かない）
 api.interceptors.request.use(cfg => {
   const loading = useLoading()
-  const silent = cfg.headers?.['X-Silent'] === '1' || cfg.meta?.silent
+
+  // ★ KDS（/billing/kds/...）の全リクエストは自動でサイレント扱い
+  const isKDS = /\/billing\/kds\//.test(cfg.url || '')
+  const silent = isKDS || cfg.headers?.['X-Silent'] === '1' || cfg.meta?.silent
+
   if (!silent) { loading.start(); NProgress.start() }
   if (cfg.data instanceof FormData) delete cfg.headers['Content-Type']
 
-  if (!SKIP_AUTH.some(p => cfg.url.includes(p))) {
+  if (!SKIP_AUTH.some(p => (cfg.url || '').includes(p))) {
     const t = getToken()
     if (t) cfg.headers.Authorization = `Token ${t}`
   }
@@ -69,6 +72,35 @@ api.interceptors.request.use(cfg => {
   }
   return cfg
 })
+
+// response 側（ここで401を拾ってクリア＆リダイレクト）
+api.interceptors.response.use(
+  res => {
+    const loading = useLoading()
+    // ★ レスポンス側も同じ条件でサイレント判定
+    const isKDS = /\/billing\/kds\//.test(res.config?.url || '')
+    const silent = isKDS || res.config?.headers?.['X-Silent'] === '1' || res.config?.meta?.silent
+    if (!silent) { loading.end(); NProgress.done() }
+    return res
+  },
+  err => {
+    const loading = useLoading()
+    const url = err.config?.url || ''
+    const isKDS = /\/billing\/kds\//.test(url)
+    const silent = isKDS || err.config?.headers?.['X-Silent'] === '1' || err.config?.meta?.silent
+    if (!silent) { loading.end(); NProgress.done() }
+
+    if (err.response?.status === 401) {
+      clearAuth()
+      if (!SKIP_AUTH.some(p => url.includes(p)) && location.pathname !== '/login') {
+        const next = encodeURIComponent(location.pathname + location.search)
+        location.assign(`/login?next=${next}`)
+      }
+    }
+    return Promise.reject(err)
+  }
+)
+
 
 // response 側（ここで401を拾ってクリア＆リダイレクト）
 api.interceptors.response.use(
@@ -499,4 +531,53 @@ export const deleteStoreNotice = id =>
 function _nid(id){
   if (id == null) throw new Error('invalid id: ' + id)
   return (typeof id === 'object') ? (id.id ?? id.pk ?? id.value) : id
+}
+
+export async function longPollReady({ station, cursor, signal }) {
+  const res = await api.get('/billing/order-events/', {
+    params: { station, since: cursor, wait: 25 },
+    timeout: 30000,
+    signal
+  })
+  return res.data ?? { events: [], cursor, retryAfter: 800 }
+}
+
+// ───────── KDSベースURL（絶対URLを優先）─────────
+const KDS_BASE = (import.meta.env.VITE_KDS_BASE || import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/').replace(/\/+$/, '') + '/'
+const K = (path) => KDS_BASE + (path.startsWith('/') ? path.slice(1) : path)
+
+// ───────── KDS系（全てサイレント＋30sタイムアウト）─────────
+export const kds = {
+  listTickets: (route) =>
+    api.get(K('billing/kds/tickets/'), { params: { route }, meta:{silent:true} }).then(r => r.data),
+
+  ack:  (id) =>
+    api.post(K(`billing/kds/tickets/${id}/ack/`), null, { meta:{silent:true} }).then(r => r.data),
+
+  ready:(id) =>
+    api.post(K(`billing/kds/tickets/${id}/ready/`), null, { meta:{silent:true} }).then(r => r.data),
+
+  longPollTickets: (route, since_id=0, opt={}) =>
+    api.get(K('billing/kds/longpoll-tickets/'), {
+      params:{ route, since_id }, timeout:30000, meta:{silent:true}, ...opt
+    }).then(r => r.data),
+
+  readyList: () =>
+    api.get(K('billing/kds/ready-list/'), { meta:{silent:true} }).then(r => r.data),
+
+  take: (ticket_id, staff_id) =>
+    api.post(K('billing/kds/take/'), { ticket_id, staff_id }, { meta:{silent:true} }).then(r => r.data),
+
+  longPollReady: (since_ms=0, opt={}) =>
+    api.get(K('billing/kds/longpoll-ready/'), {
+      params:{ since_ms }, timeout:30000, meta:{silent:true}, ...opt
+    }).then(r => r.data),
+
+  staffList: (params={}) =>
+    api.get(K('billing/staffs/'), { params:{ active:1, ...params }, meta:{silent:true} })
+       .then(r => r.data.results ?? r.data),
+
+  historyToday: (limit=50) =>
+    api.get(K('billing/kds/taken-today/'), { params: { limit }, meta:{ silent:true } })
+       .then(r => r.data),
 }

@@ -39,6 +39,8 @@ const app = createApp(App)
   
 import * as TablerIcons from '@tabler/icons-vue'        // ← 追加ここだけ
 
+//IconFileInvoice
+
 Object.entries(TablerIcons).forEach(([name, comp]) => {
   app.component(name, comp)                             // <IconUser /> など全アイコン即使用
 })

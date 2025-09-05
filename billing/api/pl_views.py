@@ -1,13 +1,6 @@
 # api/pl_views.py
 from __future__ import annotations
-"""
-P/L API 3 種（日次・月次・年次）
 
-- BillCalculator に統一した日次 P/L をベースに、
-  月次・年次を単純合算して返す。
-- フロント (BillPLDaily / BillPLMonthly / BillPLYearly.vue)
-  が期待するダミー項目も 0 で埋めておく。
-"""
 from django.conf import settings
 from datetime import date, timedelta
 from typing    import Any, Dict, List
@@ -15,11 +8,13 @@ from typing    import Any, Dict, List
 from rest_framework.views       import APIView
 from rest_framework.response    import Response
 from rest_framework             import serializers, status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from billing.utils.pl_daily   import get_daily_pl
 from billing.utils.pl_monthly import get_monthly_pl
 from billing.utils.pl_yearly  import get_yearly_pl
+
+from billing.permissions import RequireCap, OwnerReadOnly
 
 # ───────────────────────────────
 # 入力シリアライザ
@@ -154,3 +149,13 @@ class YearlyPLAPIView(APIView):
 
         return Response(ypl)
 
+
+class StorePLView(APIView):
+    permission_classes = [IsAuthenticated, RequireCap]
+    required_cap = 'view_pl_store'
+    # get() 実装は既存のまま
+
+class OwnerPLSummaryView(APIView):
+    permission_classes = [IsAuthenticated, RequireCap, OwnerReadOnly]
+    required_cap = 'view_pl_multi'
+    # get() 実装：store_ids[]=... を受けて横断集計

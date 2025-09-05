@@ -13,6 +13,8 @@ from .views import (
 )
 
 from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
+from .kds_views import KDSTicketList, KDSTicketAck, KDSTicketReady, KDSReadyList, KDSTakeTicket, KDSTicketLongPoll, KDSReadyLongPoll, StaffList, KDSTakenTodayList
+from .api_kds import order_events
 
 router = DefaultRouter()
 router.register(r"stores",               StoreViewSet,           basename="stores")
@@ -57,4 +59,15 @@ urlpatterns = [
     path("pl/daily/",   DailyPLAPIView.as_view(),   name="pl-daily"),
     path("pl/monthly/", MonthlyPLAPIView.as_view(), name="pl-monthly"),
     path("pl/yearly/",  YearlyPLAPIView.as_view(),  name="pl-yearly"),
+    
+    path('kds/tickets/', KDSTicketList.as_view(), name='kds_ticket_list'),
+    path('kds/tickets/<int:pk>/ack/', KDSTicketAck.as_view(), name='kds_ticket_ack'),
+    path('kds/tickets/<int:pk>/ready/', KDSTicketReady.as_view(), name='kds_ticket_ready'),
+    path('kds/ready-list/', KDSReadyList.as_view(), name='kds_ready_list'),
+    path('kds/take/',       KDSTakeTicket.as_view(), name='kds_take'),
+    path('kds/longpoll-tickets/', KDSTicketLongPoll.as_view(), name='kds_longpoll_tickets'),
+    path('kds/longpoll-ready/',   KDSReadyLongPoll.as_view(),  name='kds_longpoll_ready'),
+    path('staffs/', StaffList.as_view(), name='staff_list'),
+    path('kds/taken-today/', KDSTakenTodayList.as_view(), name='kds_taken_today'),
+    path('order-events/', order_events, name='order-events'),
 ]

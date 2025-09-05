@@ -19,6 +19,24 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 User = get_user_model()
 
 
+ROUTE_NONE    = 'none'
+ROUTE_KITCHEN = 'kitchen'
+ROUTE_DRINKER = 'drinker'
+ROUTE_INHERIT = 'inherit'
+
+ROUTE_CHOICES_CATEGORY = [
+    (ROUTE_NONE,    'なし'),
+    (ROUTE_KITCHEN, 'キッチン'),
+    (ROUTE_DRINKER, 'ドリンカー'),
+]
+ROUTE_CHOICES_ITEM = [
+    (ROUTE_INHERIT, 'カテゴリ継承'),
+    (ROUTE_NONE,    'なし'),
+    (ROUTE_KITCHEN, 'キッチン'),
+    (ROUTE_DRINKER, 'ドリンカー'),
+]
+
+
 class BillingUser(User):
     class Meta:
         proxy = True                # DB テーブルはそのまま
@@ -67,6 +85,12 @@ class ItemCategory(models.Model):
         default=False,
         verbose_name='POSメニューに表示'
     )
+    route = models.CharField(
+        max_length=16, choices=ROUTE_CHOICES_CATEGORY,
+        default=ROUTE_NONE, db_index=True,
+        help_text='このカテゴリのKDS行き先（フード=キッチン、ドリンク=ドリンカー等）'
+    )
+
     def __str__(self): return self.name
 
 
@@ -199,6 +223,14 @@ class ItemMaster(models.Model):
         related_name='items'
     )
     duration_min   = models.PositiveSmallIntegerField(default=0)
+
+    # 既存フィールド…（省略）
+    route = models.CharField(
+        max_length=16, choices=ROUTE_CHOICES_ITEM,
+        default=ROUTE_INHERIT, db_index=True,
+        help_text='KDS行き先。通常は「カテゴリ継承」。必要時のみ個別上書き'
+    )
+
     def __str__(self): return self.name
 
 
@@ -526,16 +558,14 @@ class BillCastStay(models.Model):
     cast       = models.ForeignKey(Cast, on_delete=models.CASCADE)
     entered_at = models.DateTimeField()
     left_at    = models.DateTimeField(null=True, blank=True)
-    stay_type  = models.CharField(
-        max_length=4, choices=STAY_TYPE, default='free'
-    )
-    is_inhouse = models.BooleanField(null=True, blank=True)
-    nom_weight = models.DecimalField(  # ← NEW!
+    nom_weight = models.DecimalField(
         max_digits=4, decimal_places=2,
         null=True, blank=True,
         help_text='この伝票だけの本指名バック用ウェイト。未入力なら1扱い'
     )
- 
+    stay_type  = models.CharField(max_length=4, choices=STAY_TYPE, default='free')
+    is_inhouse = models.BooleanField(null=True, blank=True)
+    is_honshimei = models.BooleanField(default=False)  # 本指名トグル（UIでON/OFF）
  
     class Meta:
         ordering = ['entered_at']
@@ -815,3 +845,61 @@ def _ensure_expected_out_on_item_save(sender, instance, **kw):
     code = (instance.code or "").lower()
     if code.startswith(("set","extension","ext")):
         instance.bill.update_expected_out(save=True)
+
+
+
+
+class OrderTicket(models.Model):
+    STATE_NEW   = 'new'
+    STATE_ACK   = 'ack'
+    STATE_READY = 'ready'
+    STATE_CHOICES = [
+        (STATE_NEW,   'NEW'),
+        (STATE_ACK,   'ACK'),
+        (STATE_READY, 'READY'),
+    ]
+
+    bill_item = models.ForeignKey('billing.BillItem', on_delete=models.CASCADE, related_name='tickets')
+    store     = models.ForeignKey('billing.Store', on_delete=models.CASCADE, db_index=True)
+    route     = models.CharField(max_length=16, db_index=True, default='none')  # kitchen/drinker/none
+    state     = models.CharField(max_length=16, choices=STATE_CHOICES, default=STATE_NEW, db_index=True)
+
+    created_by_cast = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    acked_at   = models.DateTimeField(null=True, blank=True)
+    ready_at   = models.DateTimeField(null=True, blank=True)
+    
+    taken_by_staff = models.ForeignKey('billing.Staff', null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name='taken_tickets')
+    taken_at       = models.DateTimeField(null=True, blank=True)
+    archived_at    = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['store', 'route', 'state', '-created_at']),
+            models.Index(fields=['store', 'state', 'archived_at']),
+        ]
+        ordering = ['created_at']
+
+    def mark_ack(self):
+        if self.state == self.STATE_NEW:
+            self.state = self.STATE_ACK
+            self.acked_at = timezone.now()
+
+    def mark_ready(self):
+        if self.state in (self.STATE_NEW, self.STATE_ACK):
+            self.state = self.STATE_READY
+            self.ready_at = timezone.now()
+
+    def archive_by(self, staff):
+        """デシャップで『持ってく』→ 即アーカイブ"""
+        self.taken_by_staff = staff
+        now = timezone.now()
+        self.taken_at = now
+        self.archived_at = now
+
+
+
+
+
