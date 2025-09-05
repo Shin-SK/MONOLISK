@@ -61,13 +61,18 @@ api.interceptors.request.use(cfg => {
     if (t) cfg.headers.Authorization = `Token ${t}`
   }
 
+  // --- ★ 恒久対策：全HTTPメソッドでクエリに store_id を必ず付ける（ボディではなく） ---
   const storeId = getStoreId()
   if (storeId) {
-    if ((cfg.method ?? 'get').toLowerCase() === 'get') {
-      cfg.params ??= {}
-      cfg.params.store_id ??= storeId
-    } else if (cfg.data && typeof cfg.data === 'object' && !Array.isArray(cfg.data)) {
-      cfg.data.store_id ??= storeId
+    // クエリに常付与（既に明示されている場合は尊重）
+    cfg.params ??= {}
+    if (cfg.params.store_id == null && cfg.params.store == null) {
+      cfg.params.store_id = storeId
+    }
+    // 併せてヘッダも付与（CORS許可済みなら冗長保険）
+    cfg.headers ??= {}
+    if (cfg.headers['X-Store-ID'] == null) {
+      cfg.headers['X-Store-ID'] = storeId
     }
   }
   return cfg
