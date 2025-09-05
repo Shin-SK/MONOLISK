@@ -40,61 +40,63 @@ function parseApiError(err){
 /* ------------------------------------------------------------------ */
 /* interceptor: “ログイン系 URL には token を付けない”                    */
 /* ------------------------------------------------------------------ */
+
+// ログイン系だけは認証ヘッダを付けない
 const SKIP_AUTH = [
   'dj-rest-auth/login/',
   'dj-rest-auth/registration/',
   'dj-rest-auth/password/reset/',
 ]
-// request 側（401処理は置かない）
+
+// リクエスト側
 api.interceptors.request.use(cfg => {
   const loading = useLoading()
 
-  // ★ KDS（/billing/kds/...）の全リクエストは自動でサイレント扱い
-  const isKDS = /\/billing\/kds\//.test(cfg.url || '')
-  const silent = isKDS || cfg.headers?.['X-Silent'] === '1' || cfg.meta?.silent
-
+  // KDS はサイレント
+  const isKDS   = /\/billing\/kds\//.test(cfg.url || '')
+  const silent  = isKDS || cfg.headers?.['X-Silent'] === '1' || cfg.meta?.silent
   if (!silent) { loading.start(); NProgress.start() }
+
+  // FormData のときは Content-Type を外す（ブラウザに任せる）
   if (cfg.data instanceof FormData) delete cfg.headers['Content-Type']
 
+  // 認証トークンを付与（ログイン系は除外）
   if (!SKIP_AUTH.some(p => (cfg.url || '').includes(p))) {
     const t = getToken()
     if (t) cfg.headers.Authorization = `Token ${t}`
   }
 
-  // --- ★ 恒久対策：全HTTPメソッドでクエリに store_id を必ず付ける（ボディではなく） ---
+  // ★ 店舗スコープ：全メソッドでクエリに store_id を付ける（ボディやヘッダには入れない）
   const storeId = getStoreId()
   if (storeId) {
-    // クエリに常付与（既に明示されている場合は尊重）
     cfg.params ??= {}
     if (cfg.params.store_id == null && cfg.params.store == null) {
       cfg.params.store_id = storeId
     }
-    // 併せてヘッダも付与（CORS許可済みなら冗長保険）
-    cfg.headers ??= {}
-    if (cfg.headers['X-Store-ID'] == null) {
-      cfg.headers['X-Store-ID'] = storeId
-    }
+    // ※ 本番CORSが X-Store-ID を許可していないため、ヘッダ付与はしない
   }
+
   return cfg
 })
 
-// response 側（ここで401を拾ってクリア＆リダイレクト）
+// レスポンス側（成功）
 api.interceptors.response.use(
   res => {
     const loading = useLoading()
-    // ★ レスポンス側も同じ条件でサイレント判定
-    const isKDS = /\/billing\/kds\//.test(res.config?.url || '')
-    const silent = isKDS || res.config?.headers?.['X-Silent'] === '1' || res.config?.meta?.silent
+    const isKDS   = /\/billing\/kds\//.test(res.config?.url || '')
+    const silent  = isKDS || res.config?.headers?.['X-Silent'] === '1' || res.config?.meta?.silent
     if (!silent) { loading.end(); NProgress.done() }
     return res
   },
+  // 失敗
   err => {
     const loading = useLoading()
-    const url = err.config?.url || ''
-    const isKDS = /\/billing\/kds\//.test(url)
+    const url    = err.config?.url || ''
+    const isKDS  = /\/billing\/kds\//.test(url)
     const silent = isKDS || err.config?.headers?.['X-Silent'] === '1' || err.config?.meta?.silent
     if (!silent) { loading.end(); NProgress.done() }
 
+    // トークン切れはクリアしてログインへ
     if (err.response?.status === 401) {
       clearAuth()
       if (!SKIP_AUTH.some(p => url.includes(p)) && location.pathname !== '/login') {
@@ -105,32 +107,6 @@ api.interceptors.response.use(
     return Promise.reject(err)
   }
 )
-
-
-// response 側（ここで401を拾ってクリア＆リダイレクト）
-api.interceptors.response.use(
-  res => {
-    const loading = useLoading()
-    const silent = res.config?.headers?.['X-Silent'] === '1' || res.config?.meta?.silent
-    if (!silent) { loading.end(); NProgress.done() }
-    return res
-  },
-  err => {
-    const loading = useLoading()
-    const silent = err.config?.headers?.['X-Silent'] === '1' || err.config?.meta?.silent
-    if (!silent) { loading.end(); NProgress.done() }
-    if (err.response?.status === 401) {
-      clearAuth()
-      // ログイン系URL以外でだけリダイレクト
-      if (!SKIP_AUTH.some(p => err.config?.url?.includes(p)) && location.pathname !== '/login') {
-        const next = encodeURIComponent(location.pathname + location.search)
-        location.assign(`/login?next=${next}`)
-      }
-    }
-    return Promise.reject(err)
-  }
-)
-
 
 
 /* ------------------------------------------------------------------ */
