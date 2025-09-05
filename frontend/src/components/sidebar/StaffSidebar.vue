@@ -79,7 +79,7 @@ const go = (to) => router.push(to)
 </template>
 
 <style scoped lang="scss">
-.btn.active{ border-color: var(--bs-primary); }
+.btn.active{ border-color: var(--bs-primary); } 
 
 .staff-sidebar{
   button{
