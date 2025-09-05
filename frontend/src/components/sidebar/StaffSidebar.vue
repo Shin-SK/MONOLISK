@@ -13,6 +13,9 @@ const canOperate  = computed(() => claims.value.includes('operate_orders'))
 const canPL       = computed(() => ['view_pl_store','view_pl_multi'].some(c => claims.value.includes(c)))
 const KDS_ENABLED = import.meta.env.VITE_KDS_ENABLED === 'true'
 const go = (to) => router.push(to)
+async function logout() {
+  try { await userStore.logout?.() } finally { router.push('/login') }//★ログアウトしますか？のalartを入れたい
+}
 </script>
 
 <template>
@@ -70,6 +73,9 @@ const go = (to) => router.push(to)
             <IconSoup /> <span>Dishup</span>
           </button>
         </template>
+        <button class="btn btn-outline-danger w-100" @click="logout">
+          ログアウト
+        </button>
       </template>
 
       <!-- PL系は出さない（URL直打ちはrouterの capsAny で403） -->
