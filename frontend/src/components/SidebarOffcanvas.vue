@@ -109,7 +109,7 @@ async function logout () {
             ログアウト
           </button>
 
-          <DevRoleSwitcher class="my-5"/>
+          <DevRoleSwitcher class="mt-4 mb-2"/>
         </div>
       </aside>
     </div>
