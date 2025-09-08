@@ -1,16 +1,20 @@
 // src/stores/useUser.js
-import { reactive } from 'vue';
-import { defineStore } from 'pinia';
+import { reactive } from 'vue'
+import { defineStore } from 'pinia'
 import { api } from '@/api'
 import { login as authLogin, logout as authLogout } from '@/auth'
 
-
-const state = reactive({ me:null })
-const can = (cap) => !!state.me?.claims?.includes(cap)
-export { can }
+// 「can()」互換（claimsをグローバルから参照している既存コード向け）
+const shared = reactive({ me: null })
+export const can = (cap) => !!shared.me?.claims?.includes(cap)
 
 /**
- * ログイン状態と /dj-rest-auth/user/ の情報を管理するストア
+ * ユーザー状態ストア
+ * ルール：
+ *  - /api/me には store_id を付けない（サーバに任せる）
+ *  - fetchMe() 後、localStorage.store_id が未設定のときだけ
+ *    me.current_store_id（→ なければ primary_store_id）を保存する
+ *  - すでに store_id がある場合は **上書きしない**（＝伝票等で決まった店舗を優先）
  */
 export const useUser = defineStore('user', {
   // -------------------------------------------------------------------------
@@ -18,11 +22,10 @@ export const useUser = defineStore('user', {
   // -------------------------------------------------------------------------
   state: () => ({
     /** 未取得: null / 未ログイン: {} / ログイン済み: ユーザーオブジェクト */
-    info: null,
-    me:   null,
+    info: null,     // dj-rest-auth/user/ 用（互換）
+    me:   null,     // /api/me 用（現在運用の基準）
   }),
 
-  
   // -------------------------------------------------------------------------
   // getters
   // -------------------------------------------------------------------------
@@ -39,53 +42,72 @@ export const useUser = defineStore('user', {
   // actions
   // -------------------------------------------------------------------------
   actions: {
-    /**
-     * 現在ログイン中のユーザー情報を取得
-     * - 401 / 403 は「未ログイン」とみなして空オブジェクトをセット
-     */
+    /** dj-rest-auth/user/（互換） */
     async fetch() {
-      // 一度取得済みなら再取得しない
-      if (this.info !== null && Object.keys(this.info).length) return;
-
+      if (this.info !== null && Object.keys(this.info).length) return
       try {
-        const { data } = await api.get('dj-rest-auth/user/');
-        this.info = data; // ログイン済み
+        const { data } = await api.get('dj-rest-auth/user/')
+        this.info = data
       } catch (err) {
-        const status = err?.response?.status;
+        const status = err?.response?.status
         if (status === 401 || status === 403) {
-          this.info = {}; // 未ログイン
+          this.info = {}
         } else {
-          throw err;      // その他のエラーは上位へ
+          throw err
         }
       }
     },
 
+    /**
+     * /api/me を取得
+     * - ここでは localStorage.store_id を **上書きしない**
+     *   （既に設定されていれば＝伝票等で決まった店舗を優先）
+     * - 未設定時のみ current_store_id → primary_store_id の順で初期化
+     */
     async fetchMe() {
-      const { data } = await api.get('me/')
+      const { data } = await api.get('me/')   // ← /api/me には store_id を付けないこと（api.js で SKIP_STORE に入れる）
       this.me = data
+      shared.me = data
+
+      const hasPinned = !!localStorage.getItem('store_id')
+      if (!hasPinned) {
+        const sid = data?.current_store_id || data?.primary_store_id || null
+        if (sid) localStorage.setItem('store_id', String(sid))
+      }
       return data
     },
 
-    /**
-     * ログイン
-     * @param {string} username
-     * @param {string} password
-     */
+    /** 明示的にアクティブ店舗を切り替える（将来の店舗スイッチ/伝票確定時に使用） */
+    setActiveStore(storeId) {
+      if (storeId == null) {
+        localStorage.removeItem('store_id')
+      } else {
+        localStorage.setItem('store_id', String(storeId))
+      }
+    },
+
+    /** ログイン */
     async login(username, password) {
-      await authLogin(username, password);
-      this.info = null;                  // キャッシュクリア
-      await this.fetch();                // 取得し直し
+      await authLogin(username, password)
+      this.info = null
+      await this.fetch()
+      // /api/me も必要ならここで呼ぶ
+      await this.fetchMe()
     },
 
     /** ログアウト */
     async logout() {
-      await authLogout();
-      this.clear();
+      await authLogout()
+      this.clear()
     },
 
-    /** 強制クリア（ストア初期化） */
+    /** 強制クリア */
     clear() {
-      this.info = null;
+      this.info = null
+      this.me   = null
+      shared.me = null
+      // 店舗ピン止めも解除（ログアウト時は毎回初期化）
+      localStorage.removeItem('store_id')
     },
   },
-});
+})

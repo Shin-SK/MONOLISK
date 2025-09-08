@@ -39,19 +39,13 @@ from billing.utils.customer_log import log_customer_change
 
 # ────────────────────────────────────────────────────────────────────
 # 共通: ユーザーがアクセスできる店舗IDの集合を得る
-#   - Admin(superuser) → 全店舗可
-#   - Staff            → Staff.stores の店舗
-#   - Cast             → Cast.store のみ
-#   - User.store_id    → あれば補助（あなたの既存実装互換）
+#   ※ superuser でも “全店舗” は返さない（所属/関係のある店舗のみ）
 # ────────────────────────────────────────────────────────────────────
 def user_store_ids(user):
     if not getattr(user, "is_authenticated", False):
         return set()
-    if getattr(user, "is_superuser", False):
-        from .models import Store
-        return set(Store.objects.values_list("id", flat=True))
 
-    from .models import Staff, Cast
+    from .models import Staff, Cast  # 既存
     ids = set()
 
     # Staff M2M
@@ -60,15 +54,19 @@ def user_store_ids(user):
         ids.update(st.stores.values_list("id", flat=True))
 
     # Cast FK
-    cast_sid = Cast.objects.filter(user=user).values_list("store_id", flat=True)
-    ids.update(cast_sid)
+    ids.update(Cast.objects.filter(user=user).values_list("store_id", flat=True))
 
-    # ユーザープロファイルに store_id があるなら補助的に追加
+    # User.store（互換）
     sid = getattr(user, "store_id", None)
     if sid:
         ids.add(sid)
 
+    # （任意）StoreMembership を使うならコメントを外す：
+    # from accounts.models import StoreMembership
+    # ids.update(StoreMembership.objects.filter(user=user).values_list("store_id", flat=True))
+
     return ids
+
 
 
 # ────────────────────────────────────────────────────────────────────

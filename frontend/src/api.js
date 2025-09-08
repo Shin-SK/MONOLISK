@@ -48,6 +48,12 @@ const SKIP_AUTH = [
   'dj-rest-auth/password/reset/',
 ]
 
+// ★ store_id を付けないURL（/me はサーバに任せる）
+const SKIP_STORE = [
+  'me/',                        // ← /api/me/
+  'accounts/debug/set-role/',   // ← 役割切替はサーバ側で判定
+]
+
 // リクエスト側
 api.interceptors.request.use(cfg => {
   const loading = useLoading()
@@ -70,7 +76,9 @@ api.interceptors.request.use(cfg => {
   const storeId = getStoreId()
   if (storeId) {
     cfg.params ??= {}
-    if (cfg.params.store_id == null && cfg.params.store == null) {
+    const url = cfg.url || ''
+    const skip = SKIP_STORE.some(p => url.includes(p))
+    if (!skip && cfg.params.store_id == null && cfg.params.store == null) {
       cfg.params.store_id = storeId
     }
     // ※ 本番CORSが X-Store-ID を許可していないため、ヘッダ付与はしない
