@@ -12,6 +12,7 @@ import PageLoader from '@/components/PageLoader.vue'
 import StaffSidebar from '@/components/sidebar/StaffSidebar.vue'
 import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'
+import { IconMenu2 } from '@tabler/icons-vue'
 
 
 const loading = useLoading()
@@ -48,6 +49,10 @@ async function logout () {
 
     <!-- ────────── SIDEBAR ────────── -->
     <div class="sidebar d-flex gap-5 align-items-center">
+      <button>
+        <Avatar :url="avatarURL" :size="40" class="rounded-circle" />
+      </button>
+
       <RouterLink
         class="nav-link"
         to="/dashboard"
@@ -78,13 +83,14 @@ async function logout () {
       <button v-if="isStaff"
         class="avatar-icon btn p-0 border-0 bg-transparent"
         data-bs-toggle="offcanvas" data-bs-target="#staffSidebar" aria-controls="staffSidebar">
-        <Avatar :url="avatarURL" :size="40" class="rounded-circle" />
+        <IconMenu2 />
       </button>
 
       <!-- それ以外は従来の openSidebar -->
       <button v-else class="avatar-icon btn p-0 border-0 bg-transparent" @click="openSidebar">
-        <Avatar :url="avatarURL" :size="40" class="rounded-circle" />
+       <IconMenu2 />
       </button>
+      
     </div>
 
     <!-- ────────── MAIN ────────── -->

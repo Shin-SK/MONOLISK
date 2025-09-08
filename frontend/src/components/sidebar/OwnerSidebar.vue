@@ -57,8 +57,7 @@ async function logout () {
         </nav>
 
         <!-- -------- フッタ ---------- -->
-        <div class="mt-auto py-5 border-top">
-          <DevRoleSwitcher sidebarId="ownerSidebar" />
+        <div class="mt-auto border-top">
           <div class="d-flex justify-content-between align-items-center mb-3">
 
             <div class="d-flex align-items-center gap-2">

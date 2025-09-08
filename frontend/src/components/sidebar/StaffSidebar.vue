@@ -98,7 +98,6 @@ async function logout() {
 
       <div class="footer d-flex flex-column gap-2">
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <DevRoleSwitcher />
           <div class="d-flex align-items-center gap-2">
             <Avatar :url="avatarURL" :size="40" class="rounded-circle"/> 
             <span>{{ displayName }}</span>

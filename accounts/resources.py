@@ -1,5 +1,7 @@
+# accounts/resources.py
 from import_export import resources, fields, widgets
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ObjectDoesNotExist
 from billing.models import Cast, Staff, Store
 
 User = get_user_model()
@@ -7,10 +9,11 @@ User = get_user_model()
 
 class UserRes(resources.ModelResource):
     # ── 基本 ───────────────────────────
-    username = fields.Field("username")
-    email    = fields.Field("email")
+    username = fields.Field(attribute="username", column_name="username")
+    email    = fields.Field(attribute="email",    column_name="email")
     is_staff = fields.Field(
-        "is_staff", widget=widgets.BooleanWidget()
+        attribute="is_staff", column_name="is_staff",
+        widget=widgets.BooleanWidget()
     )
 
     # ── Cast 1:1 ───────────────────────
@@ -34,36 +37,43 @@ class UserRes(resources.ModelResource):
 
     # ---------- エクスポート用 ----------
     def dehydrate_stage_name(self, user):
-        return getattr(user.cast, "stage_name", "")
+        try:
+            return user.cast.stage_name
+        except ObjectDoesNotExist:
+            return ""
 
     def dehydrate_cast_store(self, user):
-        cast = getattr(user, "cast", None)
-        return cast.store.slug if cast and cast.store else ""
+        try:
+            cast = user.cast
+            return cast.store.slug if getattr(cast, "store_id", None) else ""
+        except ObjectDoesNotExist:
+            return ""
 
     def dehydrate_staff_stores(self, user):
-        staff = getattr(user, "staff", None)
-        return ",".join(s.slug for s in staff.stores.all()) if staff else ""
+        try:
+            staff = user.staff
+            return ",".join(s.slug for s in staff.stores.all())
+        except ObjectDoesNotExist:
+            return ""
 
     # ---------- インポート用 ------------
     def after_save_instance(self, instance, *args, **kwargs):
         """
         User 保存後に
-          • password ハッシュ化
-          • Cast (1:1) 更新/作成
-          • Staff (m2m) 更新/作成
+          • password ハッシュ化（指定時のみ）
+          • Cast (1:1) 更新/作成（stage_name 指定時）
+          • Staff (m2m) 更新/作成（staff_store_slugs 指定時）
         """
-        row     = kwargs.get("row") or getattr(self, "_current_row", {})
+        row     = kwargs.get("row") or getattr(self, "_current_row", {}) or {}
         dry_run = kwargs.get("dry_run", False)
         if dry_run:
             return  # テストインポート時は何もしない
 
-        # --- Password ---
+        # --- Password（指定がある時だけ更新） ---
         raw_pw = row.get("password")
         if raw_pw:
             instance.set_password(raw_pw)
-        else:
-            instance.set_unusable_password()
-        instance.save(update_fields=["password"])
+            instance.save(update_fields=["password"])
 
         # --- Cast (OneToOne) ---
         stage = row.get("stage_name")
