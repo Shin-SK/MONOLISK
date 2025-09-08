@@ -562,3 +562,10 @@ export const kds = {
     api.get(K('billing/kds/taken-today/'), { params: { limit }, meta:{ silent:true } })
        .then(r => r.data),
 }
+
+// --- Owner Dashboard APIs ---
+
+export const fetchBillItems = (params = {}) =>
+  api.get('billing/cast-item-details/', { params }).then(r => r.data)
+
+

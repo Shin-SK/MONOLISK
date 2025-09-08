@@ -66,20 +66,26 @@ class CastItemDetailSerializer(serializers.ModelSerializer):
     table_no   = serializers.IntegerField(source='bill.table.number', read_only=True)
     subtotal   = serializers.SerializerMethodField()
     back_rate  = serializers.SerializerMethodField()
-    amount     = serializers.SerializerMethodField()   # ギャラ
+    amount     = serializers.SerializerMethodField()
+    category   = serializers.SerializerMethodField()
 
     class Meta:
         model  = BillItem
         fields = (
             'id', 'closed_at', 'bill_id', 'table_no',
             'name', 'qty', 'subtotal', 'back_rate', 'amount',
-            'is_nomination', 'is_inhouse', 
+            'is_nomination', 'is_inhouse',
+            'category',
         )
 
     def get_subtotal(self, obj): return obj.subtotal
     def get_back_rate(self, obj): return float(obj.back_rate)
     def get_amount(self, obj):
         return int(obj.subtotal * obj.back_rate)
+    def get_category(self, obj):
+        c = getattr(getattr(obj, 'item_master', None), 'category', None)
+        if not c: return None
+        return {'code': c.code, 'name': c.name, 'show_in_menu': c.show_in_menu}
 
 
 class ItemCategorySerializer(serializers.ModelSerializer):

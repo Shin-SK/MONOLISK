@@ -93,6 +93,11 @@ INSTALLED_APPS = [
 SITE_ID = 1
 AUTH_USER_MODEL = "accounts.User"
 
+REST_AUTH_SERIALIZERS = {
+    'USER_DETAILS_SERIALIZER': 'accounts.serializers.UserDetailsWithStoreSerializer',
+    'LOGIN_SERIALIZER':       'accounts.serializers.LoginWithStoreSerializer',
+}
+
 REST_AUTH_REGISTER_SERIALIZERS = {
     "REGISTER_SERIALIZER": "accounts.forms.MyRegisterSerializer",
 }

@@ -4,16 +4,15 @@
 .pl{
 	.summary-area{
 		display: flex;
-		gap: 16px;
 		align-items: center;
 		padding: 16px 0px;
 		flex-wrap: wrap;
 		.box{
-			padding: 24px;
 			@include flex();
 			flex-direction: column;
-			border-radius: 16px;
+			border-radius: 8px;
 			background-color: white;
+			padding: 24px 0px;
 			.number{
 				@include fs(20);
 				font-weight: bold;

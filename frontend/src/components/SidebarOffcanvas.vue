@@ -4,11 +4,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUser }   from '@/stores/useUser'
 import { useAuth }   from '@/stores/useAuth'
 import { closeSidebar } from '@/utils/offcanvas'
+import { useProfile } from '@/composables/useProfile'
+import Avatar from '@/components/Avatar.vue'
 
 const router = useRouter()
 const route  = useRoute()
 const user   = useUser()
 const auth   = useAuth()
+
+const { avatarURL, displayName } = useProfile() 
 
 async function logout () {
   await auth.logout()
@@ -34,10 +38,10 @@ async function logout () {
         <nav class="nav flex-column h-100">
 
           <RouterLink class="nav-link bg-white" to="/"                    @click="closeSidebar">ダッシュボード</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/bills/pl/daily"      @click="closeSidebar">PL/日次</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/bills/pl/monthly"    @click="closeSidebar">PL/月次</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/bills/pl/yearly"     @click="closeSidebar">PL/年次</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/bills/cast-shift"    @click="closeSidebar">キャストシフト</RouterLink>
+          <RouterLink class="nav-link bg-white" to="/pl/daily"      @click="closeSidebar">PL/日次</RouterLink>
+          <RouterLink class="nav-link bg-white" to="/pl/monthly"    @click="closeSidebar">PL/月次</RouterLink>
+          <RouterLink class="nav-link bg-white" to="/pl/yearly"     @click="closeSidebar">PL/年次</RouterLink>
+          <RouterLink class="nav-link bg-white" to="/cast-shift"    @click="closeSidebar">キャストシフト</RouterLink>
           <RouterLink class="nav-link bg-white" to="/cast-sales"          @click="closeSidebar">キャスト売上</RouterLink>
           <RouterLink class="nav-link bg-white" to="/ranking"             @click="closeSidebar">ランキング</RouterLink>
           <RouterLink class="nav-link bg-white" to="/customers"           @click="closeSidebar">顧客情報</RouterLink>
@@ -82,8 +86,6 @@ async function logout () {
                 <span style="font-size: 12px;">キャスト撮影やコンテンツ制作なら</span>
                 <span class="fw-bold fs-5">スタジオカラー</span>
               </div>
-              <!-- Bootstrapアイコン使うなら適宜置換 -->
-              <span class="ms-2">&rsaquo;</span>
             </a>
 
             <RouterLink class="nav-link mt-3" to="/cast/mypage/1" @click="closeSidebar">
@@ -93,12 +95,19 @@ async function logout () {
         </nav>
 
         <!-- -------- フッタ ---------- -->
-        <div class="mt-auto pt-3 border-top">
-          <div class="d-flex align-items-center gap-2 mb-3">
-            <Avatar :url="user.avatar_url" :size="40" class="rounded-circle"/>
-            <span>{{ user.name }}</span>
+        <div class="footer d-flex flex-column gap-2">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+
+            <div class="d-flex align-items-center gap-2">
+              <Avatar :url="avatarURL" :size="40" class="rounded-circle"/> 
+              <span>{{ displayName }}</span>
+            </div>
+            <RouterLink class="nav-link bg-white" :to="{name: 'owner-profile'}" @click="closeSidebar"><IconEdit :size="16" class="text-secondary" /></RouterLink>
           </div>
-          <button class="btn btn-outline-danger w-100" @click.prevent="logout">ログアウト</button>
+          
+          <button class="btn btn-outline-danger w-100" @click="logout">
+            ログアウト
+          </button>
         </div>
       </aside>
     </div>

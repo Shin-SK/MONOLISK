@@ -43,35 +43,41 @@ watchEffect(async () => {
     <!-- ── 表示エリア ───────────────────────────── -->
     <template v-else>
       <!-- ▼ SUMMARY -->
-      <div class="summary-area mb-3">
-        <div class="box">
-          <div class="head">
-            粗利益
-          </div>
-          <div class="number">
-            {{ yen(total.gross_profit) }}
-          </div>
-        </div>
-        <div class="box">
-          <div class="head">
-            売上
-          </div>
-          <div class="number">
-            {{ yen(total.sales_total) }}
+      <div class="summary-area row g-3 mb-3">
+        <div class="col-6 col-md-4">
+          <div class="box">
+            <div class="head">
+              粗利益
+            </div>
+            <div class="number">
+              {{ yen(total.gross_profit) }}
+            </div>
           </div>
         </div>
-        <div class="box">
-          <div class="head">
-            人件費
-          </div><div class="number">
-            {{ yen(total.cast_labor) }}
+        <div class="col-6 col-md-4">
+          <div class="box">
+            <div class="head">
+              売上
+            </div>
+            <div class="number">
+              {{ yen(total.sales_total) }}
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="box">
+            <div class="head">
+              人件費
+            </div><div class="number">
+              {{ yen(total.cast_labor) }}
+            </div>
           </div>
         </div>
       </div>
 
       <!-- ▼ TABLE -->
       <div class="table-responsive">
-        <table class="table table-sm align-middle table-striped">
+        <table class="table">
           <thead class="table-dark">
             <tr>
               <th>日付</th>
@@ -136,3 +142,16 @@ watchEffect(async () => {
     </template>
   </div>
 </template>
+
+
+<style scoped>
+
+.table > :not(caption) > * > * {
+  padding: 1.5rem;
+}
+
+td{
+  text-wrap: nowrap;
+}
+
+</style>

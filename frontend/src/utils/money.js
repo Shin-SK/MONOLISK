@@ -1,9 +1,6 @@
 // src/utils/money.js
-export function yen(value) {
-  if (value == null || isNaN(value)) return '–';   // － 表示など
-  return new Intl.NumberFormat('ja-JP', {
-    style: 'currency',
-    currency: 'JPY',
-    minimumFractionDigits: 0
-  }).format(value);
+const YEN_FMT = new Intl.NumberFormat('ja-JP', { style:'currency', currency:'JPY', minimumFractionDigits:0 })
+export function yen(value){
+  const n = Number(value)
+  return Number.isFinite(n) ? YEN_FMT.format(n) : '–'
 }

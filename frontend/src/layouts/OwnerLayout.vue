@@ -1,4 +1,4 @@
-<!--/layouts/MainLayout -->
+<!--/layouts/OwnerLayout -->
 <script setup>
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -9,10 +9,7 @@ import dayjs from 'dayjs'
 import { useNow } from '@vueuse/core'
 import { useLoading } from '@/stores/useLoading'
 import PageLoader from '@/components/PageLoader.vue'
-import StaffSidebar from '@/components/sidebar/StaffSidebar.vue'
-import { useProfile } from '@/composables/useProfile'
-import Avatar from '@/components/Avatar.vue'
-
+import OwnerSidebar from '@/components/sidebar/OwnerSidebar.vue'
 const loading = useLoading()
 
 
@@ -20,7 +17,6 @@ const loading = useLoading()
 const router = useRouter()
 const route  = useRoute()
 const user   = useUser()
-const { avatarURL, displayName } = useProfile() 
 
 const currentRole = computed(() => user.me?.current_role || null)
 const isStaff   = computed(() => currentRole.value === 'staff')
@@ -30,6 +26,7 @@ const isStaff   = computed(() => currentRole.value === 'staff')
 const pageTitle = computed(() => route.meta.title || 'Untitled')
 const today     = computed(() => dayjs(useNow({interval:60_000}).value)
                               .format('YYYY.MM.DD (ddd)'))
+const avatarSrc = computed(() => user.avatar || '/img/user-default.png')
 
 /* ───── active 判定ヘルパ ───── */
 const isActive = (p) => route.path === p
@@ -43,51 +40,53 @@ async function logout () {
 </script>
 
 <template>
-  <div class="base admin d-block d-md-flex min-vh-100">
-
-    <!-- ────────── SIDEBAR ────────── -->
+  <div class="base owner d-block d-md-flex min-vh-100">
+    <!-- ────────── footer ────────── -->
     <div class="sidebar d-flex gap-5 align-items-center">
+
       <RouterLink
         class="nav-link"
-        to="/dashboard"
+        :to="{name:'owner-dashboard'}"
+        :class="isActive('/dashboard')"
+      >
+        <IconDashboard />
+      </RouterLink>
+
+      <RouterLink
+        class="nav-link"
+        :to="{name:'owner-pl-daily'}"
         :class="isActive('/dashboard')
           ? 'bg-dark text-white'
-          : 'bg-white text-dark'">
-        <IconPinned :size="24"/>
+          : 'text-dark'">
+        <span class="monst">D</span>
       </RouterLink>
 
       <RouterLink
         class="nav-link"
-        to="/dashboard/list"
+        :to="{name:'owner-pl-monthly'}"
         :class="isActive('/dashboard/list')
           ? 'bg-dark text-white'
-          : 'bg-white text-dark'">
-        <IconList :size="24"/>
+          : 'text-dark'">
+        <span class="monst">M</span>
       </RouterLink>
       <RouterLink
         class="nav-link"
-        to="/dashboard/timeline"
+        :to="{name:'owner-pl-yearly'}"
         :class="isActive('/dashboard/timeline')
           ? 'bg-dark text-white'
-          : 'bg-white text-dark'">
-       <IconMenu3 :size="24"/>
+          : 'text-dark'">
+        <span class="monst">Y</span>
       </RouterLink>
 
-      <!-- staffなら #staffSidebar を開く -->
-      <button v-if="isStaff"
-        class="avatar-icon btn p-0 border-0 bg-transparent"
-        data-bs-toggle="offcanvas" data-bs-target="#staffSidebar" aria-controls="staffSidebar">
-        <Avatar :url="avatarURL" :size="40" class="rounded-circle" />
+      <button class="nav-link text-dark" data-bs-toggle="offcanvas" data-bs-target="#ownerSidebar">
+        <IconMenu2 />
       </button>
+      <OwnerSidebar />
 
-      <!-- それ以外は従来の openSidebar -->
-      <button v-else class="avatar-icon btn p-0 border-0 bg-transparent" @click="openSidebar">
-        <Avatar :url="avatarURL" :size="40" class="rounded-circle" />
-      </button>
     </div>
 
     <!-- ────────── MAIN ────────── -->
-    <main class="main flex-fill p-4">
+    <main class="main flex-fill container py-4">
       <div class="wrapper h-100 d-flex flex-column">
         <header class="header d-flex justify-content-between mb-1">
           <div class="area d-flex align-items-center gap-4">
@@ -106,7 +105,6 @@ async function logout () {
             </Suspense>
           </router-view>
           <PageLoader :active="useLoading().globalLoading" />
-          <StaffSidebar v-if="isStaff" />
         </div>
       </div>
     </main>

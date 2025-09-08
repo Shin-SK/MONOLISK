@@ -24,6 +24,15 @@ import { yen } from '@/utils/money'
 import Sortable, { Swap } from 'sortablejs'
 Sortable.mount(new Swap())
 
+import ECharts from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart, PieChart, BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent, TitleComponent } from 'echarts/components'
+
+use([CanvasRenderer, LineChart, PieChart, BarChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent])
+
+
 // import '@syncfusion/ej2-vue-gantt/styles/material.css'
 // import { registerLicense } from '@syncfusion/ej2-base'
 // registerLicense('Ngo9BigBOggjHTQxAR8/V1JEaF5cXmRCdkxxWmFZfVtgdVVMZFhbRH5PIiBoS35Rc0VkWXZedHdUQ2BeU0FxVEFd')
@@ -36,6 +45,7 @@ const app = createApp(App)
   app.component('Multiselect', Multiselect)  // グローバル登録
   app.component('DatePicker', DatePicker)
   app.component('Avatar', Avatar)  
+  app.component('VChart', ECharts)
   
 import * as TablerIcons from '@tabler/icons-vue'        // ← 追加ここだけ
 

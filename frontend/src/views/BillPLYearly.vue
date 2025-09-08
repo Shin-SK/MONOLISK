@@ -50,45 +50,66 @@ watchEffect(async () => {
 
     <template v-else-if="pl">
       <!-- YEAR SUMMARY -->
-      <div class="summary-area mb-3">
-        <div class="box"><div class="head">年間売上</div><div class="number">{{ yen(pl.totals.sales_total) }}</div></div>
-        <div class="box"><div class="head">総来客数</div><div class="number">{{ pl.totals.guest_count }}</div></div>
-        <div class="box"><div class="head">平均客単価</div><div class="number">{{ yen(pl.totals.avg_spend) }}</div></div>
-        <div class="box"><div class="head">人件費</div><div class="number">{{ yen(pl.totals.labor_cost) }}</div></div>
-        <div class="box"><div class="head">営業利益</div><div class="number">{{ yen(pl.totals.operating_profit) }}</div></div>
+      <div class="summary-area row g-3 mb-3">
+        <div class="col-6 col-md-4">
+          <div class="box"><div class="head">年間売上</div><div class="number">{{ yen(pl.totals.sales_total) }}</div></div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="box"><div class="head">総来客数</div><div class="number">{{ pl.totals.guest_count }}</div></div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="box"><div class="head">平均客単価</div><div class="number">{{ yen(pl.totals.avg_spend) }}</div></div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="box"><div class="head">人件費</div><div class="number">{{ yen(pl.totals.labor_cost) }}</div></div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="box"><div class="head">営業利益</div><div class="number">{{ yen(pl.totals.operating_profit) }}</div></div>
+        </div>
       </div>
 
       <!-- MONTH LIST -->
-      <table class="table table-sm table-bordered">
-        <thead class="table-light">
-          <tr>
-            <th>月</th>
-            <th class="text-end">売上（現金/カード）</th>
-            <th class="text-end">客数</th>
-            <th class="text-end">平均客単価</th>
-            <th class="text-end">人件費</th>
-            <th class="text-end">営業利益</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="m in months" :key="m.month">
-            <td>{{ m.month }}</td>
-            <td class="text-end">
-              <span class="fw-bold">{{ yen(m.totals.sales_total) }}</span>
-              ({{ yen(m.totals.sales_cash) }}/{{ yen(m.totals.sales_card) }})</td>
-            <td class="text-end">{{ m.totals.guest_count }}</td>
-            <td class="text-end">{{ yen(m.totals.avg_spend) }}</td>
-            <td class="text-end">{{ yen(m.totals.labor_cost) }}</td>
-            <td class="text-end" :class="{ 'fw-semibold': true, 'text-danger': m.totals.operating_profit < 0 }">
-              {{ yen(m.totals.operating_profit) }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="table-responsive">
+        <table class="table">
+          <thead class="table-dark">
+            <tr>
+              <th>月</th>
+              <th class="text-end">売上（現金/カード）</th>
+              <th class="text-end">客数</th>
+              <th class="text-end">平均客単価</th>
+              <th class="text-end">人件費</th>
+              <th class="text-end">営業利益</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="m in months" :key="m.month">
+              <td>{{ m.month }}</td>
+              <td class="text-end">
+                <span class="fw-bold">{{ yen(m.totals.sales_total) }}</span>
+                ({{ yen(m.totals.sales_cash) }}/{{ yen(m.totals.sales_card) }})</td>
+              <td class="text-end">{{ m.totals.guest_count }}</td>
+              <td class="text-end">{{ yen(m.totals.avg_spend) }}</td>
+              <td class="text-end">{{ yen(m.totals.labor_cost) }}</td>
+              <td class="text-end" :class="{ 'fw-semibold': true, 'text-danger': m.totals.operating_profit < 0 }">
+                {{ yen(m.totals.operating_profit) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </template>
   </div>
 </template>
 
 <style scoped>
 .pl-yearly input { min-width:130px }
+
+.table > :not(caption) > * > * {
+  padding: 1.5rem;
+}
+
+td,th{
+  text-wrap: nowrap;
+}
+
 </style>

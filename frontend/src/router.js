@@ -6,44 +6,46 @@ import { useUser } from '@/stores/useUser'
 /* --- レイアウト --- */
 import MainLayout from '@/layouts/MainLayout.vue'
 import CastLayout from '@/layouts/CastLayout.vue'
+import OwnerLayout from '@/layouts/OwnerLayout.vue'
+
+import { useRoles } from '@/composables/useRoles'
 
 // （必要なら）import { useLoading } from '@/stores/useLoading'
 
 const routes = [
   // ---------- キャバクラ版 ---------- //
   {
-    path: '/bills',
+    path: '/',
     component: MainLayout,
     meta: { requiresAuth: true, adminOnly: true },
     children: [
-      // ★ 絶対パスの子ルートにも requiresAuth を明示付与
-      { path: '/dashboard',            component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'DASHBOARD',            requiresAuth: true, adminOnly: true }},
-      { path: '/dashboard/list',       component: () => import('@/views/DashboardList.vue'),  meta: { title: 'DASHBOARD-LIST',       requiresAuth: true, adminOnly: true }},
-      { path: '/dashboard/timeline',   component: () => import('@/views/DashboardGantt.vue'), meta: { title: 'DASHBOARD-TIMELINE',   requiresAuth: true, adminOnly: true }},
+      { path: 'dashboard',            component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'DASHBOARD', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+      { path: 'dashboard/list',       component: () => import('@/views/DashboardList.vue'),  meta: { title: 'DASHBOARD-LIST', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+      { path: 'dashboard/timeline',   component: () => import('@/views/DashboardGantt.vue'), meta: { title: 'DASHBOARD-TIMELINE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
 
       { path: '', component: () => import('@/views/DashboardList.vue'), meta: { title: '伝票' }},
 
-      { path: 'pl/daily',    component: () => import('@/views/BillPLDaily.vue'),   meta: { title: '売上-日次', capsAny: ['view_pl_store','view_pl_multi'], requiresAuth:true } },
-      { path: 'pl/Monthly',  component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次', capsAny: ['view_pl_store','view_pl_multi'], requiresAuth:true } },
-      { path: 'pl/yearly',   component: () => import('@/views/BillPLYearly.vue'),  meta: { title: '売上-年次', capsAny: ['view_pl_store','view_pl_multi'], requiresAuth:true } },
+      { path: 'pl/daily',  name:'pl-daily',  component: () => import('@/views/BillPLDaily.vue'),   meta: { title: '売上-日次', rolesAny: ['manager','owner','superuser'], requiresAuth:true } },
+      { path: 'pl/Monthly', name:'pl-monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次', rolesAny: ['manager','owner','superuser'], requiresAuth:true } },
+      { path: 'pl/yearly', name:'pl-yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次', rolesAny: ['manager','owner','superuser'], requiresAuth:true } },
 
-      { path: '/cast-sales',           component: () => import('@/views/CastSalesList.vue'),   meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
-      { path: '/cast-sales/:id',       component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail', meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
+      { path: 'cast-sales',           component: () => import('@/views/CastSalesList.vue'),   meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
+      { path: 'cast-sales/:id',       component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail', meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
       { path: 'cast-shift',            component: () => import('@/views/CastShiftList.vue'),   props: true, meta: { title: 'シフト管理' } },
       { path: 'cast-shift/:id(\\d+)/shifts', component: () => import('@/views/CastShiftPage.vue'), props: true ,name: 'cast-shift-page', meta: { title: 'シフト管理' } },
 
-      { path: '/ranking',   component: () => import('@/views/CastRanking.vue'),        props: true, meta: { title: 'ランキング',    requiresAuth: true, adminOnly: true } },
-      { path: '/table',     component: () => import('@/components/BillListTable.vue'), props: true, meta: { title: 'テーブルビュー', requiresAuth: true, adminOnly: true }},
-      { path: '/customers', component: () => import('@/views/CustomerPage.vue'),       props: true, meta: { title: '顧客情報',      requiresAuth: true, adminOnly: true }},
+      { path: 'ranking',   component: () => import('@/views/CastRanking.vue'),        props: true, meta: { title: 'ランキング',    requiresAuth: true, adminOnly: true } },
+      { path: 'table',     component: () => import('@/components/BillListTable.vue'), props: true, meta: { title: 'テーブルビュー', requiresAuth: true, adminOnly: true }},
+      { path: 'customers', component: () => import('@/views/CustomerPage.vue'),       props: true, meta: { title: '顧客情報',      requiresAuth: true, adminOnly: true }},
 
-      { path: '/staff/:id(\\d+)', redirect: to => ({ name: 'settings-staff-form', params: { id: to.params.id } }) },
-      { path: '/staffs/new',      redirect: { name: 'settings-staff-new' } },
-      { path: '/casts/:id(\\d+)', redirect: to => ({ name: 'settings-cast-form', params: { id: to.params.id } }) },
-      { path: '/casts/new',       redirect: { name: 'settings-cast-new' } },
+      { path: 'staff/:id(\\d+)', redirect: to => ({ name: 'settings-staff-form', params: { id: to.params.id } }) },
+      { path: 'staffs/new',      redirect: { name: 'settings-staff-new' } },
+      { path: 'casts/:id(\\d+)', redirect: to => ({ name: 'settings-cast-form', params: { id: to.params.id } }) },
+      { path: 'casts/new',       redirect: { name: 'settings-cast-new' } },
       // 追加：KDSルート
-      { path: '/kds/kitchen', component: () => import('@/views/KDSStation.vue'), meta: { title: 'KDS Kitchen', requiresAuth: true, kds: true } },
-      { path: '/kds/drinker', component: () => import('@/views/KDSStation.vue'), meta: { title: 'KDS Drinker', requiresAuth: true, kds: true } },
-      { path: '/kds/dishup',  component: () => import('@/views/KDSDishup.vue'),  meta: { title: 'KDS Deshap',  requiresAuth: true, kds: true } },
+      { path: 'kds/kitchen', component: () => import('@/views/KDSStation.vue'), meta: { title: 'KDS Kitchen', requiresAuth: true, kds: true } },
+      { path: 'kds/drinker', component: () => import('@/views/KDSStation.vue'), meta: { title: 'KDS Drinker', requiresAuth: true, kds: true } },
+      { path: 'kds/dishup',  component: () => import('@/views/KDSDishup.vue'),  meta: { title: 'KDS Deshap',  requiresAuth: true, kds: true } },
 
     ],
   },
@@ -79,11 +81,13 @@ const routes = [
   {
     path: '/cast',
     component: CastLayout,
+    meta: { requiresAuth: true },
     children: [
       { path: '', redirect: '/cast/mypage' },
       { path: 'mypage', name: 'cast-mypage' , component: () => import('@/views/cast/Mypage.vue') },
-      { path: 'order',  component: () => import('@/views/cast/Order.vue'), meta: { cap: 'cast_order_self' } },
-      // ★ これを追加
+      { path: 'mypage/:id(\\d+)', redirect: { name:'cast-mypage' } },
+      { path: 'order',  component: () => import('@/views/cast/Order.vue'), meta: { rolesAny: ['cast'] } },
+      { path: 'profile', name: 'cast-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ rolesAny:['cast'], title:'プロフィール編集' } },
       { path: 'news/:id(\\d+)', name: 'news-detail', component: () => import('@/views/NewsDetail.vue') },
     ],
   },
@@ -91,18 +95,33 @@ const routes = [
   {
     path: '/staff',
     component: MainLayout,
-    meta: { cap: 'operate_orders', title: 'STAFF' },
+    meta: { rolesAny: ['staff','manager','owner','superuser'], title: 'STAFF' },
     children: [
-      { path: 'mypage',  name: 'staff-mypage',  component: () => import('@/views/staff/StaffMypage.vue'),  meta:{ cap:'operate_orders', title:'MYPAGE' } },
+      { path: 'mypage', name: 'staff-mypage', component: () => import('@/views/staff/StaffMypage.vue'), meta:{ rolesAny: ['staff','manager','owner','superuser'], title:'MYPAGE' } },
+      { path: 'profile', name: 'staff-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ rolesAny:['staff'], title:'プロフィール編集' } },
     ]
   },
+  // ---------- オーナー ---------- //
+  {
+    path: '/owner',
+    component: OwnerLayout,
+    meta: { rolesAny: ['owner','superuser'], title: 'OWNER' },
+    children: [
+      { path: '', redirect: { name: 'owner-dashboard' } },
+      { path: 'dashboard', name: 'owner-dashboard', component: () => import('@/views/owner/OwnerDashboard.vue'), meta:{ rolesAny: ['owner','superuser'], title:'DASHBOARD' } },
+      { path: 'pl/daily',  name:'owner-pl-daily',  component: () => import('@/views/BillPLDaily.vue'),   meta: { title: '売上-日次', rolesAny: ['owner','superuser'], requiresAuth:true } },
+      { path: 'pl/Monthly', name:'owner-pl-monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次', rolesAny: ['owner','superuser'], requiresAuth:true } },
+      { path: 'pl/yearly', name:'owner-pl-yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次', rolesAny: ['owner','superuser'], requiresAuth:true } },
+      { path: 'profile', name: 'owner-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ rolesAny:['owner'], title:'プロフィール編集' } },
+    ]
+  },
+
 
 
   // ---------- その他認証系 ---------- //
   { path: '/login', name: 'login', component: () => import('@/views/Login.vue') },
 
   { path: '/casts',     redirect: { name: 'settings-cast-list' } },
-  { path: '/staff',     redirect: { name: 'settings-staff-list' } },
   { path: '/casts/new', redirect: { name: 'settings-cast-new' } },
 ]
 
@@ -122,47 +141,41 @@ router.beforeEach(async (to, from, next) => {
   const meStore = useUser()
   const requiresAuth = to.matched.some(r => r.meta?.requiresAuth)
 
-  // ログインしているのに me が未取得なら先に読み込む
   if (token && storeId && !meStore.me) {
     try { await meStore.fetchMe?.() } catch {}
   }
-  const me     = meStore.me
-  const claims = me?.claims || []
+  const me      = meStore.me
+  const { hasRole, homePath } = useRoles()
 
-  // 1) ルート（'/'）はロール別ホームへ
+  // 1) ルート（'/'）のホーム分岐は role で決める
   if (to.path === '/') {
     if (!token || !storeId) return next('/login')
-    if (claims.includes('cast_order_self')) return next('/cast/mypage')
-    // me がまだ無い時は一度保留（ローディング経由）でもOK。ここでは簡潔にフォールバック。
-    if (claims.includes('operate_orders') || claims.includes('station_view')) return next('/dashboard')
-    if (me?.is_superuser || claims.includes('view_pl_multi'))  return next('/bills/pl/daily')
-
-    return next('/dashboard')
+    return next(homePath())
   }
 
-  // 2) ログイン画面はログイン済みならホームへ
+  // 2) ログイン画面：ログイン済みはホームへ
   if (to.name === 'login') {
     return next(token && storeId ? '/' : undefined)
   }
 
-  // 3) 認証必須の保護
+  // 3) 認証必須ガード
   if (requiresAuth && (!token || !storeId)) {
     return next({ path: '/login', query: { next: to.fullPath } })
   }
 
-  // 4) 機能capガード
-  const cap = to.meta?.cap
-  if (cap && !claims.includes(cap)) return next('/403')
-  // いずれかcap（PL：view_pl_store or view_pl_multi）
-  const capsAny = to.meta?.capsAny
-  if (Array.isArray(capsAny) && !capsAny.some(c => claims.includes(c))) {
-    return next('/403')
-  }
+  // 4) 役割ガード（claimsは使わない）
+ const requiredRoles = to.matched.map(r => r.meta?.rolesAny).find(a => Array.isArray(a))
+ if (requiredRoles && !hasRole(requiredRoles)) {
+   return next(homePath())
+ }
 
   // 5) KDSフラグ
-  if (to.meta?.kds && import.meta.env.VITE_KDS_ENABLED !== 'true') return next('/')
+  if (to.meta?.kds && import.meta.env.VITE_KDS_ENABLED !== 'true') {
+    return next('/')
+  }
 
   next()
 })
+
 
 export default router

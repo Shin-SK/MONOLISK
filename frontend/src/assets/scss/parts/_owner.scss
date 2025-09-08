@@ -1,0 +1,46 @@
+@use '../global/global' as *;
+
+
+.owner{
+	.monst{
+		@include monsttera;
+		@include fs(20);
+	}
+
+	.owner-dashboard{
+		.sales{
+			.box{
+				width: 100%;
+				padding: 24px 8px;
+				background-color: white;
+				border-radius: 16px;
+				.item{
+					&.item-main{
+						@include flex();
+						flex-direction: column;
+						padding: 24px 0px;
+					}
+					&.mini{
+						@include flex();
+						flex-direction: column;
+						gap: 8px;
+						flex-shrink: 0;
+					}
+				}
+				.mini-wrap{
+					display: flex;
+					padding: 8px;
+					gap: 16px;
+					overflow: scroll;
+				}
+			}
+		}
+		.sales-transition{
+			.tabs{
+				button{
+					height: fit-content;
+				}
+			}
+		}
+	}
+}

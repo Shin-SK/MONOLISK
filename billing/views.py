@@ -373,7 +373,7 @@ class CastItemDetailView(generics.ListAPIView):
 
         qs = (
             BillItem.objects
-            .select_related("bill", "bill__table")
+            .select_related("bill", "bill__table", "item_master__category")
             .filter(bill__closed_at__isnull=False, bill__table__store_id=sid)
         )
         if cid:

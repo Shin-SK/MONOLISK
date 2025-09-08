@@ -7,13 +7,13 @@ import CastSidebar from '@/components/sidebar/CastSidebar.vue'
 import Avatar from '@/components/Avatar.vue'
 import { IconFileInvoice, IconMenu2, IconChevronCompactLeft } from '@tabler/icons-vue'
 import { useCastEvents } from '@/stores/useCastEvents'
+import { useProfile } from '@/composables/useProfile'
 
 const router = useRouter()
 const route  = useRoute()
 const user   = useUser()
+const { avatarURL, displayName } = useProfile() 
 
-const avatarUrl = computed(() =>
-  user.avatar || user.me?.avatar || user.me?.profile_image || '')
 
 const candidates = ref([])      // 本指名で「自卓」注文できる Bill 候補
 const singleBillId = computed(() => candidates.value.length === 1 ? candidates.value[0].id : null)
@@ -99,16 +99,11 @@ watch(() => route.fullPath, (p) => {
      }"
     >
       <div class="wrap position-relative">
-        <!-- 左：サイドバー -->
-        <button
-          class="avatar-icon btn p-0 border-0 bg-transparent"
-          data-bs-toggle="offcanvas"
-          data-bs-target="#castSidebar"
-          aria-controls="castSidebar"
-          title="メニュー"
-        >
-          <IconMenu2 />
-        </button>
+
+        <!-- 右：マイページへ -->
+        <RouterLink class="nav-link d-flex align-items-center justify-content-center" :to="{name: 'cast-mypage'}" title="マイページ">
+          <Avatar :url="avatarURL" :size="32" class="rounded-circle" />
+        </RouterLink>
 
         <!-- 中央：自卓オーダー直行（伝票画面では非表示） -->
         <div class="position-absolute m-auto order-button" v-if="hasSelfOrder && !isOrderPage">
@@ -120,11 +115,17 @@ watch(() => route.fullPath, (p) => {
             <IconFileInvoice size="60" stroke="1.5" class="text-white rounded-circle bg-danger p-3" />
           </button>
         </div>
+        <!-- 左：サイドバー -->
+        <button
+          class="avatar-icon btn p-0 border-0 bg-transparent"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#castSidebar"
+          aria-controls="castSidebar"
+          title="メニュー"
+        >
+          <IconMenu2 />
+        </button>
 
-        <!-- 右：マイページへ -->
-        <RouterLink class="nav-link d-flex align-items-center justify-content-center" :to="{name: 'cast-mypage'}" title="マイページ">
-          <Avatar :url="avatarUrl" :size="32" class="rounded-circle" />
-        </RouterLink>
       </div>
     </div>
 

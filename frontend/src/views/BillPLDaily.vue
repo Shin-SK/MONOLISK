@@ -42,31 +42,37 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="pl pl-daily p-4 container">
+  <div class="pl pl-daily">
     <template v-if="pl">
       <div class="d-flex align-items-center gap-2 mb-3">
         <input v-model="dateStr" type="date" class="form-control w-auto">
         <button class="btn btn-primary" @click="fetchData">読み込み</button>
       </div>
 
-      <div class="summary-area">
-        <div class="box">
-          <div class="head">売上合計</div>
-          <div class="number">{{ yen(pl.sales_total ?? ((pl.sales_cash ?? 0) + (pl.sales_card ?? 0))) }}</div>
+      <div class="summary-area row g-3">
+        <div class="col-6 col-md-4">
+          <div class="box">
+            <div class="head">売上合計</div>
+            <div class="number">{{ yen(pl.sales_total ?? ((pl.sales_cash ?? 0) + (pl.sales_card ?? 0))) }}</div>
+          </div>
         </div>
-        <div class="box">
-          <div class="head">人件費</div>
-          <div class="number">{{ yen(pl.labor_cost) }}</div>
+        <div class="col-6 col-md-4">
+          <div class="box">
+            <div class="head">人件費</div>
+            <div class="number">{{ yen(pl.labor_cost) }}</div>
+          </div>
         </div>
-        <div class="box">
-          <div class="head">営業利益</div>
-          <div class="number">{{ yen(pl.operating_profit) }}</div>
+        <div class="col-6 col-md-4">
+          <div class="box">
+            <div class="head">営業利益</div>
+            <div class="number">{{ yen(pl.operating_profit) }}</div>
+          </div>
         </div>
       </div>
 
-      <table class="table table-bordered table-striped">
+      <table class="table no-vert my-5">
         <tbody>
-          <tr><th class="w-25">来客数</th><td class="text-end">{{ pl.guest_count }}</td></tr>
+          <tr><th>来客数</th><td class="text-end">{{ pl.guest_count }}</td></tr>
           <tr><th>平均客単価</th><td class="text-end">{{ yen(pl.avg_spend) }}</td></tr>
           <tr><th>ドリンク売上</th><td class="text-end">{{ yen(pl.drink_sales) }}</td></tr>
           <tr><th>ドリンク杯数</th><td class="text-end">{{ pl.drink_qty }}</td></tr>
@@ -78,19 +84,19 @@ onMounted(async () => {
 
       <!-- ▼ 追加：会計内訳（必ず0円表示） -->
       <div class="mt-4">
-        <h6 class="fw-bold mb-2">会計内訳</h6>
+        <h6 class="fw-bold mb-3">会計内訳</h6>
         <div class="row g-3">
-          <div class="col-sm-6">
-            <div class="card h-100">
-              <div class="card-body d-flex justify-content-between align-items-center">
+          <div class="col-mb-6">
+            <div class="h-100">
+              <div class="bg-white d-flex justify-content-between align-items-center p-3">
                 <div>カード会計</div>
                 <div class="fs-5 fw-bold">{{ yen(pl.sales_card ?? 0) }}</div>
               </div>
             </div>
           </div>
-          <div class="col-sm-6">
-            <div class="card h-100">
-              <div class="card-body d-flex justify-content-between align-items-center">
+          <div class="col-mb-6">
+            <div class="h-100">
+              <div class="bg-white d-flex justify-content-between align-items-center p-3">
                 <div>現金会計</div>
                 <div class="fs-5 fw-bold">{{ yen(pl.sales_cash ?? 0) }}</div>
               </div>
@@ -108,4 +114,18 @@ onMounted(async () => {
 <style scoped>
 .pl-daily input,
 .pl-daily select { min-width: 130px; }
+
+.table > :not(caption) > * > * {
+  padding: 1.5rem;
+}
+
+td{
+  text-wrap: nowrap;
+}
+.table.no-vert > :not(caption) > * > * {
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+
 </style>
