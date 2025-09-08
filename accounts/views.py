@@ -103,8 +103,7 @@ def me(request):
 
 
 
-
-# accounts/views.py（末尾に追加）
+# accounts/views.py（debug_set_role を置換）
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -112,25 +111,19 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from accounts.models import StoreMembership, StoreRole
 from billing.models import Store
+from .views import me as me_view
 
-@api_view(['POST'])
+@api_view(['POST', 'GET'])   # ★ GETも許可（検証用）
 @permission_classes([IsAuthenticated])
 def debug_set_role(request):
-    """
-    POST /api/accounts/debug/set-role/
-    body: {"role": "owner|manager|staff|cast"}
-    store_id は middleware / ?store_id / primary の順で解決
-    superuser のみ許可（検証用）
-    """
     u = request.user
     if not u.is_superuser:
         return Response({"detail":"forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-    role = (request.data.get('role') or '').lower()
+    role = (request.data.get('role') or request.query_params.get('role') or '').lower()
     if role not in (StoreRole.OWNER, StoreRole.MANAGER, StoreRole.STAFF, StoreRole.CAST):
         return Response({"detail":"invalid role"}, status=400)
 
-    # store 決定：request.store → ?store_id → primary
     memberships = u.memberships.select_related('store').all()
     primary_store_id = next((m.store_id for m in memberships if m.is_primary), None)
     qp_sid = request.query_params.get('store_id')
@@ -144,6 +137,5 @@ def debug_set_role(request):
         mem.role = role
         mem.save(update_fields=['role'])
 
-    # 返り値は /api/me と同じ形にすると便利
-    from accounts.views import me as me_view
-    return me_view(request)
+    # DRF Request→HttpRequestに戻して /api/me を返す
+    return me_view(request._request)

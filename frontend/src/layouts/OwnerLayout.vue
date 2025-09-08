@@ -10,6 +10,9 @@ import { useNow } from '@vueuse/core'
 import { useLoading } from '@/stores/useLoading'
 import PageLoader from '@/components/PageLoader.vue'
 import OwnerSidebar from '@/components/sidebar/OwnerSidebar.vue'
+import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
+
+
 const loading = useLoading()
 
 
@@ -93,6 +96,7 @@ async function logout () {
             <h2>{{ pageTitle }}</h2>
             <span class="today text-muted">{{ today }}</span>
           </div>
+           <DevRoleSwitcher />
         </header>
         <div class="position-relative flex-fill">
         <!-- ページ本体 -->

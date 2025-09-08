@@ -8,6 +8,7 @@ import Avatar from '@/components/Avatar.vue'
 import { IconFileInvoice, IconMenu2, IconChevronCompactLeft } from '@tabler/icons-vue'
 import { useCastEvents } from '@/stores/useCastEvents'
 import { useProfile } from '@/composables/useProfile'
+import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
 
 const router = useRouter()
 const route  = useRoute()
@@ -98,6 +99,7 @@ watch(() => route.fullPath, (p) => {
        'is-open': isOrderPage && showCastFooter
      }"
     >
+     <DevRoleSwitcher />
       <div class="wrap position-relative">
 
         <!-- 右：マイページへ -->

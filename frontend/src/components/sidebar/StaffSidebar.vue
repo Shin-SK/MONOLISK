@@ -6,6 +6,7 @@ import { IconUserSquare, IconClipboardList, IconSoup, IconBeer, IconChefHat, Ico
 import { useRoles } from '@/composables/useRoles'
 import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'
+import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
 
 const { role, isSuper, hasRole } = useRoles()
 
@@ -97,7 +98,7 @@ async function logout() {
 
       <div class="footer d-flex flex-column gap-2">
         <div class="d-flex justify-content-between align-items-center mb-3">
-
+          <DevRoleSwitcher />
           <div class="d-flex align-items-center gap-2">
             <Avatar :url="avatarURL" :size="40" class="rounded-circle"/> 
             <span>{{ displayName }}</span>

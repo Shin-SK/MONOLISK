@@ -6,6 +6,7 @@ import Avatar from '@/components/Avatar.vue'
 import { useProfile } from '@/composables/useProfile'
 import { useRoles } from '@/composables/useRoles'
 import { useUser } from '@/stores/useUser'
+import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
 
 const router = useRouter()
 const { role } = useRoles()
@@ -23,7 +24,7 @@ async function logout() {
 <template>
   <div
     id="castSidebar"
-    class="offcanvas offcanvas-start offcanvas-md"
+    class="offcanvas offcanvas-start"
     style="--bs-offcanvas-width: min(100vw,300px);"
     tabindex="-1"
     aria-labelledby="castSidebarLabel"
@@ -46,6 +47,7 @@ async function logout() {
       </div>
 
       <div class="footer d-flex flex-column gap-2">
+        <DevRoleSwitcher sidebarId="castSidebar" />
         <div class="d-flex justify-content-between align-items-center mb-3">
 
           <div class="d-flex align-items-center gap-2">

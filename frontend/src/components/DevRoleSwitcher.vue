@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useUser } from '@/stores/useUser'
 import { useRouter } from 'vue-router'
 import { api } from '@/api'
@@ -23,22 +23,25 @@ const roles = ['cast','staff','manager','owner']
 watch(() => user.me?.current_role, v => { if (v) current.value = v })
 
 async function apply(){
-  await api.post('accounts/debug/set-role/', { role: current.value })
+  await api.get('accounts/debug/set-role/', { params: { role: current.value } })
   await user.fetchMe?.()
+  await nextTick()
 
   // ① サイドバーを先に閉じる
   closeSidebar(props.sidebarId)
 
-  // ② 役割で決まるホームへ
-  const to = homePath()
+  // ★ ガード任せで '/' へ → 最新meでロール別ホームにリダイレクト
+	await user.fetchMe?.()
+	await nextTick()
+	closeSidebar(props.sidebarId)
+	const to = homePath()
+	const now = router.currentRoute.value.path
+	if (now === to) {
+	await router.replace({ path: to, query: { _r: Date.now().toString() } })
+	} else {
+	await router.replace(to)
+	}
 
-  // ③ 同一路線なら no-op 防止のため強制リフレッシュ
-  const nowPath = router.currentRoute.value.path
-  if (nowPath === to) {
-    router.replace({ path: to, query: { _r: Date.now().toString() } })
-  } else {
-    router.replace(to)
-  }
 }
 </script>
 

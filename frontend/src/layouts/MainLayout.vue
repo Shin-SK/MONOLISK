@@ -12,6 +12,8 @@ import PageLoader from '@/components/PageLoader.vue'
 import StaffSidebar from '@/components/sidebar/StaffSidebar.vue'
 import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'
+import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
+
 
 const loading = useLoading()
 
@@ -101,7 +103,7 @@ async function logout () {
             <Suspense>
               <!-- fallback は空にする ★ -->
               <template #default>
-                <component :is="Component" />
+                <component :is="Component" :key="$route.fullPath" />
               </template>
             </Suspense>
           </router-view>

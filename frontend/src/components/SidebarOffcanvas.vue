@@ -6,6 +6,7 @@ import { useAuth }   from '@/stores/useAuth'
 import { closeSidebar } from '@/utils/offcanvas'
 import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'
+import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
 
 const router = useRouter()
 const route  = useRoute()
@@ -87,7 +88,7 @@ async function logout () {
                 <span class="fw-bold fs-5">スタジオカラー</span>
               </div>
             </a>
-
+            <DevRoleSwitcher />
             <RouterLink class="nav-link mt-3" to="/cast/mypage/1" @click="closeSidebar">
               キャストマイページ（サンプルID=1）
             </RouterLink>
