@@ -88,7 +88,6 @@ async function logout () {
                 <span class="fw-bold fs-5">スタジオカラー</span>
               </div>
             </a>
-            <DevRoleSwitcher />
             <RouterLink class="nav-link mt-3" to="/cast/mypage/1" @click="closeSidebar">
               キャストマイページ（サンプルID=1）
             </RouterLink>
@@ -109,6 +108,8 @@ async function logout () {
           <button class="btn btn-outline-danger w-100" @click="logout">
             ログアウト
           </button>
+
+          <DevRoleSwitcher class="my-5"/>
         </div>
       </aside>
     </div>

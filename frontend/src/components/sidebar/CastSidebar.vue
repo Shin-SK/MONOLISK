@@ -47,7 +47,6 @@ async function logout() {
       </div>
 
       <div class="footer d-flex flex-column gap-2">
-        <DevRoleSwitcher sidebarId="castSidebar" />
         <div class="d-flex justify-content-between align-items-center mb-3">
 
           <div class="d-flex align-items-center gap-2">
@@ -60,6 +59,7 @@ async function logout() {
         <button class="btn btn-outline-danger w-100" @click="logout">
           ログアウト
         </button>
+        <DevRoleSwitcher class="my-5"/>
       </div>
     </div>
   </div>

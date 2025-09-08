@@ -109,6 +109,9 @@ async function logout() {
         <button class="btn btn-outline-danger w-100" @click="logout">
           ログアウト
         </button>
+
+        <DevRoleSwitcher class="my-5"/>
+
       </div>
     </div>
   </div>
