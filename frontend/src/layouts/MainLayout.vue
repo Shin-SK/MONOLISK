@@ -13,6 +13,7 @@ import StaffSidebar from '@/components/sidebar/StaffSidebar.vue'
 import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'
 import { IconMenu2 } from '@tabler/icons-vue'
+import RefreshAvatar from '@/components/RefreshAvatar.vue'
 
 
 const loading = useLoading()
@@ -50,7 +51,7 @@ async function logout () {
     <!-- ────────── SIDEBAR ────────── -->
     <div class="sidebar d-flex gap-5 align-items-center">
       <button>
-        <Avatar :url="avatarURL" :size="40" class="rounded-circle" />
+        <RefreshAvatar />
       </button>
 
       <RouterLink

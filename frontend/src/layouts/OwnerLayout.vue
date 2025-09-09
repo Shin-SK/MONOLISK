@@ -10,6 +10,7 @@ import { useNow } from '@vueuse/core'
 import { useLoading } from '@/stores/useLoading'
 import PageLoader from '@/components/PageLoader.vue'
 import OwnerSidebar from '@/components/sidebar/OwnerSidebar.vue'
+import RefreshAvatar from '../components/RefreshAvatar.vue'
 
 
 const loading = useLoading()
@@ -46,13 +47,9 @@ async function logout () {
     <!-- ────────── footer ────────── -->
     <div class="sidebar d-flex gap-5 align-items-center">
 
-      <RouterLink
-        class="nav-link"
-        :to="{name:'owner-dashboard'}"
-        :class="isActive('/dashboard')"
-      >
-        <IconDashboard />
-      </RouterLink>
+      <button>
+        <RefreshAvatar />
+      </button>
 
       <RouterLink
         class="nav-link"

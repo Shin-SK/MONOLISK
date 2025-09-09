@@ -8,7 +8,6 @@ from cloudinary.utils import cloudinary_url
 from dj_rest_auth.serializers import TokenSerializer
 from accounts.utils import choose_current_store_id
 
-
 class UserDetailsWithStoreSerializer(UserDetailsSerializer):
     store_id   = serializers.IntegerField(read_only=True)
     store_name = serializers.CharField(source="store.name", read_only=True)
@@ -17,39 +16,64 @@ class UserDetailsWithStoreSerializer(UserDetailsSerializer):
     class Meta(UserDetailsSerializer.Meta):
         fields = UserDetailsSerializer.Meta.fields + ("store_id","store_name","avatar_url")
 
-    def get_avatar_url(self, obj):
-        # 1) ユーザー直下にURLがあれば最優先
-        url = getattr(obj, "avatar_url", None)
-        if url:
-            return url
+    def _abs(self, req, url:str|None):
+        if not url: return None
+        return req.build_absolute_uri(url) if req and not url.startswith('http') else url
 
-        # 2) Cast.avatar からCloudinary URLを生成（現在店舗優先）
+    def get_avatar_url(self, obj):
+        """
+        優先度:
+          0) obj.avatar_url（ユーザー直下にURLがあれば）
+          1) 現在店舗の Cast.avatar
+          2) 他店舗の Cast.avatar（最初に見つかったもの）
+          3) 無ければ None（＝フロント側でデフォルトアイコン）
+        """
+        # 0) ユーザー直下
+        if getattr(obj, "avatar_url", None):
+            return self._abs(self.context.get("request"), obj.avatar_url)
+
+        # 現在店舗IDの推定（context.store_id → Header → request.store → query）
+        req = self.context.get("request")
+        store_id = self.context.get("store_id")
+        if store_id is None and req:
+            hs = req.headers.get("X-Store-Id")
+            if hs and hs.isdigit():
+                store_id = int(hs)
+            elif getattr(req, "store", None):
+                store_id = req.store.id
+            else:
+                qs = req.query_params.get("store_id")
+                if qs and qs.isdigit():
+                    store_id = int(qs)
+
+        # 1) 現在店舗 → 2) 他店舗
         try:
             from billing.models import Cast
-            store_id = self.context.get("store_id")
-            if store_id is None:
-                req = self.context.get("request")
-                if req:
-                    sid = req.query_params.get("store_id")
-                    if sid and str(sid).isdigit():
-                        store_id = int(sid)
-                    elif getattr(req, "store", None):
-                        store_id = req.store.id
-
             qs = Cast.objects.filter(user=obj)
-            cast = qs.filter(store_id=store_id).first() if store_id else qs.first()
-            if not cast:
+            cand = None
+            if store_id:
+                cand = qs.filter(store_id=store_id, avatar__isnull=False).first()
+            if not cand:
+                cand = qs.filter(avatar__isnull=False).first()
+            if not cand:
                 return None
 
-            av = getattr(cast, "avatar", None)
-            if av and getattr(av, "public_id", None):
-                url, _ = cloudinary_url(av.public_id, format=(getattr(av, "format", "jpg") or "jpg"), secure=True)
+            av = getattr(cand, "avatar", None)
+            # CloudinaryField
+            if getattr(av, "public_id", None):
+                url, _ = cloudinary_url(
+                    av.public_id,
+                    format=(getattr(av, "format", "jpg") or "jpg"),
+                    secure=True
+                )
                 return url
+            # ImageField 等
+            if hasattr(av, "url") and av.url:
+                return self._abs(req, av.url)
         except Exception:
             pass
-
-        # 3) ないなら None（フロントの <Avatar> がアイコン表示）
         return None
+
 
 class LoginWithStoreSerializer(LoginSerializer):
     """
