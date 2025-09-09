@@ -19,6 +19,13 @@ const kinds = ['free', 'in', 'nom']
 const emit = defineEmits(['update-stay', 'toggle-stay'])
 
 
+const tableLabel = computed(() => {
+	if (props.title && String(props.title).trim() !== '') return props.title
+	if (props.tableId != null) return `テーブル ${props.tableId}`
+	return 'テーブル'
+})
+
+
 /* --- Draggable 用ローカル配列 --- */
 const localCasts = ref([...props.casts])
 
@@ -146,8 +153,12 @@ const showDetail = computed(() => !isVacant.value)
       <div
         v-if="isVacant"
         class="vacant-label flex-grow-1 d-flex justify-content-center align-items-center fs-3 bg-secondary text-light"
+        style="min-height: 100px;"
       >
-        空席
+        <div class="d-flex align-items-center gap-2">
+          <IconPinned :size="22" />
+          <span class="fw-bold">{{ tableLabel }}</span>
+        </div>
       </div>
       <!-- キャスト一覧 (詳細) -->
       <draggable

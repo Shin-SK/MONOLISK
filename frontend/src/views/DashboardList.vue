@@ -17,12 +17,39 @@ const selectedIds = ref(new Set())     // 一覧チェック用
 /* ───── 初回ロード ───── */
 onMounted(() => bills.loadAll())
 
-/* ★ opened_at が新しい順に並べ替えた配列 */
-const sorted = computed(() =>
-  [...bills.list].sort(
-    (a, b) => new Date(b.opened_at || 0) - new Date(a.opened_at || 0)
-  )
-)
+/* ===== セグメント & アクティブのみ ===== */
+const seg = ref('today')  // 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth' | 'all' | 'range'
+const dateFrom = ref(dayjs().format('YYYY-MM-DD'))
+const dateTo   = ref(dayjs().format('YYYY-MM-DD'))
+const activeOnly = ref(false) // true=未精算(=closed_atなし)のみ
+
+function rangeMs() {
+	// デフォルト: seg='today'
+	let from = dayjs().startOf('day'), to = dayjs().endOf('day')
+	switch (seg.value) {
+		case 'yesterday': from = dayjs().subtract(1,'day').startOf('day'); to = dayjs().subtract(1,'day').endOf('day'); break
+		case 'last7':     from = dayjs().subtract(6,'day').startOf('day'); to = dayjs().endOf('day'); break
+		case 'last30':    from = dayjs().subtract(29,'day').startOf('day');to = dayjs().endOf('day'); break
+		case 'thisMonth': from = dayjs().startOf('month');                 to = dayjs().endOf('month'); break
+		case 'range':     from = dayjs(dateFrom.value).startOf('day');     to = dayjs(dateTo.value).endOf('day'); break
+		case 'all':       return { from: null, to: null }
+	}
+	return { from: from.valueOf(), to: to.valueOf() }
+}
+
+/* ★ フィルタ → 並べ替え（opened_at 新→旧） */
+const sorted = computed(() => {
+	const { from, to } = rangeMs()
+	return [...bills.list]
+		.filter(b => {
+			if (activeOnly.value && b.closed_at) return false
+			if (!from || !to) return true
+			if (!b.opened_at) return false
+			const t = dayjs(b.opened_at).valueOf()
+			return t >= from && t <= to
+		})
+		.sort((a,b) => new Date(b.opened_at || 0) - new Date(a.opened_at || 0))
+})
 
 const MAP_SET = { setVIP:60, setMale:60, setFemale:60, set60:60 }
 
@@ -143,7 +170,7 @@ function liveCasts (b) {
 <template>
   <div class="dashboard list d-flex flex-column">
     <div class="outer flex-fill position-relative" style="min-width: 0;">
-      <header class="d-flex justify-content-between">
+      <header class="d-flex flex-column">
         <div class="d-flex gap-1 mb-2">
           <!-- リストだけリアルタイムってかリストって感じで -->
           <div class="item badge text-white bg-danger">
@@ -162,10 +189,34 @@ function liveCasts (b) {
             フリー(~30分)
           </div> -->
         </div>
+          <!-- ▼ セグメント & アクティブ -->
+        <div class="d-flex flex-wrap gap-2 align-items-center my-3">
+          <!-- セグメント -->
+          <div class="btn-group btn-group-sm" role="group">
+            <button class="btn btn-outline-secondary" :class="{active:seg==='today'}"     @click="seg='today'">今日</button>
+            <button class="btn btn-outline-secondary" :class="{active:seg==='yesterday'}" @click="seg='yesterday'">昨日</button>
+            <button class="btn btn-outline-secondary" :class="{active:seg==='last7'}"     @click="seg='last7'">7日</button>
+            <button class="btn btn-outline-secondary" :class="{active:seg==='last30'}"    @click="seg='last30'">30日</button>
+            <button class="btn btn-outline-secondary" :class="{active:seg==='thisMonth'}" @click="seg='thisMonth'">今月</button>
+            <button class="btn btn-outline-secondary" :class="{active:seg==='all'}"       @click="seg='all'">全期間</button>
+            <button class="btn btn-outline-secondary" :class="{active:seg==='range'}"     @click="seg='range'">期間</button>
+          </div>
+          <!-- 期間指定 -->
+          <div v-if="seg==='range'" class="d-flex align-items-center gap-1">
+            <input type="date" class="form-control form-control-sm" v-model="dateFrom" />
+            <span>〜</span>
+            <input type="date" class="form-control form-control-sm" v-model="dateTo" />
+          </div>
+          <!-- アクティブのみ -->
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" id="onlyActive" v-model="activeOnly">
+            <label class="form-check-label small" for="onlyActive">アクティブのみ</label>
+          </div>
+        </div>
       </header>
     <div class="table-responsive-md">
       <table
-        class="bill-table table table-bordered table-hover align-middle table-striped"
+        class="bill-table table table-hover align-middle"
         style="table-layout: fixed;"
       >
         <colgroup>
@@ -224,7 +275,7 @@ function liveCasts (b) {
             >
               <td
                 :colspan="10"
-                class="text-center fw-bold"
+                class="text-start fw-bold"
               >
                 {{ b.opened_at ? dayjs(b.opened_at).format('YYYY/MM/DD(ddd)') : '日付未定' }}
               </td>
@@ -283,7 +334,7 @@ function liveCasts (b) {
                 </div>
 
                 <!-- ── 過去に付いたキャスト ────────────────── -->
-                <div class="d-flex flex-wrap gap-1 mt-3">
+                <div class="d-flex flex-wrap gap-1 past">
                   <span
                     v-for="p in liveCasts(b).filter(p => !p.present)"
                     :key="p.id"
@@ -306,7 +357,7 @@ function liveCasts (b) {
     </div>
       <!-- ★ 削除ボタン -->
       <button
-        class="btn btn-danger"
+        class="btn btn-danger mt-4"
         :disabled="!selectedIds.size"
         @click="bulkDelete"
       >
@@ -331,14 +382,26 @@ function liveCasts (b) {
   </div><!-- dashboard -->
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 
 tr.main td{
   padding:16px 4px;
+  .past{
+    margin-top: 1rem;
+  }
 }
 
 .table-close, .table-close td{
-  background-color: gray !important;
+  padding:8px !important;
+  .fs-3{
+    font-size: 14px !important;
+  }
+  .fw-bold{
+    font-weight: normal !important;
+  }
+  .past{
+    margin: auto !important;
+  }
 }
 
 
