@@ -5,7 +5,6 @@ import { useUser } from '@/stores/useUser'
 import { fetchBills } from '@/api'
 import CastSidebar from '@/components/sidebar/CastSidebar.vue'
 import Avatar from '@/components/Avatar.vue'
-import { IconFileInvoice, IconMenu2, IconChevronCompactLeft } from '@tabler/icons-vue'
 import { useCastEvents } from '@/stores/useCastEvents'
 import { useProfile } from '@/composables/useProfile'
 

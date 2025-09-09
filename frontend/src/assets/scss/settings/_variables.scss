@@ -1,5 +1,5 @@
 //_variables.scss
-@use '../global/global' as *;
+@use "@/assets/scss/global/tokens" as *;
 
 $font-size-base: 1.4rem;
 $body-color: $mc;

@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUser } from '@/stores/useUser'
 import StaffSidebar from '@/components/sidebar/StaffSidebar.vue'
 import Avatar from '@/components/Avatar.vue'
-import { IconClipboardList, IconReceiptYen, IconSoup, IconUserSquare } from '@tabler/icons-vue'
 
 const route  = useRoute()
 const router = useRouter()

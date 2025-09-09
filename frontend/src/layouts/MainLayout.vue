@@ -12,7 +12,6 @@ import PageLoader from '@/components/PageLoader.vue'
 import StaffSidebar from '@/components/sidebar/StaffSidebar.vue'
 import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'
-import { IconMenu2 } from '@tabler/icons-vue'
 import RefreshAvatar from '@/components/RefreshAvatar.vue'
 
 

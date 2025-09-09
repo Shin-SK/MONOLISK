@@ -9,7 +9,6 @@ import PayPanelSP   from '@/components/spPanel/PayPanelSP.vue'
 import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
 import { api, fetchBills, fetchBill, addBillItem, deleteBillItem, patchBillItemQty } from '@/api'
 import dayjs from 'dayjs'
-import { IconShoppingCart, IconReceiptYen, IconNote, IconPinned, IconUsers, IconClock, IconCalculator } from '@tabler/icons-vue'
 
 
 const route  = useRoute()

@@ -15,10 +15,6 @@ import {
 } from '@/api'
 import { useUser } from '@/stores/useUser'
 import { yen } from '@/utils/money'
-import {
-  IconCalendarPlus, IconCalendarWeek,
-  IconRosetteDiscountCheck, IconFaceId, IconSearch, IconX
-} from '@tabler/icons-vue'
 
 /* ---------- 共通 ---------- */
 const router = useRouter()

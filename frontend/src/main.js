@@ -23,13 +23,6 @@ import { yen } from '@/utils/money'
 import Sortable, { Swap } from 'sortablejs'
 Sortable.mount(new Swap())
 
-import ECharts from 'vue-echarts'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart, PieChart, BarChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, TitleComponent } from 'echarts/components'
-use([CanvasRenderer, LineChart, PieChart, BarChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent])
-
 
 import {
 	IconMenu2,
@@ -64,8 +57,7 @@ import {
   app.config.globalProperties.$yen = yen
   app.component('Multiselect', Multiselect)  // グローバル登録
   app.component('DatePicker', DatePicker)
-  app.component('Avatar', Avatar)  
-  app.component('VChart', ECharts)
+  app.component('Avatar', Avatar)
 
   // 使う分だけ登録（足りなければここに追加していく）
   const icons = {

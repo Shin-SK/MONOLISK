@@ -1,5 +1,7 @@
 @forward "sass:math";   // ← bootstrap と一緒に使うなら入れておくと警告が減る
 
+@use "global/global";
+
 // ① 変数を import
 @use "settings/variables" as *;
 

@@ -1,5 +1,5 @@
 // _overrides.scss
-@use '../global/global' as *;
+@use "@/assets/scss/global/tokens" as *;
 
 .form-control{
 	padding: 8px;

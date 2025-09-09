@@ -1,0 +1,61 @@
+@use "sass:color";
+@use "sass:math";
+
+$mc:#020202;
+$second:#461B35;
+$yellow:#FBC710;
+$red:#C44429;
+$bg:#B79A53;
+$black:#0f0f0f;
+$gray: color.adjust($black, $lightness: 40%);
+$lightgray: color.adjust($black, $lightness: 90%);
+
+$gosic: system-ui;
+$mincho: "Times New Roman","YuMincho","Hiragino Mincho ProN","Yu Mincho","MS PMincho",serif;
+$cinzel:'Cinzel',serif;
+$tegaki:'Satisfy',cursive;
+
+@mixin fs($fs_min){
+  $width_small:320; $width_large:1300;
+  $fs_max:($fs_min+2);
+  $preferred_vw_base: math.div(($fs_max - $fs_min), ($width_large - $width_small));
+  $preferred_vw: ($preferred_vw_base * 100) * 1vw;
+  $preferred_rem: ($width_small * -1 * $preferred_vw_base + $fs_min) * .1rem;
+  font-size: clamp($fs_min * .1rem, $preferred_rem + $preferred_vw, $fs_max * .1rem);
+}
+
+$sp:576px; $md:768px;
+@mixin sp { @media (max-width:$sp){ @content; } }
+@mixin md { @media (max-width:$md){ @content; } }
+@mixin pc { @media (min-width:$md){ @content; } }
+
+$time:.5s;
+@mixin transition{ transition:$time; }
+
+@mixin flex{ display:flex; justify-content:center; align-items:center; }
+
+@mixin shadow{ box-shadow:0 0 15px -5px #777; }
+
+@mixin _micon($name,$fill:0,$wght:400,$grad:0,$opsz:24){
+  content:$name;
+  font-family:"Material Symbols Outlined";
+  font-style:normal; line-height:1;
+  font-variation-settings:'FILL' $fill,'wght' $wght,'GRAD' $grad,'opsz' $opsz;
+}
+
+@mixin googleicon($name,$fill:0,$wght:400,$grad:0,$opsz:24){
+  @include _micon($name,$fill,$wght,$grad,$opsz);
+  display:inline-block; font-size:inherit;
+}
+
+@mixin monsttera{
+  font-family:"Montserrat",sans-serif;
+  font-optical-sizing:auto; font-style:normal; font-weight:900;
+}
+
+@mixin button-basic{
+  @include flex(); color:#fff; gap:8px; background-color:$mc;
+  @include fs(14); padding:4px 40px; border-radius:100px; border:0;
+  transition: background-color .25s ease;
+  &:hover{ background-color: rgba($mc,.5); }
+}

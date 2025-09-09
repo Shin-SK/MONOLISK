@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUser } from '@/stores/useUser'
-import { IconUserSquare, IconClipboardList, IconSoup, IconBeer, IconChefHat, IconReceiptYen } from '@tabler/icons-vue'
 import { useRoles } from '@/composables/useRoles'
 import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'

@@ -1,4 +1,4 @@
-@use '../global/global' as *;
+@use "@/assets/scss/global/tokens" as *;
 	.timeline{
 		flex:1 1 auto;
 		display:flex;
