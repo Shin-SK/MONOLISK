@@ -27,6 +27,5 @@ async function refresh() {
 	<button class="d-flex align-items-center gap-2 border-0 p-0" @click="refresh">
 		<!-- ★ バインド（:url）+ 変数名は avatarURL -->
 		<Avatar :url="avatarURL" :size="40" class="rounded-circle"/>
-		<span class="d-none d-md-inline">{{ label }}</span>
 	</button>
 </template>
