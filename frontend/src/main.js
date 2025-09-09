@@ -4,7 +4,6 @@ import { createPinia } from 'pinia'
 import App    from './App.vue'
 import router from './router'
 import 'bootstrap';
-import 'bootstrap-icons/font/bootstrap-icons.css'
 
 import ganttastic from '@infectoone/vue-ganttastic'
 
@@ -32,10 +31,24 @@ import { GridComponent, TooltipComponent, LegendComponent, TitleComponent } from
 
 use([CanvasRenderer, LineChart, PieChart, BarChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent])
 
+import {
+	IconMenu2,
+	IconPinned,
+	IconList,
+	IconMenu3,
+	IconNotes,
+	IconUsers,
+	IconHistoryToggle,
+	IconCurrencyYen,
+	IconTrash,
+	IconPlus,
+	IconRefresh,
+	IconLayoutDashboard,
+	IconUser,
+	IconUserFilled,
+} from '@tabler/icons-vue'
 
-// import '@syncfusion/ej2-vue-gantt/styles/material.css'
-// import { registerLicense } from '@syncfusion/ej2-base'
-// registerLicense('Ngo9BigBOggjHTQxAR8/V1JEaF5cXmRCdkxxWmFZfVtgdVVMZFhbRH5PIiBoS35Rc0VkWXZedHdUQ2BeU0FxVEFd')
+
 
   const app = createApp(App)
   const pinia = createPinia()
@@ -48,14 +61,25 @@ use([CanvasRenderer, LineChart, PieChart, BarChart, GridComponent, TooltipCompon
   app.component('DatePicker', DatePicker)
   app.component('Avatar', Avatar)  
   app.component('VChart', ECharts)
-  
-  import * as TablerIcons from '@tabler/icons-vue'        // ← 追加ここだけ
 
-  //IconFileInvoice
-
-  Object.entries(TablerIcons).forEach(([name, comp]) => {
-    app.component(name, comp)                             // <IconUser /> など全アイコン即使用
-  })
+  // 使う分だけ登録（足りなければここに追加していく）
+  const icons = {
+    IconMenu2,
+    IconPinned,
+    IconList,
+    IconMenu3,
+    IconNotes,
+    IconUsers,
+    IconHistoryToggle,
+    IconCurrencyYen,
+    IconTrash,
+    IconPlus,
+    IconRefresh,
+    IconLayoutDashboard,
+    IconUser,
+    IconUserFilled,
+  }
+  Object.entries(icons).forEach(([name, comp]) => app.component(name, comp))
 
   ;(async () => {
     await router.isReady()
