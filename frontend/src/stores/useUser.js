@@ -8,6 +8,23 @@ import { login as authLogin, logout as authLogout } from '@/auth'
 const shared = reactive({ me: null })
 export const can = (cap) => !!shared.me?.claims?.includes(cap)
 
+function ensurePinnedInMembership(me){
+	const pinned = localStorage.getItem('store_id')
+	if (!pinned) return
+	const sid = Number(pinned)
+	const stores = Array.isArray(me?.stores) ? me.stores : []
+	if (!stores.includes(sid)) {
+		const fallback = me?.primary_store_id ?? me?.current_store_id ?? null
+		if (fallback) {
+			localStorage.setItem('store_id', String(fallback))
+			console.warn('[user] pinned store_id was not in memberships. fallback ->', fallback)
+		} else {
+			localStorage.removeItem('store_id')
+		}
+	}
+}
+
+
 /**
  * ユーザー状態ストア
  * ルール：
@@ -74,6 +91,7 @@ export const useUser = defineStore('user', {
         const sid = data?.current_store_id || data?.primary_store_id || null
         if (sid) localStorage.setItem('store_id', String(sid))
       }
+      ensurePinnedInMembership(data)
       return data
     },
 
@@ -111,3 +129,4 @@ export const useUser = defineStore('user', {
     },
   },
 })
+

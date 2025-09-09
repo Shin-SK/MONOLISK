@@ -1,121 +1,22 @@
 // src/api.js
 import axios from 'axios'
-import qs        from 'qs'
-import { useLoading } from '@/stores/useLoading'   // ★追加
-import NProgress from 'nprogress'                  // ★追加
 import 'nprogress/nprogress.css'
+import { wireInterceptors } from '@/api/interceptors'
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
 })
 import dayjs from 'dayjs'
 
-const TOKEN_KEY='token', STORE_KEY='store_id'
-const getToken   = () => localStorage.getItem(TOKEN_KEY)
-const getStoreId = () => localStorage.getItem(STORE_KEY)
-const clearAuth  = () => {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(STORE_KEY)
-  delete api.defaults.headers.common.Authorization   // ← 追加
-}
-
 console.warn('__MARK__ api.js loaded', new Date().toISOString())
-/* ---------------------------------------- */
-/* 共通レスポンスインターセプタ & パーサ          */
-/* ---------------------------------------- */
 
-function parseApiError(err){
-	if(!err.response) return 'ネットワークエラー'
-
-	const data = err.response.data
-	if(typeof data === 'string') return data
-	if(data.detail) return data.detail
-	if(typeof data === 'object'){
-		return Object.entries(data)
-			.map(([k,v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
-			.join('\n')
-	}
-	return '不明なエラー'
-}
 
 /* ------------------------------------------------------------------ */
 /* interceptor: “ログイン系 URL には token を付けない”                    */
 /* ------------------------------------------------------------------ */
 
-// ログイン系だけは認証ヘッダを付けない
-const SKIP_AUTH = [
-  'dj-rest-auth/login/',
-  'dj-rest-auth/registration/',
-  'dj-rest-auth/password/reset/',
-]
-
-// ★ store_id を付けないURL（/me はサーバに任せる）
-const SKIP_STORE = [
-  'me/',                        // ← /api/me/
-  'accounts/debug/set-role/',   // ← 役割切替はサーバ側で判定
-]
-
-// リクエスト側
-api.interceptors.request.use(cfg => {
-  const loading = useLoading()
-
-  // KDS はサイレント
-  const isKDS   = /\/billing\/kds\//.test(cfg.url || '')
-  const silent  = isKDS || cfg.headers?.['X-Silent'] === '1' || cfg.meta?.silent
-  if (!silent) { loading.start(); NProgress.start() }
-
-  // FormData のときは Content-Type を外す（ブラウザに任せる）
-  if (cfg.data instanceof FormData) delete cfg.headers['Content-Type']
-
-  // 認証トークンを付与（ログイン系は除外）
-  if (!SKIP_AUTH.some(p => (cfg.url || '').includes(p))) {
-    const t = getToken()
-    if (t) cfg.headers.Authorization = `Token ${t}`
-  }
-
-  // ★ 店舗スコープ：全メソッドでクエリに store_id を付ける（ボディやヘッダには入れない）
-  const storeId = getStoreId()
-  if (storeId) {
-    cfg.params ??= {}
-    const url = cfg.url || ''
-    const skip = SKIP_STORE.some(p => url.includes(p))
-    if (!skip && cfg.params.store_id == null && cfg.params.store == null) {
-      cfg.params.store_id = storeId
-    }
-    // ※ 本番CORSが X-Store-ID を許可していないため、ヘッダ付与はしない
-  }
-
-  return cfg
-})
-
-// レスポンス側（成功）
-api.interceptors.response.use(
-  res => {
-    const loading = useLoading()
-    const isKDS   = /\/billing\/kds\//.test(res.config?.url || '')
-    const silent  = isKDS || res.config?.headers?.['X-Silent'] === '1' || res.config?.meta?.silent
-    if (!silent) { loading.end(); NProgress.done() }
-    return res
-  },
-  // 失敗
-  err => {
-    const loading = useLoading()
-    const url    = err.config?.url || ''
-    const isKDS  = /\/billing\/kds\//.test(url)
-    const silent = isKDS || err.config?.headers?.['X-Silent'] === '1' || err.config?.meta?.silent
-    if (!silent) { loading.end(); NProgress.done() }
-
-    // トークン切れはクリアしてログインへ
-    if (err.response?.status === 401) {
-      clearAuth()
-      if (!SKIP_AUTH.some(p => url.includes(p)) && location.pathname !== '/login') {
-        const next = encodeURIComponent(location.pathname + location.search)
-        location.assign(`/login?next=${next}`)
-      }
-    }
-    return Promise.reject(err)
-  }
-)
-
+// インターセプタを装着（/api/me はStore非依存 = デフォのskipStore['me/']のみ）
+wireInterceptors(api)
 
 /* ------------------------------------------------------------------ */
 /* 認証 API                                                            */
@@ -137,11 +38,10 @@ export const fetchBills   = (params={}) =>
 export const fetchBill    = id      => api.get(`billing/bills/${id}/`).then(r=>r.data)
 // src/api.js
 export const createBill = (arg) => {
-  // 数字でも {table_id: n} でもOKにする保険
-  const payload = typeof arg === 'number'
-    ? { table_id: arg }
-    : (arg?.table_id ? arg : { table_id: arg?.table });
-  return api.post('billing/bills/', payload).then(r => r.data)
+	const payload = typeof arg === 'number'
+		? { table_id: arg }
+		: (arg?.table_id ? arg : { table_id: arg?.table })
+	return api.post('billing/bills/', payload).then(r => r.data)
 }
 
  export const deleteBill = id =>
@@ -153,11 +53,9 @@ export const addBillItem  = (id,p)  =>
  export const closeBill = (id, payload = {}) =>
    api.post(`billing/bills/${id}/close/`, payload).then(r => r.data)
  
-export const fetchMasters = storeId => api.get('billing/item-masters/', { params:{store:storeId} }).then(r=>r.data)
+export const fetchMasters = () => api.get('billing/item-masters/').then(r=>r.data)
 
-export const fetchCasts = storeId =>
-  api.get('billing/casts/', { params:{store:storeId} })
-     .then(r => r.data.results ?? r.data)
+export const fetchCasts   = () => api.get('billing/casts/').then(r => r.data.results ?? r.data)
 
 /**
  * 指名／場内／フリーの配列をまとめて PATCH
@@ -183,8 +81,7 @@ export const updateBillCasts = (
 
 export const setInhouseStatus = updateBillCasts; //ローダー用にエイリアス
 
-export const fetchTables = storeId =>
-  api.get('billing/tables/', { params:{ store:storeId } }).then(r=>r.data)
+export const fetchTables  = () => api.get('billing/tables/').then(r=>r.data)
 
 export const deleteBillItem = (billId, itemId) =>
   api.delete(`billing/bills/${billId}/items/${itemId}/`)
@@ -194,21 +91,11 @@ export const getStore  = id => api.get(`billing/stores/${id}/`).then(r => r.data
 
 //PL
 
-export async function getBillDailyPL(date, storeId) {
-  const params = { date };
-  if (storeId) params.store_id = storeId;
-  const { data } = await api.get('billing/pl/daily/', { params });
-  return {
-    sales_cash: 0,
-    sales_card: 0,
-    sales_total: 0,
-    cast_labor: 0,
-    driver_labor: 0,
-    custom_expense: 0,
-    gross_profit: 0,
-    ...data,
-  };
+export async function getBillDailyPL(date) {
+	const { data } = await api.get('billing/pl/daily/', { params: { date } })
+	return { sales_cash:0, sales_card:0, sales_total:0, cast_labor:0, driver_labor:0, custom_expense:0, gross_profit:0, ...data }
 }
+
 
 export const getBillMonthlyPL = (monthStr) => {
   const [year, month] = monthStr.split('-').map(Number)
@@ -414,11 +301,8 @@ export const deleteStaff = id =>
 export const fetchStaffShifts  = (params = {}) =>
   api.get('billing/staff-shift-plans/', { params }).then(r => r.data)
 
- export const createStaffShift = payload =>
-  api.post('billing/staff-shift-plans/', {
-    store_id: getStoreId(),   // ← ヘッダに持っている自店 ID を注入
-    ...payload,
-  }).then(r => r.data)
+export const createStaffShift = payload =>
+	api.post('billing/staff-shift-plans/', payload).then(r => r.data)
 
 export const patchStaffShift   = (id, p) =>
   api.patch(`billing/staff-shift-plans/${id}/`, p).then(r => r.data)
@@ -485,19 +369,15 @@ export const getStoreNotice = (id) =>
 
 
 export const createStoreNotice = (payload) => {
-  const sid = getStoreId();
-  if (payload instanceof FormData) {
-    // create では cover_clear は送らない
-    payload.delete?.('cover_clear');
-    return api.post('billing/store-notices/', payload, {
-      params: sid ? { store_id: sid } : {},
-    }).then(r => r.data);
-  }
-  const p = { ...payload };
-  delete p.store;       // 送らない
-  delete p.cover_clear; // 送らない
-  return api.post('billing/store-notices/', p).then(r => r.data);
-};
+	if (payload instanceof FormData) {
+		payload.delete?.('cover_clear')
+		return api.post('billing/store-notices/', payload).then(r => r.data)
+	}
+	const p = { ...payload }
+	delete p.store
+	delete p.cover_clear
+	return api.post('billing/store-notices/', p).then(r => r.data)
+}
 
 export const updateStoreNotice = (id, payload) => {
   const nid = (typeof id === 'object') ? (id?.id ?? id?.pk ?? id?.value) : id

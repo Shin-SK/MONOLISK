@@ -45,27 +45,25 @@ def user_store_ids(user):
     if not getattr(user, "is_authenticated", False):
         return set()
 
-    from .models import Staff, Cast  # 既存
     ids = set()
 
-    # Staff M2M
-    staff_qs = Staff.objects.filter(user=user).prefetch_related("stores")
-    for st in staff_qs:
+    # 1) StoreMembership を一次情報に
+    from accounts.models import StoreMembership
+    ids.update(StoreMembership.objects.filter(user=user).values_list("store_id", flat=True))
+
+    # 2) 既存の互換（必要なら残す）
+    from .models import Staff, Cast
+    ids.update(Cast.objects.filter(user=user).values_list("store_id", flat=True))
+    for st in Staff.objects.filter(user=user).prefetch_related("stores"):
         ids.update(st.stores.values_list("id", flat=True))
 
-    # Cast FK
-    ids.update(Cast.objects.filter(user=user).values_list("store_id", flat=True))
-
-    # User.store（互換）
+    # 3) 旧フィールド互換
     sid = getattr(user, "store_id", None)
     if sid:
         ids.add(sid)
 
-    # （任意）StoreMembership を使うならコメントを外す：
-    # from accounts.models import StoreMembership
-    # ids.update(StoreMembership.objects.filter(user=user).values_list("store_id", flat=True))
-
     return ids
+
 
 
 
@@ -84,31 +82,18 @@ class StoreScopedModelViewSet(viewsets.ModelViewSet):
 
     # --- store 決定（クエリ/body の store_id 優先 → 所属単一なら自動） ---
     def require_store(self, request):
+        # ミドルウェアで決まっていることが前提
         s = getattr(request, "store", None)
-        if getattr(s, "id", None):
-            return s.id
+        if not getattr(s, "id", None):
+            raise ValidationError({"store_id": "X-Store-Id header is required."})
+        sid = s.id
 
-        # ここから下は保険（1:1想定ならまず通らない）
-        accessible = user_store_ids(request.user)
-        if not accessible:
-            raise PermissionDenied("このユーザーに紐づく店舗がありません。")
+        # ★ ここで所属チェック（DRFは既に Token 認証済み）
+        user = request.user
+        if not (getattr(user, "is_superuser", False) or sid in user_store_ids(user)):
+            raise PermissionDenied("この店舗へのアクセス権がありません。")
 
-        sid = (request.query_params.get("store_id")
-            or request.query_params.get("store")
-            or (request.data.get("store_id") if hasattr(request, "data") else None)
-            or (request.data.get("store") if hasattr(request, "data") else None))
-        if sid:
-            try:
-                sid = int(sid)
-            except Exception:
-                raise ValidationError({"store_id": "数値で指定してください。"})
-            if sid not in accessible:
-                raise PermissionDenied("この店舗へのアクセス権がありません。")
-            return sid
-
-        if len(accessible) == 1:
-            return next(iter(accessible))
-        raise ValidationError({"store_id": "所属店舗が複数あります。store_id を指定してください。"})
+        return sid
 
     # --- QuerySet を自店に絞る（store_id を持つモデルのみ） ---
     def filter_queryset_by_store(self, qs, store_id):
