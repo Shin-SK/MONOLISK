@@ -46,6 +46,11 @@ import {
 	IconLayoutDashboard,
 	IconUser,
 	IconUserFilled,
+  IconFileNeutral,
+  IconShoppingCart,
+  IconReceiptYen,
+  IconDeviceFloppy,
+  IconX,
 } from '@tabler/icons-vue'
 
 
@@ -78,6 +83,11 @@ import {
     IconLayoutDashboard,
     IconUser,
     IconUserFilled,
+    IconFileNeutral,
+    IconShoppingCart,
+    IconReceiptYen,
+    IconDeviceFloppy,
+    IconX,
   }
   Object.entries(icons).forEach(([name, comp]) => app.component(name, comp))
 
