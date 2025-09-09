@@ -8,6 +8,7 @@ import { useAuth }   from '@/stores/useAuth'
 import { closeSidebar } from '@/utils/offcanvas'
 import { useProfile } from '@/composables/useProfile'
 import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
+import StoreSwitcher from '@/components/StoreSwitcher.vue'
 
 const router = useRouter()
 const route  = useRoute()
@@ -68,6 +69,7 @@ async function logout () {
           </div>
 
           <button class="btn btn-outline-danger w-100" @click.prevent="logout">ログアウト</button>
+          <StoreSwitcher class="mt-5" />
           <DevRoleSwitcher class="mt-4 mb-2"/>
         </div>
       </aside>

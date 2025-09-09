@@ -13,12 +13,13 @@ export const useAuth = defineStore('auth', {
     //  ログイン
     //------------------------------------------------------
     async login (username, password) {
-      await authLogin(username, password)                 // 保存とヘッダ設定は auth.js 側でやる
-      this.token = localStorage.getItem('token') || null  // 状態だけ同期
-
-      /* ユーザー情報を改めてロード */
+      const me = await authLogin(username, password)   // ← auth.js が /me まで返す
+      this.token = localStorage.getItem('token') || null
       const userStore = useUser()
-      userStore.clear()
+      userStore.softClear()
+      userStore.me = me                                 // 即時反映
+      // 必要に応じて user 情報だけ取得（任意）
+      userStore.info = null
       await userStore.fetch()
     },
 
@@ -34,7 +35,7 @@ export const useAuth = defineStore('auth', {
       localStorage.removeItem('token')
       delete api.defaults.headers.common.Authorization
 
-      useUser().clear()
+      useUser().clearAll() 
     },
   },
 })

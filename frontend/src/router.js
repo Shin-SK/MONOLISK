@@ -137,54 +137,54 @@ const KDS_ENABLED = import.meta.env.VITE_KDS_ENABLED === 'true'
 
 // 末尾の beforeEach を全置換
 router.beforeEach(async (to, from, next) => {
-	const token   = getToken()
-	const storeId = getStoreId()
-	const meStore = useUser()
+  const token   = getToken()
+  const storeId = getStoreId()
+  const meStore = useUser()
+  const { hasRole, homePath } = useRoles()
+  const roleProtected = to.matched.some(r => Array.isArray(r.meta?.rolesAny))
+  const requiresAuth  = to.matched.some(r => r.meta?.requiresAuth) || roleProtected
 
-	// rolesAny が一つでもあれば実質“保護画面”
-	const roleProtected = to.matched.some(r => Array.isArray(r.meta?.rolesAny))
+  console.log('[guard] →', to.fullPath, { token: !!token, storeId, requiresAuth })
 
-	// me 未ロード時は取得（homePath判定用）
-	if ((token && storeId) && !meStore.me) {
-		try { await meStore.fetchMe?.() } catch {}
-	}
-	const { hasRole, homePath } = useRoles()
+  if ((token && storeId) && !meStore.me) {
+    try {
+      console.log('[guard] fetchMe start')
+      await meStore.fetchMe?.()
+      console.log('[guard] fetchMe done', meStore.me?.current_role, meStore.me?.current_store_id)
+    } catch (e) {
+      console.warn('[guard] fetchMe error', e)
+    }
+  }
 
-	// 1) ルート：安全ホームへ（no-op/replace）
-	if (to.path === '/') {
-		if (!token || !storeId) return next('/login')
-		const dest = homePath() || '/'
-		if (to.fullPath === dest || from.fullPath === dest) return next()
-		return next({ path: dest, replace: true })
-	}
+  if (to.path === '/') {
+    if (!token || !storeId) { console.log('[guard] / → login'); return next('/login') }
+    const dest = homePath() || '/'
+    console.log('[guard] / →', dest)
+    if (to.fullPath === dest || from.fullPath === dest) return next()
+    return next({ path: dest, replace: true })
+  }
 
-	// 2) ログイン：済ならホームへ
-	if (to.name === 'login') {
-		return next(token && storeId ? '/' : undefined)
-	}
+  if (to.name === 'login') {
+    console.log('[guard] login route, token?', !!token, 'store?', !!storeId)
+    return next(token && storeId ? '/' : undefined)
+  }
 
-	// 3) 認証・store 必須（requiresAuth or rolesAny）
-	const requiresAuth = to.matched.some(r => r.meta?.requiresAuth) || roleProtected
-	if (requiresAuth && (!token || !storeId)) {
-		return next({ path: '/login', query: { next: to.fullPath } })
-	}
+  if (requiresAuth && (!token || !storeId)) {
+    console.log('[guard] need auth → /login')
+    return next({ path: '/login', query: { next: to.fullPath } })
+  }
 
-	// 4) 役割ガード（no-op/replaceでループ防止）
-	const requiredRoles = to.matched.map(r => r.meta?.rolesAny).find(a => Array.isArray(a))
-	if (requiredRoles && !hasRole(requiredRoles)) {
-		const dest = homePath() || '/'
-		if (dest === to.fullPath || dest === from.fullPath) return next()
-		return next({ path: dest, replace: true })
-	}
+  const requiredRoles = to.matched.map(r => r.meta?.rolesAny).find(a => Array.isArray(a))
+  if (requiredRoles && !hasRole(requiredRoles)) {
+    const dest = homePath() || '/'
+    console.log('[guard] role mismatch →', dest, 'required=', requiredRoles)
+    if (dest === to.fullPath || dest === from.fullPath) return next()
+    return next({ path: dest, replace: true })
+  }
 
-	// 5) KDSフラグ
-	if (to.meta?.kds && import.meta.env.VITE_KDS_ENABLED !== 'true') {
-		return next('/')
-	}
-
-	return next()
+  console.log('[guard] pass')
+  return next()
 })
-
 
 
 export default router

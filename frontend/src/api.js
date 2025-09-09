@@ -457,3 +457,15 @@ export const fetchBillItems = (params = {}) =>
   api.get('billing/cast-item-details/', { params }).then(r => r.data)
 
 
+// ───────── Stores (Switcher用) ─────────
+export const listMyStores = () =>
+	api.get('billing/stores/my/').then(r => r.data)
+
+/** 店舗を切り替え（ヘッダ=唯一の真実） */
+export const switchStore = async (sid) => {
+	const s = String(sid)
+	localStorage.setItem('store_id', s)               // ヘッダはinterceptorが自動付与
+	// /api/me は通常ヘッダを付けないが、ここは明示的に付けて“現在role/caps”を即取得
+	const { data } = await api.get('me/', { headers: { 'X-Store-Id': s } })
+	return data
+}

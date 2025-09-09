@@ -169,6 +169,7 @@ REST_AUTH = {
     "LOGIN_FIELD": "username",
     "LOGIN_SERIALIZER":        "accounts.serializers.LoginWithStoreSerializer",
     "USER_DETAILS_SERIALIZER": "accounts.serializers.UserDetailsWithStoreSerializer",
+    "TOKEN_SERIALIZER":        "accounts.serializers.TokenWithStoreSerializer",
 }
 ACCOUNT_LOGIN_METHODS     = ["username"]
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']

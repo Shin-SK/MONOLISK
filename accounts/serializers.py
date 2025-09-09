@@ -5,6 +5,8 @@ from rest_framework.authtoken.models import Token
 from django.conf import settings
 from django.templatetags.static import static
 from cloudinary.utils import cloudinary_url
+from dj_rest_auth.serializers import TokenSerializer
+from accounts.utils import choose_current_store_id
 
 
 class UserDetailsWithStoreSerializer(UserDetailsSerializer):
@@ -66,3 +68,24 @@ class LoginWithStoreSerializer(LoginSerializer):
         data["store_id"] = getattr(user, "store_id", None)
 
         return data   # ※ user は残したまま（LoginView が使う）
+
+
+class TokenWithStoreSerializer(TokenSerializer):
+    """ログインレスポンスに store_id（= current_store_id）を同梱"""
+    store_id = serializers.IntegerField(read_only=True)
+
+    class Meta(TokenSerializer.Meta):
+        fields = TokenSerializer.Meta.fields + ('store_id',)  # ★ これを追加
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)  # {"key": "..."}
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        store_id = None
+        if user and user.is_authenticated:
+            try:
+                store_id, *_ = choose_current_store_id(request, user)
+            except Exception:
+                store_id = getattr(user, 'store_id', None)
+        data['store_id'] = store_id
+        return data

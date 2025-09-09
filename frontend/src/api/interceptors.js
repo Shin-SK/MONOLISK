@@ -8,49 +8,62 @@ const STORE_KEY = 'store_id'
 const getToken   = () => localStorage.getItem(TOKEN_KEY)
 const getStoreId = () => localStorage.getItem(STORE_KEY)
 
+// src/api/interceptors.js
+// ...既存import省略...
+
+// 末尾スラッシュに依存しないよう、すべて「トレーリングなし」で管理
 const DEFAULT_SKIP_AUTH = [
-  'dj-rest-auth/login/',
-  'dj-rest-auth/registration/',
-  'auth/registration/',        // ← 追加（/api/auth/registration/配下）
-  'dj-rest-auth/password/reset/',
+  'dj-rest-auth/login',
+  'dj-rest-auth/logout',
+  'dj-rest-auth/registration',
+  'auth/registration',
+  'dj-rest-auth/password',
+  'dj-rest-auth/password/reset',
+  'dj-rest-auth/user',
 ]
 
-const DEFAULT_SKIP_STORE = [
-	'me/',               // /api/me はStore非依存
+// ★ Store非依存パス（X-Store-Id を付けない＆警告もしない）
+const STORE_INDEPENDENT_PREFIXES = [
+  'me',                    // /api/me
+  'dj-rest-auth/login',
+  'dj-rest-auth/logout',
+  'dj-rest-auth/registration',
+  'auth/registration',
+  'dj-rest-auth/password',
+  'dj-rest-auth/password/reset',
+  'dj-rest-auth/user',
+  'billing/stores/my',     // /api/billing/stores/my
 ]
+
+function normalizePathLike(p) {
+  // 'api/dj-rest-auth/login/' → 'dj-rest-auth/login'
+  return (p || '')
+    .replace(/^\/+|\/+$/g, '')        // trim slashes both ends
+    .replace(/^api\/+/, '')           // drop leading 'api/'
+    .replace(/\/+$/,'')               // drop trailing slash
+}
 
 function pathFrom(cfg, baseURL='') {
-	const urlStr = cfg.url || ''
-
-	// 絶対URLならそのまま
-	if (/^https?:\/\//i.test(urlStr)) {
-		try { return new URL(urlStr).pathname.replace(/^\/+|\/+$/g, '') } catch {}
-	}
-
-	// baseURL が絶対URLなら利用
-	if (baseURL && /^https?:\/\//i.test(baseURL)) {
-		try { return new URL(urlStr, baseURL).pathname.replace(/^\/+|\/+$/g, '') } catch {}
-	}
-
-	// 最後の保険：location.origin で解決（devでも動く）
-	try {
-		return new URL(urlStr, window.location.origin).pathname.replace(/^\/+|\/+$/g, '')
-	} catch {
-		// それでも無理なら先頭スラッシュを落として返す
-		return String(urlStr).replace(/^\/+/, '')
-	}
+  const urlStr = cfg.url || ''
+  try {
+    const abs = /^https?:\/\//i.test(urlStr)
+      ? new URL(urlStr)
+      : new URL(urlStr, (baseURL && /^https?:\/\//i.test(baseURL)) ? baseURL : window.location.origin)
+    return abs.pathname.replace(/^\/+|\/+$/g, '')
+  } catch {
+    return String(urlStr).replace(/^\/+/, '')
+  }
 }
 
-function isApiMePath(p){
-  const s = (p || '').replace(/^\/+|\/+$/g,'')  // 'api/me' or 'me'
-  return s === 'api/me' || s === 'me'
+function isStoreIndependentPath(p){
+  const s = normalizePathLike(p)
+  return STORE_INDEPENDENT_PREFIXES.some(pref => {
+    const n = normalizePathLike(pref)
+    return s === n || s.startsWith(n + '/')
+  })
 }
 
-export function wireInterceptors(api, {
-  skipAuth  = DEFAULT_SKIP_AUTH,
-  // ← skipStoreは使わず、/api/me を厳密関数で判定する
-  skipStore = DEFAULT_SKIP_STORE, // 残してOKだが使わない
-} = {}) {
+export function wireInterceptors(api) {
   api.interceptors.request.use(cfg => {
     const loading = useLoading()
     const isKDS   = /\/billing\/kds\//.test(cfg.url || '')
@@ -59,20 +72,23 @@ export function wireInterceptors(api, {
 
     if (cfg.data instanceof FormData) delete cfg.headers['Content-Type']
 
-    if (!skipAuth.some(p => (cfg.url || '').includes(p))) {
+    // 認証ヘッダ（ログイン系は除外）
+    const raw = cfg.url || ''
+    const skipAuth = DEFAULT_SKIP_AUTH.some(p => normalizePathLike(raw).includes(normalizePathLike(p)))
+    if (!skipAuth) {
       const t = getToken()
       if (t) cfg.headers.Authorization = `Token ${t}`
     }
 
-    // ★ ここを厳密化：/api/me だけ除外
+    // ★ Store非依存でなければ X-Store-Id
     const p = pathFrom(cfg, api.defaults.baseURL)
-    if (!isApiMePath(p)) {
+    if (!isStoreIndependentPath(p)) {
       const sid = getStoreId()
       if (sid) cfg.headers['X-Store-Id'] = String(sid)
       else console.warn('[api] X-Store-Id missing for Store-Locked API:', p)
     }
 
-    // ★ 残骸クリーニング（params と url 文字列の両方）
+    // 残骸クリーニング
     if (cfg.params) { delete cfg.params.store_id; delete cfg.params.store }
     if (typeof cfg.url === 'string' && cfg.url.includes('?')) {
       const [path, query] = cfg.url.split('?')
@@ -81,7 +97,6 @@ export function wireInterceptors(api, {
       const qs = sp.toString()
       cfg.url = qs ? `${path}?${qs}` : path
     }
-
     return cfg
   })
 
@@ -100,15 +115,14 @@ export function wireInterceptors(api, {
       const silent = isKDS || err.config?.headers?.['X-Silent'] === '1' || err.config?.meta?.silent
       if (!silent) { loading.end(); NProgress.done() }
 
+      // 401 → トークン＆store_idクリアして /login?next=...
       if (err.response?.status === 401) {
+		console.warn('[401] on', err.config?.url, '→ clearAuth')
         localStorage.removeItem(TOKEN_KEY)
         localStorage.removeItem(STORE_KEY)
         delete api.defaults.headers.common.Authorization
-        const isAuthUrl = DEFAULT_SKIP_AUTH.some(p => url.includes(p))
-        if (!isAuthUrl && location.pathname !== '/login') {
-          const next = encodeURIComponent(location.pathname + location.search)
-          location.assign(`/login?next=${next}`)
-        }
+        const next = encodeURIComponent(location.pathname + location.search)
+        if (location.pathname !== '/login') location.assign(`/login?next=${next}`)
       }
       return Promise.reject(err)
     }

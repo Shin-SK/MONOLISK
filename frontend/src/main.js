@@ -37,9 +37,11 @@ use([CanvasRenderer, LineChart, PieChart, BarChart, GridComponent, TooltipCompon
 // import { registerLicense } from '@syncfusion/ej2-base'
 // registerLicense('Ngo9BigBOggjHTQxAR8/V1JEaF5cXmRCdkxxWmFZfVtgdVVMZFhbRH5PIiBoS35Rc0VkWXZedHdUQ2BeU0FxVEFd')
 
-const app = createApp(App)
-  .use(router)
-  .use(createPinia())
+  const app = createApp(App)
+  const pinia = createPinia()
+  app.use(pinia)
+  app.use(router)
+
   .use(ganttastic)
   app.config.globalProperties.$yen = yen
   app.component('Multiselect', Multiselect)  // グローバル登録
@@ -47,12 +49,15 @@ const app = createApp(App)
   app.component('Avatar', Avatar)  
   app.component('VChart', ECharts)
   
-import * as TablerIcons from '@tabler/icons-vue'        // ← 追加ここだけ
+  import * as TablerIcons from '@tabler/icons-vue'        // ← 追加ここだけ
 
-//IconFileInvoice
+  //IconFileInvoice
 
-Object.entries(TablerIcons).forEach(([name, comp]) => {
-  app.component(name, comp)                             // <IconUser /> など全アイコン即使用
-})
+  Object.entries(TablerIcons).forEach(([name, comp]) => {
+    app.component(name, comp)                             // <IconUser /> など全アイコン即使用
+  })
 
-app.mount('#app')
+  ;(async () => {
+    await router.isReady()
+    app.mount('#app')
+  })()

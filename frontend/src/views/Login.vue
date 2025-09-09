@@ -1,6 +1,5 @@
-<!-- frontend/src/views/Login.vue -->
 <script setup>
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { useAuth } from '@/stores/useAuth'
 import { useRouter, useRoute } from 'vue-router'
 
@@ -12,16 +11,17 @@ const form = ref({ username:'', password:'' })
 const err  = ref('')
 
 const submit = async () => {
-  err.value = ''
-  try {
-    await auth.login(form.value.username, form.value.password)
-    const next = route.query.next
-    router.push(typeof next === 'string' ? next : '/dashboard')
-  } catch (e) {
-    err.value = 'ユーザー名かパスワードが違います'
-  }
+	err.value = ''
+	try {
+		await auth.login(form.value.username, form.value.password)
+		// ★ ここが重要：/ に移動して beforeEach の安全ホーム分岐に任せる
+		await router.replace('/')
+	} catch (e) {
+		err.value = 'ユーザー名かパスワードが違います'
+	}
 }
 </script>
+
 
 <template>
   <div class="d-flex align-items-center justify-content-center">

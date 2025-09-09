@@ -1,8 +1,8 @@
 // src/stores/useUser.js
+// 認証APIはこのストアから呼ばない（責務分離）
 import { reactive } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '@/api'
-import { login as authLogin, logout as authLogout } from '@/auth'
 
 // 「can()」互換（claimsをグローバルから参照している既存コード向け）
 const shared = reactive({ me: null })
@@ -104,27 +104,18 @@ export const useUser = defineStore('user', {
       }
     },
 
-    /** ログイン */
-    async login(username, password) {
-      await authLogin(username, password)
-      this.info = null
-      await this.fetch()
-      // /api/me も必要ならここで呼ぶ
-      await this.fetchMe()
-    },
-
-    /** ログアウト */
-    async logout() {
-      await authLogout()
-      this.clear()
-    },
-
-    /** 強制クリア */
-    clear() {
+    /** 画面再読込用の軽いクリア（store_idは残す） */
+    softClear() {
       this.info = null
       this.me   = null
       shared.me = null
-      // 店舗ピン止めも解除（ログアウト時は毎回初期化）
+    },
+
+    /** 全消し（ログアウト専用） */
+    clearAll() {
+      this.info = null
+      this.me   = null
+      shared.me = null
       localStorage.removeItem('store_id')
     },
   },

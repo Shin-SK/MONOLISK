@@ -10,13 +10,14 @@ from .models import Store
 
 
 SKIP_PATHS = (
-	"/api/me",
-	"/api/dj-rest-auth/login",
-	"/api/dj-rest-auth/logout",
-	"/api/dj-rest-auth/password",
-	"/api/dj-rest-auth/user",
-	"/api/auth/registration",
-	"/api/dj-rest-auth/registration",
+    "/api/me",
+    "/api/dj-rest-auth/login",
+    "/api/dj-rest-auth/logout",
+    "/api/dj-rest-auth/password",
+    "/api/dj-rest-auth/user",
+    "/api/auth/registration",
+    "/api/dj-rest-auth/registration",
+    "/api/billing/stores/my",   # ← 追加：所属店舗一覧は Store 非依存でOK
 )
 
 class AttachStoreMiddleware(MiddlewareMixin):
