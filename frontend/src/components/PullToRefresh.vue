@@ -77,7 +77,7 @@ onUnmounted(()=>{
 
 <style scoped>
 .ptr-wrap {
-  --ptr-offset: 8px;                 /* ここが唯一の真実 */
+  --ptr-offset: -8px;                 /* ここが唯一の真実 */
   height: 100vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
