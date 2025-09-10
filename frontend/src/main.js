@@ -17,6 +17,9 @@ import 'vue-datepicker-next/index.css'
 import '@/assets/scss/main.scss'
 import '@/plugins/dayjs'
 
+import { wireOffcanvasBodyLock } from '@/utils/offcanvas'
+wireOffcanvasBodyLock()
+
 import Avatar from '@/components/Avatar.vue' 
 
 import { yen } from '@/utils/money'

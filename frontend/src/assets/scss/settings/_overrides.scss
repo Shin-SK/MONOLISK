@@ -68,6 +68,34 @@ input[type="file"]::-webkit-file-upload-button {
     padding-left: 16px;
     padding-bottom: 32px;
   }
+  /* iOS PWAのノッチ領域まで背景を回す & 中身は潰さない */
+  :root{
+    --safe-top: env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Offcanvas本体を画面いっぱいに */
+  .offcanvas {
+    height: 100dvh;                       /* 動的ビューポートでPWAでもズレにくい */
+    padding-top: var(--safe-top);         /* ← 背景は最上部まで、中身は下げる */
+  }
+
+  /* ヘッダーのパディングにもセーフエリア分を加算（必要なら） */
+  .offcanvas .offcanvas-header {
+    padding-top: calc(var(--bs-offcanvas-padding-y) + var(--safe-top));
+  }
+
+  /* バックドロップも画面いっぱいに（保険） */
+  .offcanvas-backdrop.show {
+    inset: 0;
+    height: 100dvh;
+  }
+
+  /* iOS PWAでのオーバースクロールを抑制（任意） */
+  body.offcanvas-open {
+    overscroll-behavior: contain;
+  }
+
   .add-button{
     bottom: 96px !important;
   }
