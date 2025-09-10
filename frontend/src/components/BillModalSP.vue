@@ -6,9 +6,13 @@ import CastsPanelSP  from '@/components/spPanel/CastsPanelSP.vue'
 import OrderPanelSP  from '@/components/spPanel/OrderPanelSP.vue'
 import PayPanelSP    from '@/components/spPanel/PayPanelSP.vue'
 import useBillEditor from '@/composables/useBillEditor'
+import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
+import { useRoles } from '@/composables/useRoles'
 /* ▼ 保存に必要なAPI */
 import { api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts, fetchBill, deleteBillItem, patchBillItemQty } from '@/api'
 
+const { hasRole } = useRoles()
+const canProvisional = computed(() => hasRole(['manager','owner']))  // ← manager/ownerに限定
 
 const props = defineProps({
   modelValue: Boolean,
@@ -42,7 +46,9 @@ const onChooseCourse = async (opt) => {
 }
 
 /* ヘッダーのタイトル（pane→表示名） */
-const pageTitle = computed(() => ({ base:'基本', casts:'キャスト', order:'注文', pay:'会計' }[pane.value] || ''))
+const pageTitle = computed(() => ({
+  base:'基本', casts:'キャスト', order:'注文', prov:'仮会計', pay:'会計'
+}[pane.value] || ''))
 
 /* 出勤配列 */
 const onDutyIds = computed(() => Array.from(ed.onDutySet?.value ?? []))
@@ -349,6 +355,16 @@ const handleSave = async () => {
       @deleteItem="removeItem"
     />
 
+    <!-- 仮会計（manager/owner向け） -->
+    <ProvisionalPanelSP
+      v-show="pane==='prov' && canProvisional"
+      :key="`prov-${props.bill?.id || 'new'}`"
+      :bill="props.bill || {}"
+      :ed="ed"
+      :service-rate="props.serviceRate"
+      :tax-rate="props.taxRate"
+    />
+
     <!-- フッター（既存のまま） -->
     <template #footer>
       <div class="modal-footer p-0" style="border-top: 1px #f5f5f5 solid ;">
@@ -365,6 +381,16 @@ const handleSave = async () => {
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='order'}" @click="pane='order'">
               <IconShoppingCart />
               <span>注文</span>
+            </button>
+            <!-- 仮会計タブ（manager/ownerのみ表示） -->
+            <button
+              v-if="canProvisional"
+              type="button"
+              class="nav-link d-flex flex-column"
+              :class="{active: pane==='prov'}"
+              @click="pane='prov'">
+              <IconCalculator />
+              <span>仮</span>
             </button>
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='pay'}"   @click="pane='pay'">
               <IconReceiptYen />
