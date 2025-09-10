@@ -1,5 +1,29 @@
 <script setup>
-import { reactive, computed } from 'vue'
+import { reactive, computed, ref, nextTick, onUnmounted } from 'vue'
+
+const cartEl     = ref(null)   // カートDOM
+const showJump   = ref(false)  // 「カートを見る」ボタン表示
+const cartPulse  = ref(false)  // カートの強調アニメ
+let hideTimer    = null
+const PERSIST_JUMP = false //デザインチェック
+
+function jumpToCart () {
+  if (!PERSIST_JUMP) showJump.value = false
+  nextTick(() => cartEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+}
+
+function pokeCartFeedback () {
+  showJump.value = true
+  clearTimeout(hideTimer)
+  if (!PERSIST_JUMP) {
+    hideTimer = setTimeout(() => (showJump.value = false), 3500)
+  }
+  cartPulse.value = true
+  setTimeout(() => (cartPulse.value = false), 1200)
+}
+
+onUnmounted(() => clearTimeout(hideTimer))
+
 
 const props = defineProps({
   catOptions:        { type: Array,  default: () => [] }, // [{value,label}]
@@ -41,6 +65,7 @@ const add    = (id) => {
   const q = qtyOf(id)
   emit('addPending', id, q)
   qtyMap[k] = 1
+  pokeCartFeedback()
 }
 //  親から誤って Ref のまま来ても配列に正規化する保険
 const listServedBy = computed(() => {
@@ -142,7 +167,7 @@ const cartSubtotal = computed(() =>
     </div>
 
     <!-- 下部カート（最小版） -->
-    <div v-if="pending && pending.length" class="cart mt-5">
+    <div v-if="pending && pending.length" ref="cartEl" class="cart mt-5" :class="{ pulse: cartPulse }">
 
       <div class="cart-items">
         <div v-for="(p,i) in pending" :key="i" class="cart-item d-flex justify-content-between align-items-center">
@@ -178,14 +203,63 @@ const cartSubtotal = computed(() =>
       </div>
 
       <div class="orderbutton mt-5 d-flex flex-column justify-content-center">
-        <!-- ★ 仮会計では注文ボタンを隠す -->
+        <!-- 仮会計では注文ボタンを隠す -->
         <button v-if="!props.readonly" class="btn btn-warning w-100" @click="$emit('placeOrder')">注文</button>
         <button type="button" class="clear btn btn-sm mt-2" @click="emit('clearPending')">クリア</button>
       </div>
     </div>
+    <!-- カートへ移動ボタン（フェード IN/OUT） -->
+    <Transition name="fade" appear>
+      <button
+        v-if="showJump"
+        type="button"
+        class="jump-toast btn btn-warning rounded-circle p-3"
+        @click="jumpToCart"
+      >
+        <IconChevronDown :size="18" />
+      </button>
+    </Transition>
   </div>
 </template>
 
 <style scoped>
-/* 必要ならここに追加のスタイルを */
+/* 浮遊ボタン */
+.jump-toast{
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 160px;      /* フッターがあれば余裕を取る */
+  z-index: 1100;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.25);
+  border: 0;
+  cursor: pointer;
+  aspect-ratio: 1/1;
+}
+
+/* カート強調（2回点滅） */
+@keyframes pulseGlow {
+  0%   { box-shadow: 0 0 0 0 rgba(255,193,7,.55); }
+  100% { box-shadow: 0 0 0 18px rgba(255,193,7,0); }
+}
+.cart.pulse{
+  animation: pulseGlow 0.6s ease-out 2;
+  border-radius: 12px;
+}
+
+/* IN/OUT の共通トランジション */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity .25s ease, transform .25s ease;
+}
+
+/* IN の開始 / OUT の終了  */
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 8px) scale(.95);
+}
+
 </style>
