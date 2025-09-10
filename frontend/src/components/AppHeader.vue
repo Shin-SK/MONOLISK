@@ -67,6 +67,8 @@ const displayName = computed(() =>
     style="--bs-offcanvas-width: min(50vw, 300px);"
     tabindex="-1"
     aria-labelledby="appSidebarLabel"
+    data-bs-scroll="false"
+    data-bs-backdrop="true"
   >
     <div class="offcanvas-header">
       <button

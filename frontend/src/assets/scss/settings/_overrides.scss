@@ -57,36 +57,51 @@ input[type="file"]::-webkit-file-upload-button {
 }
 
 
+:root { 
+  --safe-top: env(safe-area-inset-top, 0px); 
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
 @media (display-mode: standalone) {
   .sidebar, .sp-footer, .cast-footer {
-    padding-bottom : 40px !important;
+    padding-bottom : var(--safe-bottom) !important;
   }
   .cast-footer .order-button{
-    bottom: 40px !important;
+    bottom: var(--safe-bottom) !important;
   }
   .offcanvas{
-    padding-left: 16px;
-    padding-bottom: 32px;
+    padding-top: var(--safe-top) !important;
+    padding-left: var(--safe-left) !important;
+    padding-bottom: var(--safe-bottom) !important;
   }
-  
-  /* これだけ #castSidebar に適用（他画面は影響なし） */
-  #castSidebar{
-    height: 100dvh;                       /* PWAでもズレにくい */
-    padding-top: env(safe-area-inset-top);/* 背景は最上部まで、中身は下げる */
-  }
-
-  /* ヘッダーが潰れるなら少し足す（必要なら） */
-  #castSidebar .offcanvas-header{
-    padding-top: calc(var(--bs-offcanvas-padding-y) + env(safe-area-inset-top));
-  }
-
-  /* 保険：PWA時のバックドロップも全画面に */
-  .offcanvas-backdrop.show{ inset:0; height:100dvh; }
-
-  /* スクロール抑制の仕上げ（任意） */
-  body.offcanvas-open{ overscroll-behavior: contain; }
 
   .add-button{
     bottom: 96px !important;
   }
+
+  /* ここから */
+
+  body { padding-top: var(--safe-top); }   /* ← これが肝 */
+
+  /* ★ サイドバー(#castSidebar)だけは最上部まで背景を伸ばす */
+  #castSidebar{
+    height: 100dvh;                /* 画面全高 */
+  }
+  #castSidebar .offcanvas-header{
+    padding-top: calc(var(--bs-offcanvas-padding-y) + var(--safe-top));
+  }
+
+  .offcanvas{
+    height: 100dvh;                     /* 画面全高にする */
+    overflow-y: auto;                   /* 本体で縦スクロールを受ける */
+    -webkit-overflow-scrolling: touch;  /* iOS慣性 */
+    overscroll-behavior: contain;       /* 背景へのスクロール伝搬を止める */
+    padding-top: var(--safe-top) !important;
+    padding-left: var(--safe-left) !important;
+    padding-bottom: var(--safe-bottom) !important;
+  }
+  /* 任意：ヘッダーでのドラッグでも背景に伝搬しにくくする */
+  .offcanvas, .offcanvas * { touch-action: pan-y; }
+
 }

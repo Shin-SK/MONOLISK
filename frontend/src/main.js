@@ -5,6 +5,7 @@ import App    from './App.vue'
 import router from './router'
 import './plugins/pwa-auto'
 import 'bootstrap';
+import { installOffcanvasScrollGuard } from '@/utils/offcanvas-scroll-guard'
 
 import ganttastic from '@infectoone/vue-ganttastic'
 
@@ -17,8 +18,6 @@ import 'vue-datepicker-next/index.css'
 import '@/assets/scss/main.scss'
 import '@/plugins/dayjs'
 
-import { wireOffcanvasBodyLock } from '@/utils/offcanvas'
-wireOffcanvasBodyLock()
 
 import Avatar from '@/components/Avatar.vue' 
 
@@ -154,4 +153,5 @@ import {
   ;(async () => {
     await router.isReady()
     app.mount('#app')
+    installOffcanvasScrollGuard()
   })()

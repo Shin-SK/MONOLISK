@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: 'auto',
-        devOptions: { enabled: false },
+        devOptions: { enabled: mode === 'development', type: 'module' },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         workbox: {
           // 新SWを即アクティブ化＆即クライアント制御

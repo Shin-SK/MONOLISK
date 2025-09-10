@@ -27,6 +27,7 @@ async function logout () {
   <teleport to="body">
     <div
       id="appSidebar"
+      data-bs-scroll="false"
       class="offcanvas offcanvas-start"
       style="--bs-offcanvas-width: min(100vw,300px);"
       tabindex="-1"
