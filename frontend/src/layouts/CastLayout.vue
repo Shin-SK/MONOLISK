@@ -164,6 +164,7 @@ watch(() => route.fullPath, (p) => {
   background: white;
   border-top: 1px solid rgba(0,0,0,.1);
   padding: .5rem .75rem calc(.5rem + env(safe-area-inset-bottom));
+  padding-bottom:80px;
   .wrap{
     display: flex;
     align-items: center;
