@@ -57,16 +57,18 @@ const isActive = (masterId) => props.pending?.some?.(p => p && p.master_id === m
 /*  各アイテムの数量（ローカル） */
 const qtyMap = reactive({})                 // { [masterId]: qty }
 const keyOf  = (id) => String(id)
-const qtyOf  = (id) => qtyMap[keyOf(id)] ?? 1
+const qtyOf  = (id) => qtyMap[keyOf(id)] ?? 0    // ★ 初期値を0に
 const inc    = (id) => qtyMap[keyOf(id)] = qtyOf(id) + 1
-const dec    = (id) => qtyMap[keyOf(id)] = Math.max(1, qtyOf(id) - 1)
+const dec    = (id) => qtyMap[keyOf(id)] = Math.max(0, qtyOf(id) - 1)  // ★ 0未満にしない
 const add    = (id) => {
-  const k = keyOf(id)
-  const q = qtyOf(id)
-  emit('addPending', id, q)
-  qtyMap[k] = 1
-  pokeCartFeedback()
+	const k = keyOf(id)
+	const q = qtyOf(id)
+	if (q <= 0) return            // ★ 0個のまま「◯+」なら何もしない（←運用に合わせて）
+	emit('addPending', id, q)
+	qtyMap[k] = 0                 // ★ 追加後は0にリセット
+	pokeCartFeedback()
 }
+
 //  親から誤って Ref のまま来ても配列に正規化する保険
 const listServedBy = computed(() => {
   const v = props.servedByOptions
@@ -153,7 +155,13 @@ const cartSubtotal = computed(() =>
             <!-- 数量ステッパー -->
             <div class="cartbutton d-flex align-items-center">
               <div class="d-flex align-items-center gap-3 bg-white h-auto p-2 m-2" style="border-radius:100px;">
-                <button type="button" @click="dec(m.id)"><IconMinus :size="16" /></button>
+                <button
+                  type="button"
+                  @click="dec(m.id)"
+                  :class="{ invisible: qtyOf(m.id) === 0 }"
+                >
+                  <IconMinus :size="16" />
+                </button>
                 <span>{{ qtyOf(m.id) }}</span>
                 <button type="button" @click="inc(m.id)"><IconPlus :size="16" /></button>
               </div>
@@ -223,6 +231,12 @@ const cartSubtotal = computed(() =>
 </template>
 
 <style scoped>
+
+.invisible {
+  visibility: hidden;
+  width: 0px;
+  padding: 0px 4px;
+}
 /* 浮遊ボタン */
 .jump-toast{
   position: fixed;
