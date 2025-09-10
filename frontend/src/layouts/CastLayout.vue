@@ -7,6 +7,7 @@ import CastSidebar from '@/components/sidebar/CastSidebar.vue'
 import Avatar from '@/components/Avatar.vue'
 import { useCastEvents } from '@/stores/useCastEvents'
 import { useProfile } from '@/composables/useProfile'
+import RefreshAvatar from '@/components/RefreshAvatar.vue'
 
 const router = useRouter()
 const route  = useRoute()
@@ -91,17 +92,16 @@ watch(() => route.fullPath, (p) => {
   <div class="cast-layout min-vh-100 d-flex flex-column">
     <!-- ▼ キャスト共通フッター（伝票画面では右からスライド表示に切替） -->
     <div
-      class="cast-footer"
+      class="cast-footer d-flex"
      :class="{
        'is-orderpage': isOrderPage,
        'is-open': isOrderPage && showCastFooter
      }"
     >
-      <div class="wrap position-relative">
 
         <!-- 右：マイページへ -->
         <RouterLink class="nav-link d-flex align-items-center justify-content-center" :to="{name: 'cast-mypage'}" title="マイページ">
-          <Avatar :url="avatarURL" :size="32" class="rounded-circle" />
+          <RefreshAvatar />
         </RouterLink>
 
         <!-- 中央：自卓オーダー直行（伝票画面では非表示） -->
@@ -125,7 +125,6 @@ watch(() => route.fullPath, (p) => {
           <IconMenu2 />
         </button>
 
-      </div>
     </div>
 
     <!-- 伝票画面時のみ：右端にスライドトグル -->
@@ -158,17 +157,21 @@ watch(() => route.fullPath, (p) => {
 
 /* ── 通常：画面下いっぱいのフッター ── */
 .cast-footer{
-  position: fixed;
-  left: 0; right: 0; bottom: 0px;
-  z-index: 1040;
-  background: white;
-  border-top: 1px solid rgba(0,0,0,.1);
-  padding: .5rem .75rem calc(.5rem + env(safe-area-inset-bottom));
-  padding-bottom:80px;
-  .wrap{
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+		padding: 8px 16px;
+		position: fixed;
+		bottom: 0;
+		width: 100%;
+		height: auto;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-direction: row;
+		z-index: 999;
+		background-color: white;
+    .nav-link{
+      width: 40px;
+      height: 40px;
+    }
     .order-button{
       left: 0;
       right: 0;
@@ -179,7 +182,6 @@ watch(() => route.fullPath, (p) => {
         border-radius: 9999px;
         filter: drop-shadow(0 0px 5px rgba(0, 0, 0, 0.3))
       }
-    }
   }
 
   &.is-orderpage{
