@@ -3,7 +3,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App    from './App.vue'
 import router from './router'
-import './plugin/pwa-auto'
+import './plugins/pwa-auto'
 import 'bootstrap';
 
 import ganttastic from '@infectoone/vue-ganttastic'
