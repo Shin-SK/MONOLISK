@@ -19,6 +19,10 @@ export default defineConfig(({ mode }) => {
         devOptions: { enabled: false },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         workbox: {
+          // 新SWを即アクティブ化＆即クライアント制御
+          skipWaiting: true,
+          clientsClaim: true,
+          cleanupOutdatedCaches: true,
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/api\//],
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
