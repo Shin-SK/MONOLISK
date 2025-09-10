@@ -103,5 +103,15 @@ input[type="file"]::-webkit-file-upload-button {
   }
   /* 任意：ヘッダーでのドラッグでも背景に伝搬しにくくする */
   .offcanvas, .offcanvas * { touch-action: pan-y; }
-
+  
+  .modal{
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    overscroll-behavior: contain;
+  }
+  .modal-open{
+    position: unset!important; //PWA重なるやつ用 どうやらtransformとfixedが悪さをしてるらしい
+    overscroll-behavior: contain;
+  }
 }
+
