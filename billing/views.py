@@ -230,6 +230,9 @@ class BillViewSet(viewsets.ModelViewSet):
             .values_list("cast_id", flat=True)
         )
         prev_main = set(bill.nominated_casts.values_list("id", flat=True))
+        
+        # in/out 切替では main は変わらない（本指名トグルではない）
+        new_main = prev_main
 
         stay, _ = BillCastStay.objects.get_or_create(
             bill=bill, cast_id=cid,
@@ -248,7 +251,7 @@ class BillViewSet(viewsets.ModelViewSet):
         # ③ 差分にもとづき fee 行を同期
         sync_nomination_fees(
             bill,
-            prev_main, prev_main,
+            prev_main, new_main,
             prev_in, new_in,
         )
         return Response({"stay_type": stay.stay_type}, status=status.HTTP_200_OK)

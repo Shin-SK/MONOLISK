@@ -177,8 +177,11 @@ def _sync_fee_lines(
     cast_ids_removed: Iterable[int],
     item_code: str,
 ):
-    """差分だけ BillItem を追加／削除する共通ルーチン"""
-    master = ItemMaster.objects.get(code=item_code)
+    
+    master = ItemMaster.objects.get(
+        code=item_code,
+        store=bill.table.store if bill.table_id else bill.store  # bill.tableが無い場合保険
+    )
 
     # 追加 ────────────────────────────
     for cid in cast_ids_added:
@@ -189,7 +192,9 @@ def _sync_fee_lines(
             defaults=dict(
                 qty=1,
                 price=master.price_regular,     # 販売価格
-                exclude_from_payout=True,       # 歩合の対象外なら (任意)
+                exclude_from_payout=True,
+                is_nomination = (item_code == _MAIN_FEE_CODE),
+                is_inhouse    = (item_code == _INHOUSE_FEE_CODE),
             ),
         )
 

@@ -556,40 +556,33 @@ class BillSerializer(serializers.ModelSerializer):
     # billing/serializers.py  ── BillSerializer.update
 
     def update(self, instance, validated_data):
-            
-        # POST/PATCH で送られて来るのは customer_ids なので注意
-        cust_ids = validated_data.pop('customer_ids', None)
-
-        # 通常フィールドを parent へ
-        instance = super().update(instance, validated_data)
-
-        # 顧客 ID が来ていれば ManyToMany を入れ替え
-        if cust_ids is not None:
-            instance.customers.set(cust_ids)
-    
-        # ---------- 0. 差分検出用に現状をキャッシュ ----------
+        # ---------- 0) 更新前スナップショット（ここが最重要） ----------
         prev_main = set(instance.nominated_casts.values_list("id", flat=True))
         prev_in   = set(
             instance.stays.filter(stay_type="in", left_at__isnull=True)
-                     .values_list("cast_id", flat=True)
-        )        
+                .values_list("cast_id", flat=True)
+        )
 
-        # ---------- 1. 送信された ID 群を取り出す ----------
-        nominated_raw = validated_data.pop("nominated_casts", None)
-        inhouse_raw   = validated_data.pop("inhouse_casts_w", None)
-        free_raw      = validated_data.pop("free_ids", None)
+        # ---------- 1) M2M/配列系は validated_data から先に抜く ----------
+        cust_ids       = validated_data.pop('customer_ids', None)
+        nominated_raw  = validated_data.pop("nominated_casts", None)
+        inhouse_raw    = validated_data.pop("inhouse_casts_w", None)
+        free_raw       = validated_data.pop("free_ids", None)
 
-        to_ids = lambda raw: [
-            c.id if isinstance(c, Cast) else c for c in (raw or [])
-        ]
+        # ---------- 2) 通常フィールドだけ parent で更新（※1回だけ） ----------
+        instance = super().update(instance, validated_data)
+
+        # 顧客 M2M
+        if cust_ids is not None:
+            instance.customers.set(cust_ids)
+
+        # ユーティリティ
+        to_ids = lambda raw: [c.id if isinstance(c, Cast) else c for c in (raw or [])]
         nominated_ids = to_ids(nominated_raw)
         inhouse_ids   = to_ids(inhouse_raw)
         free_ids_orig = to_ids(free_raw)
 
-        # ---------- 2. 通常フィールドを更新 ----------
-        instance = super().update(instance, validated_data)
-
-        # ---------- 3. 既存 stay をキャッシュ ----------
+        # 既存 stay をキャッシュ
         stay_map = {s.cast_id: s for s in instance.stays.all()}
 
         # ===============================================================
@@ -604,28 +597,25 @@ class BillSerializer(serializers.ModelSerializer):
                         bill=instance, cast_id=cid,
                         entered_at=timezone.now(),
                         stay_type="nom",
-                        is_honshimei=True,              # ★ 追加：新規は必ずTrueで作成
+                        is_honshimei=True,
                     )
                 else:
-                    # nom へ格上げ／復帰
                     stay.stay_type = "nom"
                     stay.left_at   = None
                     upd = ["stay_type", "left_at"]
                     if not stay.is_honshimei:
-                        stay.is_honshimei = True       # ★ 追加：Trueへ補正
+                        stay.is_honshimei = True
                         upd.append("is_honshimei")
                     stay.save(update_fields=upd)
 
-            # nom から外れたキャストは in/free へ降格し、旗を下ろす
             for cid, stay in stay_map.items():
                 if cid not in nominated_ids and stay.stay_type == "nom":
                     stay.stay_type = "in" if cid in inhouse_ids else "free"
                     upd = ["stay_type"]
                     if stay.is_honshimei:
-                        stay.is_honshimei = False      # ★ 追加：Falseへ補正
+                        stay.is_honshimei = False
                         upd.append("is_honshimei")
                     stay.save(update_fields=upd)
-
 
         # ===============================================================
         #  B. 場内 (in)
@@ -651,13 +641,7 @@ class BillSerializer(serializers.ModelSerializer):
         #  C. フリー (free)
         # ===============================================================
         if free_raw is not None:
-            # ① in / nom に含まれる ID を除外して「純粋な free のみ」にする
-            free_ids = [
-                cid for cid in free_ids_orig
-                if cid not in inhouse_ids and cid not in nominated_ids
-            ]
-
-            # ② free_ids を在席状態に
+            free_ids = [cid for cid in free_ids_orig if cid not in inhouse_ids and cid not in nominated_ids]
             for cid in free_ids:
                 stay = stay_map.get(cid)
                 if not stay:
@@ -675,32 +659,25 @@ class BillSerializer(serializers.ModelSerializer):
                         stay.stay_type = "free"
                         stay.save(update_fields=["stay_type"])
 
-            # ③ free から外れた人 → 退席
-            active_free = instance.stays.filter(
-                stay_type="free", left_at__isnull=True
-            )
+            active_free = instance.stays.filter(stay_type="free", left_at__isnull=True)
             for stay in active_free:
                 if stay.cast_id not in free_ids:
                     stay.left_at = timezone.now()
                     stay.save(update_fields=["left_at"])
 
-        # ===============================================================
-        
-        
-        # ---------- 4. 更新後の状態を取得して差分同期 ----------
+        # ---------- 3) 更新後スナップショット ----------
         new_main = set(instance.nominated_casts.values_list('id', flat=True))
         new_in   = set(
             instance.stays.filter(stay_type='in', left_at__isnull=True)
                     .values_list('cast_id', flat=True)
         )
 
-        sync_nomination_fees(
-            instance,
-            prev_main, new_main,
-            prev_in,   new_in,
-        )
-
+        # ---------- 4) 料金行を差分同期 ----------
+        sync_nomination_fees(instance, prev_main, new_main, prev_in, new_in)
         return instance
+
+
+
 
     def _store_rates(self, obj):
         """DEPRECATED: 計算は BillCalculator に統合済み。"""
