@@ -97,14 +97,11 @@
 
 
 .aside{
-	padding: 40px 8px;
+	padding:8px;
 	color: black;
 	background-color: white;
 	position: relative;
 	height: 100vh;
-	@include md{
-		padding: 8px;
-	}
 	h1{
 		@include fs(16);
 		font-weight: bold;
