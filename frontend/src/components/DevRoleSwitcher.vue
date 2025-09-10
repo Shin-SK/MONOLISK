@@ -27,9 +27,14 @@ const applying = ref(false)
 async function apply(){
 	try {
 		applying.value = true
-		// ★ ここが修正点：role → current.value
-		await api.get('accounts/debug/set-role/', { params: { role: current.value } })
-		await user.fetchMe()   // ロール/権限を即反映
+		const sid = String(localStorage.getItem('store_id') ?? user.me?.current_store_id ?? '')
+		await api.get('accounts/debug/set-role/', {
+		params:  { role: current.value },
+		headers: { 'X-Store-Id': sid }
+		})
+		// ヘッダ付きで /me 取り直し → その場で反映
+		const me = (await api.get('me/', { headers:{ 'X-Store-Id': sid }})).data
+		user.me = me
 
 		// サイドバーを閉じてから安全ホームへ
 		closeSidebar(props.sidebarId)

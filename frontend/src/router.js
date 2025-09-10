@@ -10,7 +10,6 @@ import OwnerLayout from '@/layouts/OwnerLayout.vue'
 
 import { useRoles } from '@/composables/useRoles'
 
-// （必要なら）import { useLoading } from '@/stores/useLoading'
 
 const routes = [
   // ---------- キャバクラ版 ---------- //
@@ -140,7 +139,7 @@ router.beforeEach(async (to, from, next) => {
   const token   = getToken()
   const storeId = getStoreId()
   const meStore = useUser()
-  const { hasRole, homePath } = useRoles()
+  const { hasRole, hasRoleOrSuper, homePath } = useRoles()
   const roleProtected = to.matched.some(r => Array.isArray(r.meta?.rolesAny))
   const requiresAuth  = to.matched.some(r => r.meta?.requiresAuth) || roleProtected
 
@@ -175,7 +174,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   const requiredRoles = to.matched.map(r => r.meta?.rolesAny).find(a => Array.isArray(a))
-  if (requiredRoles && !hasRole(requiredRoles)) {
+  if (requiredRoles && !hasRoleOrSuper(requiredRoles)) {
     const dest = homePath() || '/'
     console.log('[guard] role mismatch →', dest, 'required=', requiredRoles)
     if (dest === to.fullPath || dest === from.fullPath) return next()

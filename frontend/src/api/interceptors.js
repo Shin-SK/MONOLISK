@@ -8,9 +8,6 @@ const STORE_KEY = 'store_id'
 const getToken   = () => localStorage.getItem(TOKEN_KEY)
 const getStoreId = () => localStorage.getItem(STORE_KEY)
 
-// src/api/interceptors.js
-// ...既存import省略...
-
 // 末尾スラッシュに依存しないよう、すべて「トレーリングなし」で管理
 const DEFAULT_SKIP_AUTH = [
   'dj-rest-auth/login',
