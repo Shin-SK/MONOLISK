@@ -5,9 +5,7 @@ let _applied = 0
 let _lockedY = 0
 
 function lockBody () {
-	// すでに自分でロック中ならカウントだけ増やす
 	if (_applied > 0) { _applied++; return }
-	// 別のロック（例: モーダル）が position:fixed を当てているなら干渉しない
 	const alreadyFixed = getComputedStyle(document.body).position === 'fixed'
 	if (alreadyFixed) { _applied++; return }
 
@@ -27,50 +25,51 @@ function lockBody () {
 function unlockBody () {
 	if (_applied === 0) return
 	_applied--
-	// ネストしていれば解除しない
 	if (_applied > 0) return
-	// まだモーダル等でロック中なら触らない
 	if (document.body.classList.contains('modal-open')) return
 
 	document.body.classList.remove('offcanvas-open')
-	document.body.style.position    = ''
-	document.body.style.top         = ''
-	document.body.style.width       = ''
-	document.body.style.overflow    = ''
-	document.body.style.paddingRight= ''
-	document.body.style.touchAction = ''
+	document.body.style.position     = ''
+	document.body.style.top          = ''
+	document.body.style.width        = ''
+	document.body.style.overflow     = ''
+	document.body.style.paddingRight = ''
+	document.body.style.touchAction  = ''
 	window.scrollTo(0, _lockedY || 0)
 }
 
-// Offcanvasイベントにフック（アプリ起動時に1回呼ぶ）
+// 1度だけ呼ぶ
 export function wireOffcanvasBodyLock () {
 	document.addEventListener('shown.bs.offcanvas', lockBody)
 	document.addEventListener('hidden.bs.offcanvas', unlockBody)
 }
 
-// 文字列セレクタ/要素どちらでも受ける
-function _getEl (target) {
-	return typeof target === 'string' ? document.querySelector(target) : target
+function _getEl(target) {
+	// 文字列なら id or セレクタに対応
+	if (typeof target === 'string') {
+		const id = target.startsWith('#') ? target.slice(1) : target
+		return document.getElementById(id) || document.querySelector(target)
+	}
+	return target
 }
 
-export function openSidebar (target = '#appSidebar', opts = {}) {
+export function openSidebar (target = '#castSidebar', opts = {}) {
 	const el = _getEl(target)
-	if (!el) return
-	// 背景スクロール禁止を明示
+	if (!el) { console.warn('[offcanvas] target not found:', target); return }
 	const oc = Offcanvas.getOrCreateInstance(el, {
 		backdrop: true, scroll: false, keyboard: true, ...opts
 	})
 	oc.show()
 }
 
-export function closeSidebar (target = '#appSidebar') {
+export function closeSidebar (target = '#castSidebar') {
 	const el = _getEl(target)
 	if (!el) return
 	Offcanvas.getInstance(el)?.hide()
 }
 
 /** サイドバーを閉じてから callback を実行 */
-export function closeSidebarThen (cb = () => {}, target = '#appSidebar') {
+export function closeSidebarThen (cb = () => {}, target = '#castSidebar') {
 	const el = _getEl(target)
 	if (!el) return cb()
 	const oc = Offcanvas.getInstance(el)

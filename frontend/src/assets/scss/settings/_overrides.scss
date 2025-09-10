@@ -68,33 +68,23 @@ input[type="file"]::-webkit-file-upload-button {
     padding-left: 16px;
     padding-bottom: 32px;
   }
-  /* iOS PWAのノッチ領域まで背景を回す & 中身は潰さない */
-  :root{
-    --safe-top: env(safe-area-inset-top);
-    --safe-bottom: env(safe-area-inset-bottom);
+  
+  /* これだけ #castSidebar に適用（他画面は影響なし） */
+  #castSidebar{
+    height: 100dvh;                       /* PWAでもズレにくい */
+    padding-top: env(safe-area-inset-top);/* 背景は最上部まで、中身は下げる */
   }
 
-  /* Offcanvas本体を画面いっぱいに */
-  .offcanvas {
-    height: 100dvh;                       /* 動的ビューポートでPWAでもズレにくい */
-    padding-top: var(--safe-top);         /* ← 背景は最上部まで、中身は下げる */
+  /* ヘッダーが潰れるなら少し足す（必要なら） */
+  #castSidebar .offcanvas-header{
+    padding-top: calc(var(--bs-offcanvas-padding-y) + env(safe-area-inset-top));
   }
 
-  /* ヘッダーのパディングにもセーフエリア分を加算（必要なら） */
-  .offcanvas .offcanvas-header {
-    padding-top: calc(var(--bs-offcanvas-padding-y) + var(--safe-top));
-  }
+  /* 保険：PWA時のバックドロップも全画面に */
+  .offcanvas-backdrop.show{ inset:0; height:100dvh; }
 
-  /* バックドロップも画面いっぱいに（保険） */
-  .offcanvas-backdrop.show {
-    inset: 0;
-    height: 100dvh;
-  }
-
-  /* iOS PWAでのオーバースクロールを抑制（任意） */
-  body.offcanvas-open {
-    overscroll-behavior: contain;
-  }
+  /* スクロール抑制の仕上げ（任意） */
+  body.offcanvas-open{ overscroll-behavior: contain; }
 
   .add-button{
     bottom: 96px !important;
