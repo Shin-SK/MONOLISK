@@ -90,9 +90,7 @@ onUnmounted(()=>{
   transform: translate3d(0, var(--ptr-offset), 0) !important;
 }
 .ptr-content {
-  transition: transform .2s ease;
-  will-change: transform;
-  transform: translate3d(0, var(--ptr-offset), 0) !important;
+  padding-top: var(--ptr-offset);
 }
 
 </style>
