@@ -89,7 +89,7 @@ watch(() => route.fullPath, (p) => {
 </script>
 
 <template>
-  <div class="cast-layout min-vh-100 d-flex flex-column">
+  <div class="cast-layout min-vh-100 d-flex">
     <!-- ▼ キャスト共通フッター（伝票画面では右からスライド表示に切替） -->
     <div
       class="cast-footer d-flex"
@@ -144,7 +144,7 @@ watch(() => route.fullPath, (p) => {
     <CastSidebar />
 
     <!-- 本体 -->
-    <main class="flex-fill container d-flex flex-column">
+    <main class="flex-fill container d-flex flex-column overflow-auto">
       <router-view />
     </main>
   </div>

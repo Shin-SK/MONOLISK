@@ -42,9 +42,9 @@ const routes = [
       { path: 'casts/:id(\\d+)', redirect: to => ({ name: 'settings-cast-form', params: { id: to.params.id } }) },
       { path: 'casts/new',       redirect: { name: 'settings-cast-new' } },
       // 追加：KDSルート
-      { path: 'kds/kitchen', component: () => import('@/views/KDSStation.vue'), meta: { title: 'KDS Kitchen', requiresAuth: true, kds: true } },
-      { path: 'kds/drinker', component: () => import('@/views/KDSStation.vue'), meta: { title: 'KDS Drinker', requiresAuth: true, kds: true } },
-      { path: 'kds/dishup',  component: () => import('@/views/KDSDishup.vue'),  meta: { title: 'KDS Deshap',  requiresAuth: true, kds: true } },
+      { path: 'kds/kitchen', name:'kds-kitchen', component: () => import('@/views/KDSStation.vue'), meta: { title: 'KDS Kitchen', requiresAuth: true, kds: true } },
+      { path: 'kds/drinker', name:'kds-drinker', component: () => import('@/views/KDSStation.vue'), meta: { title: 'KDS Drinker', requiresAuth: true, kds: true } },
+      { path: 'kds/dishup', name:'kds-dishup',  component: () => import('@/views/KDSDishup.vue'),  meta: { title: 'KDS Deshap',  requiresAuth: true, kds: true } },
 
     ],
   },
@@ -134,7 +134,6 @@ const router = createRouter({
 const KDS_ENABLED = import.meta.env.VITE_KDS_ENABLED === 'true'
 
 
-// 末尾の beforeEach を全置換
 router.beforeEach(async (to, from, next) => {
   const token   = getToken()
   const storeId = getStoreId()
@@ -152,6 +151,14 @@ router.beforeEach(async (to, from, next) => {
       console.log('[guard] fetchMe done', meStore.me?.current_role, meStore.me?.current_store_id)
     } catch (e) {
       console.warn('[guard] fetchMe error', e)
+    }
+  }
+
+  if (meStore.me?.current_store_id) {
+    const sid = String(meStore.me.current_store_id)
+    if (localStorage.getItem('store_id') !== sid) {
+      localStorage.setItem('store_id', sid)
+      console.log('[guard] synced store_id ->', sid)
     }
   }
 

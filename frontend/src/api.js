@@ -411,36 +411,51 @@ export async function longPollReady({ station, cursor, signal }) {
   return res.data ?? { events: [], cursor, retryAfter: 800 }
 }
 
-// ───────── KDSベースURL（絶対URLを優先）─────────
-const KDS_BASE = (import.meta.env.VITE_KDS_BASE || import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/').replace(/\/+$/, '') + '/'
-const K = (path) => KDS_BASE + (path.startsWith('/') ? path.slice(1) : path)
+// ───────── KDSベースURL ─────────
+const KDS_BASE_RAW = import.meta.env.VITE_KDS_BASE || ''  // 例: '/api' or 'https://api.example.com/api/'
+const IS_ABS = /^https?:\/\//i.test(KDS_BASE_RAW)
+
+const norm = (d) => Array.isArray(d) ? d : (d?.results ?? d?.items ?? d ?? [])
+const withStore = (cfg = {}) => {
+  const sid = localStorage.getItem('store_id')
+  return sid ? { ...cfg, headers:{ ...(cfg.headers||{}), 'X-Store-Id': sid, 'X-Store-ID': sid } } : cfg
+}
+
+const K = (path) => {
+  const p = String(path || '').replace(/^\/+/, '')           // 先頭の / は剥がす
+  if (IS_ABS) {
+    const b = KDS_BASE_RAW.replace(/\/+$/, '')               // 末尾スラッシュ除去
+    return `${b}/${p}`                                       // → 絶対URL
+  }
+  return p                                                   // → 'billing/kds/...'
+}
 
 // ───────── KDS系（全てサイレント＋30sタイムアウト）─────────
 export const kds = {
   listTickets: (route) =>
-    api.get(K('billing/kds/tickets/'), { params: { route }, meta:{silent:true} }).then(r => r.data),
-
-  ack:  (id) =>
-    api.post(K(`billing/kds/tickets/${id}/ack/`), null, { meta:{silent:true} }).then(r => r.data),
-
-  ready:(id) =>
-    api.post(K(`billing/kds/tickets/${id}/ready/`), null, { meta:{silent:true} }).then(r => r.data),
+    api.get(K('billing/kds/tickets/'),
+      withStore({ params:{ route, station: route }, meta:{silent:true} })
+    ).then(r => norm(r.data)),
 
   longPollTickets: (route, since_id=0, opt={}) =>
-    api.get(K('billing/kds/longpoll-tickets/'), {
-      params:{ route, since_id }, timeout:30000, meta:{silent:true}, ...opt
-    }).then(r => r.data),
+    api.get(K('billing/kds/longpoll-tickets/'),
+      withStore({ params:{ route, station: route, since_id }, timeout:30000, meta:{silent:true}, ...opt })
+    ).then(r => norm(r.data)),
 
   readyList: () =>
-    api.get(K('billing/kds/ready-list/'), { meta:{silent:true} }).then(r => r.data),
+    api.get(K('billing/kds/ready-list/'),
+      withStore({ meta:{silent:true} })
+    ).then(r => norm(r.data)),
 
+  ack:  (id) =>  api.post(K(`billing/kds/tickets/${id}/ack/`),  null, withStore({ meta:{silent:true} })).then(r=>r.data),
+  ready:(id) =>  api.post(K(`billing/kds/tickets/${id}/ready/`), null, withStore({ meta:{silent:true} })).then(r=>r.data),
   take: (ticket_id, staff_id) =>
-    api.post(K('billing/kds/take/'), { ticket_id, staff_id }, { meta:{silent:true} }).then(r => r.data),
+    api.post(K('billing/kds/take/'), { ticket_id, staff_id }, withStore({ meta:{silent:true} })).then(r=>r.data),
 
   longPollReady: (since_ms=0, opt={}) =>
-    api.get(K('billing/kds/longpoll-ready/'), {
-      params:{ since_ms }, timeout:30000, meta:{silent:true}, ...opt
-    }).then(r => r.data),
+    api.get(K('billing/kds/longpoll-ready/'),
+      withStore({ params:{ since_ms }, timeout:30000, meta:{silent:true}, ...opt })
+    ).then(r => norm(r.data)),
 
   staffList: (params={}) =>
     api.get(K('billing/staffs/'), { params:{ active:1, ...params }, meta:{silent:true} })
@@ -450,6 +465,7 @@ export const kds = {
     api.get(K('billing/kds/taken-today/'), { params: { limit }, meta:{ silent:true } })
        .then(r => r.data),
 }
+
 
 // --- Owner Dashboard APIs ---
 

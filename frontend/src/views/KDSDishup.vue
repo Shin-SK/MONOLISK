@@ -85,7 +85,6 @@ function fmtHm(iso){ try{ const d=new Date(iso); return `${String(d.getHours()).
 
 <template>
   <div class="container py-3">
-    <h2 class="mb-3 text-uppercase">DESHAP READY</h2>
 
     <div class="d-flex gap-2 mb-3 align-items-center">
       <button class="btn btn-outline-secondary btn-sm" @click="load">更新</button>

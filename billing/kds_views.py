@@ -20,19 +20,31 @@ from .serializers import (
 ALLOWED_ROUTES = {'kitchen', 'drinker'}
 
 def _require_store_id(request):
-    # 1) ユーザー紐付け or middleware
-    sid = getattr(request.user, 'store_id', None)
-    if not sid and getattr(request, 'store', None):
-        sid = request.store.id
-    # 2) superuser は明示指定を許可
-    if not sid and request.user.is_superuser:
+    """
+    Store-Locked の唯一の真実は X-Store-Id（= AttachStoreMiddleware が request.store に入れる）
+    - まず request.store.id を使う
+    - 無ければヘッダ/クエリから読む
+    - 最後の最後に user.store_id をフォールバック（互換）
+    """
+    # 1) middleware が決めた値を最優先
+    sid = getattr(getattr(request, 'store', None), 'id', None)
+
+    # 2) 無ければヘッダ/クエリ
+    if not sid:
         raw = request.headers.get('X-Store-Id') or request.query_params.get('store_id')
         try:
             sid = int(raw) if raw else None
         except (TypeError, ValueError):
             sid = None
-        if sid and not Store.objects.filter(pk=sid).exists():
-            sid = None
+
+    # 3) 最後の互換：user.store_id
+    if not sid:
+        sid = getattr(request.user, 'store_id', None)
+
+    # 存在チェック（任意：厳格化したい場合）
+    # if sid and not Store.objects.filter(pk=sid).exists():
+    #     sid = None
+
     return sid
 
 

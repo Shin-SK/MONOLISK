@@ -43,53 +43,19 @@ async function logout() {
         <IconUserSquare /> <span>マイページ</span>
       </button>
 
-      <!-- オペレーション（operate_orders） -->
-      <template v-if="canOperate">
-        <hr class="my-2">
-        <button class="d-flex gap-2"
-                data-bs-dismiss="offcanvas"
-                :class="{ active: route.name==='staff-order' }"
-                @click="go({ name:'staff-order' })">
-          <IconClipboardList /> <span>伝票（作成・編集）</span>
-        </button>
-
-        <!-- 会計（専用画面がまだ無ければ staff-order を流用） -->
-        <button class="d-flex gap-2"
-                data-bs-dismiss="offcanvas"
-                :class="{ active: route.name==='staff-order' }"
-                @click="go({ name:'staff-order' })">
-          <IconReceiptYen /> <span>会計</span>
-        </button>
 
         <template v-if="KDS_ENABLED">
           <div class="mt-auto mb-5">
             <div class="mt-2 small text-muted mb-2">KDS</div>
             <div class="d-flex flex-column gap-3">
-              <button class="btn btn-outline-secondary d-flex gap-2"
-                      data-bs-dismiss="offcanvas"
-                      :class="{ active: route.name==='staff-kds' && route.params.station==='kitchen' }"
-                      @click="go({ name:'staff-kds', params:{station:'kitchen'} })">
-                <IconChefHat /> <span>Kitchen</span>
-              </button>
-              <button class="btn btn-outline-secondary d-flex gap-2"
-                      data-bs-dismiss="offcanvas"
-                      :class="{ active: route.name==='staff-kds' && route.params.station==='drinker' }"
-                      @click="go({ name:'staff-kds', params:{station:'drinker'} })">
-                <IconBeer /> <span>Drinker</span>
-              </button>
-              <button class="btn btn-outline-secondary d-flex gap-2"
-                      data-bs-dismiss="offcanvas"
-                      :class="{ active: route.name==='staff-kds' && route.params.station==='dishup' }"
-                      @click="go({ name:'staff-kds', params:{station:'dishup'} })">
-                <IconSoup /> <span>Dishup</span>
-              </button>
+              <RouterLink class="nav-link ps-3 ms-1 bg-white" to="/kds/dishup"  @click="closeSidebar"><IconSoup /> デシャップ</RouterLink>
+              <RouterLink class="nav-link ps-3 ms-1 bg-white" to="/kds/kitchen" @click="closeSidebar"> <IconChefHat />キッチン</RouterLink>
+              <RouterLink class="nav-link ps-3 ms-1 bg-white" to="/kds/drinker" @click="closeSidebar"><IconBeer />ドリンカー</RouterLink>
             </div>
           </div>
 
 
         </template>
-      </template>
-
       <!-- PL系は出さない（URL直打ちはrouterの capsAny で403） -->
       <template v-if="false && canPL"></template>
         
@@ -124,5 +90,10 @@ async function logout() {
   }
 }
 
+.nav-link{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
 </style>

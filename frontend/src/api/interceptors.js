@@ -8,7 +8,7 @@ const STORE_KEY = 'store_id'
 const getToken   = () => localStorage.getItem(TOKEN_KEY)
 const getStoreId = () => localStorage.getItem(STORE_KEY)
 
-// 末尾スラッシュに依存しないよう、すべて「トレーリングなし」で管理
+// 認証スキップ対象（含まれていれば Authorization を付けない）
 const DEFAULT_SKIP_AUTH = [
   'dj-rest-auth/login',
   'dj-rest-auth/logout',
@@ -19,9 +19,9 @@ const DEFAULT_SKIP_AUTH = [
   'dj-rest-auth/user',
 ]
 
-// ★ Store非依存パス（X-Store-Id を付けない＆警告もしない）
+// Store 非依存（X-Store-Id を付けない）
 const STORE_INDEPENDENT_PREFIXES = [
-  'me',                    // /api/me
+  'me',
   'dj-rest-auth/login',
   'dj-rest-auth/logout',
   'dj-rest-auth/registration',
@@ -29,15 +29,12 @@ const STORE_INDEPENDENT_PREFIXES = [
   'dj-rest-auth/password',
   'dj-rest-auth/password/reset',
   'dj-rest-auth/user',
-  'billing/stores/my',     // /api/billing/stores/my
+  'billing/stores/my',
 ]
 
+// 'api/dj-rest-auth/login/' → 'dj-rest-auth/login'
 function normalizePathLike(p) {
-  // 'api/dj-rest-auth/login/' → 'dj-rest-auth/login'
-  return (p || '')
-    .replace(/^\/+|\/+$/g, '')        // trim slashes both ends
-    .replace(/^api\/+/, '')           // drop leading 'api/'
-    .replace(/\/+$/,'')               // drop trailing slash
+  return (p || '').replace(/^\/+|\/+$/g, '').replace(/^api\/+/, '').replace(/\/+$/,'')
 }
 
 function pathFrom(cfg, baseURL='') {
@@ -60,32 +57,42 @@ function isStoreIndependentPath(p){
   })
 }
 
+function shouldSkipAuth(rawUrl='') {
+  const s = normalizePathLike(rawUrl)
+  return DEFAULT_SKIP_AUTH.some(pref => s.includes(normalizePathLike(pref)))
+}
+
 export function wireInterceptors(api) {
+  // ===== Request =====
   api.interceptors.request.use(cfg => {
     const loading = useLoading()
     const isKDS   = /\/billing\/kds\//.test(cfg.url || '')
     const silent  = isKDS || cfg.headers?.['X-Silent'] === '1' || cfg.meta?.silent
     if (!silent) { loading.start(); NProgress.start() }
 
-    if (cfg.data instanceof FormData) delete cfg.headers['Content-Type']
+    // FormData の時は Content-Type はブラウザに任せる
+    if (cfg.data instanceof FormData) delete cfg.headers?.['Content-Type']
 
-    // 認証ヘッダ（ログイン系は除外）
-    const raw = cfg.url || ''
-    const skipAuth = DEFAULT_SKIP_AUTH.some(p => normalizePathLike(raw).includes(normalizePathLike(p)))
-    if (!skipAuth) {
+    // Authorization（スキップ対象を除く）
+    if (!shouldSkipAuth(cfg.url || '')) {
       const t = getToken()
-      if (t) cfg.headers.Authorization = `Token ${t}`
+      if (t) (cfg.headers ||= {}).Authorization = `Token ${t}`
     }
 
-    // ★ Store非依存でなければ X-Store-Id
+    // X-Store-Id（Store 非依存パス以外は必須）
     const p = pathFrom(cfg, api.defaults.baseURL)
     if (!isStoreIndependentPath(p)) {
       const sid = getStoreId()
-      if (sid) cfg.headers['X-Store-Id'] = String(sid)
-      else console.warn('[api] X-Store-Id missing for Store-Locked API:', p)
+      if (sid) {
+        cfg.headers ||= {}
+        cfg.headers['X-Store-Id'] = String(sid)
+        cfg.headers['X-Store-ID'] = String(sid) // 大小どちらも見る実装対策
+      } else {
+        console.warn('[api] X-Store-Id missing for Store-Locked API:', p)
+      }
     }
 
-    // 残骸クリーニング
+    // 残骸クエリを除去
     if (cfg.params) { delete cfg.params.store_id; delete cfg.params.store }
     if (typeof cfg.url === 'string' && cfg.url.includes('?')) {
       const [path, query] = cfg.url.split('?')
@@ -94,9 +101,11 @@ export function wireInterceptors(api) {
       const qs = sp.toString()
       cfg.url = qs ? `${path}?${qs}` : path
     }
+
     return cfg
   })
 
+  // ===== Response =====
   api.interceptors.response.use(
     res => {
       const loading = useLoading()
@@ -112,12 +121,12 @@ export function wireInterceptors(api) {
       const silent = isKDS || err.config?.headers?.['X-Silent'] === '1' || err.config?.meta?.silent
       if (!silent) { loading.end(); NProgress.done() }
 
-      // 401 → トークン＆store_idクリアして /login?next=...
+      // 401 → 認証クリアしてログインへ
       if (err.response?.status === 401) {
-		console.warn('[401] on', err.config?.url, '→ clearAuth')
+        console.warn('[401] on', err.config?.url, '→ clearAuth')
         localStorage.removeItem(TOKEN_KEY)
-        localStorage.removeItem(STORE_KEY)
-        delete api.defaults.headers.common.Authorization
+        // ★ store_id は消さない
+        delete api.defaults.headers.common?.Authorization
         const next = encodeURIComponent(location.pathname + location.search)
         if (location.pathname !== '/login') location.assign(`/login?next=${next}`)
       }

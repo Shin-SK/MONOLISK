@@ -3,30 +3,57 @@
 import { onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useKDS } from '@/stores/useKDS'
-import { kds } from '@/api'
+import { kds, listMyStores, switchStore, api } from '@/api'   // ★ listMyStores / switchStore を使う
 
 const route = useRoute()
 const station = computed(() => route.path.includes('kitchen') ? 'kitchen' : 'drinker')
 const store = useKDS()
 
-// 起動時に long-poll 開始／終了時に停止
-onMounted(() => store.startLongPollTickets(station.value))
+/* ★ ここから追加：このページだけでも store_id を保証する */
+async function ensureStoreId() {
+	const sid = localStorage.getItem('store_id')
+	if (sid) return sid                       // 既に入っている
+
+	// 1) /api/me から current_store_id をもらう（interceptorが /me を除外済み）
+	const me = await api.get('me/').then(r=>r.data).catch(()=>null)
+	if (me?.current_store_id) {
+		localStorage.setItem('store_id', String(me.current_store_id))
+		console.log('[KDS] set store_id from /me →', me.current_store_id)
+		return String(me.current_store_id)
+	}
+
+	// 2) 所属店舗一覧の先頭に切り替え
+	const stores = await listMyStores().catch(()=>[])
+	const first  = Array.isArray(stores) && stores[0]?.id
+	if (first) {
+		await switchStore(first)               // /me を叩いて同期までやってくれる
+		console.log('[KDS] switchStore →', first)
+		return String(first)
+	}
+
+	console.warn('[KDS] store_id を決定できませんでした')
+	return null
+}
+
+/* 起動時：必ず store_id を確定 → long-poll 開始 */
+onMounted(async () => {
+	const sid = await ensureStoreId()
+	if (!sid) return
+	store.startLongPollTickets(station.value)
+})
+/* 終了時：停止 */
 onBeforeUnmount(() => store.stopLongPollTickets())
 
-// 既存テンプレの「更新」ボタン互換（そのまま使えるように）
+// 既存
 store.fetchTickets = (st) => store.startLongPollTickets(st?.value ?? st)
-
-// 操作直後はローカル反映で“リロード感”を消す
 async function onAck(t)   { await kds.ack(t.id);   store.ackLocal(t.id) }
 async function onReady(t) { await kds.ready(t.id); store.removeLocal(t.id) }
-
 function fmtSec(sec){ const m=Math.floor((sec||0)/60); const ss=String((sec||0)%60).padStart(2,'0'); return `${m}:${ss}` }
 </script>
 
 
 <template>
   <div class="container py-3">
-    <h2 class="mb-3 text-uppercase">{{ station }} KDS</h2>
     <div class="d-flex gap-2 mb-3">
       <button class="btn btn-outline-secondary btn-sm" @click="store.fetchTickets(station)">更新</button>
       <span class="text-muted">件数: {{ store.tickets.length }}</span>
