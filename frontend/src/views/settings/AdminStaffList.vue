@@ -103,8 +103,8 @@ onMounted(fetchList)
           <td>{{ s.role_label || '―' }}</td>
           <td>{{ s.shiftLabel }}</td>
           <td class="text-end p-2">
-            <button v-if="!s.shift?.clock_in" @click="checkIn(s)">出勤</button>
-            <button v-else-if="!s.shift?.clock_out" @click="checkOut(s)">退勤</button>
+            <button class="btn btn-secondary" v-if="!s.shift?.clock_in" @click="checkIn(s)">出勤</button>
+            <button class="btn btn-secondary" v-else-if="!s.shift?.clock_out" @click="checkOut(s)">退勤</button>
             <button
               v-else
               class="btn btn-outline-secondary"

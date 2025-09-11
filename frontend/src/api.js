@@ -298,18 +298,15 @@ export const updateStaff = (id, payload) =>
 export const deleteStaff = id =>
   api.delete(`billing/staffs/${id}/`)
 
+const STAFF_SHIFT_ENDPOINT = 'billing/staff-shifts/';
 export const fetchStaffShifts  = (params = {}) =>
-  api.get('billing/staff-shift-plans/', { params }).then(r => r.data)
-
-export const createStaffShift = payload =>
-	api.post('billing/staff-shift-plans/', payload).then(r => r.data)
-
+  api.get(STAFF_SHIFT_ENDPOINT, { params }).then(r => r.data)
+export const createStaffShift = (payload) =>
+  api.post(STAFF_SHIFT_ENDPOINT, payload).then(r => r.data)
 export const patchStaffShift   = (id, p) =>
-  api.patch(`billing/staff-shift-plans/${id}/`, p).then(r => r.data)
-
-export const deleteStaffShift  = id =>
-  api.delete(`billing/staff-shift-plans/${id}/`)
-
+  api.patch(`${STAFF_SHIFT_ENDPOINT}${id}/`, p).then(r => r.data)
+export const deleteStaffShift  = (id) =>
+  api.delete(`${STAFF_SHIFT_ENDPOINT}${id}/`)
 
 export const staffCheckIn  = (shiftId, at = dayjs().toISOString()) =>
   patchStaffShift(shiftId, { clock_in: at })
