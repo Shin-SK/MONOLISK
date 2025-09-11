@@ -85,7 +85,7 @@ async function logout () {
     </div>
 
     <!-- ────────── MAIN ────────── -->
-    <main class="main flex-fill container py-4 overflow-auto">
+    <main class="main flex-fill container py-4">
       <div class="wrapper h-100 d-flex flex-column">
         <header class="header d-flex justify-content-between mb-1">
           <div class="area d-flex align-items-center gap-4">

@@ -108,7 +108,6 @@
 		margin-bottom: 40px;
 	}
 	.nav{
-		gap: 16px;
 		@include md{
 			gap: unset;	
 		}

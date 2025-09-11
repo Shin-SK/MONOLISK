@@ -144,7 +144,7 @@ watch(() => route.fullPath, (p) => {
     <CastSidebar />
 
     <!-- 本体 -->
-    <main class="flex-fill container d-flex flex-column overflow-auto">
+    <main class="flex-fill container d-flex flex-column">
       <router-view />
     </main>
   </div>

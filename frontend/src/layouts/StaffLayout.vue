@@ -34,7 +34,7 @@ function go(name, params){ router.push({ name, params }) }
     </header>
 
     <!-- 本体 -->
-    <main class="flex-fill container py-3 overflow-auto">
+    <main class="flex-fill container py-3">
       <router-view />
     </main>
 
