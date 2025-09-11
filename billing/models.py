@@ -847,8 +847,6 @@ def _ensure_expected_out_on_item_save(sender, instance, **kw):
         instance.bill.update_expected_out(save=True)
 
 
-
-
 class OrderTicket(models.Model):
     STATE_NEW   = 'new'
     STATE_ACK   = 'ack'
@@ -899,55 +897,3 @@ class OrderTicket(models.Model):
         self.taken_at = now
         self.archived_at = now
 
-
-
-def _resolve_kds_route(im: "ItemMaster") -> str:
-	"""ItemMaster.route が 'inherit' なら Category.route を使う"""
-	if not im:
-		return ROUTE_NONE
-	r = (im.route or ROUTE_INHERIT)
-	if r == ROUTE_INHERIT:
-		r = getattr(getattr(im, "category", None), "route", ROUTE_NONE)
-	return r or ROUTE_NONE
-
-@receiver(post_save, sender=BillItem)
-def _sync_kds_tickets_on_item_save(sender, instance: "BillItem", created, **kwargs):
-	"""
-	BillItem 作成/更新のたびに、KDS対象なら NEW/ACK のチケットを “必要数” まで作成。
-	数量増加分だけ補充（減少時の削除は運用に応じて別途）。
-	"""
-	try:
-		route = _resolve_kds_route(instance.item_master)
-		if route not in (ROUTE_KITCHEN, ROUTE_DRINKER):
-			return
-		want = int(instance.qty or 0)
-		from .models import OrderTicket  # 遅延importで循環回避
-		have = OrderTicket.objects.filter(
-			bill_item=instance,
-			state__in=[OrderTicket.STATE_NEW, OrderTicket.STATE_ACK],
-		).count()
-		diff = want - have
-		if diff <= 0:
-			return
-		store = instance.bill.table.store
-		created_by_cast = bool(getattr(instance, "served_by_cast_id", None))
-		OrderTicket.objects.bulk_create([
-			OrderTicket(
-				bill_item=instance,
-				store=store,
-				route=route,
-				state=OrderTicket.STATE_NEW,
-				created_by_cast=created_by_cast,
-			) for _ in range(diff)
-		])
-	except Exception:
-		import logging; logging.getLogger(__name__).exception("KDS ticket sync failed")
-
-@receiver(post_delete, sender=BillItem)
-def _cleanup_kds_tickets_on_delete(sender, instance: "BillItem", **kwargs):
-	"""BillItem 削除時、未アーカイブのチケットを掃除"""
-	try:
-		from .models import OrderTicket
-		OrderTicket.objects.filter(bill_item_id=instance.id, archived_at__isnull=True).delete()
-	except Exception:
-		pass
