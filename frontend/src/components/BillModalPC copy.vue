@@ -20,10 +20,8 @@ import { useMasters }   from '@/stores/useMasters'
 import { useTables }    from '@/stores/useTables'
 import dayjs from 'dayjs'
 import CustomerModal from '@/components/CustomerModal.vue'
-import BasicsPanel   from '@/components/panel/BasicsPanel.vue'
+import BasicsPanel   from '@/components/BasicsPanel.vue'
 import CustomerPanel from '@/components/CustomerPanel.vue'
-import OrderPanelSP from '@/components/spPanel/OrderPanelSP.vue'  // ← SP版をそのまま使う前提
-
 
 /* ── props / emit ─────────────────────────────── */
 const props = defineProps({
@@ -131,45 +129,6 @@ function clearCustomer(target) {
       .catch(e => { console.error(e); alert('顧客更新に失敗しました') })
   }
 }
-
-// ------------------------------------------------
-// オーダーパネルをこっちに移植しようぜ
-// ------------------------------------------------
-
-// 提供者（今ついてる卓の人だけ＋未指定）
-const servedByCastId = ref(null)
-const servedByOptions = computed(() =>
-  (currentCasts.value || []).map(c => ({ id: c.id, label: c.stage_name }))
-)
-const servedByMap = computed(() =>
-  Object.fromEntries((currentCasts.value || []).map(c => [String(c.id), c.stage_name]))
-)
-
-// マスター名・価格マップ（price_regular を SP側の price に合わせる）
-const masterNameMap = computed(() =>
-  Object.fromEntries((masters.value || []).map(m => [String(m.id), m.name]))
-)
-const masterPriceMap = computed(() =>
-  Object.fromEntries((masters.value || []).map(m => [String(m.id), Number(m.price_regular) || 0]))
-)
-// PC側の orderMasters（price_regular）→ SP側期待の {price} に寄せる
-const orderMastersForPanel = computed(() =>
-  orderMasters.value.map(m => ({ ...m, price: m.price ?? m.price_regular ?? 0 }))
-)
-
-// パネルのイベントをPCの pending/save に橋渡し
-const onAddPending = (masterId, qty) => {
-  pending.value.push({
-    master_id: masterId,
-    qty: Number(qty) || 0,
-    cast_id: servedByCastId.value ?? null,
-  })
-}
-const onRemovePending = (i) => pending.value.splice(i, 1)
-const onClearPending  = () => (pending.value = [])
-const onPlaceOrder    = () => save()   // 既存の save() に委譲（新規なら作成→POSTまで面倒見てくれる）
-
-
 /*
  * ▶ 場内トグル
  * ------------------------------------------------
@@ -197,10 +156,6 @@ async function toggleInhouse (cid) {
   } catch (e) { console.error(e); alert('場内フラグの更新に失敗しました') }
 }
 
-/* ---------- タブ ---------- */
-const rightTab = ref('bill')  // 'bill' | 'order'
-const isBillTab  = computed(() => rightTab.value === 'bill')
-const isOrderTab = computed(() => rightTab.value === 'order')
 
 /* ---------- 顧客情報を即反映 ---------- */
 async function handleCustPicked (cust) {
@@ -253,7 +208,6 @@ const selectedCat  = ref('drink')
 const orderMasters = computed(() =>
   masters.value.filter(m => catCode(m) === selectedCat.value)
 )
-
 
 /* ── フォーム ─────────────────────────── */
 
@@ -716,7 +670,7 @@ watch(visible, v => { if (v) pane.value = 'base' })
       @click="tryClose"
     /> <!-- 閉じるボタン -->
     <div
-      class="p-2 row flex-fill align-items-stretch"
+      class="p-2 row h-100"
     >
     <div class="sidebar-cq d-flex col-2">
       <div class="modal-sidebar outer flex-fill">
@@ -1024,159 +978,278 @@ watch(visible, v => { if (v) pane.value = 'base' })
         {{ isNew ? '作成して保存' : '保存' }}
         </button>
       </div>
+      <div class="outer col">
+        <!-- ── 単品注文フォーム ───────────────────────── -->
+        <div class="mb-3 pt-3">
+          <label class="form-label fw-bold">単品注文</label>
 
-      <div class="outer col d-flex flex-column position-relative">
-
-        <!-- タブ -->
-        <div class="tab nav nav-pills g-1 mb-5 row" role="tablist" aria-label="右ペイン切替">
-          <button
-            type="button"
-            class="nav-link col"
-            :class="{ active: isBillTab }"
-            role="tab"
-            :aria-selected="isBillTab"
-            @click="rightTab='bill'"
-          >会計</button>
-          <button
-            type="button"
-            class="nav-link col"
-            :class="{ active: isOrderTab }"
-            role="tab"
-            :aria-selected="isOrderTab"
-            @click="rightTab='order'"
-          >注文</button>
-        </div>
-        <!-- ★ここからコンテンツが多くなったらこの範囲内でスクロールさせたい。modal全体がスクロールするのは美しくない -->
-        <div class="order-panel-pc" v-show="isOrderTab">
-            <OrderPanelSP
-              :cat-options="catOptions"
-              :selected-cat="selectedCat"
-              :order-masters="orderMastersForPanel"
-              :served-by-options="servedByOptions"
-              :served-by-cast-id="servedByCastId"
-              :pending="pending"
-              :master-name-map="masterNameMap"
-              :served-by-map="servedByMap"
-              :master-price-map="masterPriceMap"
-              :readonly="false"
-              @update:selectedCat="v => (selectedCat = v)"
-              @update:servedByCastId="v => (servedByCastId = v)"
-              @addPending="onAddPending"
-              @removePending="onRemovePending"
-              @clearPending="onClearPending"
-              @placeOrder="onPlaceOrder"
-            />
-        </div>
-
-        <div class="summary d-flex flex-column flex-fill" v-if="isBillTab">
-          <table class="table table-sm table-striped mt-auto">
-            <thead>
-              <tr>
-                <th /><th>品名</th><th>キャスト</th><th class="text-end">
-                  数
-                </th><th class="text-end">
-                  小計
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(it, idx) in props.bill.items"
-                :key="it.id"
+          <div
+            class="d-grid align-items-stretch gap-2 mb-2"
+            style="grid-template-columns: 2fr 3fr 3fr 1fr auto;"
+          >
+            <!-- 2 カテゴリ -->
+            <select
+              v-model="selectedCat"
+              class="form-select"
+            >
+              <option
+                v-for="o in catOptions"
+                :key="o.value"
+                :value="o.value"
               >
-                <!-- キャンセル -->
-                <td class="text-center">
-                  <IconX
-                    :size="12"
-                    class="text-danger"
-                    role="button"
-                    @click="cancelItem(idx, it)"
-                  />
-                </td>
-                <td>{{ it.name }}</td>
-                <td>{{ it.served_by_cast?.stage_name || '‑' }}</td>
-                <td class="text-end">
-                  {{ it.qty }}
-                </td>
-                <td class="text-end">
-                  {{ it.subtotal.toLocaleString() }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                {{ o.label }}
+              </option>
+            </select>
 
-          <!-- ▼いつも出す：現状確定分 -------------------- -->
-          <table class="table table-sm mb-3 text-end">
-            <tbody>
-              <tr>
-                <th class="text-start">
-                  小計
-                </th>      <td>{{ current.sub.toLocaleString() }}</td>
-              </tr>
-              <tr>
-                <th class="text-start">
-                  サービス料
-                </th><td>{{ current.svc.toLocaleString() }}</td>
-              </tr>
-              <tr>
-                <th class="text-start">
-                  消費税
-                </th>    <td>{{ current.tax.toLocaleString() }}</td>
-              </tr>
-              <tr class="fw-bold">
-                <th class="text-start">
-                  合計
-                </th>
-                <td>{{ current.total.toLocaleString() }}</td>
-              </tr>
-            </tbody>
-          </table>
+            <!-- 1 注文キャスト -->
+            <select
+              v-model="draftCastId"
+              class="form-select"
+            >
+              <option :value="null">
+                ‑ CAST ‑
+              </option>
+              <option
+                v-for="c in currentCasts"
+                :key="c.id"
+                :value="c.id"
+              >
+                {{ c.stage_name }}
+              </option>
+            </select>
 
-          <!-- BillModal.vue のフッター付近などに追記 -->
-          <div class="card mt-3">
-            <div class="card-header">会計</div>
-            <div class="card-body">
-              <div class="row g-2">
-                <div class="col-4">
-                  <label class="form-label">現金</label>
-                  <input type="number" min="0" class="form-control"
-                        v-model.number="form.paid_cash">
-                </div>
-                <div class="col-4">
-                  <label class="form-label">カード</label>
-                  <input type="number" min="0" class="form-control"
-                        v-model.number="form.paid_card">
-                </div>
-                <div class="col-4">
-                  <label class="form-label">会計金額（上書き可）</label>
-                  <input type="number" min="0" class="form-control"
-                        v-model.number="form.settled_total">
-                </div>
+            <!-- 3 品名（選択したカテゴリだけが出る） -->
+            <select
+              v-model="draftMasterId"
+              class="form-select"
+            >
+              <option :value="null">
+                ‑ ITEM ‑
+              </option>
+              <option
+                v-for="m in orderMasters"
+                :key="m.id"
+                :value="m.id"
+              >
+                {{ m.name }}
+              </option>
+            </select>
+
+            <!-- 4 -->
+            <select
+              v-model.number="draftQty"
+              class="form-select text-center"
+            >
+              <option
+                v-for="n in 12"
+                :key="n"
+                :value="n"
+              >
+                {{ n }}
+              </option>
+            </select>
+            <!-- <input type="number" min="1"
+                class="form-control text-end"
+                v-model.number="draftQty"> -->
+
+            <!-- 5 追加ボタン -->
+            <button
+              class="btn btn-dark text-light"
+              @click="addSingle"
+            >
+              <IconShoppingCartPlus />
+            </button>
+          </div>
+        </div>
+        <!-- 🛒 ここが「仮確定」カート ----------------------------- -->
+        <ul
+          v-if="pending.length"
+          class="list-group mb-3"
+        >
+          <li
+            v-for="(it,i) in pending"
+            :key="i"
+            class="list-group-item d-flex justify-content-between align-items-center"
+          >
+            <span>
+              <!--  masters で検索に変更 -->
+              {{ masters.find(m => m.id === it.master_id)?.name }}
+              <small class="text-muted ms-2">
+                {{ casts.find(c => c.id === it.cast_id)?.stage_name || '‑' }}
+              </small>
+            </span>
+
+            <span class="d-flex align-items-center gap-2">
+              <span class="badge bg-secondary">{{ it.qty }}</span>
+              <IconTrash
+                class="text-danger"
+                role="button"
+                @click="pending.splice(i,1)"
+              />
+            </span>
+          </li>
+        </ul>
+
+        <!-- ▼pending がある時だけ：追加後の仮計算 ------- -->
+        <table
+          v-if="pending.length"
+          class="table table-sm mb-3 text-end border-top"
+        >
+          <tbody>
+            <tr>
+              <th class="text-start">
+                小計(仮)
+              </th>      <td>{{ preview.sub.toLocaleString() }}</td>
+            </tr>
+            <tr>
+              <th class="text-start">
+                サービス料(仮)
+              </th><td>{{ preview.svc.toLocaleString() }}</td>
+            </tr>
+            <tr>
+              <th class="text-start">
+                消費税(仮)
+              </th>    <td>{{ preview.tax.toLocaleString() }}</td>
+            </tr>
+            <tr class="fw-bold">
+              <th class="text-start">
+                合計(仮)
+              </th>
+              <td>{{ preview.total.toLocaleString() }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="d-flex my-5">
+          <button class="btn btn-warning flex-fill" @click="save" :disabled="saving">
+            注文
+          </button>
+        </div>
+
+
+        <table class="table table-sm table-striped">
+          <thead>
+            <tr>
+              <th /><th>品名</th><th>キャスト</th><th class="text-end">
+                Qty
+              </th><th class="text-end">
+                小計
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(it, idx) in props.bill.items"
+              :key="it.id"
+            >
+              <!-- キャンセル -->
+              <td class="text-center">
+                <IconX
+                  :size="12"
+                  class="text-danger"
+                  role="button"
+                  @click="cancelItem(idx, it)"
+                />
+              </td>
+              <td>{{ it.name }}</td>
+              <td>{{ it.served_by_cast?.stage_name || '‑' }}</td>
+              <td class="text-end">
+                {{ it.qty }}
+              </td>
+              <td class="text-end">
+                {{ it.subtotal.toLocaleString() }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- ▼いつも出す：現状確定分 -------------------- -->
+        <table class="table table-sm mb-3 text-end">
+          <tbody>
+            <tr>
+              <th class="text-start">
+                小計
+              </th>      <td>{{ current.sub.toLocaleString() }}</td>
+            </tr>
+            <tr>
+              <th class="text-start">
+                サービス料
+              </th><td>{{ current.svc.toLocaleString() }}</td>
+            </tr>
+            <tr>
+              <th class="text-start">
+                消費税
+              </th>    <td>{{ current.tax.toLocaleString() }}</td>
+            </tr>
+            <tr class="fw-bold">
+              <th class="text-start">
+                合計
+              </th>
+              <td>{{ current.total.toLocaleString() }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- BillModal.vue のフッター付近などに追記 -->
+        <div class="card mt-3">
+          <div class="card-header">会計</div>
+          <div class="card-body">
+            <div class="row g-2">
+              <div class="col-4">
+                <label class="form-label">現金</label>
+                <input type="number" min="0" class="form-control"
+                      v-model.number="form.paid_cash">
               </div>
-
-              <div class="mt-2 small text-muted">
-                伝票合計: ¥{{ fmt(displayGrandTotal) }} /
-                受領合計: ¥{{ fmt(paidTotal) }} /
-                差額: <span :class="diffClass">¥{{ fmt(diff) }}</span>
-                <button class="btn btn-sm btn-outline-secondary ms-2"
-                        @click="fillRemainderToCard">残額→カード</button>
-                <button class="btn btn-sm btn-outline-secondary ms-2"
-                        @click="useGrandTotal">会計金額＝伝票合計</button>
+              <div class="col-4">
+                <label class="form-label">カード</label>
+                <input type="number" min="0" class="form-control"
+                      v-model.number="form.paid_card">
               </div>
-
-              <div class="mt-3 d-flex gap-2">
-                <button class="btn btn-primary"
-                        :disabled="closing || !canClose"
-                        @click="confirmClose">
-                  <span v-if="closing" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                  会計確定
-                </button>
-                <div v-if="overPay" class="text-danger small">※お釣り発生: ¥{{ fmt(overPay) }}</div>
+              <div class="col-4">
+                <label class="form-label">会計金額（上書き可）</label>
+                <input type="number" min="0" class="form-control"
+                      v-model.number="form.settled_total">
               </div>
+            </div>
+
+            <div class="mt-2 small text-muted">
+              伝票合計: ¥{{ fmt(displayGrandTotal) }} /
+              受領合計: ¥{{ fmt(paidTotal) }} /
+              差額: <span :class="diffClass">¥{{ fmt(diff) }}</span>
+              <button class="btn btn-sm btn-outline-secondary ms-2"
+                      @click="fillRemainderToCard">残額をカードへ</button>
+              <button class="btn btn-sm btn-outline-secondary ms-2"
+                      @click="useGrandTotal">会計金額＝伝票合計</button>
+            </div>
+
+            <div class="mt-3 d-flex gap-2">
+              <button class="btn btn-primary"
+                      :disabled="closing || !canClose"
+                      @click="confirmClose">
+                <span v-if="closing" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                会計確定
+              </button>
+              <div v-if="overPay" class="text-danger small">※お釣り発生: ¥{{ fmt(overPay) }}</div>
             </div>
           </div>
         </div>
-        <!-- ★ここまでの中でスクロール。パネル内でスクロールするイメージ -->
+
+        <!-- <div class="d-flex align-items-center gap-2 mt-4">
+          <label class="fw-bold mb-0">会計金額</label>
+          <input
+            v-model.number="settleAmount"
+            type="number"
+            class="form-control text-end"
+            style="max-width:120px;"
+          >
+          <button
+            class="btn btn-info"
+            :disabled="!settleAmount"
+            @click="settleBill"
+          >
+            会計
+          </button>
+        </div> -->
       </div>
     </div>
   <CustomerModal
@@ -1190,12 +1263,11 @@ watch(visible, v => { if (v) pane.value = 'base' })
 
 
 
-<style scoped lang="scss">
+<style>
 
 .btn-check:checked + .btn, :not(.btn-check) + .btn:active, .btn:first-child:active, .btn.active, .btn.show
 {
   border: unset !important;
 }
-
 
 </style>

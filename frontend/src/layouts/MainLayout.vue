@@ -81,13 +81,13 @@ async function logout () {
 
       <!-- staffなら #staffSidebar を開く -->
       <button v-if="isStaff"
-        class="avatar-icon btn p-0 border-0 bg-transparent"
+        class="avatar-icon btn p-0 border-0 bg-white mt-auto"
         data-bs-toggle="offcanvas" data-bs-target="#staffSidebar" aria-controls="staffSidebar">
         <IconMenu2 />
       </button>
 
       <!-- それ以外は従来の openSidebar -->
-      <button v-else class="avatar-icon btn p-0 border-0 bg-transparent" @click="openSidebar">
+      <button v-else class="avatar-icon btn p-0 border-0 bg-white mt-auto" @click="openSidebar">
        <IconMenu2 />
       </button>
       

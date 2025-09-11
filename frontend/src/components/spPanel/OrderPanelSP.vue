@@ -136,16 +136,16 @@ const cartSubtotal = computed(() =>
       </div>
 
       <!-- 品目リスト（タップで pending へ） -->
-      <div class="order-list d-grid my-5 gap-2">
+      <div class="order-list d-flex flex-column my-5 gap-2">
         <div
           v-for="m in orderMasters"
           :key="m.id"
-          class="card d-flex flex-row justify-content-between p-2"
+          class="d-flex justify-content-between p-2 bg-light"
         >
           <!-- 左：アイテム情報 -->
           <div class="item-area d-flex gap-2 ms-2">
             <div class="d-flex flex-column flex-wrap justify-content-center">
-              <div class="name fs-5 fw-bold">{{ m.name }}</div>
+              <div class="name fs-md-5 fw-bold">{{ m.name }}</div>
               <div class="price" v-if="m.price != null">¥{{ Number(m.price).toLocaleString() }}</div>
             </div>
           </div>
@@ -185,7 +185,7 @@ const cartSubtotal = computed(() =>
               {{ servedByMap[String(p.cast_id)] || ('cast#' + p.cast_id) }}
             </div>
             <div class="d-flex align-items-center gap-2">
-              <div class="name fs-5 fw-bold">
+              <div class="name fs-md-5 fw-bold">
               {{ masterNameMap[String(p.master_id)]
                 || (orderMasters.find(x => x.id === p.master_id)?.name)
                 || ('#' + p.master_id) }}
