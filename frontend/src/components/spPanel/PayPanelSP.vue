@@ -169,7 +169,7 @@ const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
           <div class="position-relative w-100">
             <input class="form-control" type="number" :value="paidCash" @input="e => onNum(e,'paidCash')" />
             <button class="position-absolute end-0 top-0 bottom-0" type="button" @click="setExactCash" title="全額を現金で支払い">
-              <IconTransferVertical :size="16" /><!-- ★こっち、支払いの合計金額を入力させるボタンがほしい。一発でぴったりです！みたいなかんじ -->
+              <IconTransferVertical :size="16" />
             </button>
           </div>
         </div>

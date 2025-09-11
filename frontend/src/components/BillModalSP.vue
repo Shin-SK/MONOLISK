@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, toRef, watch } from 'vue'
 import BaseModal from '@/components/BaseModal.vue'
-import BasicsPanelSP from '@/components/spPanel/BasicsPanelSP.vue'
+import BasicsPanel from '@/components/panel/BasicsPanel.vue'
 import CastsPanelSP  from '@/components/spPanel/CastsPanelSP.vue'
 import OrderPanelSP  from '@/components/spPanel/OrderPanelSP.vue'
 import PayPanelSP    from '@/components/spPanel/PayPanelSP.vue'
@@ -275,18 +275,21 @@ const handleSave = async () => {
     </template>
 
     <!-- 本文 -->
-    <BasicsPanelSP
+    <BasicsPanel
       v-show="pane==='base'"
       :tables="ed.tables.value || []"
       :table-id="ed.tableId.value"
       :pax="ed.pax.value"
       :course-options="ed.courseOptions.value || []"
+
+      :show-customer="true"
       :customer-name="ed.customerName.value"
       :customer-results="ed.custResults.value"
       :customer-searching="ed.custLoading.value"
+
       @update:tableId="v => (ed.tableId.value = v)"
       @update:pax="v => (ed.pax.value = v)"
-      @chooseCourse="onChooseCourse"
+      @chooseCourse="(opt, qty) => onChooseCourse(opt, qty)"
       @clearCustomer="ed.clearCustomer"
       @searchCustomer="ed.searchCustomers"
       @pickCustomer="ed.pickCustomerInline"

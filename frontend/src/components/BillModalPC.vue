@@ -83,6 +83,17 @@ function tryClose(){
 }
 
 
+const CLOSE_AFTER_SETTLE = true; // 会計確定後にモーダルを閉じるなら true（SPと同じに開いたままにするなら false）
+async function refetchAndSync(billId = props.bill?.id){
+	try{
+		const fresh = await fetchBill(billId);
+		if (fresh) Object.assign(props.bill, fresh);   // ★ローカル表示も即最新化
+		emit('saved', fresh || billId);                // 親にも通知（リスト側再取得など）
+	}catch(e){
+		console.error('refresh failed', e);
+	}
+}
+
 onMounted(async () => {
   try {
     const storeId = props.bill?.table?.store ?? ''   // ← 無ければ全店
@@ -167,7 +178,7 @@ const onAddPending = (masterId, qty) => {
 }
 const onRemovePending = (i) => pending.value.splice(i, 1)
 const onClearPending  = () => (pending.value = [])
-const onPlaceOrder    = () => save()   // 既存の save() に委譲（新規なら作成→POSTまで面倒見てくれる）
+const onPlaceOrder    = async () => { await save() }  // ★一連完了まで待つ
 
 
 /*
@@ -310,11 +321,8 @@ async function confirmClose(){
     await api.post(`billing/bills/${props.bill.id}/close/`, {
       settled_total: form.settled_total || displayGrandTotal.value,
     })
-    // 最新Billを取得して親へ渡す（親側でclose & 再描画）
-    const fresh = await fetchBill(props.bill.id).catch(()=>null)
-    emit('saved', fresh || props.bill.id)
-    // 自分でも即閉じる（v-model）
-    visible.value = false
+    await refetchAndSync(props.bill.id);    // ★最新反映
+    if (CLOSE_AFTER_SETTLE) visible.value = false; // 動作方針で切替
   }catch(e){
     console.error(e)
     alert('会計に失敗しました')
@@ -373,19 +381,20 @@ const courseOptions = computed(() =>
 )
 
 
-// コース追加（新規は pending へ積むだけ）
-async function chooseCourse(opt){
-  if (isNew.value) {
-    pending.value.push({ master_id: opt.id, qty: pax.value, cast_id: null })
-    return
-  }
-  // 既存は即POST
-  const newItem = await addBillItem(props.bill.id, { item_master: opt.id, qty: pax.value })
-  props.bill.items.push(newItem)
-  emit('updated', props.bill.id)
-  if (form.table_id !== props.bill.table?.id) {
-    await api.patch(`billing/bills/${props.bill.id}/`, { table_id: form.table_id })
-  }
+// コース追加
+async function chooseCourse(opt, qtyOverride = null){
+	const qty = Number(qtyOverride ?? pax.value) || 0
+	if (qty <= 0) return
+	if (isNew.value) {
+		pending.value.push({ master_id: opt.id, qty, cast_id: null })
+		return
+	}
+	const newItem = await addBillItem(props.bill.id, { item_master: opt.id, qty })
+	props.bill.items.push(newItem)
+	emit('updated', props.bill.id)
+	if (form.table_id !== props.bill.table?.id) {
+		await api.patch(`billing/bills/${props.bill.id}/`, { table_id: form.table_id })
+	}
 }
 
 /* ------- コース追加ボタン専用 ------- */
@@ -688,8 +697,8 @@ async function save () {
     pending.value = []
 
     // ❹ 最新のBillを単発フェッチしてemit
-    const fresh = await fetchBill(billId)   // ← stays/items/合計を含む最新
-    emit('saved', fresh)                    // ← idではなく中身を渡す
+    await refetchAndSync(billId);           // ★ローカルも親も最新化
+    rightTab.value = 'bill';                // ★注文後は会計タブに切り替え（任意）
   } catch (e) {
     console.error(e)
     alert('保存に失敗しました')
@@ -712,7 +721,7 @@ watch(visible, v => { if (v) pane.value = 'base' })
   >
     <button
       class="btn-close position-absolute"
-      style="margin-left: unset; top:8px; right:8px;"
+      style="margin-left: unset; top:8px; right:8px; z-index: 999999999;"
       @click="tryClose"
     /> <!-- 閉じるボタン -->
     <div
@@ -737,7 +746,8 @@ watch(visible, v => { if (v) pane.value = 'base' })
             :course-options="courseOptions"
             @update:tableId="v => (form.table_id = v)"
             @update:pax="v => (pax = v)"
-            @chooseCourse="opt => { chooseCourse(opt); }"
+            @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"
+            @jumpToBill="rightTab = 'bill'"
           />
 
           <CustomerPanel
@@ -1028,25 +1038,24 @@ watch(visible, v => { if (v) pane.value = 'base' })
       <div class="outer col d-flex flex-column position-relative">
 
         <!-- タブ -->
-        <div class="tab nav nav-pills g-1 mb-5 row" role="tablist" aria-label="右ペイン切替">
+        <div class="tab nav nav-pills g-1 mb-5 row w-50" role="tablist" aria-label="右ペイン切替">
           <button
             type="button"
-            class="nav-link col"
+            class="nav-link col d-flex align-items-center gap-2"
             :class="{ active: isBillTab }"
             role="tab"
             :aria-selected="isBillTab"
             @click="rightTab='bill'"
-          >会計</button>
+          ><IconReceiptYen />会計</button>
           <button
             type="button"
-            class="nav-link col"
+            class="nav-link col d-flex align-items-center gap-2"
             :class="{ active: isOrderTab }"
             role="tab"
             :aria-selected="isOrderTab"
             @click="rightTab='order'"
-          >注文</button>
+          ><IconShoppingCart />注文</button>
         </div>
-        <!-- ★ここからコンテンツが多くなったらこの範囲内でスクロールさせたい。modal全体がスクロールするのは美しくない -->
         <div class="order-panel-pc" v-show="isOrderTab">
             <OrderPanelSP
               :cat-options="catOptions"
@@ -1138,19 +1147,33 @@ watch(visible, v => { if (v) pane.value = 'base' })
             <div class="card-body">
               <div class="row g-2">
                 <div class="col-4">
+                  <label class="form-label">会計金額（上書き可）</label>
+                  <div class="position-relative">
+                    <input type="number" min="0" class="form-control"
+                          v-model.number="form.settled_total">
+                    <button 
+                      class="position-absolute end-0 top-0 bottom-0 m-auto"
+                      @click="useGrandTotal"
+                      ><IconRefresh :size="16"/></button>
+                  </div>
+                </div>
+                <div class="col-4">
                   <label class="form-label">現金</label>
                   <input type="number" min="0" class="form-control"
                         v-model.number="form.paid_cash">
                 </div>
                 <div class="col-4">
                   <label class="form-label">カード</label>
+                  <div class="position-relative">
                   <input type="number" min="0" class="form-control"
                         v-model.number="form.paid_card">
-                </div>
-                <div class="col-4">
-                  <label class="form-label">会計金額（上書き可）</label>
-                  <input type="number" min="0" class="form-control"
-                        v-model.number="form.settled_total">
+                  <button
+                    class="position-absolute end-0 top-0 bottom-0 m-auto"
+                    @click="fillRemainderToCard">
+                      <IconTransferVertical :size="16" />
+                  </button>
+                  
+                  </div>
                 </div>
               </div>
 
@@ -1158,10 +1181,6 @@ watch(visible, v => { if (v) pane.value = 'base' })
                 伝票合計: ¥{{ fmt(displayGrandTotal) }} /
                 受領合計: ¥{{ fmt(paidTotal) }} /
                 差額: <span :class="diffClass">¥{{ fmt(diff) }}</span>
-                <button class="btn btn-sm btn-outline-secondary ms-2"
-                        @click="fillRemainderToCard">残額→カード</button>
-                <button class="btn btn-sm btn-outline-secondary ms-2"
-                        @click="useGrandTotal">会計金額＝伝票合計</button>
               </div>
 
               <div class="mt-3 d-flex gap-2">
@@ -1176,7 +1195,6 @@ watch(visible, v => { if (v) pane.value = 'base' })
             </div>
           </div>
         </div>
-        <!-- ★ここまでの中でスクロール。パネル内でスクロールするイメージ -->
       </div>
     </div>
   <CustomerModal
@@ -1197,5 +1215,8 @@ watch(visible, v => { if (v) pane.value = 'base' })
   border: unset !important;
 }
 
+.modal-footer{
+  display: none;
+}
 
 </style>

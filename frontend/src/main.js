@@ -79,6 +79,7 @@ import {
   IconTransferVertical,
   IconUserSquare,
   IconChevronDown,
+  IconListCheck,
 } from '@tabler/icons-vue'
 
 
@@ -147,6 +148,7 @@ import {
     IconTransferVertical,
     IconUserSquare,
     IconChevronDown,
+    IconListCheck,
   }
   Object.entries(icons).forEach(([name, comp]) => app.component(name, comp))
 

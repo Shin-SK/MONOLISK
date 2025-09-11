@@ -58,39 +58,56 @@ class CastHonshimeiForBill(BasePermission):
 
 
 def _req_store_id(request):
-    sid = getattr(getattr(request, "store", None), "id", None) \
-          or request.query_params.get("store_id") \
-          or request.headers.get("X-Store-ID")
-    try:
-        return int(sid) if sid is not None else None
-    except Exception:
-        return None
+	sid = getattr(getattr(request, "store", None), "id", None) \
+	      or request.query_params.get("store_id") \
+	      or request.headers.get("X-Store-Id") \
+	      or request.headers.get("X-Store-ID")    # ★ 両方見る
+	try:
+		return int(sid) if sid is not None else None
+	except Exception:
+		return None
 
 class CanOrderBillItem(BasePermission):
-    """
-    スタッフ: operate_orders を持てばOK
-    キャスト: 本指名 & 在席中 & 対象Billが自店
-    """
-    message = '本指名の在席中のみ、自分の卓に注文できます。'
+	message = '本指名の在席中のみ、自分の卓に注文できます。'
 
-    def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated)
+	def has_permission(self, request, view):
+		return bool(request.user and request.user.is_authenticated)
 
-    def has_object_permission(self, request, view, bill):   # bill = obj
-        sid = _req_store_id(request)
-        if sid is None or bill.table.store_id != sid:
-            return False
+	def has_object_permission(self, request, view, obj):
+		sid = _req_store_id(request)
+		if sid is None:
+			return False
 
-        # スタッフ（店長/マネージャ含む）
-        caps = get_caps_for(request.user, sid)
-        if 'operate_orders' in caps:
-            return True
+		# ★ obj を必ず Bill に正規化
+		if hasattr(obj, 'table'):        # Bill
+			bill = obj
+		elif hasattr(obj, 'bill'):       # BillItem
+			bill = obj.bill
+		elif hasattr(obj, 'bill_id'):    # BillItem（遅延）
+			bill = Bill.objects.select_related('table') \
+			       .only('id','table_id','table__store_id').get(id=obj.bill_id)
+		else:
+			return False
 
-        # キャスト（自分の本指名で在席中）
-        cast_id = Cast.objects.filter(user=request.user).values_list('id', flat=True).first()
-        if not cast_id:
-            return False
+		# tableが未ロードなら補完
+		if getattr(bill, 'table', None) is None:
+			bill = Bill.objects.select_related('table') \
+			       .only('id','table_id','table__store_id').get(id=bill.id)
 
-        return BillCastStay.objects.filter(
-            bill=bill, cast_id=cast_id, left_at__isnull=True, is_honshimei=True
-        ).exists()
+		if int(bill.table.store_id) != int(sid):
+			return False
+
+		# スタッフ権限ならOK
+		caps = get_caps_for(request.user, sid)
+		if 'operate_orders' in caps:
+			return True
+
+		# キャスト：本指名で在席中ならOK
+		cast_id = Cast.objects.filter(user=request.user).values_list('id', flat=True).first()
+		if not cast_id:
+			return False
+
+		return BillCastStay.objects.filter(
+			bill=bill, cast_id=cast_id,
+			left_at__isnull=True, is_honshimei=True
+		).exists()

@@ -56,6 +56,17 @@ input[type="file"]::-webkit-file-upload-button {
   color: #000; /* あるいは var(--bs-body-color) */
 }
 
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button{
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+/* Firefox */
+input[type="number"]{
+	-moz-appearance: textfield;
+	appearance: textfield; /* 標準 */
+}
 
 :root { 
   --safe-top: env(safe-area-inset-top, 0px); 
