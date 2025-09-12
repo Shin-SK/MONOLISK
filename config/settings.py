@@ -57,6 +57,8 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-store-id",   # ← これを許可
     "x-silent",     # ← 既存で使っているなら許可（meta→headerの互換向け）
     "cache-control",
+    "pragma",          # ← これが今足りない
+    "expires",         # ← 念のため一緒に許可（no-cache系で付くことがある）
 ]
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
