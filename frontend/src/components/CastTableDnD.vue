@@ -198,10 +198,10 @@ const showDetail = computed(() => !isVacant.value)
     <!-- フッター -->
     <div
       v-if="showDetail && !benchArea"
-      class="footer bg-white p-2 d-flex gap-3 justify-content-between align-items-center"
+      class="table-view-footer bg-white p-2 d-flex gap-3 justify-content-between align-items-center"
     >
       <!-- デバイス用 -->
-      <div class="table-number fs-4 align-items-center gap-1 d-md-none d-flex">
+      <div class="table-number align-items-center gap-1 d-md-none d-flex">
         <IconPinned :size="20"/>
         <span>{{ title }}</span>
       </div>
@@ -225,7 +225,7 @@ const showDetail = computed(() => !isVacant.value)
 
       <div
         v-if="remainMin !== null"
-        class="item fs-4 d-flex gap-2 align-items-center"
+        class="item d-flex gap-2 align-items-center"
       >
         <IconHistoryToggle :size="20"/><span>{{ remainMin }}分</span>
       </div>
@@ -235,7 +235,7 @@ const showDetail = computed(() => !isVacant.value)
         class="item d-flex gap-0 align-items-center"
       >
         <IconCurrencyYen :size="20"/>
-        <span class="d-flex align-items-center fs-4">
+        <span class="d-flex align-items-center">
           {{ subtotal.toLocaleString() }}
         </span>
       </div>
@@ -251,6 +251,8 @@ const showDetail = computed(() => !isVacant.value)
 .chosen,
 .dragging   { opacity: 0.5; }
 .ghost      { opacity: 0.35; }
+
+
 
 .cast-card{ 
   cursor:grab; 
