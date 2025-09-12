@@ -263,7 +263,7 @@ const handleSave = async () => {
     <template #header>
       <div id="header" class="header-bar">
         <div class="page-title">{{ pageTitle }}</div>
-        <div class="button-area">
+        <div class="button-area fs-5">
           <button :disabled="saving" @click="handleSave" aria-label="save">
             <IconDeviceFloppy />
           </button>
