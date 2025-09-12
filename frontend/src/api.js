@@ -1,5 +1,4 @@
 // src/api.js
-// src/api.js
 import axios from 'axios'
 import { setupCache } from 'axios-cache-interceptor'
 import 'nprogress/nprogress.css'
@@ -7,17 +6,14 @@ import { wireInterceptors } from '@/api/interceptors'
 import dayjs from 'dayjs'
 
 // ★ baseURL は必ず相対 /api/（Viteのproxyを使う）
-const baseURL = import.meta.env.VITE_API_BASE || '/api/'
+const RAW = import.meta.env.VITE_API_BASE ?? '/api';
+const baseURL = (RAW + '/').replace(/\/+$/, '/'); // ← 末尾 / を強制で1本に
 
 // ★ axios にキャッシュ機能を付与（10分・サーバのETag等も尊重）
 export const api = setupCache(
 	axios.create({ baseURL }),
 	{ ttl: 10 * 60 * 1000, interpretHeader: true }
 )
-
-
-
-
 
 /* ------------------------------------------------------------------ */
 /* interceptor: “ログイン系 URL には token を付けない”                    */
