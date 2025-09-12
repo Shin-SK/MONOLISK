@@ -19,6 +19,7 @@ const srcset   = computed(() =>
 )
 // ★ 表示サイズに合わせて動的に
 const sizesAttr = computed(() => `(max-width: 600px) ${props.size}px, ${props.size}px`)
+const iconPx = '24px'
 </script>
 
 <template>
@@ -33,5 +34,5 @@ const sizesAttr = computed(() => `(max-width: 600px) ${props.size}px, ${props.si
 		loading="lazy"
 		decoding="async"
 	/>
-	<IconUserFilled v-else :style="{ fontSize: sizePx }" />
+	<IconUserFilled v-else :style="{ fontSize: iconPx }" />
 </template>
