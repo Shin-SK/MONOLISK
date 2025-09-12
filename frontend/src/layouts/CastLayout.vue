@@ -116,13 +116,13 @@ watch(() => route.fullPath, (p) => {
         </div>
         <!-- 左：サイドバー -->
         <button
-          class="avatar-icon btn p-0 border-0 bg-transparent"
+          class="avatar-icon btn p-0 border-0 bg-transparent fs-2"
           data-bs-toggle="offcanvas"
           data-bs-target="#castSidebar"
           aria-controls="castSidebar"
           title="メニュー"
         >
-          <IconMenu2 />
+          <IconMenu2 :size="24"/>
         </button>
 
     </div>

@@ -1,14 +1,22 @@
 // src/api.js
+// src/api.js
 import axios from 'axios'
+import { setupCache } from 'axios-cache-interceptor'
 import 'nprogress/nprogress.css'
 import { wireInterceptors } from '@/api/interceptors'
-
-export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000/api/',
-})
 import dayjs from 'dayjs'
 
-console.warn('__MARK__ api.js loaded', new Date().toISOString())
+// ★ baseURL は必ず相対 /api/（Viteのproxyを使う）
+const baseURL = import.meta.env.VITE_API_BASE || '/api/'
+
+// ★ axios にキャッシュ機能を付与（10分・サーバのETag等も尊重）
+export const api = setupCache(
+	axios.create({ baseURL }),
+	{ ttl: 10 * 60 * 1000, interpretHeader: true }
+)
+
+
+
 
 
 /* ------------------------------------------------------------------ */
@@ -16,7 +24,56 @@ console.warn('__MARK__ api.js loaded', new Date().toISOString())
 /* ------------------------------------------------------------------ */
 
 // インターセプタを装着（/api/me はStore非依存 = デフォのskipStore['me/']のみ）
+// 既存の認証/Store付与など（これは先に装着でOK）
 wireInterceptors(api)
+
+// ★ ここから “キャッシュ制御 & デバッグ” を追加
+api.interceptors.request.use(cfg => {
+	// 開発ログ
+	if (import.meta.env.DEV) console.log('[REQ]', cfg.baseURL, cfg.url, cfg.headers?.['X-Store-Id'])
+
+	// 非GETはキャッシュしない
+	const method = (cfg.method || 'get').toLowerCase()
+	if (method !== 'get') { cfg.cache = false; return cfg }
+
+	// パス判定（絶対URLでも動くように先頭の https://... を剥がす）
+  const path = String(cfg.url || '')
+    .replace(/^https?:\/\/[^/]+/i, '')
+    .replace(/^\/+/, '')
+
+  const noCache =
+    path.startsWith('dj-rest-auth') ||
+    path.startsWith('auth/') ||
+    path.startsWith('me') ||
+    path.startsWith('billing/kds/') ||
+    /^billing\/bills(\/|$)/.test(path) ||       // ← 伝票リスト/個票は常に最新
+    path.startsWith('billing/cast-shifts/')     // ← シフトも常に最新
+  if (noCache) { cfg.cache = false; return cfg }
+    if (noCache) { cfg.cache = false; return cfg }
+
+	// ⚠️ Store違いでキャッシュが混ざらないよう、疑似パラメータで分離
+	const sid = localStorage.getItem('store_id')
+	if (sid) cfg.params = { ...(cfg.params || {}), _sid: sid }
+
+	return cfg
+})
+
+api.interceptors.response.use(
+	res => {
+		// axios-cache-interceptor は res.cached を持つ
+		if (import.meta.env.DEV) console.log('[RES]', res.config.url, res.status, res.cached ? 'HIT' : 'MISS')
+		return res
+	},
+	err => {
+		if (import.meta.env.DEV) console.warn('[ERR]', err.config?.url, err.response?.status, err.message)
+		return Promise.reject(err)
+	}
+)
+
+// デバッグ用に叩けるよう公開
+if (import.meta.env.DEV) window.__API__ = api
+
+
 
 /* ------------------------------------------------------------------ */
 /* 認証 API                                                            */
@@ -400,7 +457,7 @@ function _nid(id){
 }
 
 export async function longPollReady({ station, cursor, signal }) {
-  const res = await api.get('/billing/order-events/', {
+  const res = await api.get('billing/order-events/', {
     params: { station, since: cursor, wait: 25 },
     timeout: 30000,
     signal
@@ -482,3 +539,6 @@ export const switchStore = async (sid) => {
 	const { data } = await api.get('me/', { headers: { 'X-Store-Id': s } })
 	return data
 }
+
+
+if (import.meta.env.DEV) window.__API__ = api

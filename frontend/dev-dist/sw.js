@@ -82,7 +82,7 @@ define(['./workbox-f8c404e3'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "/index.html",
-    "revision": "0.qgbj290nl5o"
+    "revision": "0.s9nl955igdg"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("/index.html"), {
@@ -91,7 +91,7 @@ define(['./workbox-f8c404e3'], (function (workbox) { 'use strict';
   }));
   workbox.registerRoute(({
     url
-  }) => url.origin.includes("monolisk") && url.pathname.startsWith("/api"), new workbox.NetworkOnly({
+  }) => url.pathname.startsWith("/api"), new workbox.NetworkOnly({
     "fetchOptions": {
       "credentials": "include"
     },

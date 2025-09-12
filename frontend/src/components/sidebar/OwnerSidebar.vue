@@ -28,11 +28,11 @@ async function logout () {
   <teleport to="body">
   <div
     id="ownerSidebar"
-    class="offcanvas offcanvas-start offcanvas-md flex-shrink-0 border-end"
+    class="offcanvas offcanvas-start flex-shrink-0 border-end bg-white"
     tabindex="-1"
     style="--bs-offcanvas-width: min(100vw,300px);">
 
-      <div class="offcanvas-header">
+      <div class="offcanvas-header bg-white">
         <button class="btn-close" data-bs-dismiss="offcanvas" />
       </div>
 

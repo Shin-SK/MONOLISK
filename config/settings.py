@@ -122,9 +122,33 @@ MEDIA_ROOT = BASE_DIR / "media"
 STATIC_URL  = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+if os.getenv('REDIS_URL'):
+	# 本番など Redis があるとき
+	CACHES = {
+		'default': {
+			'BACKEND': 'django_redis.cache.RedisCache',
+			'LOCATION': os.environ['REDIS_URL'],
+			'OPTIONS': {
+				'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+				'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+			}
+		}
+	}
+else:
+	# 開発はプロセス内メモリ（Redis不要）
+	CACHES = {
+		'default': {
+			'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+			'LOCATION': 'monolisk-dev',
+		}
+	}
+
+
 # ── Middleware ──────────────────────────────────────────────────────
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+	'django.middleware.gzip.GZipMiddleware',
+	'django.middleware.http.ConditionalGetMiddleware',
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
 

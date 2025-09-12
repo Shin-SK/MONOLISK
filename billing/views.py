@@ -14,6 +14,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.exceptions import ValidationError, PermissionDenied
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_headers
+from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from .permissions import RequireCap, CastHonshimeiForBill, CanOrderBillItem
 
@@ -64,7 +68,11 @@ def user_store_ids(user):
 
     return ids
 
-
+class CacheListMixin:
+	@method_decorator(cache_page(60 * 10))            # ← 10分(=600秒)
+	@method_decorator(vary_on_headers('X-Store-Id'))  # ← 店舗ごとに別キャッシュ
+	def list(self, request, *args, **kwargs):
+		return super().list(request, *args, **kwargs)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -163,12 +171,12 @@ class StoreViewSet(StoreScopedModelViewSet):
 # ────────────────────────────────────────────────────────────────────
 # 商品マスタ / 卓
 # ────────────────────────────────────────────────────────────────────
-class ItemMasterViewSet(StoreScopedModelViewSet):
+class ItemMasterViewSet(CacheListMixin, StoreScopedModelViewSet):
     queryset = ItemMaster.objects.select_related("category")
     serializer_class = ItemMasterSerializer
 
 
-class TableViewSet(StoreScopedModelViewSet):
+class TableViewSet(CacheListMixin, StoreScopedModelViewSet):
     queryset = Table.objects.all()
     serializer_class = TableSerializer
     
@@ -316,7 +324,7 @@ class CastSalesView(APIView):
 # ────────────────────────────────────────────────────────────────────
 # キャスト / 明細・配分
 # ────────────────────────────────────────────────────────────────────
-class CastViewSet(StoreScopedModelViewSet):
+class CastViewSet(CacheListMixin, StoreScopedModelViewSet):
     queryset = Cast.objects.select_related("store").prefetch_related("category_rates")
     serializer_class = CastSerializer
     permission_classes = [permissions.IsAuthenticated]

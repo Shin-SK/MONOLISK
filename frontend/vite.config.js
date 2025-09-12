@@ -1,25 +1,56 @@
 // vite.config.js
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+
+// ★ 追加
+import Components from 'unplugin-vue-components/vite'
+import Icons from 'unplugin-icons/vite'
+
 import { fileURLToPath, URL } from 'node:url'
 import { visualizer } from 'rollup-plugin-visualizer'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const HMR_HOST = env.VITE_HMR_HOST || ''       // ← .env.local から
+  const HMR_HOST = env.VITE_HMR_HOST || ''
   const useTunnel = !!HMR_HOST
+
+  // ★ Tabler 名→Iconify 名の“例外”があればここで上書き（足りたら空のままでOK）
+  const TABLER_NAME_ALIASES = {
+    // 例: HistoryToggle: 'history-toggle-off',
+    // 例: FileNeutral: 'file'
+  }
 
   return {
     plugins: [
       vue(),
+
+      // ★ 追加: <IconXxx/> をビルド時に ~icons/tabler/xxx に解決
+      Components({
+        resolvers: [
+          (name) => {
+            if (!name.startsWith('Icon')) return
+            const raw = name.slice(4) // 'Search', 'UserFilled', ...
+            // PascalCase → kebab-case : 'UserFilled'→'user-filled'
+            const kebab = raw.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+            const finalName = TABLER_NAME_ALIASES[raw] || TABLER_NAME_ALIASES[kebab] || kebab
+            // Iconify の仮想モジュール（既定エクスポート）を指す
+            return { name: 'default', from: `~icons/tabler/${finalName}` }
+          }
+        ],
+        dts: false, // ts使わないので生成なし
+      }),
+
+      // ★ 追加: アイコンの仮想モジュールを実体化
+      Icons({ autoInstall: true }),
+
+      // 既存
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: 'auto',
         devOptions: { enabled: mode === 'development', type: 'module' },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         workbox: {
-          // 新SWを即アクティブ化＆即クライアント制御
           skipWaiting: true,
           clientsClaim: true,
           cleanupOutdatedCaches: true,
@@ -27,10 +58,9 @@ export default defineConfig(({ mode }) => {
           navigateFallbackDenylist: [/^\/api\//],
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           globIgnores: ['**/*.map'],
-          // API はキャッシュしない&Cookie通す（必要なら）
           runtimeCaching: [
             {
-              urlPattern: ({url}) => url.origin.includes('monolisk') && url.pathname.startsWith('/api'),
+              urlPattern: ({ url }) => url.pathname.startsWith('/api'),
               handler: 'NetworkOnly',
               options: { fetchOptions: { credentials: 'include' } }
             }
@@ -58,16 +88,9 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
-      proxy: {
-        '/api': { target: 'http://localhost:8000', changeOrigin: true },
-      },
-      // ★ 開発は全部許可でOK（トンネルのホスト替わっても触らない）
+      proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } },
       allowedHosts: true,
-
-      // ★ トンネル経由のHMRだけ環境変数で切り替え
-      hmr: useTunnel
-        ? { host: HMR_HOST, protocol: 'wss', clientPort: 443 }
-        : undefined,
+      hmr: useTunnel ? { host: HMR_HOST, protocol: 'wss', clientPort: 443 } : undefined,
     },
     css: {
       devSourcemap: true,

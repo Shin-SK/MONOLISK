@@ -97,14 +97,14 @@ input[type="number"]{
 
   /* ★ サイドバー(#castSidebar)だけは最上部まで背景を伸ばす */
   #castSidebar{
-    height: 100dvh;                /* 画面全高 */
+    height: 100vh;                /* 画面全高 */
   }
   #castSidebar .offcanvas-header{
     padding-top: calc(var(--bs-offcanvas-padding-y) + var(--safe-top));
   }
 
   .offcanvas{
-    height: 100dvh;                     /* 画面全高にする */
+    height: 100vh;                     /* 画面全高にする */
     overflow-y: auto;                   /* 本体で縦スクロールを受ける */
     -webkit-overflow-scrolling: touch;  /* iOS慣性 */
     overscroll-behavior: contain;       /* 背景へのスクロール伝搬を止める */

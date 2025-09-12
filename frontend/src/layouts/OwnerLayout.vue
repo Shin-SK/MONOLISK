@@ -77,8 +77,8 @@ async function logout () {
         <span class="monst">Y</span>
       </RouterLink>
 
-      <button class="nav-link text-dark" data-bs-toggle="offcanvas" data-bs-target="#ownerSidebar">
-        <IconMenu2 />
+      <button class="nav-link text-dark fs-md-2 fs-4" data-bs-toggle="offcanvas" data-bs-target="#ownerSidebar">
+        <IconMenu2 :size="24"/>
       </button>
       <OwnerSidebar />
 
