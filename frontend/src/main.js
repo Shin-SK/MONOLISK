@@ -41,4 +41,34 @@ Sortable.mount(new Swap())
     await router.isReady()
     app.mount('#app')
     installOffcanvasScrollGuard()
+
+// --- スプラッシュ制御 ---
+// --- スプラッシュ終了制御（mount後） ---
+const EXTRA_MS = 500; // 準備OKからの余白0.5s
+
+const finishSplash = () => {
+  // もう表示しようとしているタイマーがあれば止める
+  if (window.__splashShowTimer) {
+    clearTimeout(window.__splashShowTimer);
+    window.__splashShowTimer = null;
+  }
+  window.__splashDone = true;
+
+  // 本体をふわっと表示
+  const appEl = document.getElementById('app');
+  appEl?.classList.add('app-shown');
+  appEl?.classList.remove('app-hidden');
+
+  // スプラッシュをフェードアウト（出ていなければ出さずに消すでもOK）
+  const splash = document.getElementById('splash');
+  if (splash) {
+    // もしまだvisibleじゃなければ、いきなりhideでもOK
+    splash.classList.add('hide');
+    splash.addEventListener('transitionend', () => splash.remove(), { once: true });
+  }
+};
+
+setTimeout(finishSplash, EXTRA_MS);
+
+  
   })()

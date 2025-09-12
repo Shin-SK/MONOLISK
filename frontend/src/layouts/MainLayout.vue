@@ -7,15 +7,9 @@ import { api } from '@/api'
 import { openSidebar } from '@/utils/offcanvas'
 import dayjs from 'dayjs'
 import { useNow } from '@vueuse/core'
-import { useLoading } from '@/stores/useLoading'
-import PageLoader from '@/components/PageLoader.vue'
 import StaffSidebar from '@/components/sidebar/StaffSidebar.vue'
 import { useProfile } from '@/composables/useProfile'
-import Avatar from '@/components/Avatar.vue'
 import RefreshAvatar from '@/components/RefreshAvatar.vue'
-
-
-const loading = useLoading()
 
 
 /* stores / router */
@@ -81,7 +75,7 @@ async function logout () {
 
       <!-- staffなら #staffSidebar を開く -->
       <button v-if="isStaff"
-        class="nav-link"
+        class="nav-link bg-white rounded-cirle"
         data-bs-toggle="offcanvas" data-bs-target="#staffSidebar" aria-controls="staffSidebar">
         <IconMenu2 :size="24"/>
       </button>
@@ -112,7 +106,6 @@ async function logout () {
               </template>
             </Suspense>
           </router-view>
-          <PageLoader :active="useLoading().globalLoading" />
           <StaffSidebar v-if="isStaff" />
         </div>
       </div>

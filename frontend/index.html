@@ -21,9 +21,74 @@
           onload="this.onload=null;this.rel='stylesheet'">
     <noscript><link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;900&display=swap"></noscript>
+    <!-- スピナー -->
+    <link rel="preload" as="image" href="/img/logo.webp">
+    <link rel="preload" as="image" href="/img/name-app.webp">
+    <style>
+      #splash{
+        position:fixed; inset:0; z-index:2147483647;
+        display:flex; align-items:center; justify-content:center; flex-direction:column;
+        background:#f7f7f7;
+
+        /* デフォルトは非表示（最初の1秒は出さない） */
+        opacity:0; transform: translateY(8px) scale(.985); filter: blur(1.2px);
+        transition:
+          opacity   .60s cubic-bezier(.22,.61,.36,1),
+          transform .60s cubic-bezier(.22,.61,.36,1),
+          filter    .60s ease;
+      }
+      /* 1秒経っても終わってなければ表示 */
+      #splash.visible{
+        opacity:1; transform: translateY(0) scale(1); filter: blur(0);
+      }
+      /* 消すときはさらにふわっと */
+      #splash.hide{
+        opacity:0; transform: translateY(10px) scale(.98); filter: blur(1.6px);
+        pointer-events:none;
+      }
+
+      #splash .logo{ width:64px; height:64px; display:block; object-fit:contain; }
+      #splash .name{ margin-top:.5rem; width:80px; height:auto; }
+
+      @keyframes spinBackish {
+        0% { transform:rotate(0deg) }
+        60%{ transform:rotate(380deg) }
+        100%{ transform:rotate(360deg) }
+      }
+      #splash .logo{ animation:spinBackish 2.5s cubic-bezier(.175,.885,.32,1.275) infinite; }
+      @media (prefers-reduced-motion: reduce){
+        #splash, #splash.visible, #splash.hide{ transition:none }
+        #splash .logo{ animation:none }
+      }
+
+      /* app のふわっと入場はそのまま */
+      #app.app-hidden{ opacity:0; transform: translateY(2px); transition: opacity .36s ease, transform .36s ease; }
+      #app.app-shown { opacity:1; transform:none; }
+      @media (prefers-reduced-motion: reduce){
+        #app.app-hidden, #app.app-shown{ transition:none }
+      }
+    </style>
+    <script>
+      (function(){
+        window.__splashStart = performance.now();
+        const SHOW_AFTER = 2000; // 最初の1秒は出さない
+        function showIfStillLoading(){
+          if (window.__splashDone) return; // もう終わってたら出さない
+          const el = document.getElementById('splash');
+          el && el.classList.add('visible');
+        }
+        window.__splashShowTimer = setTimeout(showIfStillLoading, SHOW_AFTER);
+      })();
+    </script>
+
   </head>
   <body>
-    <div id="app"></div>
+    <!-- スピナー -->
+    <div id="splash">
+      <img class="logo" src="/img/logo.webp" alt="MONOLISK-icon">
+      <img class="name" src="/img/app-name.webp" alt="MONOLISK-name">
+    </div>
+    <div id="app" class="app-hidden"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
