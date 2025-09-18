@@ -25,7 +25,7 @@ const submit = async () => {
 
 <template>
   <div class="d-flex align-items-center justify-content-center">
-    <div class="container p-5" style="max-width:420px">
+    <div class="container bg-white p-5" style="max-width:420px">
       <h1 class="h4 mb-4 text-center">ログイン</h1>
 
       <!-- Enter で送信できるよう <form> を使う -->

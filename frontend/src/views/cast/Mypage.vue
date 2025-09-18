@@ -3,6 +3,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import RankingBlock from '@/components/RankingBlock.vue'
+import CastGoalsPanel from '@/components/cast/CastGoalsPanel.vue'
 import dayjs from 'dayjs'
 import {
   fetchBills,
@@ -15,11 +16,24 @@ import {
 } from '@/api'
 import { useUser } from '@/stores/useUser'
 import { yen } from '@/utils/money'
+import { useAuth } from '@/stores/useAuth'
 
 /* ---------- 自分中心：route.id が無ければ me.cast_id を使う ---------- */
 const route = useRoute()
 const userStore = useUser()
 const castId = ref(null)
+
+const auth = useAuth()
+const me = computed(() => auth.me)  // ストアが保持する現在ログインユーザー
+
+onMounted(async () => {
+  // 二重取得を避けたいなら、未取得時だけ叩く
+  if (!me.value) {
+    // ストアのメソッド名に合わせてどちらか
+    if (typeof auth.fetchMe === 'function') await auth.fetchMe()
+    else if (typeof auth.loadMe === 'function') await auth.loadMe()
+  }
+})
 
 async function resolveCastId() {
   // 1) URLに :id があればそれを優先
@@ -136,10 +150,59 @@ const salesBreakdown = computed(() => summary.value ? {
 } : null)
 
 /* ---------- 申請 ---------- */
-const form = reactive({ start:'', end:'' })
-function addDraft () { /* 既存のまま */ }
-function removeDraft(i){ /* 既存のまま */ }
-async function submitAll () { /* 既存のまま（castId.valueに置換） */ }
+const form = reactive({ start:'', end:'' })  // 'YYYY-MM-DDTHH:mm'（datetime-local）
+
+function addDraft () {
+  // 入力チェック
+  const s = String(form.start || '').trim()
+  const e = String(form.end   || '').trim()
+  if (!s || !e) { alert('開始と終了を入力してください'); return }
+  const start = dayjs(s)
+  const end   = dayjs(e)
+  if (!start.isValid() || !end.isValid()) { alert('日時の形式が不正です'); return }
+  if (end.isSameOrBefore(start)) { alert('終了は開始より後にしてください'); return }
+
+  // 下書きに追加（画面表示用：ローカル時刻のまま持つ）
+  draftShifts.value.push({
+    plan_start: start.toDate(),
+    plan_end  : end.toDate(),
+  })
+
+  // 入力欄リセット
+  form.start = ''
+  form.end   = ''
+}
+
+function removeDraft(i){
+  draftShifts.value.splice(i, 1)
+}
+
+const submitting = ref(false)
+async function submitAll () {
+  if (!draftShifts.value.length) return
+  if (!castId.value) { alert('キャストIDが未解決です'); return }
+  submitting.value = true
+  try {
+    // まとめてPOST（store_idはミドルウェアがX-Store-Idから補完する想定）
+    for (const d of draftShifts.value) {
+      await createCastShift({
+        cast_id   : castId.value,
+        // APIはISOを想定。datetime-localはローカル時刻なので toISOString() に変換。
+        plan_start: dayjs(d.plan_start).toISOString(),
+        plan_end  : dayjs(d.plan_end).toISOString(),
+      })
+    }
+    draftShifts.value = []
+    // 一覧を最新化
+    await loadShifts()
+    alert('申請を送信しました')
+  } catch (e) {
+    console.error('submitAll failed', e)
+    alert('申請に失敗しました')
+  } finally {
+    submitting.value = false
+  }
+}
 
 /* ---------- 監視 ---------- */
 watch([dateFrom,dateTo], () => { if (castId.value) { loadShifts(); loadSummary(); loadRankings() } })
@@ -175,7 +238,7 @@ function open(id) {
 </script>
 
 <template>
-  <div class="cast-mypage container-fluid mt-4 pb-5">
+  <div class="cast-mypage mt-4">
     <!-- ===== ヘッダ ===== -->
     <div class="d-flex align-items-center mb-4 gap-4">
       <Avatar :url="avatarUrl" :size="72" class="rounded-circle"/>
@@ -193,7 +256,7 @@ function open(id) {
     <!-- 次シフト & 今日売上 -->
     <div class="row g-3 mb-4">
       <div class="col-6">
-        <div class="card text-bg-light">
+        <div class="card">
           <div class="card-body">
             <h6 class="card-title mb-1">
               次のシフト
@@ -209,7 +272,7 @@ function open(id) {
         </div>
       </div>
       <div class="col-6">
-        <div class="card text-bg-light">
+        <div class="card">
           <div class="card-body">
             <h6 class="card-title mb-1">
               今日の売上
@@ -224,20 +287,27 @@ function open(id) {
     </div>
 
     <!-- タブ -->
-    <nav class="d-flex justify-content-around">
+    <nav class="d-flex justify-content-around bg-white">
       <a
         href="#"
         :class="{ active: activeTab === 'apply' }"
         @click.prevent="setTab('apply')"
       >
-        <IconCalendarPlus /><span>シフト申請</span>
+        <IconCalendarPlus /><span>申請</span>
       </a>
       <a
         href="#"
         :class="{ active: activeTab === 'list' }"
         @click.prevent="setTab('list')"
       >
-        <IconCalendarWeek /><span>シフト一覧</span>
+        <IconCalendarWeek /><span>一覧</span>
+      </a>
+      <a
+        href="#"
+        :class="{ active: activeTab === 'goals' }"
+        @click.prevent="setTab('goals')"
+      >
+        <IconTargetArrow /><span>目標</span>
       </a>
       <a
         href="#"
@@ -251,7 +321,7 @@ function open(id) {
         :class="{ active: activeTab === 'customers' }"
         @click.prevent="setTab('customers')"
       >
-        <IconFaceId /><span>顧客情報</span>
+        <IconFaceId /><span>顧客</span>
       </a>
     </nav>
 
@@ -319,7 +389,7 @@ function open(id) {
         <div class="d-flex justify-content-center mt-5">
           <button
             class="btn btn-primary"
-            :disabled="!draftShifts.length"
+            :disabled="!draftShifts.length || submitting"
             @click="submitAll"
           >
             {{ draftShifts.length }} 件まとめて申請
@@ -327,7 +397,10 @@ function open(id) {
         </div>
       </div>
     </div>
-
+    <div v-if="activeTab==='goals' && castId != null">
+      <!-- me は未ロード瞬間があるのでフォールバックを渡す -->
+      <CastGoalsPanel :cast-id="castId" :me="me || {}" />
+    </div>
     <!-- ▼ 自分のシフト一覧 -->
     <div v-if="activeTab === 'list'">
       <h4 class="mt-4 mb-2">
@@ -386,28 +459,24 @@ function open(id) {
     <!-- ▼ 売上 -->
     <div v-if="activeTab === 'sales'">
       <!-- ▼ 売上タブ用：期間フィルタ（スマホ向けにコンパクト） -->
-      <div class="d-flex align-items-center gap-2 mb-4">
-        <div>
+      <div class="row g-2 mb-4 align-items-center">
+        <div class="col-5">
           <input
             v-model="dateFrom"
             type="date"
-            class="form-control form-control-sm"
+            class="form-control form-control-sm bg-white"
           >
         </div>
-        <div>
-          〜
-        </div>
-        <div>
+        <div class="col-1 d-flex align-items-center justify-content-center">〜</div>
+        <div class="col-5">
           <input
             v-model="dateTo"
             type="date"
-            class="form-control form-control-sm"
+            class="form-control form-control-sm bg-white"
           >
         </div>
-        <!-- v-model 変更で自動再読込しているなら @click は不要。
-            明示的に押して更新したいなら loadSummary() を呼ぶ -->
         <button
-          class=""
+          class="col-1"
           @click="loadSummary"
         >
           <IconSearch />
@@ -504,28 +573,27 @@ function open(id) {
 
     <!-- ▼ お店からのお知らせ -->
     <div class="notice mt-5">
-      <h5>お店からのお知らせ</h5>
+      <div class="fs-5 fw-bold d-flex align-items-center justify-content-center gap-1 mb-1"><IconInfoCircle />お知らせ</div>
 
-      <ul v-if="notices.length" class="list-group mb-4">
-        <li
+      <div v-if="notices.length" class="mb-4 bg-white">
+        <div
           v-for="n in notices"
           :key="n.id"
-          class="list-group-item d-flex align-items-center justify-content-between"
+          class="d-flex align-items-center justify-content-between p-3"
         >
           <!-- ▼ ここをリンク化して NewsDetail へ -->
           <RouterLink
             :to="{ name: 'news-detail', params: { id: n.id } }"
-            class="text-decoration-none"
+            class="d-flex flex-column"
           >
+            <span class="text-muted small">
+              {{ dayjs(n.publish_at || n.created_at).format('YYYY/MM/DD') }}
+            </span>
             <span v-if="n.pinned" class="badge bg-warning text-dark me-2">PIN</span>
             <strong>{{ n.title || n.message || '(無題)' }}</strong>
           </RouterLink>
-
-          <span class="text-muted small ms-2">
-            {{ dayjs(n.publish_at || n.created_at).format('YYYY/MM/DD') }}
-          </span>
-        </li>
-      </ul>
+        </div>
+      </div>
 
       <p v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height: 200px;">
         現在お知らせはありません
@@ -534,18 +602,11 @@ function open(id) {
 
 
     <!-- ランキング -->
-    <div class="container mt-4">
-      <RankingBlock
-        v-if="monthlyRows.length"
-        label="月間ランキング"
-        :rows="monthlyRows"
-      />
-      <p
-        v-else
-        class="text-muted text-center"
-      >
-        集計されていません
-      </p>
+    <div class="mt-4">
+      <div class="fs-5 fw-bold d-flex align-items-center justify-content-center gap-1 mb-1">
+        <IconCrown />ランキング
+      </div>
+      <RankingBlock :rows="monthlyRows" />
     </div>
   </div>
 </template>

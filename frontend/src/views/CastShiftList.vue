@@ -86,7 +86,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="container-fluid mt-4">
+  <div class="mt-4">
     <table class="table table-bordered table-hover align-middle table-striped">
       <thead class="table-dark">
         <tr>

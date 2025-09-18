@@ -4,7 +4,6 @@ import { useRouter, useRoute } from 'vue-router'
 import { useUser } from '@/stores/useUser'
 import { fetchBills } from '@/api'
 import CastSidebar from '@/components/sidebar/CastSidebar.vue'
-import Avatar from '@/components/Avatar.vue'
 import { useCastEvents } from '@/stores/useCastEvents'
 import { useProfile } from '@/composables/useProfile'
 import RefreshAvatar from '@/components/RefreshAvatar.vue'
@@ -107,11 +106,12 @@ watch(() => route.fullPath, (p) => {
         <!-- 中央：自卓オーダー直行（伝票画面では非表示） -->
         <div class="position-absolute m-auto order-button" v-if="hasSelfOrder && !isOrderPage">
           <button
-            class="btn btn-link p-0 border-0"
+            class="btn btn-danger rounded-circle p-2 shadow fs-1 d-flex align-items-center jusify-content-center"
             @click="goOrder"
             aria-label="自卓オーダーへ"
           >
-            <IconFileInvoice size="60" stroke="1.5" class="text-white rounded-circle bg-danger p-3" />
+            <!-- ← アイコンの色は text-white (= stroke: #fff) -->
+            <IconFileInvoice :size="40" :stroke="1.5"/>
           </button>
         </div>
         <!-- 左：サイドバー -->
@@ -175,13 +175,10 @@ watch(() => route.fullPath, (p) => {
     .order-button{
       left: 0;
       right: 0;
-      bottom: 0;
+      bottom: 8px;
       margin: auto;
       width: fit-content;
-      .btn > svg {
-        border-radius: 9999px;
-        filter: drop-shadow(0 0px 5px rgba(0, 0, 0, 0.3))
-      }
+      color: white;
   }
 
   &.is-orderpage{

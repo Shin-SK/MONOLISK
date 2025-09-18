@@ -286,6 +286,10 @@ const form = reactive({
   settled_total: props.bill?.settled_total ?? (props.bill?.grand_total || 0),
 })
 
+/* ── メモ（SPと同じ運用：保存時に送る） ─────────── */
+const memoRef = ref(props.bill?.memo ?? '')
+watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
+
 /* ── 会計処理 ─────────────────────────── */
 
 const displayGrandTotal = computed(() => bill.value?.grand_total ?? 0)
@@ -317,6 +321,7 @@ async function confirmClose(){
     await api.patch(`billing/bills/${props.bill.id}/`, {
       paid_cash: form.paid_cash || 0,
       paid_card: form.paid_card || 0,
+      memo     : String(memoRef.value || ''),
     })
     await api.post(`billing/bills/${props.bill.id}/close/`, {
       settled_total: form.settled_total || displayGrandTotal.value,
@@ -658,6 +663,7 @@ async function save () {
         table_id    : form.table_id ?? null,
         opened_at   : form.opened_at ? dayjs(form.opened_at).toISOString() : null,
         expected_out: form.expected_out ? dayjs(form.expected_out).toISOString() : null,
+        memo        : String(memoRef.value || ''),
       })
       billId = created.id
       props.bill.id = billId
@@ -674,6 +680,7 @@ async function save () {
       await api.patch(`billing/bills/${billId}/`, {
         opened_at   : form.opened_at    ? dayjs(form.opened_at).toISOString()    : null,
         expected_out: form.expected_out ? dayjs(form.expected_out).toISOString() : null,
+        memo        : String(memoRef.value || ''),
       })
     }
 
@@ -1182,7 +1189,15 @@ watch(visible, v => { if (v) pane.value = 'base' })
                 受領合計: ¥{{ fmt(paidTotal) }} /
                 差額: <span :class="diffClass">¥{{ fmt(diff) }}</span>
               </div>
-
+               <!-- ▼ メモ（SP同等。保存 or 会計確定時に送信） -->
+               <div class="mt-3">
+                 <label class="form-label">メモ</label>
+                 <textarea
+                   class="form-control"
+                   rows="3"
+                   v-model="memoRef"
+                   placeholder="伝票メモ（備考）"></textarea>
+               </div>
               <div class="mt-3 d-flex gap-2">
                 <button class="btn btn-primary"
                         :disabled="closing || !canClose"

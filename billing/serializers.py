@@ -11,6 +11,7 @@ from datetime import date
 from .services import sync_nomination_fees
 from django.templatetags.static import static
 from django.utils import timezone
+from .models import CastGoal
 
 
 class StoreSerializer(serializers.ModelSerializer):
@@ -51,7 +52,7 @@ class BillMiniSerializer(serializers.ModelSerializer):
         model  = Bill
         fields = ['id', 'opened_at', 'closed_at', 
                   'grand_total','subtotal','table', 'expected_out',
-                  'table']
+                  'table', 'memo']
         
 class TableMiniSerializer(serializers.ModelSerializer):
     class Meta:
@@ -479,7 +480,7 @@ class BillSerializer(serializers.ModelSerializer):
         model = Bill
         fields = (
             # ---- 基本 ----
-            "id", "table", "table_id", "opened_at", "closed_at",
+            "id", "table", "table_id", "opened_at", "closed_at","memo",
             # ---- 金額 ----
             "subtotal", "service_charge", "tax", "grand_total", "total",
             "paid_cash","paid_card","paid_total","change_due",
@@ -1019,3 +1020,68 @@ class OrderTicketHistorySerializer(serializers.ModelSerializer):
         st = getattr(obj, 'taken_by_staff', None)
         u  = getattr(st, 'user', None)
         return getattr(u, 'username', None) or (st and f'ID:{st.pk}') or '-'
+
+
+
+
+class CastGoalSerializer(serializers.ModelSerializer):
+    # READ 専用の進捗フィールド
+    progress_value    = serializers.IntegerField(read_only=True)
+    progress_ratio    = serializers.FloatField(read_only=True)
+    progress_percent  = serializers.IntegerField(read_only=True)
+    hits              = serializers.ListField(child=serializers.IntegerField(), read_only=True)
+
+    # フロントの値 → モデルの choices へ
+    METRIC_ALIASES = {
+        'sales_amount'       : CastGoal.METRIC_REVENUE,
+        'champagne_revenue'  : CastGoal.METRIC_CHAMP_REVENUE,
+        'champagne_bottles'  : CastGoal.METRIC_CHAMP_COUNT,
+        'nominations_count'  : CastGoal.METRIC_NOMINATIONS,
+        'inhouse_count'      : CastGoal.METRIC_INHOUSE,
+    }
+
+    def validate_metric(self, value):
+        return self.METRIC_ALIASES.get(value, value)
+
+    class Meta:
+        model  = CastGoal
+        fields = (
+            'id', 'cast', 'metric', 'target_value',
+            'period_kind', 'start_date', 'end_date',
+            'active', 'milestones_hit',
+            'progress_value','progress_ratio','progress_percent','hits',
+            'created_at','updated_at',
+        )
+        read_only_fields = (
+            'cast','milestones_hit','created_at','updated_at',
+            'progress_value','progress_ratio','progress_percent','hits',
+        )
+
+    def validate(self, attrs):
+        cast = self.context.get('cast') or attrs.get('cast')
+        if not cast:
+            raise serializers.ValidationError('cast is required')
+        if attrs.get('target_value') is None or attrs.get('target_value') <= 0:
+            raise serializers.ValidationError({'target_value': 'must be positive'})
+
+        # 上限 10 件（active のみカウント）
+        if self.instance is None:
+            if CastGoal.objects.filter(cast=cast, active=True).count() >= 10:
+                raise serializers.ValidationError('active goals limit (10) exceeded')
+
+        # custom のときは start/end 必須
+        pk = attrs.get('period_kind') or getattr(self.instance, 'period_kind', CastGoal.PERIOD_DAILY)
+        s  = attrs.get('start_date')  or getattr(self.instance, 'start_date', None)
+        e  = attrs.get('end_date')    or getattr(self.instance, 'end_date', None)
+        if pk == CastGoal.PERIOD_CUSTOM and (not s or not e):
+            raise serializers.ValidationError({'start_date': 'required', 'end_date': 'required'})
+        return attrs
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        pr  = instance.progress()
+        rep['progress_value']   = pr['value']
+        rep['progress_ratio']   = round(pr['ratio'], 4)
+        rep['progress_percent'] = pr['percent']
+        rep['hits']             = pr['hits']
+        return rep

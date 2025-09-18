@@ -11,6 +11,11 @@ button{
 	@include flex();
 }
 
+.monst{
+	@include monsttera;
+	font-size: 1.3rem;
+}
+
 .cast-icon{
 	width: 24px;
 	height: 24px;
@@ -142,6 +147,14 @@ $tip-z    : 1000 !default;
 }
 .sidebar{
 	max-height: 100vh;
+	.nav-link{
+		@include flex();
+		border-radius: 50%;
+		aspect-ratio: 1/1;
+		width: 40px;
+		height: 40px;
+		font-size: 20px;
+	}
 }
 
 

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, toRef, watch } from 'vue'
+import { computed, ref, toRef, watch, nextTick } from 'vue'
 import BaseModal from '@/components/BaseModal.vue'
 import BasicsPanel from '@/components/panel/BasicsPanel.vue'
 import CastsPanelSP  from '@/components/spPanel/CastsPanelSP.vue'
@@ -9,7 +9,11 @@ import useBillEditor from '@/composables/useBillEditor'
 import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
 import { useRoles } from '@/composables/useRoles'
 /* ▼ 保存に必要なAPI */
-import { api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts, fetchBill, deleteBillItem, patchBillItemQty } from '@/api'
+import {
+  api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts,
+  fetchBill, deleteBillItem, patchBillItemQty,
+  createBill, patchBill,
+ } from '@/api'
 
 const { hasRole } = useRoles()
 const canProvisional = computed(() => hasRole(['manager','owner']))  // ← manager/ownerに限定
@@ -129,6 +133,23 @@ const targetTotal = computed(() => Number(settledTotalRef.value) || Number(displ
 const diff        = computed(() => paidTotal.value - targetTotal.value)
 const overPay     = computed(() => Math.max(0, diff.value))
 const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= targetTotal.value)
+const memoRef = ref(props.bill?.memo ?? '')
+const payRef = ref(null)
+
+
+// メモ
+watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
+
+// 既存の watch(visible, v => {...}) に1行追加（開いたタイミングで反映）
+watch(visible, v => {
+  if (!v) return
+  pane.value = 'base'
+  if (ed.showCustModal?.value) ed.showCustModal.value = false
+  if (ed.activeCustId?.value)  ed.activeCustId.value  = null
+  memoRef.value = props.bill?.memo ?? ''   // ★ 追加
+})
+
+
 
 // 履歴編集（±/削除）
 const incItem = async (it) => {
@@ -184,9 +205,13 @@ async function confirmClose(){
   if (closing.value || !props.bill?.id) return
   closing.value = true
   try{
+    await nextTick()
+    const memoStr = payRef.value?.getMemo?.() ?? ''   // ← ここで取得
+
     await api.patch(`billing/bills/${props.bill.id}/`, {
       paid_cash: Number(paidCashRef.value)||0,
       paid_card: Number(paidCardRef.value)||0,
+      memo: memoStr,                                   // ← これを送る
     })
     await api.post(`billing/bills/${props.bill.id}/close/`, {
       settled_total: Number(settledTotalRef.value)||Number(displayGrandTotal.value)||0,
@@ -200,43 +225,44 @@ async function confirmClose(){
 
 /* ▼ 保存ボタン */
 const saving = ref(false)
+// handleSave を置き換え
 const handleSave = async () => {
   if (saving.value) return
   saving.value = true
   try{
-    let billId = props.bill?.id || null
+    await nextTick()
+    const memoStr = payRef.value?.getMemo?.() ?? ''   // ← ここで取得
 
-    /* 1) 新規なら伝票作成＋顧客反映 */
+    let billId = props.bill?.id ?? null
+
     if (!ed.isNew.value) {
-      // 既存：卓変更だけ反映（必要なら）
       const currentTableId = props.bill.table?.id ?? props.bill.table ?? null
       if (ed.tableId.value !== currentTableId) {
         await updateBillTable(props.bill.id, ed.tableId.value)
       }
+      await patchBill(props.bill.id, { memo: memoStr })   // ← ここで保存
       billId = props.bill.id
     } else {
-      const { data: created } = await api.post('billing/bills/', {
+      const created = await createBill({
         table_id: ed.tableId.value ?? null,
-        // NOT NULL対策：現在時刻を必ず入れる（ISO）
         opened_at: new Date().toISOString(),
         expected_out: null,
+        memo: memoStr,                                     // ← 新規も同送
       })
       billId = created.id
-      // 顧客（選択済みなら反映）
+
       if ((props.bill.customers?.length ?? 0) > 0) {
         await updateBillCustomers(billId, props.bill.customers)
       }
-      // キャスト（選択済みなら反映）
       if (ed.mainIds.value.length || ed.inhouseIds.value.length || ed.freeIds.value.length) {
         await updateBillCasts(billId, {
-          nomIds:  [...ed.mainIds.value],
-          inIds:   [...ed.inhouseIds.value],
-          freeIds: [...ed.freeIds.value],
+          nomIds:[...ed.mainIds.value],
+          inIds:[...ed.inhouseIds.value],
+          freeIds:[...ed.freeIds.value],
         })
       }
     }
 
-    /* 2) pending の注文を確定 */
     for (const it of ed.pending.value) {
       await addBillItem(billId, {
         item_master: it.master_id,
@@ -246,7 +272,6 @@ const handleSave = async () => {
     }
     ed.pending.value = []
 
-    /* 3) 最新を取り直して親へ渡す */
     const fresh = await fetchBill(billId).catch(() => null)
     emit('saved', fresh || billId)
   }catch(e){
@@ -255,6 +280,7 @@ const handleSave = async () => {
     saving.value = false
   }
 }
+
 </script>
 
 <template>
@@ -329,15 +355,17 @@ const handleSave = async () => {
       @placeOrder="handleSave"
     />
 
+<!-- BillModal(SP/PC) の呼び出し差し替え -->
     <PayPanelSP
       v-show="pane==='pay'"
+      ref="payRef"
       :items="bill.items || []"
       :master-name-map="masterNameMap"
       :served-by-map="servedByMap"
       :bill-opened-at="bill.opened_at || ''"
       :current="payCurrent"
       :display-grand-total="displayGrandTotal"
-
+      :memo="props.bill?.memo || ''"
       :settled-total="settledTotalRef"
       :paid-cash="paidCashRef"
       :paid-card="paidCardRef"
@@ -357,6 +385,7 @@ const handleSave = async () => {
       @decItem="decItem"
       @deleteItem="removeItem"
     />
+
 
     <!-- 仮会計（manager/owner向け） -->
     <ProvisionalPanelSP

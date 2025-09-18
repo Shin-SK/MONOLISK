@@ -1,12 +1,43 @@
+<!-- src/views/CustomerPage.vue -->
 <script setup>
+import { ref } from 'vue'
 import CustomerPicker from '@/components/CustomerPicker.vue'
+import CustomerList from '@/views/CustomerList.vue' // 置き場所に合わせて調整
+
+// タブ状態
+const activeTab = ref('search')
+const setTab = (k) => { activeTab.value = k }
 </script>
 
 <template>
   <div class="container py-4">
     <h1 class="mb-4">顧客管理</h1>
 
-    <!-- 単独ページではそのまま使える -->
-    <CustomerPicker @saved="() => $toast?.success?.('保存しました')" />
+    <!-- シンプルなタブ -->
+    <nav class="nav nav-pills gap-2 mb-3">
+      <button
+        type="button"
+        class="btn"
+        :class="activeTab === 'search' ? 'btn-dark' : 'btn-outline-dark'"
+        @click="setTab('search')"
+      >
+        顧客検索
+      </button>
+      <button
+        type="button"
+        class="btn"
+        :class="activeTab === 'list' ? 'btn-dark' : 'btn-outline-dark'"
+        @click="setTab('list')"
+      >
+        顧客一覧
+      </button>
+    </nav>
+
+    <div v-if="activeTab === 'search'">
+      <CustomerPicker @saved="() => $toast?.success?.('保存しました')" />
+    </div>
+    <div v-else-if="activeTab === 'list'">
+      <CustomerList />
+    </div>
   </div>
 </template>

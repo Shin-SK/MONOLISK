@@ -145,7 +145,6 @@ onMounted(async ()=>{
 <template>
   <div
     class="container-fluid py-4"
-    style="max-width:640px"
   >
     <!-- ユーザー名（編集時は readonly） -->
     <div class="mb-3">
@@ -366,3 +365,11 @@ onMounted(async ()=>{
     </div>
   </div>
 </template>
+
+
+<style scoped>
+input{
+  background-color: white;
+}
+
+</style>

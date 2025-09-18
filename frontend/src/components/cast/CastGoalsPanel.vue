@@ -1,0 +1,413 @@
+<script setup>
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import dayjs from 'dayjs'
+import { listCastGoals, createCastGoal, deleteCastGoal } from '@/api'
+
+
+// 親から me を受け取り: { cast_id, ... } 想定（/api/me）
+const props = defineProps({
+  castId: { type: [Number, String], required: false }, 
+  me: { type: Object, required: false, default: () => ({}) },
+})
+
+// 状態
+const loading = ref(false)
+const saving  = ref(false)
+const goals   = ref([])            // サーバ側のゴール一覧
+const progressMap = ref({})        // goalId -> { value, percent, milestones:{50,80,90,100} }
+
+const showForm = ref(false)
+
+const resetForm = () => {
+  form.value = {
+    metric: 'sales_amount',
+    target_value: 50000,
+    period_from: dayjs().startOf('month').format('YYYY-MM-DD'),
+    period_to  : dayjs().endOf('month').format('YYYY-MM-DD'),
+  }
+}
+
+const isValid = computed(() => {
+  const t = Number(form.value.target_value) || 0
+  const f = form.value.period_from
+  const to = form.value.period_to
+  return t > 0 && f && to && dayjs(f).isSameOrBefore(dayjs(to))
+})
+
+// 安全に数値化 & フォールバック
+const resolvedCastId = computed(() => {
+  const direct = props.castId != null ? Number(props.castId) : NaN
+  if (Number.isFinite(direct)) return direct
+  const fromMe = props.me?.cast_id != null ? Number(props.me.cast_id) : NaN
+  return Number.isFinite(fromMe) ? fromMe : null
+})
+
+// 以降は resolvedCastId.value を必ず使う
+function assertCid() {
+  if (!resolvedCastId.value) throw new Error('castId not resolved')
+}
+
+// サーバ側の正規コードに合わせる（暫定マッピング）
+const METRIC_ALIAS_TO_SERVER = {
+  sales_amount:        'revenue',
+  nominations_count:   'nominations',
+  inhouse_count:       'inhouse',
+  champagne_revenue:   'champ_revenue',
+  champagne_bottles:   'champ_count',
+};
+
+// 作成フォーム
+const form = ref({
+  metric: 'sales_amount',
+  target_value: 50000,
+  period_from: dayjs().startOf('month').format('YYYY-MM-DD'),
+  period_to  : dayjs().endOf('month').format('YYYY-MM-DD'),
+})
+
+const metricOptions = [
+  { value:'sales_amount',        label:'売上金額(¥)' },
+  { value:'nominations_count',   label:'本指名 本数' },
+  { value:'inhouse_count',       label:'場内指名 本数' },
+  { value:'champagne_revenue',   label:'シャンパン売上(¥)' },
+  { value:'champagne_bottles',   label:'シャンパン本数' },
+]
+
+function fmtYen(n){ return '¥' + (Number(n)||0).toLocaleString() }
+
+// 進捗計算のメイン（できるだけ既存エンドポイントで集計）
+async function computeProgressForGoal(g){
+  const castId = resolvedCastId.value
+  if (!castId) return { value:0, percent:0, milestones:{50:false,80:false,90:false,100:false} }
+
+  // 期間
+  const df = g.start_date || g.period_from
+  const dt = g.end_date   || g.period_to
+
+  // データ取得（必要十分な粒度）
+  // /billing/cast-items/?cast=...&date_from=...&date_to=...
+  const items = await fetchCastItemDetails(castId, { date_from: df, date_to: dt, limit: 2000 })
+    .catch(() => [])
+
+  let val = 0
+  const wantCats = new Set(['champagne','original-champagne'])
+
+  for (const it of (Array.isArray(items) ? items : [])) {
+    const qty   = Number(it.qty || 0)
+    const money = Number(it.subtotal || 0)
+    const cat   = (it.category && (it.category.code || it.category)) || null
+    const isNom = it.is_nomination === true
+    const isIn  = it.is_inhouse    === true
+
+    switch (g.metric) {
+      case 'sales_amount':
+        val += money
+        break
+      case 'nominations_count':
+        // 指名本数： is_nomination の数量合計
+        val += isNom ? qty : 0
+        break
+      case 'inhouse_count':
+        // 場内指名本数： is_inhouse の数量合計
+        val += isIn ? qty : 0
+        break
+      case 'champagne_revenue':
+        if (cat && wantCats.has(cat)) val += money
+        break
+      case 'champagne_bottles':
+        if (cat && wantCats.has(cat)) val += qty
+        break
+    }
+  }
+
+  const target = Number(g.target_value || 0) || 0
+  const pct = target > 0 ? Math.min(100, Math.floor((val / target) * 100)) : (val > 0 ? 100 : 0)
+  return {
+    value: val,
+    percent: pct,
+    milestones: {
+      50 : pct >= 50,
+      80 : pct >= 80,
+      90 : pct >= 90,
+      100: pct >= 100,
+    }
+  }
+}
+
+async function refresh(){
+  loading.value = true
+  try{
+    const castId = resolvedCastId.value
+    if (!castId) { goals.value = []; progressMap.value = {}; return }
+    const list = await listCastGoals(castId)
+    goals.value = Array.isArray(list) ? list.slice(0, 50) : []
+
+    // サーバが返す進捗をそのまま使う
+    const map = {}
+    for (const g of goals.value) {
+      map[g.id] = {
+        value:   g.progress_value ?? 0,
+        percent: g.progress_percent ?? 0,
+        milestones: {
+          50 : (g.hits || []).includes(50),
+          80 : (g.hits || []).includes(80),
+          90 : (g.hits || []).includes(90),
+          100: (g.hits || []).includes(100),
+        }
+      }
+    }
+    progressMap.value = map
+  } finally {
+    loading.value = false
+  }
+}
+
+async function addGoal(){
+  if (saving.value) return
+  saving.value = true
+  try{
+	assertCid()
+  const castId = resolvedCastId.value
+  const created = await createCastGoal(castId, {
+    cast: castId,
+    metric: METRIC_ALIAS_TO_SERVER[form.value.metric] ?? form.value.metric,
+    target_value: Number(form.value.target_value) || 0,
+    period_kind: 'custom',
+    start_date: form.value.period_from,
+    end_date  : form.value.period_to,
+  })
+  // 即時に一番下へ
+  goals.value.push(created)
+  resetForm()
+  showForm.value = false
+  await nextTick()
+  document.getElementById(`goal-${created.id}`)?.scrollIntoView({ behavior:'smooth', block:'center' })
+  // 進捗はレスポンスの read-only を使う
+  progressMap.value[created.id] = {
+    value:   created.progress_value ?? 0,
+    percent: created.progress_percent ?? 0,
+    milestones: {
+      50:  (created.hits || []).includes(50),
+      80:  (created.hits || []).includes(80),
+      90:  (created.hits || []).includes(90),
+      100: (created.hits || []).includes(100),
+    },
+  }
+  }catch(e){
+    console.error('createCastGoal failed:', e?.response?.status, e?.response?.data || e)
+    alert('作成に失敗: ' + JSON.stringify(e?.response?.data || e?.message))
+  }finally{
+    saving.value = false
+  }
+}
+
+async function removeGoal(g){
+  if (!confirm('この目標を削除しますか？')) return
+  const castId = resolvedCastId.value
+  await deleteCastGoal(castId, g.id).catch(()=>{})
+  goals.value = goals.value.filter(x => x.id !== g.id)
+  delete progressMap.value[g.id]
+}
+
+onMounted(() => { if (resolvedCastId.value) refresh() })
+watch(resolvedCastId, (v, ov) => { if (v && v !== ov) refresh() })
+
+// 表示名＆アイコンの対応（サーバ正規コードに合わせている）
+const DISPLAY_META = {
+  revenue:        { name: '売上金額',       unit: '円',  icon: 'IconCurrencyYen' },
+  nominations:    { name: '本指名 本数',     unit: '本',  icon: 'IconUserStar'   },
+  inhouse:        { name: '場内指名 本数',   unit: '本',  icon: 'IconDoorEnter'  },
+  champ_revenue:  { name: 'シャンパン売上',   unit: '円',  icon: 'IconBottle'     },
+  champ_count:    { name: 'シャンパン本数',   unit: '本',  icon: 'IconBottle'     },
+}
+
+// ★ メトリック別の“表示用オブジェクト”を返す
+function goalView(g){
+  // g.metric はサーバ側の正規コード（revenue / nominations / ...）
+  const meta  = DISPLAY_META[g.metric] || { name: g.metric, unit: '', icon: 'IconTargetArrow' }
+  const money = (meta.unit === '円')
+
+  const s = g.start_date || g.period_from
+  const e = g.end_date   || g.period_to
+
+  const curVal = progressMap.value[g.id]?.value ?? 0
+  const pct    = progressMap.value[g.id]?.percent ?? 0
+  const hits   = progressMap.value[g.id]?.milestones || {} // {50:true,...}
+
+  const fmtTarget = money ? fmtYen(g.target_value) : `${g.target_value} ${meta.unit || ''}`.trim()
+  const fmtCurrent= money ? fmtYen(curVal)         : `${curVal} ${meta.unit || ''}`.trim()
+
+  return {
+    // タイトル部
+    label: meta.name,
+    icon : meta.icon,                       // <component :is="...">
+    // 期間
+    from : dayjs(s).format('YYYY/M/D'),
+    to   : dayjs(e).format('YYYY/M/D'),
+    // 値
+    targetPretty  : fmtTarget,
+    currentPretty : fmtCurrent,
+    percent       : pct,
+    hits,                                     // {50:true,80:true,...}
+  }
+}
+
+
+</script>
+
+<template>
+  <div>
+    <!-- 作成フォーム -->
+    <div class="form-area">
+      <!-- トグルボタン -->
+      <button
+        type="button"
+        class="btn btn-warning w-100 my-4"
+        @click="showForm = !showForm"
+        :aria-expanded="showForm ? 'true' : 'false'"
+        aria-controls="goal-create-panel"
+      >
+        {{ showForm ? '閉じる' : '新たに目標を追加' }}
+      </button>
+
+      <!-- ★ ここがアコーディオン部（v-show で開閉） -->
+      <div id="goal-create-panel" v-show="showForm" class="card border-0 shadow-sm">
+        <div class="card-body">
+          <!-- 指標 & 目標値 -->
+          <div class="row g-3 align-items-end">
+            <div class="col-12 col-md-4">
+              <label class="form-label">指標</label>
+              <select v-model="form.metric" class="form-select">
+                <option v-for="opt in metricOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </div>
+            <div class="col-12 col-md-8">
+              <label class="form-label">目標値</label>
+              <input
+                type="number"
+                min="0"
+                v-model.number="form.target_value"
+                class="form-control"
+                placeholder="例）50000"
+              />
+            </div>
+          </div>
+
+          <!-- 期間 -->
+          <div class="row g-3 align-items-end mt-1">
+            <div class="col-12 col-md-8">
+              <label class="form-label">期間</label>
+              <div class="input-group">
+                <input type="date" class="form-control" v-model="form.period_from" />
+                <span class="input-group-text">〜</span>
+                <input type="date" class="form-control" v-model="form.period_to" />
+              </div>
+            </div>
+          </div>
+
+          <!-- アクション -->
+          <div class="row g-3 mt-3">
+            <div class="col-6">
+              <button
+                type="button"
+                class="btn btn-primary w-100"
+                :disabled="saving || !isValid"
+                @click="addGoal"
+                title="追加"
+              >
+                <IconPlus class="me-1" /> 追加
+              </button>
+            </div>
+            <div class="col-6">
+              <button
+                type="button"
+                class="btn btn-outline-secondary w-100"
+                @click="resetForm"
+                title="クリア"
+              >
+                クリア
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+
+    <hr />
+
+    <!-- 一覧＆進捗 -->
+    <div v-if="loading">読み込み中…</div>
+    <div v-else-if="!goals.length">目標はまだありません</div>
+    <ul v-else class="list-unstyled">
+      <li v-for="g in goals" :key="g.id" :id="`goal-${g.id}`" class="mb-3">
+        <div class="card shadow-sm border-0">
+          <div class="card-body position-relative">
+            <div class="position-absolute end-0 top-0">
+              <button type="button" class="btn btn-sm text-danger" @click="removeGoal(g)">
+                <IconTrash class="" />
+              </button>
+            </div>
+
+            <!-- 見出し：アイコン + ラベル + 削除 -->
+            <div class="d-flex align-items-center gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold fs-5">{{ goalView(g).label }}</span>
+              </div>
+              <div class="wrap d-flex align-items-center small text-muted">
+                <IconCalendar class="me-1"/>
+                <div class="span">
+                  <span class="">{{ goalView(g).from }}</span>
+                  <span> 〜 </span>
+                  <span class="">{{ goalView(g).to }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 期間・目標・現在値 -->
+            <div class="d-flex gap-1 align-items-center mt-2">
+                <IconTargetArrow class="me-1" />
+                <div class="d-flex align-items-center gap-1">
+                  <span class="text-body">{{ goalView(g).targetPretty }}</span>/<span class="fs-4 fw-bold">{{ goalView(g).currentPretty }}</span>
+                </div>
+
+            </div>
+
+            <!-- 進捗バー -->
+            <div class="progress mt-2" style="height:10px;">
+              <div
+                class="progress-bar"
+                role="progressbar"
+                :style="{ width: goalView(g).percent + '%' }"
+                :aria-valuenow="goalView(g).percent" aria-valuemin="0" aria-valuemax="100">
+              </div>
+            </div>
+            <div class="mt-1 small text-end text-muted">
+              {{ goalView(g).percent }}%
+            </div>
+
+            <!-- マイルストーン -->
+            <!-- <div class="d-flex gap-2 mt-2">
+              <span class="badge" :class="goalView(g).hits[50]  ? 'bg-success' : 'bg-light text-muted'">50%</span>
+              <span class="badge" :class="goalView(g).hits[80]  ? 'bg-success' : 'bg-light text-muted'">80%</span>
+              <span class="badge" :class="goalView(g).hits[90]  ? 'bg-success' : 'bg-light text-muted'">90%</span>
+              <span class="badge" :class="goalView(g).hits[100] ? 'bg-success' : 'bg-light text-muted'">100%</span>
+            </div> -->
+          </div>
+        </div>
+      </li>
+    </ul>
+
+    <div class="d-flex justify-content-end">
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary"
+        @click="refresh"
+      >
+        <IconRefresh />
+      </button>
+    </div>
+  </div>
+</template>

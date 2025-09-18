@@ -40,6 +40,12 @@ from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales, sync_nomination_fees
 from billing.utils.customer_log import log_customer_change
 
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework import status
+from .models import CastGoal
+from .serializers import CastGoalSerializer
+
 
 # ────────────────────────────────────────────────────────────────────
 # 共通: ユーザーがアクセスできる店舗IDの集合を得る
@@ -67,6 +73,24 @@ def user_store_ids(user):
         ids.add(sid)
 
     return ids
+
+
+def _can_edit_cast_goals(user, cast):
+    # Cast本人 or（必要なら）店舗の mgr/submgr を許可
+    if getattr(user, 'is_superuser', False):
+        return True
+    if getattr(cast, 'user_id', None) and user.id == cast.user_id:
+        return True
+    staff = getattr(user, 'staff', None)
+    if staff and getattr(staff, 'role', None) in ('mgr', 'submgr'):
+        try:
+            return staff.stores.filter(id=cast.store_id).exists()
+        except Exception:
+            return True
+    return False
+
+
+
 
 class CacheListMixin:
 	@method_decorator(cache_page(60 * 10))            # ← 10分(=600秒)
@@ -329,6 +353,67 @@ class CastViewSet(CacheListMixin, StoreScopedModelViewSet):
     serializer_class = CastSerializer
     permission_classes = [permissions.IsAuthenticated]
     filterset_fields = ["user__is_active", "stage_name", "user__username"]
+
+    @action(detail=True, methods=['get','post'], url_path='goals')
+    def goals(self, request, pk=None):
+        """
+        GET  /billing/casts/{id}/goals/       : 目標一覧（active=1/0 フィルタ可）
+        POST /billing/casts/{id}/goals/       : 目標作成
+        """
+        cast = self.get_object()
+
+        if request.method == 'GET':
+            qs = cast.goals.all().order_by('-active','-updated_at','-created_at')
+            active = request.query_params.get('active')
+            if active in ('0','1','true','false','True','False'):
+                qs = qs.filter(active=active in ('1','true','True'))
+            ser = CastGoalSerializer(qs, many=True)
+            return Response(ser.data)
+
+        # POST
+        if not _can_edit_cast_goals(request.user, cast):
+            return Response({'detail':'forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        data = request.data.copy()
+        data.pop('cast', None)  # URLで束縛
+        ser = CastGoalSerializer(data=data, context={'cast': cast})
+        if ser.is_valid():
+            obj = ser.save(cast=cast)
+            # 必要ならここで obj.record_new_hits() を呼んで通知発火へ
+            return Response(CastGoalSerializer(obj).data, status=status.HTTP_201_CREATED)
+        return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get','patch','delete'], url_path=r'goals/(?P<goal_id>\d+)')
+    def goal_detail(self, request, pk=None, goal_id=None):
+        """
+        GET    /billing/casts/{id}/goals/{goal_id}/
+        PATCH  /billing/casts/{id}/goals/{goal_id}/   （target/period/active の軽微な更新のみ）
+        DELETE /billing/casts/{id}/goals/{goal_id}/   （archive：active=False）
+        """
+        cast = self.get_object()
+        try:
+            goal = cast.goals.get(pk=goal_id)
+        except CastGoal.DoesNotExist:
+            return Response({'detail':'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'GET':
+            return Response(CastGoalSerializer(goal).data)
+
+        if not _can_edit_cast_goals(request.user, cast):
+            return Response({'detail':'forbidden'}, status=status.HTTP_403_FORBIDDEN)
+
+        if request.method == 'DELETE':
+            goal.active = False
+            goal.save(update_fields=['active','updated_at'])
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        # PATCH
+        allowed = {'target_value','period_kind','start_date','end_date','active'}
+        payload = {k:v for k,v in request.data.items() if k in allowed}
+        ser = CastGoalSerializer(goal, data=payload, partial=True, context={'cast': cast})
+        if ser.is_valid():
+            obj = ser.save()
+            return Response(CastGoalSerializer(obj).data)
+        return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CastPayoutListView(generics.ListAPIView):

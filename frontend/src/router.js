@@ -7,6 +7,7 @@ import { useUser } from '@/stores/useUser'
 import MainLayout from '@/layouts/MainLayout.vue'
 import CastLayout from '@/layouts/CastLayout.vue'
 import OwnerLayout from '@/layouts/OwnerLayout.vue'
+import ManagerLayout from '@/layouts/ManagerLayout.vue'
 
 import { useRoles } from '@/composables/useRoles'
 
@@ -51,7 +52,7 @@ const routes = [
 
   {
     path: '/settings',
-    component: MainLayout,
+    component: ManagerLayout,
     meta: { requiresAuth: true, adminOnly: true, title: '設定' },
     children: [
       {
@@ -115,6 +116,71 @@ const routes = [
     ]
   },
 
+  // ---------- マネージャー ---------- //
+  {
+    path: '/manager',
+    component: ManagerLayout,
+    meta: { rolesAny: ['manager','superuser'], title: 'MANAGER' },
+    children: [
+      { path: '', redirect: { name: 'mng-dashboard' } },
+      { path: 'dashboard', name: 'mng-dashboard', component: () => import('@/views/manager/ManagerDashboard.vue'), meta:{ rolesAny: ['manager','superuser'], title:'DASHBOARD' } },
+
+      { path: 'bill', name:'mng-bill-table', component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'BILL-TABLE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+      { path: 'bill/list', name:'mng-bill-list', component: () => import('@/views/DashboardList.vue'),  meta: { title: 'BILL-LIST', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+      { path: 'bill/timeline', name:'mng-bill-tl', component: () => import('@/views/DashboardGantt.vue'), meta: { title: 'BILL-TIMELINE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+
+      { path: 'profile', name: 'mng-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ rolesAny:['manager'], title:'プロフィール編集' } },
+      { path: 'pl/daily',  name:'mng-pl-daily',  component: () => import('@/views/BillPLDaily.vue'),   meta: { title: '売上-日次', rolesAny: ['owner','superuser'], requiresAuth:true } },
+      { path: 'pl/Monthly', name:'mng-pl-monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次', rolesAny: ['owner','superuser'], requiresAuth:true } },
+      { path: 'pl/yearly', name:'mng-pl-yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次', rolesAny: ['owner','superuser'], requiresAuth:true } },
+
+      //★以下もmng-って感じのnameをつけて、各種リンクに貼っていく
+
+      { path: 'cast-sales', name:'mng-cast-sales', component: () => import('@/views/CastSalesList.vue'),   meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
+      { path: 'cast-sales/:id',    component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail', meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
+      { path: 'cast-shift', name:'mng-cast-shift' ,component: () => import('@/views/CastShiftList.vue'),   props: true, meta: { title: 'シフト管理' } },
+      { path: 'cast-shift/:id(\\d+)/shifts', name:'mng-cast-shift-detail', component: () => import('@/views/CastShiftPage.vue'), props: true , meta: { title: 'シフト管理' } },
+
+      { path: 'ranking', name:'mng-ranking',  component: () => import('@/views/CastRanking.vue'),        props: true, meta: { title: 'ランキング',    requiresAuth: true, adminOnly: true } },
+      { path: 'table', name:'mng-tables', component: () => import('@/components/BillListTable.vue'), props: true, meta: { title: 'テーブルビュー', requiresAuth: true, adminOnly: true }},
+      { path: 'customers', name:'mng-customers', component: () => import('@/views/CustomerPage.vue'),       props: true, meta: { title: '顧客情報',      requiresAuth: true, adminOnly: true }},
+      
+      {
+        path: 'customers/:id(\\d+)',
+        name: 'customer-detail',
+        component: () => import('@/views/CustomerForm.vue'),
+        props: true,
+        meta: { title: '顧客編集', requiresAuth: true, adminOnly: true }
+      },
+      { path: 'staff/:id(\\d+)', redirect: to => ({ name: 'settings-staff-form', params: { id: to.params.id } }) },
+      { path: 'staffs/new',      redirect: { name: 'settings-staff-new' } },
+      { path: 'casts/:id(\\d+)', redirect: to => ({ name: 'settings-cast-form', params: { id: to.params.id } }) },
+      { path: 'casts/new',       redirect: { name: 'settings-cast-new' } },
+
+    {
+      path: 'kds/kitchen',
+      name: 'mng-kds-kitchen',
+      alias: ['/kds/kitchen'],             // ← 互換
+      component: () => import('@/views/KDSStation.vue'),
+      meta: { title: 'KDS Kitchen', requiresAuth: true, kds: true }
+    },
+    {
+      path: 'kds/drinker',
+      name: 'mng-kds-drinker',
+      alias: ['/kds/drinker'],             // ← 互換
+      component: () => import('@/views/KDSStation.vue'),
+      meta: { title: 'KDS Drinker', requiresAuth: true, kds: true }
+    },
+    {
+      path: 'kds/dishup',
+      name: 'mng-kds-dishup',
+      alias: ['/kds/dishup'],              // ← 互換
+      component: () => import('@/views/KDSDishup.vue'),
+      meta: { title: 'KDS Deshap', requiresAuth: true, kds: true }
+    },
+
+    ]
+  },
 
 
   // ---------- その他認証系 ---------- //

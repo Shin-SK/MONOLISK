@@ -14,6 +14,14 @@ const showModal   = ref(false)          // モーダル開閉フラグ
 const currentBill = ref(null)          // モーダルに渡す 1 伝票
 const selectedIds = ref(new Set())     // 一覧チェック用
 
+// 追加：メモ展開中の bill.id を保持
+const openMemoId = ref(null)
+const toggleMemo = (id) => {
+	openMemoId.value = (openMemoId.value === id ? null : id)
+}
+const hasMemo = (b) => !!(b?.memo && String(b.memo).trim())
+
+
 /* ───── 初回ロード ───── */
 onMounted(() => bills.loadAll())
 
@@ -230,6 +238,7 @@ function liveCasts (b) {
           <col style="width: 300px">   <!-- ★ キャスト：残り全部 -->
           <col style="width: 160px">  <!-- 小計 -->
           <col style="width: 160px">  <!-- 合計 -->
+          <col style="width: 40px">  <!-- 合計 -->
         </colgroup>
         <thead>
           <tr>
@@ -261,6 +270,9 @@ function liveCasts (b) {
             <th class="text-end">
               合計
             </th>
+            <th>
+              メモ
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -274,7 +286,7 @@ function liveCasts (b) {
               class="bg-light"
             >
               <td
-                :colspan="10"
+                :colspan="11"
                 class="text-start fw-bold"
               >
                 {{ b.opened_at ? dayjs(b.opened_at).format('YYYY/MM/DD(ddd)') : '日付未定' }}
@@ -350,6 +362,21 @@ function liveCasts (b) {
               <td class="text-end">
                 {{ (b.settled_total ?? (b.closed_at ? b.total : b.grand_total)).toLocaleString() }}
               </td>
+              <td class="memo">
+                <button
+                  v-if="hasMemo(b)"
+                  type="button"
+                  class=""
+                  @click.stop="toggleMemo(b.id)"
+                  aria-expanded="openMemoId===b.id"
+                >
+                  <IconNote :size="32"/>
+                </button>
+                <div class="area" v-if="openMemoId===b.id">
+                  <div class="memo-text">{{ b.memo }}</div>
+                  <button class="close-btn" @click.stop="openMemoId=null"><IconX /></button>
+                </div>
+              </td>
             </tr>
           </template>
         </tbody>
@@ -401,6 +428,36 @@ tr.main td{
   }
   .past{
     margin: auto !important;
+  }
+}
+
+.memo{
+  position: relative;
+  .area{
+    position: absolute;
+    right: calc(100% + 8px);  /* ← セルの左側へ 8px ずらして展開 */
+    top: 50%;
+    transform: translateY(-50%);  /* 中央揃え */
+    z-index: 10;
+
+    display: inline-block;
+    width: max-content;            /* 内容に合わせて伸びる */
+    max-width: min(60vw, 480px);   /* ただし上限は縛る */
+    padding: 16px;
+    background: #fff;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    box-shadow: 0 8px 18px rgba(0,0,0,.08);
+    min-height: 100px;
+
+    /* テキスト折返し設定（これだけでOK） */
+    white-space: pre-wrap;       /* 改行を保持しつつ折返し可 */
+    overflow-wrap: anywhere;     /* 長い単語も折る */
+    .close-btn{
+      position: absolute;
+      top: 0;
+      right: 0;
+    }
   }
 }
 

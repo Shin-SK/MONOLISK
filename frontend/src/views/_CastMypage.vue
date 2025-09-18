@@ -3,6 +3,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import RankingBlock from '@/components/RankingBlock.vue'
+import CastGoalsPanel from '@/components/cast/CastGoalsPanel.vue'
 import dayjs from 'dayjs'
 import {
   fetchBills,
@@ -15,8 +16,21 @@ import {
 } from '@/api'
 import { useUser } from '@/stores/useUser'
 import { yen } from '@/utils/money'
+import { useAuth } from '@/stores/useAuth'
 
 /* ---------- パラメータ ---------- */
+const auth = useAuth()
+const me = computed(() => auth.me)  // ストアが保持する現在ログインユーザー
+
+onMounted(async () => {
+  // 二重取得を避けたいなら、未取得時だけ叩く
+  if (!me.value) {
+    // ストアのメソッド名に合わせてどちらか
+    if (typeof auth.fetchMe === 'function') await auth.fetchMe()
+    else if (typeof auth.loadMe === 'function') await auth.loadMe()
+  }
+})
+
 const { params:{ id } } = useRoute()
 const castId = Number(id)
 if (Number.isNaN(castId)) {
@@ -238,6 +252,13 @@ onMounted(loadAll)
       </a>
       <a
         href="#"
+        :class="{ active: activeTab === 'goals' }"
+        @click.prevent="setTab('goals')"
+      >
+        <IconRosetteDiscountCheck /><span>売上目標</span>
+      </a>
+      <a
+        href="#"
         :class="{ active: activeTab === 'sales' }"
         @click.prevent="setTab('sales')"
       >
@@ -379,7 +400,9 @@ onMounted(loadAll)
         </div>
       </div>
     </div>
-
+    <div v-if="activeTab === 'goals'">
+      <CastGoalsPanel :me="me" />
+    </div>
     <!-- ▼ 売上 -->
     <div v-if="activeTab === 'sales'">
       <!-- ▼ 売上タブ用：期間フィルタ（スマホ向けにコンパクト） -->

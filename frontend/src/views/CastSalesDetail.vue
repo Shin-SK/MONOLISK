@@ -23,7 +23,10 @@ const shifts  = ref([])   // 勤務シフト
 
 /* ---------- 取得 ---------- */
 async function load () {
-  const params = { from: dateFrom.value, to: dateTo.value }
+  const params = {
+    date_from: dateFrom.value,
+    date_to:   dateTo.value
+  }
   ;[payouts.value, items.value, shifts.value] = await Promise.all([
     fetchCastSalesDetail(id, params),
     fetchCastItemDetails(id, params),
@@ -63,27 +66,28 @@ const detailMap = computed(() => {
 
 <template>
   <div class="container-fluid">
+    <h4 class="my-3 fw-bold text-center">
+      {{ castName }}さんの売上
+    </h4>
     <div class="d-flex justify-content-between align-items-end">
-      <h4 class="mb-3">
-        {{ castName }}さんの売上
-      </h4>
+
 
       <!-- 期間指定 -->
-      <div class="d-flex align-items-end gap-2 mb-3">
+      <div class="d-flex align-items-end gap-2 mb-1 justify-content-end w-100">
         <div>
-          <label class="form-label">開始日</label>
+          <label class="form-label mb-0">開始日</label>
           <input
             v-model="dateFrom"
             type="date"
-            class="form-control"
+            class="form-control bg-white"
           >
         </div>
         <div>
-          <label class="form-label">終了日</label>
+          <label class="form-label mb-0">終了日</label>
           <input
             v-model="dateTo"
             type="date"
-            class="form-control"
+            class="form-control bg-white"
           >
         </div>
         <button
@@ -100,7 +104,7 @@ const detailMap = computed(() => {
       <thead class="table-dark">
         <tr>
           <th class="text-center">
-            T
+            <IconPinned />
           </th>
           <th />
           <th />

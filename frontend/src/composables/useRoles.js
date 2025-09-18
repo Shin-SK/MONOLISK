@@ -26,8 +26,8 @@ export function useRoles() {
     switch (role.value) {
       case 'cast':    return '/cast/mypage'
       case 'owner':   return '/owner/dashboard'
-      case 'staff':
-      case 'manager': return '/dashboard'
+      case 'staff':   return '/staff/mypage'
+      case 'manager': return '/manager/dashboard'
       default:        return '/dashboard'
     }
   }

@@ -17,7 +17,7 @@ const barW     = r => `${(r.revenue / max.value * 100).toFixed(0)}%`
 
 
 // ★ 各順位ごとのアバターサイズ（px）
-const sizeByRank = [240, 200, 160]        // 1位,2位,3位
+const sizeByRank = [160, 150, 140]        // 1位,2位,3位
 const avatarSize = i => sizeByRank[i]  // helper
 
 //  メダル SVG の絶対パスを返すヘルパ
@@ -26,7 +26,6 @@ const medalSrc = i => `/img/rank-no${i + 1}.svg`
 
 <template>
   <div class="ranking-block">
-    <h5>{{ label }}</h5>
 
     <!-- ─── 1-3 位 ─────────────────────── -->
     <div
@@ -87,7 +86,7 @@ const medalSrc = i => `/img/rank-no${i + 1}.svg`
 
     <!-- 4 位以下データ無し -->
     <div
-      v-else
+      v-if="!topThree.length && !others.length"
       class="others-empty text-muted p-3 d-flex align-items-center justify-content-center flex-fill"
     >
       集計されていません

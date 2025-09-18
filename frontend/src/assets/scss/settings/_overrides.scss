@@ -1,9 +1,18 @@
 // _overrides.scss
 @use "@/assets/scss/global/tokens" as *;
 
+:root { 
+  --safe-top: env(safe-area-inset-top, 0px); 
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --bs-body-bg: var(--bs-light);
+}
+
+
 .form-control{
 	padding: 8px;
   height: 40px;
+  border: unset;
 }
 
 .table-striped-even {
@@ -68,11 +77,7 @@ input[type="number"]{
 	appearance: textfield; /* 標準 */
 }
 
-:root { 
-  --safe-top: env(safe-area-inset-top, 0px); 
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-left: env(safe-area-inset-left, 0px);
-}
+
 
 @media (display-mode: standalone) {
   .sidebar, .sp-footer, .cast-footer {
@@ -126,3 +131,26 @@ input[type="number"]{
   }
 }
 
+img, svg {
+    vertical-align: middle;
+    width: auto;
+    height: auto;
+}
+
+
+//card系
+.card{
+  --bs-card-bg: white;
+  --bs-card-border-width: 0;
+  // --bs-card-cap-bg: rgba(var(--bs-black-rgb), .01);
+  --bs-card-cap-bg: white;
+}
+
+.card-header{
+  --bs-card-border-width: 1px;
+}
+
+
+.table-light{
+  --bs-table-bg: white;
+}

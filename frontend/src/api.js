@@ -89,13 +89,17 @@ export const fetchBills   = (params={}) =>
   api.get('billing/bills/', { params }).then(r=>r.data)
 
 export const fetchBill    = id      => api.get(`billing/bills/${id}/`).then(r=>r.data)
-// src/api.js
-export const createBill = (arg) => {
-	const payload = typeof arg === 'number'
-		? { table_id: arg }
-		: (arg?.table_id ? arg : { table_id: arg?.table })
-	return api.post('billing/bills/', payload).then(r => r.data)
+export const createBill = (arg = {}) => {
+	const payload = (typeof arg === 'number') ? { table_id: arg } : { ...arg }
+	const body = {
+		table_id    : payload.table_id ?? payload.table ?? null,
+		opened_at   : payload.opened_at,               // 任意
+		expected_out: payload.expected_out ?? null,    // 任意
+		...(payload.memo != null ? { memo: String(payload.memo) } : {}),
+	}
+	return api.post('billing/bills/', body).then(r => r.data)
 }
+
 
  export const deleteBill = id =>
    api.delete(`billing/bills/${id}/`)
@@ -109,6 +113,11 @@ export const addBillItem  = (id,p)  =>
 export const fetchMasters = () => api.get('billing/item-masters/').then(r=>r.data)
 
 export const fetchCasts   = () => api.get('billing/casts/').then(r => r.data.results ?? r.data)
+
+// 追記：メモだけ更新
+export const updateBillMemo = (id, memo) =>
+  api.patch(`billing/bills/${id}/`, { memo: String(memo ?? '') }).then(r => r.data)
+
 
 /**
  * 指名／場内／フリーの配列をまとめて PATCH
@@ -221,9 +230,18 @@ export const fetchCastSalesDetail = (castId, params = {}) =>
     params: { cast: castId, ...params }
   }).then(r => r.data)
 
+// キーの正規化: from/to を date_from/date_to へ
+const _normalizeRange = (p = {}) => {
+  const out = { ...p }
+  if (out.from && !out.date_from) out.date_from = out.from
+  if (out.to   && !out.date_to)   out.date_to   = out.to
+  delete out.from; delete out.to
+  return out
+}
+
 export const fetchCastItemDetails = (castId, params = {}) =>
-  api.get('billing/cast-items/', {
-    params: { cast: castId, ...params }
+  api.get('billing/cast-item-details/', {
+    params: { cast: castId, ..._normalizeRange(params) }
   }).then(r => r.data)
 
 /**
@@ -400,6 +418,38 @@ export const fetchCustomer = id =>
 export const fetchCustomers = (params = {}) =>
   api.get('billing/customers/', { params }).then(r => r.data)
 
+// 検索（名前・電話）
+export const searchCustomers = (q = '') =>
+  api.get('billing/customers/', {
+    params: q
+      ? { q }
+      : { ordering: '-id', limit: 50 }   // ← 何も入力されてなければ最新50件
+  }).then(r => r.data?.results ?? r.data ?? []);
+
+// 新規作成（最低限のフィールドだけマップ）
+export const createCustomer = (payload = {}) => {
+  const body = {
+    full_name: payload.name  ?? '',
+    phone    : payload.phone ?? '',
+    memo     : payload.memo  ?? '',
+    // バックエンドの Customer には addresses 無いので無視
+  };
+  return api.post('billing/customers/', body).then(r => r.data);
+};
+
+export const updateCustomer = (id, payload = {}) => {
+  const body = {
+    full_name: payload.full_name ?? payload.name ?? '',
+    phone    : payload.phone     ?? '',
+    memo     : payload.memo      ?? '',
+    alias    : payload.alias     ?? '',
+    birthday : payload.birthday  ?? null,
+  };
+  return api.patch(`billing/customers/${id}/`, body).then(r => r.data);
+};
+
+export const deleteCustomer = id =>
+  api.delete(`billing/customers/${id}/`);
 
 
 /* ---------- Store Notices (店舗ニュース) ---------- */
@@ -523,6 +573,43 @@ export const fetchBillItems = (params = {}) =>
   api.get('billing/cast-item-details/', { params }).then(r => r.data)
 
 
+// --- Cast Goals (キャスト本人の目標) -----------------------------
+
+/**
+ * 一覧取得
+ * GET /billing/casts/{castId}/goals/
+ */
+export const listCastGoals = (castId, { active = true } = {}) =>
+  api.get(`billing/casts/${castId}/goals/`, {
+    params: active == null ? {} : { active: active ? 1 : 0 },
+    // ゴールは最新状態が大事なのでキャッシュ無効
+    cache: false,
+  }).then(r => r.data);
+
+/**
+ * 作成
+ * POST /billing/casts/{castId}/goals/
+ * payload 例:
+ * {
+ *   metric: 'sales_amount' | 'nominations_count' | 'inhouse_count' | 'champagne_revenue' | 'champagne_bottles',
+ *   target_value: number,
+ *   period_from: 'YYYY-MM-DD',
+ *   period_to:   'YYYY-MM-DD'
+ * }
+ */
+export const createCastGoal = (castId, payload) =>
+  api.post(`billing/casts/${castId}/goals/`, payload, { cache: false }).then(r => r.data);
+
+/**
+ * 削除(アーカイブでもOK。サーバ側が is_archived を立てる実装なら PATCH に差し替え)
+ * DELETE /billing/casts/{castId}/goals/{goalId}/
+ */
+export const deleteCastGoal = (castId, goalId) =>
+  api.delete(`billing/casts/${castId}/goals/${goalId}/`, { cache: false });
+
+
+
+
 // ───────── Stores (Switcher用) ─────────
 export const listMyStores = () =>
 	api.get('billing/stores/my/').then(r => r.data)
@@ -538,3 +625,6 @@ export const switchStore = async (sid) => {
 
 
 if (import.meta.env.DEV) window.__API__ = api
+
+
+

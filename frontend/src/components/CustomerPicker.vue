@@ -84,7 +84,7 @@ async function save () {
         v-model="kw"
         @keyup.enter="search"
         placeholder="顧客検索"
-        class="form-control"
+        class="form-control bg-white"
       />
       <div class="d-flex align-items-center gap-1 position-absolute top-0 end-0 bottom-0" style="z-index: 10;">
         <button 

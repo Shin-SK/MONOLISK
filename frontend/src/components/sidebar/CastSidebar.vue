@@ -34,7 +34,7 @@ async function logout() {
     </div>
 
     <div class="aside offcanvas-body d-flex flex-column justify-content-between v-100">
-      <div class="wrap d-flex flex-column gap-4">
+      <div class="wrap d-flex flex-column gap-1">
         <RouterLink class="btn w-100 d-flex justify-content-start" :to="{name: 'cast-mypage'}">
           マイページ
         </RouterLink>

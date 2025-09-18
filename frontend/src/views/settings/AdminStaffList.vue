@@ -122,3 +122,12 @@ onMounted(fetchList)
     </table>
   </div>
 </template>
+
+
+<style scoped>
+
+input{
+  background-color: white;
+}
+
+</style>

@@ -8,13 +8,14 @@ from django.db import models, transaction
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from cloudinary.models import CloudinaryField
-from django.db.models import Sum, Q
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from datetime import timedelta
 from django.db.models.signals import post_save
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db.models import Sum, Q, F, IntegerField, ExpressionWrapper
+
 
 User = get_user_model()
 
@@ -294,6 +295,8 @@ class Bill(models.Model):
     )
     nominated_casts = models.ManyToManyField('billing.Cast', blank=True, related_name='nominated_bills')
 
+    memo = models.TextField('メモ', blank=True, default='')
+    
     subtotal = models.PositiveIntegerField(default=0)
     service_charge = models.PositiveIntegerField(default=0)
     tax = models.PositiveIntegerField(default=0)
@@ -897,3 +900,165 @@ class OrderTicket(models.Model):
         self.taken_at = now
         self.archived_at = now
 
+
+# billing/models.py （末尾あたりに追加）
+from django.db import models
+from django.db.models import Sum, Q
+from django.utils import timezone
+try:
+    from django.db.models import JSONField  # Django 3.1+
+except Exception:
+    from django.contrib.postgres.fields import JSONField
+
+class CastGoal(models.Model):
+    # 指標
+    METRIC_REVENUE       = 'revenue'          # 売上金額（担当分）
+    METRIC_NOMINATIONS   = 'nominations'      # 本指名本数
+    METRIC_INHOUSE       = 'inhouse'          # 場内指名本数
+    METRIC_CHAMP_REVENUE = 'champ_revenue'    # シャンパン売上（通常＋オリジナル）
+    METRIC_CHAMP_COUNT   = 'champ_count'      # シャンパン本数（通常＋オリジナル）
+
+    METRIC_CHOICES = [
+        (METRIC_REVENUE,       '売上金額'),
+        (METRIC_NOMINATIONS,   '本指名本数'),
+        (METRIC_INHOUSE,       '場内指名本数'),
+        (METRIC_CHAMP_REVENUE, 'シャンパン売上'),
+        (METRIC_CHAMP_COUNT,   'シャンパン本数'),
+    ]
+
+    # 期間
+    PERIOD_DAILY   = 'daily'
+    PERIOD_WEEKLY  = 'weekly'
+    PERIOD_MONTHLY = 'monthly'
+    PERIOD_CUSTOM  = 'custom'
+    PERIOD_CHOICES = [
+        (PERIOD_DAILY,   '日次'),
+        (PERIOD_WEEKLY,  '週次'),
+        (PERIOD_MONTHLY, '月次'),
+        (PERIOD_CUSTOM,  'カスタム'),
+    ]
+
+    cast         = models.ForeignKey('Cast', on_delete=models.CASCADE, related_name='goals')
+    metric       = models.CharField(max_length=24, choices=METRIC_CHOICES)
+    target_value = models.IntegerField()  # 金額 or 本数
+    period_kind  = models.CharField(max_length=16, choices=PERIOD_CHOICES, default=PERIOD_DAILY)
+    start_date   = models.DateField(null=True, blank=True)
+    end_date     = models.DateField(null=True, blank=True)
+    active       = models.BooleanField(default=True)
+    # 通知済みマイルストーン（50/80/90/100）を保持して“1回だけ”通知する用
+    milestones_hit = JSONField(default=list, blank=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['cast','metric','period_kind','start_date','end_date','active']),
+        ]
+
+    MILESTONES = [50, 80, 90, 100]
+
+    def __str__(self):
+        return f'Goal({self.cast_id}:{self.metric} {self.target_value} {self.period_kind})'
+
+    # 期間の決定（指定がなければ “今日/今週/月” を自動補完）
+    def _default_bounds(self, today=None):
+        from datetime import timedelta
+        tz_today = today or timezone.localdate()
+        if self.period_kind == self.PERIOD_DAILY:
+            start = self.start_date or tz_today
+            end   = self.end_date   or start
+        elif self.period_kind == self.PERIOD_WEEKLY:
+            start = self.start_date or (tz_today - timedelta(days=tz_today.weekday()))
+            end   = self.end_date   or (start + timedelta(days=6))
+        elif self.period_kind == self.PERIOD_MONTHLY:
+            start = self.start_date or tz_today.replace(day=1)
+            if self.end_date:
+                end = self.end_date
+            else:
+                # 月末
+                if start.month == 12:
+                    end = start.replace(year=start.year+1, month=1, day=1) - timedelta(days=1)
+                else:
+                    end = start.replace(month=start.month+1, day=1) - timedelta(days=1)
+        else:
+            start = self.start_date or tz_today
+            end   = self.end_date   or start
+        return start, end
+
+    def period_bounds(self, today=None):
+        s, e = self._default_bounds(today)
+        if self.start_date and s < self.start_date: s = self.start_date
+        if self.end_date   and e > self.end_date:   e = self.end_date
+        return s, e
+
+    def save(self, *args, **kwargs):
+        # custom以外/未設定は期間を埋めておく
+        if not self.start_date or (self.period_kind != self.PERIOD_CUSTOM and not self.end_date):
+            s, e = self._default_bounds()
+            if not self.start_date: self.start_date = s
+            if not self.end_date:   self.end_date   = e
+        super().save(*args, **kwargs)
+
+    # 現在値の集計（既存テーブルだけで算出）
+    def current_value(self, on_date=None):
+        s, e = self.period_bounds(on_date)
+
+        if self.metric == self.METRIC_REVENUE:
+            # 担当売上 = Σ(price * qty)
+            return int(BillItem.objects.filter(
+                served_by_cast_id=self.cast_id,
+                bill__opened_at__date__range=(s, e),
+                bill__table__store=self.cast.store,
+            ).aggregate(
+                x=Sum(ExpressionWrapper(F('price') * F('qty'), output_field=IntegerField()))
+            )['x'] or 0)
+
+        if self.metric == self.METRIC_NOMINATIONS:
+            # 本指名：入店イベント数（期間内にenteredのnom）
+            return int(BillCastStay.objects.filter(
+                cast_id=self.cast_id, stay_type='nom',
+                entered_at__date__range=(s, e),
+                bill__table__store=self.cast.store,
+            ).count())
+
+        if self.metric == self.METRIC_INHOUSE:
+            # 場内指名：入店イベント数（期間内にenteredのin）
+            return int(BillCastStay.objects.filter(
+                cast_id=self.cast_id, stay_type='in',
+                entered_at__date__range=(s, e),
+                bill__table__store=self.cast.store,
+            ).count())
+
+        if self.metric in (self.METRIC_CHAMP_REVENUE, self.METRIC_CHAMP_COUNT):
+            qs = BillItem.objects.filter(
+                bill__opened_at__date__range=(s, e),
+                bill__table__store=self.cast.store,
+                item_master__category__code__in=['champagne', 'original-champagne'],
+                served_by_cast_id=self.cast_id,
+            )
+            if self.metric == self.METRIC_CHAMP_REVENUE:
+                return int(qs.aggregate(
+                    x=Sum(ExpressionWrapper(F('price') * F('qty'), output_field=IntegerField()))
+                )['x'] or 0)
+            else:  # METRIC_CHAMP_COUNT
+                return int(qs.aggregate(x=Sum('qty'))['x'] or 0)
+
+        return 0
+
+    def progress(self, on_date=None):
+        cur = self.current_value(on_date)
+        tgt = int(self.target_value or 0)
+        ratio = (cur / tgt) if tgt > 0 else 0.0
+        pct   = int(ratio * 100)
+        hits  = [m for m in self.MILESTONES if pct >= m]
+        return {'value': cur, 'ratio': ratio, 'percent': pct, 'hits': hits}
+
+    def record_new_hits(self, on_date=None):
+        """未通知のマイルストーンがあれば milestones_hit を更新して返す"""
+        pr = self.progress(on_date)
+        cur = set(self.milestones_hit or [])
+        new = [m for m in pr['hits'] if m not in cur]
+        if new:
+            self.milestones_hit = sorted(cur.union(new))
+            self.save(update_fields=['milestones_hit','updated_at'])
+        return new, pr

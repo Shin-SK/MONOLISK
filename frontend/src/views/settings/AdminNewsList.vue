@@ -52,8 +52,11 @@ onActivated(fetchList)
 
 <template>
   <div class="container-fluid py-4">
+    <div class="mb-3">
+    <button class="btn btn-primary ms-auto" @click="$router.push({name:'settings-news-new'})">新規作成</button>
+    </div>
     <div class="d-flex align-items-center gap-2 mb-3">
-      <input v-model="q" class="form-control" style="max-width:260px" placeholder="タイトル/本文 検索" @keyup.enter="fetchList">
+      <input v-model="q" class="form-control bg-white" style="max-width:260px" placeholder="タイトル/本文 検索" @keyup.enter="fetchList">
       <select v-model="status" class="form-select" style="max-width:160px" @change="fetchList">
         <option value="">すべて</option>
         <option value="draft">下書き</option>
@@ -65,20 +68,20 @@ onActivated(fetchList)
         <option value="1">ピンのみ</option>
         <option value="0">ピン以外</option>
       </select>
-      <button class="btn btn-primary ms-auto" @click="$router.push({name:'settings-news-new'})">新規作成</button>
     </div>
 
     <div v-if="loading" class="text-muted">読み込み中…</div>
     <div v-else>
-      <table class="table align-middle">
+      <div class="table-responsive"> 
+      <table class="table align-middle" style="min-width: 768px;">
         <thead class="table-dark">
           <tr>
-            <th>タイトル</th>
-            <th style="width:140px" class="text-center">公開</th>
-            <th style="width:160px">公開時刻</th>
-            <th style="width:100px" class="text-center">ピン</th>
-            <th style="width:160px">更新</th>
-            <th style="width:180px" />
+            <th style="min-width: 30vw;">タイトル</th>
+            <th style="width:50px" class="text-center">公開</th>
+            <th style="width:100px">公開時刻</th>
+            <th style="width:50px" class="text-center">ピン</th>
+            <th style="width:100px">更新</th>
+            <th style="width:200px" />
           </tr>
         </thead>
         <tbody>
@@ -98,13 +101,16 @@ onActivated(fetchList)
             </td>
             <td>{{ fmt(r.updated_at) }}</td>
             <td class="text-end">
-              <button class="btn btn-outline-secondary btn-sm me-2" @click="togglePinned(r)">
-                {{ r.pinned ? 'ピン解除' : 'ピン留め' }}
-              </button>
-              <button class="btn btn-outline-primary btn-sm me-2" @click="togglePublish(r)">
-                {{ r.is_published ? '非公開' : '公開' }}
-              </button>
-              <button class="btn btn-outline-danger btn-sm" @click="removeRow(r)">削除</button>
+              <div class="d-flex align-items-center justify-content-center flex-wrap">
+                <button class="btn btn-outline-secondary btn-sm me-2" @click="togglePinned(r)">
+                  {{ r.pinned ? 'ピン解除' : 'ピン留め' }}
+                </button>
+                <button class="btn btn-outline-primary btn-sm me-2" @click="togglePublish(r)">
+                  {{ r.is_published ? '非公開' : '公開' }}
+                </button>
+                <button class="btn btn-outline-danger btn-sm" @click="removeRow(r)">削除</button>
+              </div>
+
             </td>
           </tr>
           <tr v-if="!rows.length">
@@ -112,7 +118,7 @@ onActivated(fetchList)
           </tr>
         </tbody>
       </table>
-
+      </div>
       <div v-if="error" class="alert alert-danger">{{ error }}</div>
     </div>
   </div>

@@ -192,7 +192,7 @@ onMounted(async () => {
       <!-- カテゴリ絞り込み -->
       <div class="d-flex align-items-center gap-2 mb-3">
         <label class="form-label m-0">カテゴリ</label>
-        <select v-model="selectedCatCode" class="form-select" style="max-width: 260px;">
+        <select v-model="selectedCatCode" class="form-select form-control bg-white" style="max-width: 260px;">
           <option value="">すべて表示</option>
           <option v-for="c in catsSorted" :key="c.code" :value="c.code">
             {{ c.name }}
@@ -316,3 +316,9 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+
+<style scoped>
+
+
+</style>

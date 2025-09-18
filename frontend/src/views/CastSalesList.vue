@@ -116,7 +116,13 @@ onMounted(load)
           v-for="t in totals"
           :key="t.cast.id"
           style="cursor:pointer"
-          @click="router.push(`/cast-sales/${t.cast.id}`)"
+          @click="
+            router.push({
+              name: 'cast-sales-detail',              // ルート名で指定
+              params: { id: t.cast.id },              // 必須パラメータ
+              query:  { from: dateFrom, to: dateTo }  // 期間も持たせたい場合（省略可）
+            })
+          "
         >
           <td>{{ t.cast.stage_name }}</td>
           <td>{{ yen(t.champ) }}</td>

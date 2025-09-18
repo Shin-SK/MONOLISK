@@ -46,5 +46,11 @@ const cards = [
 </template>
 
 <style scoped>
+
+input,select{
+  background-color: white;
+}
+
 .nav-link { cursor: pointer; }
+
 </style>

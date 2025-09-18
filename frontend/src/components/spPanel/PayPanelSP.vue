@@ -15,11 +15,12 @@ const props = defineProps({
   diff:     { type: Number, default: 0 },
   overPay:  { type: Number, default: 0 },
   canClose: { type: Boolean, default: false },
+  memo: { type: String, default: '' },
 })
 const emit = defineEmits([
   'update:settledTotal','update:paidCash','update:paidCard',
   'useGrandTotal','fillRemainderToCard','confirmClose',
-  'incItem','decItem','deleteItem'
+  'incItem','decItem','deleteItem',
 ])
 
 /* ▼ ここから追加：自動同期（手動編集したらロック） */
@@ -49,17 +50,16 @@ const resetToTotal = () => {
   emit('update:settledTotal', calcTotal.value)   // ← 上の「合計」と揃える
 }
 
-/* ▲ ここまで追加 */
 
 const setExactCash = () => {
-  const total = Math.max(0, Number(props.settledTotal) || 0)
-  emit('update:paidCash', total)
-  emit('update:paidCard', 0)
+	const total = Math.max(0, toNum(settled.value))
+	emit('update:paidCash', total)
+	emit('update:paidCard', 0)
 }
 const setExactCard = () => {
-  const total = Math.max(0, Number(props.settledTotal) || 0)
-  emit('update:paidCash', 0)
-  emit('update:paidCard', total)
+	const total = Math.max(0, toNum(settled.value))
+	emit('update:paidCash', 0)
+	emit('update:paidCard', total)
 }
 
 const onNum = (e, key) => {
@@ -67,6 +67,32 @@ const onNum = (e, key) => {
   if (key === 'settledTotal') dirtyTotal.value = true   // 手動編集でロック
   emit(`update:${key}`, isNaN(v) ? 0 : v)
 }
+
+const toNum = (v) => {
+	const n = typeof v === 'number' ? v : Number(v)
+	return Number.isFinite(n) ? n : 0
+}
+
+const settled = computed({
+	get: () => toNum(props.settledTotal),
+	set: (v) => { dirtyTotal.value = true; emit('update:settledTotal', toNum(v)) }
+})
+const paidCashModel = computed({
+	get: () => toNum(props.paidCash),
+	set: (v) => emit('update:paidCash', toNum(v))
+})
+const paidCardModel = computed({
+	get: () => toNum(props.paidCard),
+	set: (v) => emit('update:paidCard', toNum(v))
+})
+
+const memoLocal = ref(String(props.memo ?? ''))
+watch(() => props.memo, v => { memoLocal.value = String(v ?? '') })
+
+// 親が保存時に呼ぶ取得メソッド
+const getMemo = () => String(memoLocal.value || '')
+defineExpose({ getMemo })
+
 
 const editingId = ref(null)
 const toggleEdit = (id) => { editingId.value = (editingId.value === id ? null : id) }
@@ -98,13 +124,13 @@ const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
 		<div
 			v-for="it in items"
 			:key="it.id"
-			class="card d-flex flex-row justify-content-between"
+			class="card bg-light d-flex flex-row justify-content-between"
 		>
 			<!-- 左：アイテム情報 -->
 			<div class="item-area p-2 d-flex flex-column gap-2 flex-grow-1">
 			<div class="d-flex align-items-center gap-2 text-secondary" style="font-size:1rem;">
 				<div class="id">#{{ it.id }}</div>
-				<div class="time d-flex align-items-center gap-1">
+				<div class="time d-flex align-items-center gap-1 small text-muted">
 				<IconClock :size="16" />{{ fmtTime(pickTime(it)) }}
 				</div>
 			</div>
@@ -153,7 +179,7 @@ const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
         <div class="d-flex">
           <label class="d-flex align-items-center" style="width: 100px;">会計金額</label>
           <div class="position-relative w-100">
-            <input class="form-control" type="number" :value="settledTotal" @input="e => onNum(e,'settledTotal')" />
+            <input class="form-control" type="number" v-model="settled" />
             <!-- 手動編集 or 乖離時のみ出す。押すと自動同期に戻る -->
             <button
               class="position-absolute top-0 bottom-0 end-0 px-2"
@@ -167,7 +193,7 @@ const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
         <div class="d-flex">
           <label class="d-flex align-items-center" style="width: 100px;">現金</label>
           <div class="position-relative w-100">
-            <input class="form-control" type="number" :value="paidCash" @input="e => onNum(e,'paidCash')" />
+            <input class="form-control" type="number" v-model="paidCashModel" />
             <button class="position-absolute end-0 top-0 bottom-0" type="button" @click="setExactCash" title="全額を現金で支払い">
               <IconTransferVertical :size="16" />
             </button>
@@ -177,7 +203,7 @@ const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
         <div class="d-flex">
           <label class="d-flex align-items-center" style="width: 100px;">カード</label>
 		  	<div class="position-relative w-100">
-				<input class="form-control" type="number" :value="paidCard" @input="e => onNum(e,'paidCard')" />
+				<input class="form-control" type="number" v-model="paidCardModel" />
 				<button class="position-absolute end-0 top-0 bottom-0" type="button" @click="$emit('fillRemainderToCard')">
 					<IconCalculator :size="16" />
 				</button>
@@ -192,6 +218,15 @@ const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
         </div>
       </div>
 
+      <div class="memo">
+        <label class="form-label">メモ</label>
+        <textarea
+          class="form-control"
+          rows="3"
+          v-model="memoLocal"
+          placeholder="伝票メモ（備考）"
+        ></textarea>
+      </div>
       <!-- ▼ 確定 -->
       <div class="paybutton">
         <button class="btn btn-primary w-100" type="button" :disabled="!canClose" @click="$emit('confirmClose')">お会計</button>

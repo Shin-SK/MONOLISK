@@ -54,7 +54,7 @@ onMounted(async () => {
     <div class="d-flex gap-2 mb-5">
       <select
         v-model="store"
-        class="form-select"
+        class="form-select form-control"
         style="max-width:200px"
         @change="fetch"
       >
@@ -80,15 +80,15 @@ onMounted(async () => {
 
     <table class="table">
       <thead class="table-dark">
-        <tr><th>ID</th><th>源氏名</th><th>編集</th></tr>
+        <tr><th>ID</th><th>源氏名</th><th class="text-end">編集</th></tr>
       </thead>
       <tbody>
         <tr
           v-for="c in results"
           :key="c.id"
         >
-          <td>{{ c.id }}</td>
-          <td>{{ c.stage_name }}</td>
+          <td style="vertical-align:middle;">{{ c.id }}</td>
+          <td style="vertical-align:middle;">{{ c.stage_name }}</td>
           <td class="text-end p-2">
             <RouterLink
               :to="{ name:'settings-cast-form', params:{ id:c.id }}"
@@ -100,3 +100,12 @@ onMounted(async () => {
     </table>
   </div>
 </template>
+
+<style scoped>
+
+input,select{
+  background-color: white;
+}
+
+
+</style>

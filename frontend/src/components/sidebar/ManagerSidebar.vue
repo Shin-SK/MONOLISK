@@ -1,4 +1,4 @@
-<!-- Sidebar.vue（差し替え） -->
+<!-- ManagerSidebar.vue -->
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
 import { useUser }   from '@/stores/useUser'
@@ -26,7 +26,7 @@ async function logout () {
 <template>
   <teleport to="body">
     <div
-      id="appSidebar"
+      id="managerSidebar"
       data-bs-scroll="false"
       class="offcanvas offcanvas-start"
       style="--bs-offcanvas-width: min(100vw,300px);"
@@ -40,14 +40,15 @@ async function logout () {
         <!-- -------- ナビ ---------- -->
         <nav class="nav flex-column h-100">
 
-          <RouterLink class="nav-link bg-white" to="/" @click="closeSidebar">ダッシュボード</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/pl/daily"      @click="closeSidebar">PL/日次</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/pl/monthly"    @click="closeSidebar">PL/月次</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/pl/yearly"     @click="closeSidebar">PL/年次</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/cast-shift"    @click="closeSidebar">キャストシフト</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/cast-sales"          @click="closeSidebar">キャスト売上</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/ranking"             @click="closeSidebar">ランキング</RouterLink>
-          <RouterLink class="nav-link bg-white" to="/customers"           @click="closeSidebar">顧客情報</RouterLink>
+          <RouterLink class="nav-link bg-white" :to="{name:'mng-dashboard'}" @click="closeSidebar">ダッシュボード</RouterLink>
+          <RouterLink class="nav-link bg-white" :to="{name:'mng-bill-table'}" @click="closeSidebar">伝票</RouterLink>
+          <RouterLink class="nav-link bg-white" :to="{name:'mng-pl-daily'}" @click="closeSidebar">PL/日次</RouterLink>
+          <RouterLink class="nav-link bg-white" :to="{name:'mng-pl-monthly'}"    @click="closeSidebar">PL/月次</RouterLink>
+          <RouterLink class="nav-link bg-white" :to="{name:'mng-pl-yearly'}"    @click="closeSidebar">PL/年次</RouterLink>
+          <RouterLink class="nav-link bg-white" :to="{name:'mng-cast-shift'}"    @click="closeSidebar">キャストシフト</RouterLink>
+          <RouterLink class="nav-link bg-white" :to="{name:'mng-cast-sales'}"          @click="closeSidebar">キャスト売上</RouterLink>
+          <RouterLink class="nav-link bg-white" :to="{name:'mng-ranking'}"            @click="closeSidebar">ランキング</RouterLink>
+          <RouterLink class="nav-link bg-white" :to="{name:'mng-customers'}"           @click="closeSidebar">顧客情報</RouterLink>
 
           <!-- ★ ステーション（Bootstrap Accordion/Collapse） -->
           <div class="accordion accordion-flush my-2" id="accordionStations">
@@ -72,9 +73,10 @@ async function logout () {
               >
                 <div class="accordion-body py-2 bg-white">
                   <div class="d-flex flex-column">
-                    <RouterLink class="nav-link ps-3 ms-1 bg-white" to="/kds/dishup"  @click="closeSidebar">デシャップ</RouterLink>
-                    <RouterLink class="nav-link ps-3 ms-1 bg-white" to="/kds/kitchen" @click="closeSidebar">キッチン</RouterLink>
-                    <RouterLink class="nav-link ps-3 ms-1 bg-white" to="/kds/drinker" @click="closeSidebar">ドリンカー</RouterLink>
+                    <!-- 旧: to="/kds/dishup" など（404の原因） -->
+                    <RouterLink class="nav-link ps-3 ms-1 bg-white" :to="{ name:'mng-kds-dishup' }"  @click="closeSidebar">デシャップ</RouterLink>
+                    <RouterLink class="nav-link ps-3 ms-1 bg-white" :to="{ name:'mng-kds-kitchen' }" @click="closeSidebar">キッチン</RouterLink>
+                    <RouterLink class="nav-link ps-3 ms-1 bg-white" :to="{ name:'mng-kds-drinker' }" @click="closeSidebar">ドリンカー</RouterLink>
                   </div>
                 </div>
               </div>

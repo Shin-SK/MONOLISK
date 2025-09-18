@@ -40,16 +40,31 @@ def attach_customer_and_snapshot(sender, instance: Bill, created, **kw):
 
     # ② クローズ時：先頭顧客へ snapshot 保存
     if instance.closed_at and instance.customers.exists():
+        # last_drink は名前を素直に連結
         cust = instance.customers.first()
         cust.last_drink = ', '.join(
-            i.item_master.name if i.item_master else i.name
+            (i.item_master.name if i.item_master else i.name) or ''
             for i in instance.items.all()
         )
-        cust.last_cast = (
-            instance.nominated_casts.last() or
-            instance.stays.filter(stay_type='in').last() or
-            None
-        )
+
+        # Cast を決定（本指名 > 場内 > その他 > main_cast > nominated）
+        def pick_cast_for_last():
+            stay = (
+                instance.stays.filter(stay_type='nom')
+                    .select_related('cast').order_by('-entered_at').first()
+                or instance.stays.filter(stay_type='in')
+                    .select_related('cast').order_by('-entered_at').first()
+                or instance.stays.select_related('cast')
+                    .order_by('-entered_at').first()
+            )
+            if stay and stay.cast_id:
+                return stay.cast
+            if instance.main_cast_id:
+                return instance.main_cast
+            nom = instance.nominated_casts.order_by('-pk').first()
+            return nom or None
+
+        cust.last_cast = pick_cast_for_last()
         cust.save(update_fields=['last_drink', 'last_cast', 'updated_at'])
 
 # ---------- BillItem 作成時：KDSチケット自動発行（1品=1枚） ----------
