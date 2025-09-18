@@ -13,6 +13,30 @@ const results = ref([])
 
 const fmt = d => d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '—'
 
+// ▼ 表示用フォールバック
+const displayName = (s) => {
+  // 1) full_name があれば最優先
+  if (s.full_name && String(s.full_name).trim()) return s.full_name
+  // 2) first_name + last_name
+  const fn = [s.first_name, s.last_name].filter(Boolean).join('')
+  if (fn) return fn
+  // 3) username or name（バックエンド差異吸収）
+  if (s.username && String(s.username).trim()) return s.username
+  if (s.name && String(s.name).trim()) return s.name
+  // 4) 最終フォールバック
+  return `ID:${s.id}`
+}
+
+const displayRole = (s) => {
+  // role_label が来ていればそれでOK
+  if (s.role_label && String(s.role_label).trim()) return s.role_label
+  // role_code から人間表示へ
+  const map = { staff: 'スタッフ', submgr: '副店長', mgr: '店長' }
+  if (s.role_code && map[s.role_code]) return map[s.role_code]
+  // 何も無ければダッシュ
+  return '―'
+}
+
 async function ensureShift (row) {
   if (!row.shift) {
     row.shift = await createStaffShift({
@@ -47,19 +71,21 @@ async function removeShift (row) {
 }
 
 async function fetchList () {
+  // ※ バックエンド側の検索キーが不明なら { q: keyword.value } にする手も
   const staffs = await fetchStaffs({ name: keyword.value })
   const today   = dayjs().format('YYYY-MM-DD')
   const shifts  = await fetchStaffShifts({ date: today })
-  const byStaff = Object.fromEntries(shifts.map(s => [s.staff_id, s]))
+  const byStaff = Object.fromEntries((Array.isArray(shifts)?shifts:[]).map(s => [s.staff_id, s]))
 
-  results.value = staffs.map(s => {
+  results.value = (Array.isArray(staffs)?staffs:[]).map(s => {
     const sh = byStaff[s.id] || null
     return {
       ...s,
-      name: s.full_name || s.username,
-      shift: sh, // ← オブジェクトのまま（clock_in/clock_out を見る）
+      _name: displayName(s),            // ← ここに確実な表示名
+      _role: displayRole(s),            // ← ここに確実な役職表示
+      shift: sh,
       shiftLabel: sh
-        ? `${dayjs(sh.plan_start).format('YYYY/MM/DD HH:mm')}-${dayjs(sh.plan_end).format('HH:mm')}`
+        ? `${fmt(sh.plan_start)}-${(sh.plan_end && dayjs(sh.plan_end).format('HH:mm')) || '—'}`
         : '—',
     }
   })
@@ -73,7 +99,7 @@ onMounted(fetchList)
     <div class="d-flex gap-2 mb-5">
       <input
         v-model="keyword"
-        class="form-control w-25"
+        class="form-control w-25 bg-white"
         placeholder="スタッフ名"
         @keyup.enter="fetchList"
       >
@@ -97,10 +123,10 @@ onMounted(fetchList)
           <td>{{ s.id }}</td>
           <td>
             <RouterLink :to="{ name: 'settings-staff-form', params: { id: s.id } }">
-              {{ s.name }}
+              {{ s._name }}
             </RouterLink>
           </td>
-          <td>{{ s.role_label || '―' }}</td>
+          <td>{{ s._role }}</td>
           <td>{{ s.shiftLabel }}</td>
           <td class="text-end p-2">
             <button class="btn btn-secondary" v-if="!s.shift?.clock_in" @click="checkIn(s)">出勤</button>
@@ -122,12 +148,3 @@ onMounted(fetchList)
     </table>
   </div>
 </template>
-
-
-<style scoped>
-
-input{
-  background-color: white;
-}
-
-</style>
