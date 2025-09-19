@@ -1,3 +1,10 @@
+# API を先にバックエンドへプロキシ
+[[redirects]]
+  from = "/api/*"
+  to   = "https://api.monolisk-app.com/api/:splat"   # ← 実バックエンドに合わせて
+  status = 200
+  force = true
+
 # SPA ルーティング
 [[redirects]]
   from = "/*"
