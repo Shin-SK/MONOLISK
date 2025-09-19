@@ -54,14 +54,14 @@ async function apply(){
 </script>
 
 <template>
-  <div v-if="visible" class="row">
-    <div class="col-8">
+  <div v-if="visible" class="row g-2 aling-items-center">
+    <div class="col-9">
       <select v-model="current" class="form-select w-100">
         <option v-for="r in roles" :key="r" :value="r">{{ r }}</option>
       </select>
     </div>
-    <div class="col-4">
-      <button class="btn btn-outline-secondary w-100" :disabled="applying" @click="apply">
+    <div class="col-3 d-flex align-items-center">
+      <button class="btn btn-sm btn-outline-secondary w-100" :disabled="applying" @click="apply">
         更新
       </button>
     </div>

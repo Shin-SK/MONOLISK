@@ -38,7 +38,7 @@ async function logout () {
 
       <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
         <!-- -------- ナビ ---------- -->
-        <nav class="nav flex-column h-100">
+        <nav class="nav flex-column">
 
           <RouterLink class="nav-link bg-white" :to="{name:'mng-dashboard'}" @click="closeSidebar">ダッシュボード</RouterLink>
           <RouterLink class="nav-link bg-white" :to="{name:'mng-bill-table'}" @click="closeSidebar">伝票</RouterLink>
@@ -49,7 +49,7 @@ async function logout () {
           <RouterLink class="nav-link bg-white" :to="{name:'mng-cast-sales'}"          @click="closeSidebar">キャスト売上</RouterLink>
           <RouterLink class="nav-link bg-white" :to="{name:'mng-ranking'}"            @click="closeSidebar">ランキング</RouterLink>
           <RouterLink class="nav-link bg-white" :to="{name:'mng-customers'}"           @click="closeSidebar">顧客情報</RouterLink>
-
+          <RouterLink class="nav-link mt-2 bg-white" to="/settings" @click="closeSidebar">設定</RouterLink>
           <!-- ★ ステーション（Bootstrap Accordion/Collapse） -->
           <div class="accordion accordion-flush my-2" id="accordionStations">
             <div class="accordion-item">
@@ -83,8 +83,6 @@ async function logout () {
             </div>
           </div>
 
-          <RouterLink class="nav-link mt-2 bg-white" to="/settings" @click="closeSidebar">設定</RouterLink>
-
           <div class="mt-auto">
             <a href="https://studio-color.jp/" class="d-flex text-black justify-content-between align-items-center" target="_black">
               <div class="wrap d-flex flex-column">
@@ -92,9 +90,6 @@ async function logout () {
                 <span class="fw-bold fs-5">スタジオカラー</span>
               </div>
             </a>
-            <RouterLink class="nav-link mt-3" to="/cast/mypage/1" @click="closeSidebar">
-              キャストマイページ（サンプルID=1）
-            </RouterLink>
           </div>
         </nav>
 
@@ -113,7 +108,7 @@ async function logout () {
             ログアウト
           </button>
           <StoreSwitcher class="mt-5" />
-          <DevRoleSwitcher class="mt-4 mb-2"/>
+          <DevRoleSwitcher class="mt-1 mb-2"/>
         </div>
       </aside>
     </div>

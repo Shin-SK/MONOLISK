@@ -51,19 +51,19 @@ watchEffect(async () => {
     <template v-else-if="pl">
       <!-- YEAR SUMMARY -->
       <div class="summary-area row g-3 mb-3">
-        <div class="col-6 col-md-4">
+        <div class="col-12 col-md-4">
           <div class="box"><div class="head">年間売上</div><div class="number">{{ yen(pl.totals.sales_total) }}</div></div>
         </div>
-        <div class="col-6 col-md-4">
+        <div class="col-12 col-md-4">
           <div class="box"><div class="head">総来客数</div><div class="number">{{ pl.totals.guest_count }}</div></div>
         </div>
-        <div class="col-6 col-md-4">
+        <div class="col-12 col-md-4">
           <div class="box"><div class="head">平均客単価</div><div class="number">{{ yen(pl.totals.avg_spend) }}</div></div>
         </div>
-        <div class="col-6 col-md-4">
+        <div class="col-12 col-md-4">
           <div class="box"><div class="head">人件費</div><div class="number">{{ yen(pl.totals.labor_cost) }}</div></div>
         </div>
-        <div class="col-6 col-md-4">
+        <div class="col-12 col-md-4">
           <div class="box"><div class="head">営業利益</div><div class="number">{{ yen(pl.totals.operating_profit) }}</div></div>
         </div>
       </div>

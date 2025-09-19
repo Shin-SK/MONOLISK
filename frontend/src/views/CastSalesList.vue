@@ -71,73 +71,96 @@ onMounted(load)
 <template>
   <div class="container-fluid mt-4">
     <!-- 期間選択 -->
-    <div class="d-flex align-items-center gap-3 mb-3">
-      <div>
+    <div class="d-flex gap-1 mb-2 align-items-center flex-wrap">
+      <div class="">
         <input
           v-model="dateFrom"
           type="date"
-          class="form-control"
+          class="form-control form-control-sm"
         >
       </div>
-      <div>〜</div>
-      <div>
+      <div class="d-flex align-items-center justify-content-center">〜</div>
+      <div class="">
         <input
           v-model="dateTo"
           type="date"
-          class="form-control"
+          class="form-control form-control-sm"
         >
       </div>
-      <button
-        class="btn btn-primary mb-1"
-        @click="load"
-      >
-        再表示
-      </button>
+      <div class="">
+        <button
+          class="btn btn-secondary btn-sm"
+          @click="load"
+          style="white-space: nowrap;"
+        >
+          再表示
+        </button>
+      </div>
     </div>
 
-    <!-- 一覧 (キャスト1行) -->
-    <table class="table table-striped table-hover">
-      <thead class="table-dark">
-        <tr>
-          <th>キャスト</th>
-          <th>シャンパン</th>
-          <th>本指名</th>
-          <th>場内</th>
-          <th>フリー</th>
-          <th>歩合小計</th>
-          <th>時給小計</th>
-          <th class="text-end">
-            合計
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="t in totals"
-          :key="t.cast.id"
-          style="cursor:pointer"
-          @click="
-            router.push({
-              name: 'cast-sales-detail',              // ルート名で指定
-              params: { id: t.cast.id },              // 必須パラメータ
-              query:  { from: dateFrom, to: dateTo }  // 期間も持たせたい場合（省略可）
-            })
-          "
-        >
-          <td>{{ t.cast.stage_name }}</td>
-          <td>{{ yen(t.champ) }}</td>
-          <td>{{ yen(t.nom) }}</td>
-          <td>{{ yen(t.in) }}</td>
-          <td>{{ yen(t.free) }}</td>
-          <td class="fw-bold">
-            {{ yen(t.comm) }}
-          </td>
-          <td>{{ yen(t.pay) }}</td>
-          <td class="text-end fw-bold">
-            {{ yen(t.grand) }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="table-responsive">
+
+      <!-- 一覧 (キャスト1行) -->
+      <table class="table table-striped table-hover">
+        <thead class="table-dark">
+          <tr>
+            <th>キャスト</th>
+            <th>シャンパン</th>
+            <th>本指名</th>
+            <th>場内</th>
+            <th>フリー</th>
+            <th>歩合小計</th>
+            <th>時給小計</th>
+            <th class="text-end">
+              合計
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="t in totals"
+            :key="t.cast.id"
+            style="cursor:pointer"
+            @click="
+              router.push({
+                name: 'cast-sales-detail',              // ルート名で指定
+                params: { id: t.cast.id },              // 必須パラメータ
+                query:  { from: dateFrom, to: dateTo }  // 期間も持たせたい場合（省略可）
+              })
+            "
+          >
+            <td>{{ t.cast.stage_name }}</td>
+            <td>{{ yen(t.champ) }}</td>
+            <td>{{ yen(t.nom) }}</td>
+            <td>{{ yen(t.in) }}</td>
+            <td>{{ yen(t.free) }}</td>
+            <td class="fw-bold">
+              {{ yen(t.comm) }}
+            </td>
+            <td>{{ yen(t.pay) }}</td>
+            <td class="text-end fw-bold">
+              {{ yen(t.grand) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+    </div>
+
   </div>
 </template>
+
+
+<style scoped lang="scss">
+
+  input,select{
+    background-color: white;
+  }
+
+ table{
+  td,th{
+    white-space: nowrap;
+  }
+ }
+
+</style>

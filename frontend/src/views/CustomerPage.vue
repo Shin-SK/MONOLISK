@@ -10,8 +10,7 @@ const setTab = (k) => { activeTab.value = k }
 </script>
 
 <template>
-  <div class="container py-4">
-    <h1 class="mb-4">顧客管理</h1>
+  <div class="py-4">
 
     <!-- シンプルなタブ -->
     <nav class="nav nav-pills gap-2 mb-3">

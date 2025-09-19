@@ -3,7 +3,9 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App    from './App.vue'
 import router from './router'
-import './plugins/pwa-auto'
+import { setupPWA, restoreRouteIfNeeded } from '@/plugins/pwa'
+setupPWA()
+
 import 'bootstrap';
 import { installOffcanvasScrollGuard } from '@/utils/offcanvas-scroll-guard'
 
@@ -39,6 +41,7 @@ Sortable.mount(new Swap())
 
   ;(async () => {
     await router.isReady()
+    restoreRouteIfNeeded(router)
     app.mount('#app')
     installOffcanvasScrollGuard()
 

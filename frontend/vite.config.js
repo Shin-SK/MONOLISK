@@ -2,7 +2,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// ★ 追加
+// Icons / Components
 import Components from 'unplugin-vue-components/vite'
 import Icons from 'unplugin-icons/vite'
 
@@ -15,39 +15,31 @@ export default defineConfig(({ mode }) => {
   const HMR_HOST = env.VITE_HMR_HOST || ''
   const useTunnel = !!HMR_HOST
 
-  // ★ Tabler 名→Iconify 名の“例外”があればここで上書き（足りたら空のままでOK）
-  const TABLER_NAME_ALIASES = {
-    // 例: HistoryToggle: 'history-toggle-off',
-    // 例: FileNeutral: 'file'
-  }
+  const TABLER_NAME_ALIASES = {}
 
   return {
     plugins: [
       vue(),
 
-      // ★ 追加: <IconXxx/> をビルド時に ~icons/tabler/xxx に解決
       Components({
         resolvers: [
           (name) => {
             if (!name.startsWith('Icon')) return
-            const raw = name.slice(4) // 'Search', 'UserFilled', ...
-            // PascalCase → kebab-case : 'UserFilled'→'user-filled'
+            const raw = name.slice(4)
             const kebab = raw.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
             const finalName = TABLER_NAME_ALIASES[raw] || TABLER_NAME_ALIASES[kebab] || kebab
-            // Iconify の仮想モジュール（既定エクスポート）を指す
             return { name: 'default', from: `~icons/tabler/${finalName}` }
           }
         ],
-        dts: false, // ts使わないので生成なし
+        dts: false,
       }),
 
-      // ★ 追加: アイコンの仮想モジュールを実体化
       Icons({ autoInstall: true }),
 
-      // 既存
+      // ← 手動登録に一本化（injectRegister を無効化）
       VitePWA({
         registerType: 'autoUpdate',
-        injectRegister: 'auto',
+        injectRegister: null,                 // ★重要：自動登録を止める
         devOptions: { enabled: mode === 'development', type: 'module' },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         workbox: {
@@ -81,20 +73,19 @@ export default defineConfig(({ mode }) => {
           ]
         }
       }),
+
       visualizer({ filename: 'report.html', open: true, gzipSize: true, brotliSize: true }),
     ],
-    resolve: {
-      alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
-    },
+
+    resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+
     server: {
       host: '0.0.0.0',
       proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } },
       allowedHosts: true,
       hmr: useTunnel ? { host: HMR_HOST, protocol: 'wss', clientPort: 443 } : undefined,
     },
-    css: {
-      devSourcemap: true,
-      preprocessorOptions: { scss: { quietDeps: true } }
-    }
+
+    css: { devSourcemap: true, preprocessorOptions: { scss: { quietDeps: true } } }
   }
 })

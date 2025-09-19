@@ -1,13 +1,3 @@
-<template>
-	<div v-if="visible" class="d-flex align-items-center gap-2">
-		<select class="form-select form-select-sm" v-model="selected" @change="onChange">
-			<option v-for="s in stores" :key="s.id" :value="String(s.id)">
-				{{ s.name || s.display_name || ('#'+s.id) }}
-			</option>
-		</select>
-	</div>
-</template>
-
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -53,6 +43,17 @@ async function onChange(){
 	}
 }
 </script>
+
+
+<template>
+	<div v-if="visible" class="d-flex align-items-center gap-2">
+		<select class="form-select form-select-sm" v-model="selected" @change="onChange">
+			<option v-for="s in stores" :key="s.id" :value="String(s.id)">
+				{{ s.name || s.display_name || ('#'+s.id) }}
+			</option>
+		</select>
+	</div>
+</template>
 
 <style scoped>
 .form-label { min-width: 2.5rem; }

@@ -50,19 +50,19 @@ onMounted(async () => {
       </div>
 
       <div class="summary-area row g-3">
-        <div class="col-6 col-md-4">
+        <div class="col-12 col-md-4">
           <div class="box">
             <div class="head">売上合計</div>
             <div class="number">{{ yen(pl.sales_total ?? ((pl.sales_cash ?? 0) + (pl.sales_card ?? 0))) }}</div>
           </div>
         </div>
-        <div class="col-6 col-md-4">
+        <div class="col-12 col-md-4">
           <div class="box">
             <div class="head">人件費</div>
             <div class="number">{{ yen(pl.labor_cost) }}</div>
           </div>
         </div>
-        <div class="col-6 col-md-4">
+        <div class="col-12 col-md-4">
           <div class="box">
             <div class="head">営業利益</div>
             <div class="number">{{ yen(pl.operating_profit) }}</div>

@@ -30,7 +30,7 @@ const medalSrc = i => `/img/rank-no${i + 1}.svg`
     <!-- ─── 1-3 位 ─────────────────────── -->
     <div
       v-if="topThree.length"
-      class="top-three d-flex"
+      class="top-three d-flex bg-white p-3"
     >
       <div
         v-for="(r,i) in topThree"
@@ -64,7 +64,7 @@ const medalSrc = i => `/img/rank-no${i + 1}.svg`
     <!-- ─── 4 位以下 ─────────────────────── -->
     <div
       v-if="others.length"
-      class="others px-4 py-2 bg-white"
+      class="others px-4 py-2 bg-white d-flex flex-column gap-2"
     >
       <div
         v-for="(r,i) in others"
