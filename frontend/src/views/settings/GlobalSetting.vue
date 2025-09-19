@@ -17,13 +17,21 @@ const cards = [
 </script>
 
 <template>
-  <div class="container-fluid py-4">
+  <div class="py-4">
 
-    <!-- サブナビ（常に表示。現在地で .active が付く） -->
-    <ul class="nav nav-pills gap-2 mb-3 flex-wrap">
-      <li class="nav-item" v-for="c in cards" :key="c.title">
-        <RouterLink class="nav-link" :to="c.to" active-class="active">
-          {{ c.title }}
+
+    <!-- ここだけ差し替え -->
+    <ul class="nav d-flex gap-2 mb-3 overflow-auto flex-nowrap py-2">
+      <li v-for="c in cards" :key="c.title" class="flex-shrink-0">
+        <RouterLink :to="c.to" custom v-slot="{ href, navigate, isActive }">
+          <a
+            :href="href"
+            @click="navigate"
+            class="btn btn-sm px-3"
+            :class="isActive ? 'btn-secondary text-white' : 'btn-outline-secondary'"
+          >
+            {{ c.title }}
+          </a>
         </RouterLink>
       </li>
     </ul>
@@ -45,12 +53,20 @@ const cards = [
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
+
+ul.nav{
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
 
 input,select{
   background-color: white;
 }
 
 .nav-link { cursor: pointer; }
+
 
 </style>

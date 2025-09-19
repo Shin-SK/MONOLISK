@@ -1,26 +1,20 @@
-<!-- AdminStaffForm.vue – cart UI ver. (CastShiftPage と揃えたフルリプレイス) -->
+<!-- AdminStaffForm.vue -->
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import {
-  fetchStaff,
-  updateStaff,
-  createStaff,
-  deleteStaff,
-  fetchStaffShifts,
-  createStaffShift,
-  patchStaffShift,
-  deleteStaffShift,
+  fetchStaff, updateStaff, createStaff, deleteStaff,
+  fetchStaffShifts, createStaffShift, patchStaffShift, deleteStaffShift,
 } from '@/api'
 import { getStoreId } from '@/auth'
 import { yen } from '@/utils/money'
 
-/* ---------- route / basic ---------- */
+/* ---------- route / basic（idをリアクティブに扱う） ---------- */
 const route   = useRoute()
 const router  = useRouter()
-const isEdit  = !!route.params.id
-const staffId = Number(route.params.id)
+const staffId = computed(() => Number(route.params.id || 0))
+const isEdit  = computed(() => !!staffId.value)
 
 /* ---------- static options ---------- */
 const ROLE_OPTS = [
@@ -36,22 +30,76 @@ const form = reactive({
   username: '', first_name: '', last_name: '',
   hourly_wage: 1300,
   role: 'staff',
-  stores: [],
+  stores: [],             // ID 配列で保持
 })
 
+function resetForm () {
+  form.username = ''
+  form.first_name = ''
+  form.last_name  = ''
+  form.hourly_wage = 1300
+  form.role = 'staff'
+  form.stores = []
+}
+
+function normalizeStores(v) {
+  // APIが [1,2] でも [{id:1}, {id:2}] でもOKにする
+  if (!Array.isArray(v)) return []
+  if (v.length && typeof v[0] === 'object') return v.map(x => x?.id).filter(Boolean)
+  return v
+}
+
+async function loadProfile(){
+  if (!isEdit.value) return
+  const data = await fetchStaff(staffId.value)
+
+  // user.* と直下の両方に対応
+  const u = data.user || {}
+  const username   = data.username   ?? u.username   ?? ''
+  const first_name = data.first_name ?? u.first_name ?? ''
+  const last_name  = data.last_name  ?? u.last_name  ?? ''
+
+  // role は role_code / role / role_name のどれかを拾う
+  const role = data.role_code ?? data.role ?? data.role_name ?? 'staff'
+
+  // stores は id配列に正規化
+  const stores = normalizeStores(data.stores ?? [])
+
+  Object.assign(form, {
+    username,
+    first_name,
+    last_name,
+    hourly_wage: data.hourly_wage ?? 1300,
+    stores,
+    role,
+  })
+}
+
 async function saveProfile () {
-  if (!isEdit && !form.username.trim()) return alert('ユーザー名を入力してください')
+  if (!isEdit.value && !form.username.trim()) return alert('ユーザー名を入力してください')
   const payload = { ...form }
-  const res = isEdit
-        ? await updateStaff(staffId, payload)
-        : await createStaff(payload)
-  if (!isEdit) router.replace({ name: 'settings-staff-form', params: { id: res.id } })
-  else router.push({ name: 'settings-staff-list' }) 
+
+  // API側が stores をオブジェクトで受ける場合はここでそのまま送る。
+  // いまは ID配列の想定でOK。
+
+  const res = isEdit.value
+    ? await updateStaff(staffId.value, payload)
+    : await createStaff(payload)
+
+  if (!isEdit.value) {
+    // 作成直後：同一コンポーネント再利用なので、遷移後に明示的に読み直す
+    await router.replace({ name: 'settings-staff-form', params: { id: res.id } })
+    await nextTick()
+    await loadProfile()
+    await loadShifts()
+  } else {
+    router.push({ name: 'settings-staff-list' })
+  }
 }
 
 async function removeProfile () {
   if (!confirm('本当に削除しますか？')) return
-  await deleteStaff(staffId)
+  await deleteStaff(staffId.value)
   router.push({ name: 'settings-staff-list' })
 }
 
@@ -69,6 +117,7 @@ const drafts = ref([])     // 下書き(未送信)
 
 /* ---- cart form ---- */
 const cart = reactive({ start: '', end: '' })
+
 function addDraft () {
   if (!cart.start || !cart.end) return alert('開始／終了を入力してください')
   if (dayjs(cart.start).isAfter(dayjs(cart.end))) return alert('終了は開始より後にしてください')
@@ -86,7 +135,7 @@ async function submitDrafts () {
   if (!storeId) return alert('店舗IDが取得できません')
   await Promise.all(
     drafts.value.map(d => createStaffShift({
-      staff_id: staffId,
+      staff_id: staffId.value,
       store_id: storeId,
       ...d,
     }))
@@ -98,6 +147,7 @@ async function submitDrafts () {
 
 /* ---- edit single row ---- */
 const editing = reactive({ id:null, plan_start:'', plan_end:'', clock_in:'', clock_out:'' })
+
 function startEdit (r){
   Object.assign(editing,{
     id: r.id,
@@ -145,34 +195,37 @@ async function removeShift (r){
 const fmt = d => d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '–'
 
 /* ---- load ---- */
-async function loadProfile(){
-  if (!isEdit) return
-  const data = await fetchStaff(staffId)
-  Object.assign(form, {
-    username: data.username,
-    first_name: data.first_name,
-    last_name : data.last_name,
-    hourly_wage: data.hourly_wage ?? 1300,
-    stores: data.stores,
-    role: data.role_code,
-  })
-}
-
 async function loadShifts(){
+  if (!isEdit.value) return
   rows.value = await fetchStaffShifts({
-    staff: staffId,
+    staff: staffId.value,
     from : dateFrom.value,
     to   : dateTo.value,
     ordering: '-plan_start',
   })
 }
 
-watch([dateFrom,dateTo], loadShifts)
-onMounted(async ()=>{
+/* ---- 監視と初期化 ---- */
+watch([dateFrom, dateTo], () => { if (isEdit.value) loadShifts() })
+
+// 新規→編集への切替や、同一コンポーネント再利用時の再読込
+watch(() => route.params.id, async (nv) => {
+  if (!nv) { resetForm(); return }
   await loadProfile()
   await loadShifts()
 })
+
+onMounted(async ()=>{
+  if (isEdit.value) {
+    await loadProfile()
+    await loadShifts()
+  } else {
+    resetForm()
+  }
+})
 </script>
+
+
 
 <template>
   <div class="container-fluid">
@@ -261,8 +314,8 @@ onMounted(async ()=>{
         <div class="d-flex gap-5 flex-wrap">
           <!-- 入力 -->
           <div
-            class="area flex-grow-1"
-            style="min-width:280px;max-width:480px;"
+            class="area flex-grow-1 table-responsive"
+            style="white-space: nowrap;"
           >
             <table class="table table-sm">
               <thead><tr><th>開始</th><th>終了</th><th /></tr></thead>
@@ -296,8 +349,8 @@ onMounted(async ()=>{
           </div>
           <!-- カート内容 -->
           <div
-            class="area flex-grow-1"
-            style="min-width:280px;max-width:480px;"
+            class="area flex-grow-1 table-responsive"
+            style="white-space: nowrap;"
           >
             <table class="table table-sm">
               <thead><tr><th>#</th><th>開始</th><th>終了</th><th /></tr></thead>
@@ -351,7 +404,7 @@ onMounted(async ()=>{
         <input
           v-model="dateFrom"
           type="date"
-          class="form-control"
+          class="form-control bg-white"
         >
       </div>
       <div>
@@ -359,7 +412,7 @@ onMounted(async ()=>{
         <input
           v-model="dateTo"
           type="date"
-          class="form-control"
+          class="form-control bg-white"
         >
       </div>
       <button
@@ -369,126 +422,140 @@ onMounted(async ()=>{
         再表示
       </button>
     </div>
+    <div class="table-responsive">
 
-    <table class="table align-middle">
-      <thead class="table-dark">
-        <tr>
-          <th>ID</th><th>予定</th><th>出勤</th><th>退勤</th>
-          <th>勤務</th><th>時給</th><th>給与</th><th class="text-end">
-            操作
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="r in rows"
-          :key="r.id"
-        >
-          <td>{{ r.id }}</td>
-          <!-- 予定 -->
-          <td>
-            <template v-if="editing.id !== r.id">
-              <span v-if="r.plan_start">{{ fmt(r.plan_start) }} – {{ fmt(r.plan_end) }}</span>
+      <table class="table align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>ID</th><th>予定</th><th>出勤</th><th>退勤</th>
+            <th>勤務</th><th>時給</th><th>給与</th><th class="text-end">
+              操作
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="r in rows"
+            :key="r.id"
+          >
+            <td>{{ r.id }}</td>
+            <!-- 予定 -->
+            <td>
+              <template v-if="editing.id !== r.id">
+                <span v-if="r.plan_start">{{ fmt(r.plan_start) }} – {{ fmt(r.plan_end) }}</span>
+                <button
+                  class="btn"
+                  :disabled="!r.plan_start"
+                  title="予定削除"
+                  @click="clearPlan(r)"
+                >
+                  <IconX :size="12" />
+                </button>
+              </template>
+              <template v-else>
+                <div class="d-flex gap-2">
+                  <input
+                    v-model="editing.plan_start"
+                    type="datetime-local"
+                    class="form-control form-control-sm mb-1"
+                  >
+                  <input
+                    v-model="editing.plan_end"
+                    type="datetime-local"
+                    class="form-control form-control-sm"
+                  >
+                </div>
+              </template>
+            </td>
+            <!-- 出勤 -->
+            <td v-if="editing.id !== r.id">
+              {{ fmt(r.clock_in) }}
               <button
+                v-if="r.clock_in"
                 class="btn"
-                :disabled="!r.plan_start"
-                title="予定削除"
-                @click="clearPlan(r)"
+                title="出退勤クリア"
+                @click="clearAttendance(r)"
               >
                 <IconX :size="12" />
               </button>
-            </template>
-            <template v-else>
-              <div class="d-flex gap-2">
-                <input
-                  v-model="editing.plan_start"
-                  type="datetime-local"
-                  class="form-control form-control-sm mb-1"
+            </td>
+            <td v-else>
+              <input
+                v-model="editing.clock_in"
+                type="datetime-local"
+                class="form-control form-control-sm"
+              >
+            </td>
+            <!-- 退勤 -->
+            <td v-if="editing.id !== r.id">
+              {{ fmt(r.clock_out) }}
+            </td>
+            <td v-else>
+              <input
+                v-model="editing.clock_out"
+                type="datetime-local"
+                class="form-control form-control-sm"
+              >
+            </td>
+            <!-- worked -->
+            <td>{{ r.worked_min ? (r.worked_min/60).toFixed(2)+' h' : '–' }}</td>
+            <!-- pay -->
+            <td>{{ yen(r.hourly_wage_snap) }}</td>
+            <td>{{ r.payroll_amount ? yen(r.payroll_amount) : '–' }}</td>
+            <!-- 操作 -->
+            <td class="text-end">
+              <template v-if="editing.id !== r.id">
+                <button
+                  class="btn btn-sm btn-outline-primary me-2"
+                  @click="startEdit(r)"
                 >
-                <input
-                  v-model="editing.plan_end"
-                  type="datetime-local"
-                  class="form-control form-control-sm"
+                  編集
+                </button>
+                <button
+                  class="btn btn-sm btn-outline-danger"
+                  @click="removeShift(r)"
                 >
-              </div>
-            </template>
-          </td>
-          <!-- 出勤 -->
-          <td v-if="editing.id !== r.id">
-            {{ fmt(r.clock_in) }}
-            <button
-              v-if="r.clock_in"
-              class="btn"
-              title="出退勤クリア"
-              @click="clearAttendance(r)"
+                  削除
+                </button>
+              </template>
+              <template v-else>
+                <button
+                  class="btn btn-sm btn-success me-2"
+                  @click="saveEdit"
+                >
+                  保存
+                </button>
+                <button
+                  class="btn btn-sm btn-secondary"
+                  @click="cancelEdit"
+                >
+                  キャンセル
+                </button>
+              </template>
+            </td>
+          </tr>
+          <tr v-if="!rows.length">
+            <td
+              colspan="8"
+              class="text-center text-muted"
             >
-              <IconX :size="12" />
-            </button>
-          </td>
-          <td v-else>
-            <input
-              v-model="editing.clock_in"
-              type="datetime-local"
-              class="form-control form-control-sm"
-            >
-          </td>
-          <!-- 退勤 -->
-          <td v-if="editing.id !== r.id">
-            {{ fmt(r.clock_out) }}
-          </td>
-          <td v-else>
-            <input
-              v-model="editing.clock_out"
-              type="datetime-local"
-              class="form-control form-control-sm"
-            >
-          </td>
-          <!-- worked -->
-          <td>{{ r.worked_min ? (r.worked_min/60).toFixed(2)+' h' : '–' }}</td>
-          <!-- pay -->
-          <td>{{ yen(r.hourly_wage_snap) }}</td>
-          <td>{{ r.payroll_amount ? yen(r.payroll_amount) : '–' }}</td>
-          <!-- 操作 -->
-          <td class="text-end">
-            <template v-if="editing.id !== r.id">
-              <button
-                class="btn btn-outline-primary me-2"
-                @click="startEdit(r)"
-              >
-                編集
-              </button>
-              <button
-                class="btn btn-outline-danger"
-                @click="removeShift(r)"
-              >
-                削除
-              </button>
-            </template>
-            <template v-else>
-              <button
-                class="btn btn-success me-2"
-                @click="saveEdit"
-              >
-                保存
-              </button>
-              <button
-                class="btn btn-secondary"
-                @click="cancelEdit"
-              >
-                キャンセル
-              </button>
-            </template>
-          </td>
-        </tr>
-        <tr v-if="!rows.length">
-          <td
-            colspan="8"
-            class="text-center text-muted"
-          >
-            シフトがありません
-          </td>
-        </tr>
-      </tbody>
-    </table>
+              シフトがありません
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+    </div>
   </div>
 </template>
+
+
+<style scoped lang="scss">
+
+table{
+  td,th{
+    white-space: nowrap;
+  }
+}
+
+</style>

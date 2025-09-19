@@ -50,12 +50,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="container-fluid py-4">
-    <div class="d-flex gap-2 mb-5">
+  <div class="py-4">
+    <div class="d-flex gap-2 mb-5 flex-wrap">
       <select
         v-model="store"
         class="form-select form-control"
-        style="max-width:200px"
         @change="fetch"
       >
         <option
@@ -68,7 +67,7 @@ onMounted(async () => {
       </select>
       <input
         v-model="keyword"
-        class="form-control h-auto w-25"
+        class="form-control"
         placeholder="源氏名"
         @keyup.enter="fetch"
       >

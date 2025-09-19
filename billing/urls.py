@@ -25,7 +25,7 @@ router.register(r"casts",                CastViewSet,            basename="casts
 router.register(r"item-categories",      ItemCategoryViewSet,    basename="item-categories")
 router.register(r"cast-shifts",          CastShiftViewSet,       basename="cast-shifts")
 router.register(r"cast-daily-summaries", CastDailySummaryViewSet,basename="cast-daily-summaries")
-router.register(r"staff",                StaffViewSet,           basename="staff")
+router.register(r"staffs", StaffViewSet, basename="staffs")
 router.register(r"staff-shifts",         StaffShiftViewSet,      basename="staff-shifts")
 router.register(r"customers",            CustomerViewSet,        basename="customers")
 router.register(r"store-notices",        StoreNoticeViewSet,     basename="store-notices")
@@ -67,7 +67,7 @@ urlpatterns = [
     path('kds/take/',       KDSTakeTicket.as_view(), name='kds_take'),
     path('kds/longpoll-tickets/', KDSTicketLongPoll.as_view(), name='kds_longpoll_tickets'),
     path('kds/longpoll-ready/',   KDSReadyLongPoll.as_view(),  name='kds_longpoll_ready'),
-    path('staffs/', StaffList.as_view(), name='staff_list'),
+    path('kds/staffs/', StaffList.as_view(), name='kds_staff_list'),
     path('kds/taken-today/', KDSTakenTodayList.as_view(), name='kds_taken_today'),
     path('order-events/', order_events, name='order-events'),
 ]

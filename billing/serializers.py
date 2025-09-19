@@ -232,172 +232,130 @@ class BillItemSerializer(serializers.ModelSerializer):
 
 
 class CastCategoryRateSerializer(serializers.ModelSerializer):
-    category = serializers.SlugRelatedField(  # “set”“drink”… の code
-        slug_field='code', queryset=ItemCategory.objects.all()
-    )
 
+    category = serializers.SlugRelatedField(slug_field='code', queryset=ItemCategory.objects.all())
     class Meta:
         model  = CastCategoryRate
-        fields = ('id', 'category', 'rate_free',
-                  'rate_nomination', 'rate_inhouse')
-  
+        fields = ('id','category','rate_free','rate_nomination','rate_inhouse')
 
 
 User = get_user_model()
 
 class CastSerializer(serializers.ModelSerializer):
-    # ---------- 店が入力・更新できる write‑only フィールド ----------
-    username    = serializers.CharField(write_only=True, required=True)
-    first_name  = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    last_name   = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    # ---------- 店が入力する write-only ----------
+    username_in   = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    first_name_in = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    last_name_in  = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
-    # ---------- 取得時に返す read‑only フィールド ----------
+    # ---------- 取得時に返す read-only ----------
     username_read   = serializers.CharField(source='user.username',   read_only=True)
     first_name_read = serializers.CharField(source='user.first_name', read_only=True)
     last_name_read  = serializers.CharField(source='user.last_name',  read_only=True)
 
-    avatar_url = serializers.SerializerMethodField()
+    avatar_url     = serializers.SerializerMethodField()
     category_rates = CastCategoryRateSerializer(many=True, required=False)
-    store = serializers.PrimaryKeyRelatedField(
-        queryset=Store.objects.all(),
-        required=False, write_only=True,
-    )
+
+    # store は View 側で require_store 済み。来ていれば尊重、無ければ補完する。
+    store = serializers.PrimaryKeyRelatedField(queryset=Store.objects.all(), required=False, write_only=True)
     hourly_wage = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model  = Cast
         fields = (
             "id", "stage_name", "store",
-            # ← ここから User 関連
-            "username", "username_read",
-            "first_name", "first_name_read",
-            "last_name",  "last_name_read",
-            "hourly_wage",
-            # ← バック率
-            "back_rate_free_override",
-            "back_rate_nomination_override",
-            "back_rate_inhouse_override",
-            # ← 画像
-            "avatar", "avatar_url",
-            'category_rates',
+            # User 表示
+            "username_read","first_name_read","last_name_read",
+            # User 入力（新規/任意更新）
+            "username_in","first_name_in","last_name_in",
+            # 給与・画像
+            "hourly_wage","avatar","avatar_url",
+            # 個別バック率
+            "back_rate_free_override","back_rate_nomination_override","back_rate_inhouse_override",
+            # カテゴリ別バック率
+            "category_rates",
         )
 
-    # ---------- helper ----------
+    # ---------- helpers ----------
     def get_avatar_url(self, obj):
-        if obj.avatar:
-            return cloudinary_url(obj.avatar.public_id,
-                                  format=obj.avatar.format,
-                                  secure=True)[0]
-        return None
+        av = getattr(obj, 'avatar', None)
+        try:
+            return av.url if av else None
+        except Exception:
+            return None
 
-
-    # --------------------------------------------------
-    #                     CREATE
-    # --------------------------------------------------
+    # ---------- create ----------
     def create(self, validated_data):
-        # ネストされて来た rate を取り出す
-        rates_data = validated_data.pop('category_rates', [])
+        rates = validated_data.pop('category_rates', [])
+        username = (validated_data.pop('username_in', '') or '').strip()
+        fn = (validated_data.pop('first_name_in', '') or '').strip()
+        ln = (validated_data.pop('last_name_in', '') or '').strip()
 
-        # まずユーザーを作る（既存ロジックはそのまま）
-        username   = validated_data.pop('username')
-        first_name = validated_data.pop('first_name', '')
-        last_name  = validated_data.pop('last_name', '')
+        if not username:
+            raise serializers.ValidationError({'username_in': 'ユーザー名は必須です。'})
+        if User.objects.filter(username=username).exists():
+            raise serializers.ValidationError({'username_in': 'このユーザー名は既に使用されています。'})
 
-        request = self.context.get('request')
-        if not validated_data.get('store') and request and request.user.store_id:
-            validated_data['store'] = request.user.store
+        # store 補完（View で request.store セット済み想定）
+        req = self.context.get('request')
+        if not validated_data.get('store') and req is not None:
+            st = getattr(req, 'store', None)
+            if st:
+                validated_data['store'] = st
 
         user = User.objects.create_user(
             username=username,
             password=get_random_string(12),
-            first_name=first_name,
-            last_name=last_name,
+            first_name=fn, last_name=ln,
         )
-
-        # Cast 本体を作成
         cast = Cast.objects.create(user=user, **validated_data)
 
-
-        # 新規入店の子につける0サマリー
-        CastDailySummary.objects.get_or_create(
-            cast=cast,
-            store=cast.store,          # 同じ店舗で
-            work_date=date.today(),    # 今日の日付
-            defaults=dict(
-                worked_min   = 0,
-                payroll      = 0,
-                sales_free   = 0,
-                sales_in     = 0,
-                sales_nom    = 0,
-                sales_champ  = 0,
+        # 初期サマリ（必要なら）
+        try:
+            CastDailySummary.objects.get_or_create(
+                cast=cast, store=cast.store, work_date=CastDailySummary._meta.get_field('work_date').default() if hasattr(CastDailySummary._meta.get_field('work_date'), 'default') else None,
+                defaults=dict(worked_min=0, payroll=0, sales_free=0, sales_in=0, sales_nom=0, sales_champ=0)
             )
-        )
+        except Exception:
+            pass
 
-        # rate 行を同期
-        self._sync_rates(cast, rates_data)
+        # カテゴリ別バック率
+        self._sync_rates(cast, rates)
         return cast
 
-    # --------------------------------------------------
-    #                     UPDATE
-    # --------------------------------------------------
+    # ---------- update ----------
     def update(self, instance, validated_data):
-        # rate が来た場合だけ処理。来なければ据え置き
-        rates_data = validated_data.pop('category_rates', None)
+        # username_in を送ってきた時だけ “変更を許可（重複チェック付き）”
+        uname = validated_data.pop('username_in', None)
+        fn    = validated_data.pop('first_name_in', None)
+        ln    = validated_data.pop('last_name_in', None)
 
-        # ユーザー情報更新（既存ロジック）
         user = instance.user
-        if 'username' in validated_data:
-            user.username = validated_data.pop('username')
-        if 'first_name' in validated_data:
-            user.first_name = validated_data.pop('first_name')
-        if 'last_name' in validated_data:
-            user.last_name = validated_data.pop('last_name')
-        user.save(update_fields=['username', 'first_name', 'last_name'])
+        if uname is not None:
+            u = uname.strip()
+            if not u:
+                raise serializers.ValidationError({'username_in': '空にはできません。'})
+            if u != user.username and User.objects.filter(username=u).exists():
+                raise serializers.ValidationError({'username_in': 'このユーザー名は既に使用されています。'})
+            user.username = u
+        if fn is not None:
+            user.first_name = fn
+        if ln is not None:
+            user.last_name = ln
+        if uname is not None or fn is not None or ln is not None:
+            user.save(update_fields=['username','first_name','last_name'])
 
-        # Cast 本体フィールドを更新
+        rates = validated_data.pop('category_rates', None)
+
+        # store が未指定なら据え置き（View 側で require_store）
         cast = super().update(instance, validated_data)
-
-        # rate を送り直してきた場合だけ入れ替え
-        if rates_data is not None:
-            self._sync_rates(cast, rates_data)
-
+        if rates is not None:
+            self._sync_rates(cast, rates)
         return cast
 
-    # --------------------------------------------------
-    #            category‑rate 同期ヘルパ
-    # --------------------------------------------------
-    def _sync_rates(self, cast, rates_data):
-        """
-        シンプルに：
-        1. 既存行を全削除 → 2. 送られてきた行を丸ごと作り直し
-        """
+    def _sync_rates(self, cast, rates):
         CastCategoryRate.objects.filter(cast=cast).delete()
-        for r in rates_data:
+        for r in (rates or []):
             CastCategoryRate.objects.create(cast=cast, **r)
-
-
-
-    def to_representation(self, obj):
-        data = super().to_representation(obj)
-        # 既定バック率（店舗共通）を ItemCategory から取得
-        cat = ItemCategory.objects.get(code="drink")
-        data["back_rate_free_override"] = (
-            obj.back_rate_free_override
-            if obj.back_rate_free_override is not None else cat.back_rate_free
-        )
-        data["back_rate_nomination_override"] = (
-            obj.back_rate_nomination_override
-            if obj.back_rate_nomination_override is not None else cat.back_rate_nomination
-        )
-        data["back_rate_inhouse_override"] = (
-            obj.back_rate_inhouse_override
-            if obj.back_rate_inhouse_override is not None else cat.back_rate_inhouse
-        )
-        return data
-
-
-
-
 
 class BillCastStaySerializer(serializers.ModelSerializer):
     cast = CastMiniSerializer()
@@ -804,44 +762,81 @@ class CastRankingSerializer(serializers.ModelSerializer):
         return static('img/user-default.png')
 
 
+
 class StaffSerializer(serializers.ModelSerializer):
-    # 既存の user → username に分解
-    username    = serializers.CharField(source='user.username',   read_only=True)
+    # ---- 読み取り用（編集画面に出す） ----
+    username    = serializers.CharField(source='user.username', read_only=True)
     first_name  = serializers.CharField(source='user.first_name', read_only=True)
-    last_name   = serializers.CharField(source='user.last_name',  read_only=True)
-    full_name   = serializers.SerializerMethodField()
-
+    last_name   = serializers.CharField(source='user.last_name', read_only=True)
+    role_code   = serializers.CharField(source='role', read_only=True)
+    # stores は ID 配列で入出力（ID/PKで OK）
     stores      = serializers.PrimaryKeyRelatedField(
-        many=True, read_only=True
+        queryset=Store.objects.all(), many=True, required=False
     )
 
-    # ① 内部コード＝write-only
-    role       = serializers.ChoiceField(
-        choices=Staff.ROLE_CHOICES,
-        write_only=True, required=False
-    )
-    # ② 表示用ラベル＝read-only
-    role_label = serializers.CharField(
-        source='get_role_display',
-        read_only=True
-    )
-    role_code = serializers.CharField(
-        source='role',
-        read_only=True
-    )
-
+    # ---- 書き込み用（新規作成/更新）※write_only ----
+    username_in   = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    first_name_in = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    last_name_in  = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model  = Staff
-        fields = (
-            'id', 'username', 'first_name', 'last_name',
-            'full_name', 'hourly_wage', 'stores', 'role','role_label','role_code',
-        )
+        fields = [
+            'id',
+            'username', 'first_name', 'last_name',   # 読み取り
+            'username_in', 'first_name_in', 'last_name_in',  # 書き込み
+            'role_code', 'role', 'hourly_wage', 'stores',
+        ]
+        extra_kwargs = {
+            'role': {'required': False},
+            'hourly_wage': {'required': False},
+        }
 
-    def get_full_name(self, obj):
-        fn = (obj.user.first_name + obj.user.last_name).strip()
-        return fn or obj.user.username
+    def create(self, validated_data):
+        # write_only を取り出し
+        uname = validated_data.pop('username_in', '').strip()
+        fn    = validated_data.pop('first_name_in', '').strip()
+        ln    = validated_data.pop('last_name_in', '').strip()
 
+        if not uname:
+            raise serializers.ValidationError({'username_in': 'ユーザー名は必須です。'})
+        if User.objects.filter(username=uname).exists():
+            raise serializers.ValidationError({'username_in': 'このユーザー名は既に使用されています。'})
+
+        user = User.objects.create(username=uname, first_name=fn, last_name=ln, is_active=True)
+        stores = validated_data.pop('stores', [])
+        staff = Staff.objects.create(user=user, **validated_data)
+
+        # stores 明示がなければ “現在店舗” を自動付与
+        req = self.context.get('request')
+        if stores:
+            staff.stores.set(stores)
+        elif req and getattr(req, 'store', None):
+            staff.stores.add(req.store.id)
+
+        return staff
+
+    def update(self, instance, validated_data):
+        # user 氏名の更新（任意）
+        fn = validated_data.pop('first_name_in', None)
+        ln = validated_data.pop('last_name_in', None)
+        if fn is not None:
+            instance.user.first_name = fn
+        if ln is not None:
+            instance.user.last_name = ln
+        if fn is not None or ln is not None:
+            instance.user.save(update_fields=['first_name','last_name'])
+
+        # stores / role / hourly_wage の更新
+        stores = validated_data.pop('stores', None)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+
+        if stores is not None:
+            instance.stores.set(stores)
+
+        return instance
 
 class StaffShiftSerializer(serializers.ModelSerializer):
     store_id = serializers.PrimaryKeyRelatedField(

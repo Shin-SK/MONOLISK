@@ -56,9 +56,9 @@ onMounted(load)
     <div class="d-flex align-items-end gap-2 mb-3">
       <div>
         <label class="form-label small mb-1">新規テーブル番号</label>
-        <input type="number" class="form-control" v-model="newNumber" placeholder="例: 1" style="max-width:160px" />
+        <input type="number" class="form-control bg-white" v-model="newNumber" placeholder="例: 1" style="max-width:160px" />
       </div>
-      <button class="btn btn-primary mb-1" @click="add">追加</button>
+      <button class="btn btn-primary" @click="add">追加</button>
     </div>
 
     <div v-if="loading" class="text-muted">読み込み中…</div>
@@ -87,3 +87,14 @@ onMounted(load)
     <div v-if="error" class="alert alert-danger mt-2">{{ error }}</div>
   </div>
 </template>
+
+
+<style scoped lang="scss">
+
+table{
+  td,th{
+    white-space: nowrap;
+  }
+}
+
+</style>

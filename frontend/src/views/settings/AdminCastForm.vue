@@ -84,12 +84,21 @@ async function save () {
     }
 
     const body = { ...form }
-    let res
 
-    // ここで必要なら 0-100 → 0-1 変換（APIが 0.50 形式なら）
-    // for (const k of ['back_rate_free_override','back_rate_nomination_override','back_rate_inhouse_override']) {
-    //   if (body[k] != null) body[k] = Number(body[k]) / 100
-    // }
+    if (!isEdit) {
+      body.username_in   = (form.username || '').trim()
+      body.first_name_in = form.first_name || ''
+      body.last_name_in  = form.last_name || ''
+    } else {
+      // 変更しないなら username は送らない（誤更新防止）
+      delete body.username
+      delete body.first_name_in
+      delete body.last_name_in
+      // もし編集でユーザー名を変更したいときだけ：
+      // body.username_in = (form.username || '').trim()
+    }
+
+    let res
 
     if (avatarFile.value || form.avatar_clear) {
       // ---- multipart（画像 or クリアあり）----

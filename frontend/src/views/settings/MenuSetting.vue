@@ -318,7 +318,12 @@ onMounted(async () => {
 </template>
 
 
-<style scoped>
+<style scoped lang="scss">
 
+table{
+  td,th{
+    white-space: nowrap;
+  }
+}
 
 </style>

@@ -351,10 +351,14 @@ export const getStaffShiftPlans = (params = {}) =>
 
 /* ---------- Staff & StaffShift ---------- */
 // スタッフ一覧
-export const fetchStaffs = (params = {}) =>
-  api.get('billing/staffs/', { params })
-     .then(r => r.data.results ?? r.data)   // ページネーション両対応
-
+export const fetchStaffs = (params = {}, opt = {}) => {
+  const kw = String(params?.q || params?.search || params?.name || '').trim()
+  const cfg = { params, ...(opt || {}) }
+  if (kw) cfg.cache = false            // ← 検索はキャッシュ無効
+  // 追加の保険：クエリにタイムスタンプを付与（中間プロキシ対策）
+  if (kw) cfg.params = { ...cfg.params, _ts: Date.now() }
+  return api.get('billing/staffs/', cfg).then(r => r.data.results ?? r.data)
+}
 
 /* ---------- Staff CRUD ---------- */
 export const fetchStaff = id =>

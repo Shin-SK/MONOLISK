@@ -18,6 +18,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_headers
 from rest_framework.viewsets import ReadOnlyModelViewSet
+from rest_framework.filters import SearchFilter
 
 from .permissions import RequireCap, CastHonshimeiForBill, CanOrderBillItem
 
@@ -568,19 +569,34 @@ class CastRankingView(ListAPIView):
 # スタッフ / スタッフシフト（M2M に注意）
 # ────────────────────────────────────────────────────────────────────
 class StaffViewSet(viewsets.ModelViewSet):
-    serializer_class = StaffSerializer
+    serializer_class  = StaffSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filterset_fields = ["user__username", "stores"]
+    filter_backends   = [DjangoFilterBackend, SearchFilter]
+    filterset_fields  = ["stores"]
+    search_fields     = ["user__username","user__first_name","user__last_name","user__email"]
 
     def get_queryset(self):
         sid = StoreScopedModelViewSet.require_store(self, self.request)
-        return (
-            Staff.objects
-            .filter(stores__id=sid)
-            .prefetch_related("stores", "user")
-            .distinct()
-        )
+        qs = (Staff.objects
+              .filter(stores__id=sid)
+              .prefetch_related("stores", "user")
+              .distinct())
 
+        # ★ 手動フィルタ（SearchFilter保険）
+        kw = (self.request.query_params.get("search")
+              or self.request.query_params.get("q")
+              or self.request.query_params.get("name"))
+        if kw:
+            kw = kw.strip()
+            if kw:
+                qs = qs.filter(
+                    Q(user__username__icontains=kw) |
+                    Q(user__first_name__icontains=kw) |
+                    Q(user__last_name__icontains=kw)  |
+                    Q(user__email__icontains=kw)
+                ).distinct()
+        return qs
+    
 
 class StaffShiftViewSet(StoreScopedModelViewSet):
     queryset = StaffShift.objects.select_related("store", "staff")
