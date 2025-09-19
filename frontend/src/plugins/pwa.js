@@ -5,6 +5,9 @@ const OVERLAY_ID = 'update-overlay'
 let updateNowFn = null
 let reloaded = false
 
+let fallbackTimer = null
+
+
 function ensureOverlay (msg = 'アップデート中… 数秒で再開します') {
   let el = document.getElementById(OVERLAY_ID)
   if (!el) {
@@ -79,6 +82,13 @@ export function setupPWA () {
       saveResumePoint()
       // 待機SWを即適用：skipWaiting → controllerchange で再読込
       if (typeof updateNowFn === 'function') updateNowFn()
+      if (!fallbackTimer) {
+        fallbackTimer = setTimeout(() => {
+          const cur = location.pathname + location.search + location.hash
+          const sep = location.search ? '&' : '?'
+          location.replace(`${cur}${sep}v=${Date.now()}`)
+        }, 4000) // 4秒で強制リロード
+      }
     },
     onOfflineReady () { /* noop */ },
     onRegisterError (e) { console.warn('[pwa] register error:', e) }
@@ -87,6 +97,7 @@ export function setupPWA () {
 
   // SW適用 → 1回だけハードリロード（index.html は no-store 前提）
   navigator.serviceWorker?.addEventListener('controllerchange', () => {
+    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null }
     if (reloaded) return
     reloaded = true
     ensureOverlay('アップデート中… 再読み込みしています')
@@ -101,6 +112,13 @@ export async function applyUpdateNow () {
   try {
     ensureOverlay('アップデートを適用中…')
     saveResumePoint()
+    if (!fallbackTimer) {
+      fallbackTimer = setTimeout(() => {
+        const cur = location.pathname + location.search + location.hash
+        const sep = location.search ? '&' : '?'
+        location.replace(`${cur}${sep}v=${Date.now()}`)
+      }, 4000)
+    }
     if (typeof updateNowFn === 'function') await updateNowFn()
   } catch (e) {
     console.warn('[pwa] applyUpdateNow failed:', e)
