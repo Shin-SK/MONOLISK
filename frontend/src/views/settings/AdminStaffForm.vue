@@ -1,6 +1,6 @@
 <!-- AdminStaffForm.vue -->
 <script setup>
-import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import {
@@ -43,7 +43,6 @@ function resetForm () {
 }
 
 function normalizeStores(v) {
-  // APIが [1,2] でも [{id:1}, {id:2}] でもOKにする
   if (!Array.isArray(v)) return []
   if (v.length && typeof v[0] === 'object') return v.map(x => x?.id).filter(Boolean)
   return v
@@ -52,48 +51,43 @@ function normalizeStores(v) {
 async function loadProfile(){
   if (!isEdit.value) return
   const data = await fetchStaff(staffId.value)
-
-  // user.* と直下の両方に対応
   const u = data.user || {}
-  const username   = data.username   ?? u.username   ?? ''
-  const first_name = data.first_name ?? u.first_name ?? ''
-  const last_name  = data.last_name  ?? u.last_name  ?? ''
-
-  // role は role_code / role / role_name のどれかを拾う
-  const role = data.role_code ?? data.role ?? data.role_name ?? 'staff'
-
-  // stores は id配列に正規化
-  const stores = normalizeStores(data.stores ?? [])
-
   Object.assign(form, {
-    username,
-    first_name,
-    last_name,
-    hourly_wage: data.hourly_wage ?? 1300,
-    stores,
-    role,
+    username    : data.username   ?? u.username   ?? '',
+    first_name  : data.first_name ?? u.first_name ?? '',
+    last_name   : data.last_name  ?? u.last_name  ?? '',
+    hourly_wage : data.hourly_wage ?? 1300,
+    stores      : normalizeStores(data.stores ?? []),
+    role        : data.role_code ?? data.role ?? data.role_name ?? 'staff',
   })
 }
 
 async function saveProfile () {
   if (!isEdit.value && !form.username.trim()) return alert('ユーザー名を入力してください')
+
   const payload = { ...form }
-
-  // API側が stores をオブジェクトで受ける場合はここでそのまま送る。
-  // いまは ID配列の想定でOK。
-
-  const res = isEdit.value
-    ? await updateStaff(staffId.value, payload)
-    : await createStaff(payload)
-
   if (!isEdit.value) {
-    // 作成直後：同一コンポーネント再利用なので、遷移後に明示的に読み直す
-    await router.replace({ name: 'settings-staff-form', params: { id: res.id } })
-    await nextTick()
-    await loadProfile()
-    await loadShifts()
+    // ★ StaffSerializer の write-only へマッピング
+    payload.username_in   = (form.username || '').trim()
+    payload.first_name_in = form.first_name || ''
+    payload.last_name_in  = form.last_name  || ''
   } else {
+    delete payload.username
+    delete payload.first_name_in
+    delete payload.last_name_in
+  }
+
+  try {
+    if (isEdit.value) {
+      await updateStaff(staffId.value, payload)
+    } else {
+      await createStaff(payload)
+    }
+    // ★ いつでも一覧へ戻る
     router.push({ name: 'settings-staff-list' })
+  } catch (e) {
+    const d = e?.response?.data
+    alert(d ? JSON.stringify(d) : (e?.message || '保存に失敗しました'))
   }
 }
 
@@ -106,16 +100,12 @@ async function removeProfile () {
 /* ------------------------------------------------------------------
  *  シフト管理 – CastShiftPage と同じ「カート」UI
  * ----------------------------------------------------------------*/
-
-/* ---- filters ---- */
 const dateFrom = ref(dayjs().startOf('month').format('YYYY-MM-DD'))
 const dateTo   = ref(dayjs().format('YYYY-MM-DD'))
 
-/* ---- lists ---- */
 const rows   = ref([])     // 既存(保存済み)
 const drafts = ref([])     // 下書き(未送信)
 
-/* ---- cart form ---- */
 const cart = reactive({ start: '', end: '' })
 
 function addDraft () {
@@ -192,7 +182,7 @@ async function removeShift (r){
 }
 
 /* ---- utils ---- */
-const fmt = d => d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '–'
+const fmt = d => (d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '–')
 
 /* ---- load ---- */
 async function loadShifts(){
@@ -208,7 +198,6 @@ async function loadShifts(){
 /* ---- 監視と初期化 ---- */
 watch([dateFrom, dateTo], () => { if (isEdit.value) loadShifts() })
 
-// 新規→編集への切替や、同一コンポーネント再利用時の再読込
 watch(() => route.params.id, async (nv) => {
   if (!nv) { resetForm(); return }
   await loadProfile()

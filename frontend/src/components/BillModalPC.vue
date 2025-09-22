@@ -902,7 +902,7 @@ watch(visible, v => { if (v) pane.value = 'base' })
         <!-- ▼キャスト選択　一括表示 -->
         <div class="mb-3 cast-select">
           <div class="input-group mb-4">
-            <span class="input-group-text">
+            <span class="input-group-text border-0">
               <IconSearch />
             </span>
             <input

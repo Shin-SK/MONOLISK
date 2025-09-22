@@ -1,4 +1,4 @@
-<!-- src/views/ProfileEdit.vue（丸ごと置換） -->
+<!-- src/views/ProfileEdit.vue -->
 <script setup>
 import { reactive, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useUser } from '@/stores/useUser'
@@ -47,48 +47,49 @@ async function load() {
 }
 
 /* ── 保存（基本情報 + 画像） ─────────── */
+// src/views/ProfileEdit.vue の save() 内
 async function save() {
   saving.value = true
   msg.value = ''
   try {
-    // 1) プロフィール基本
+    const me = meStore.me || (await api.get('me/')).data
+
+    // 送れるのは first_name / last_name / email / （必要なら username）
     const payload = {
       first_name: form.first_name,
       last_name : form.last_name,
-      username  : form.username,
       email     : form.email,
-      phone     : form.phone,
-      department: form.department,
     }
-    try {
-      await api.patch('me/', payload)
-    } catch {
-      // フォールバック（基本フィールドのみ）
-      const p2 = (({first_name,last_name,username,email}) => ({first_name,last_name,username,email}))(payload)
-      await api.patch('dj-rest-auth/user/', p2)
+    // username を本当に変更した時だけ付ける（＝一意チェックを回避）
+    if ((form.username || '') !== (me.username || '')) {
+      payload.username = form.username
     }
 
-    // 2) アバター（あれば）
+    await api.patch('dj-rest-auth/user/', payload)
+
+    // 画像は今まで通り
     if (canEditAvatar.value && avatarFile.value) {
-      const castId = meStore.me?.cast_id ?? (await api.get('me/')).data.cast_id
+      const castId = me.cast_id ?? (await api.get('me/')).data.cast_id
       if (castId) {
         const fd = new FormData()
         fd.append('avatar', avatarFile.value)
-        // InterceptorがFormDataのContent-Type除去＆store_id付与を実施
         await api.patch(`billing/casts/${castId}/`, fd)
       }
     }
 
-    // 3) meを更新（サイドバー等へ即反映）
     await meStore.fetchMe?.()
     msg.value = '保存しました'
-    if (avatarFile.value) msg.value += '（画像も更新）'
   } catch (e) {
-    msg.value = e?.response?.data?.detail || e?.message || '保存に失敗しました'
+    // サーバのフィールドエラーをそのまま表示
+    const d = e?.response?.data
+    msg.value = d ? JSON.stringify(d) : (e?.message || '保存に失敗しました')
   } finally {
     saving.value = false
   }
 }
+
+
+
 
 onMounted(load)
 </script>
@@ -143,3 +144,12 @@ onMounted(load)
     </div>
   </div>
 </template>
+
+
+<style scoped lang="scss">
+
+input{
+  background: white;
+}
+
+</style>

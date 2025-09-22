@@ -1,92 +1,42 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import dayjs from 'dayjs'
-import {
-  fetchStaffs, fetchStaffShifts,
-  createStaffShift, deleteStaffShift,
-  staffCheckIn, staffCheckOut,
-} from '@/api'
-import { getStoreId } from '@/auth'
+import { fetchStaffs, fetchStaffShifts } from '@/api'
 
 const keyword = ref('')
 const results = ref([])
 
-const fmt = d => d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '—'
+const fmt = d => (d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '—')
 
-// ▼ 表示用フォールバック
 const displayName = (s) => {
-  // 1) full_name があれば最優先
-  if (s.full_name && String(s.full_name).trim()) return s.full_name
-  // 2) first_name + last_name
+  if (s.full_name?.trim()) return s.full_name
   const fn = [s.first_name, s.last_name].filter(Boolean).join('')
   if (fn) return fn
-  // 3) username or name（バックエンド差異吸収）
-  if (s.username && String(s.username).trim()) return s.username
-  if (s.name && String(s.name).trim()) return s.name
-  // 4) 最終フォールバック
+  if (s.username?.trim()) return s.username
+  if (s.name?.trim()) return s.name
   return `ID:${s.id}`
 }
-
 const displayRole = (s) => {
-  // role_label が来ていればそれでOK
-  if (s.role_label && String(s.role_label).trim()) return s.role_label
-  // role_code から人間表示へ
+  if (s.role_label?.trim()) return s.role_label
   const map = { staff: 'スタッフ', submgr: '副店長', mgr: '店長' }
-  if (s.role_code && map[s.role_code]) return map[s.role_code]
-  // 何も無ければダッシュ
-  return '―'
-}
-
-async function ensureShift (row) {
-  if (!row.shift) {
-    row.shift = await createStaffShift({
-      staff_id : row.id,
-      store_id : row.stores?.[0] ?? getStoreId(),
-    })
-  }
-}
-
-async function checkIn (row) {
-  await ensureShift(row)
-  if (!row.shift?.clock_in) {
-    await staffCheckIn(row.shift.id)
-    await fetchList()
-  }
-}
-
-async function checkOut (row) {
-  if (row.shift && !row.shift.clock_out) {
-    if (!confirm('退勤しますか？')) return
-    await staffCheckOut(row.shift.id)
-    alert('退勤処理が完了しました！')
-    await fetchList()
-  }
-}
-
-async function removeShift (row) {
-  if (row.shift && confirm('本当に削除しますか？')) {
-    await deleteStaffShift(row.shift.id)
-    await fetchList()
-  }
+  return map[s.role_code] || '―'
 }
 
 async function fetchList () {
-  const kw = String(keyword.value || '').trim()
-
-  // 1) パラメ名を網羅（どれかヒットすればOK）
+  const kw = (keyword.value || '').trim()
   const params = kw
-    ? { q: kw, search: kw, name: kw }   // ← いずれかをサーバが拾う
-    : { ordering: '-id', limit: 50 }
+    ? { q: kw, search: kw, name: kw, _ts: Date.now() }
+    : { ordering: '-id', limit: 50, _ts: Date.now() }
 
-  // 2) 検索はキャッシュ無効にする
+  // ★ 常に最新
   const staffs = await fetchStaffs(params, { cache: false })
 
-  const today   = dayjs().format('YYYY-MM-DD')
-  const shifts  = await fetchStaffShifts({ date: today })
-  const byStaff = Object.fromEntries((Array.isArray(shifts)?shifts:[]).map(s => [s.staff_id, s]))
+  const today  = dayjs().format('YYYY-MM-DD')
+  const shifts = await fetchStaffShifts({ date: today, _ts: Date.now() })
+  const byId   = Object.fromEntries((Array.isArray(shifts)?shifts:[]).map(s => [s.staff_id, s]))
 
   results.value = (Array.isArray(staffs)?staffs:[]).map(s => {
-    const sh = byStaff[s.id] || null
+    const sh = byId[s.id] || null
     return {
       ...s,
       _name: displayName(s),
@@ -99,9 +49,9 @@ async function fetchList () {
   })
 }
 
-
 onMounted(fetchList)
 </script>
+
 
 <template>
   <div class="staff-list">

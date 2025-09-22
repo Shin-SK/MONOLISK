@@ -5,9 +5,7 @@ import App    from './App.vue'
 import router from './router'
 import { setupPWA, restoreRouteIfNeeded } from '@/plugins/pwa'
 setupPWA()
-
 import 'bootstrap';
-import { installOffcanvasScrollGuard } from '@/utils/offcanvas-scroll-guard'
 
 import ganttastic from '@infectoone/vue-ganttastic'
 
@@ -43,7 +41,6 @@ Sortable.mount(new Swap())
     await router.isReady()
     restoreRouteIfNeeded(router)
     app.mount('#app')
-    installOffcanvasScrollGuard()
 
 // --- スプラッシュ制御 ---
 // --- スプラッシュ終了制御（mount後） ---

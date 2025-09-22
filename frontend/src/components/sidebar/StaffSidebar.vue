@@ -6,6 +6,7 @@ import { useRoles } from '@/composables/useRoles'
 import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'
 import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
+import { closeSidebar } from '@/utils/offcanvas'
 
 const { role, isSuper, hasRole } = useRoles()
 
@@ -22,14 +23,15 @@ const go = (to) => router.push(to)
 
 async function logout() {
   if (!confirm('ログアウトしますか？')) return
-  try { await userStore.logout?.() } finally { router.push('/login') }
+  try { await user.logout?.() } finally { router.push('/login') }
 }
 </script>
 <template>
-  <!-- ★ MainLayout から開くオフキャンバスはこのIDで -->
+
+  <teleport to="body">
   <div id="staffSidebar" class="staff-sidebar offcanvas offcanvas-start" tabindex="-1" style="--bs-offcanvas-width:min(80vw,300px);">
     <div class="offcanvas-header">
-      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"/>
+      <button class="btn-close" data-bs-dismiss="offcanvas" />
     </div>
 
     <div class="offcanvas-body d-flex flex-column gap-2 ">
@@ -79,6 +81,7 @@ async function logout() {
       </div>
     </div>
   </div>
+  </teleport>
 </template>
 
 <style scoped lang="scss">

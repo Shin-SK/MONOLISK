@@ -16,7 +16,6 @@ const DEFAULT_SKIP_AUTH = [
   'auth/registration',
   'dj-rest-auth/password',
   'dj-rest-auth/password/reset',
-  'dj-rest-auth/user',
 ]
 
 // Store 非依存（X-Store-Id を付けない）
@@ -59,7 +58,10 @@ function isStoreIndependentPath(p){
 
 function shouldSkipAuth(rawUrl='') {
   const s = normalizePathLike(rawUrl)
-  return DEFAULT_SKIP_AUTH.some(pref => s.includes(normalizePathLike(pref)))
+  return DEFAULT_SKIP_AUTH.some(pref => {
+    const n = normalizePathLike(pref)
+    return s === n || s.startsWith(n + '/')
+  })
 }
 
 export function wireInterceptors(api) {

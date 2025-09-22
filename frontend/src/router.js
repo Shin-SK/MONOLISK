@@ -6,6 +6,7 @@ import { useUser } from '@/stores/useUser'
 /* --- レイアウト --- */
 import MainLayout from '@/layouts/MainLayout.vue'
 import CastLayout from '@/layouts/CastLayout.vue'
+import StaffLayout from '@/layouts/StaffLayout.vue'
 import OwnerLayout from '@/layouts/OwnerLayout.vue'
 import ManagerLayout from '@/layouts/ManagerLayout.vue'
 
@@ -94,7 +95,7 @@ const routes = [
   // ---------- スタッフ ---------- //
   {
     path: '/staff',
-    component: MainLayout,
+    component: StaffLayout,
     meta: { rolesAny: ['staff','manager','owner','superuser'], title: 'STAFF' },
     children: [
       { path: 'mypage', name: 'staff-mypage', component: () => import('@/views/staff/StaffMypage.vue'), meta:{ rolesAny: ['staff','manager','owner','superuser'], title:'MYPAGE' } },

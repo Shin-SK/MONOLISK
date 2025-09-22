@@ -216,8 +216,8 @@ export const getBillingStores = () =>
 	api.get('billing/stores/').then(r => r.data)
 export const getStores = getBillingStores
 
-export const getBillingCasts = (params = {}) =>
-	api.get('billing/casts/', { params }).then(r => r.data)
+export const getBillingCasts = (params = {}, opt = {}) =>
+  api.get('billing/casts/', { params, ...opt }).then(r => r.data)
 
 
 /* ---------- キャスト売上 ---------- */

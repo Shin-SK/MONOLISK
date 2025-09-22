@@ -1,29 +1,28 @@
 <!-- src/views/CastList.vue -->
 <script setup>
 import { ref, onMounted } from 'vue'
-import { api, fetchCastShifts } from '@/api'
+import { getBillingStores, getBillingCasts, fetchCastShifts } from '@/api'
 
-const keyword	= ref('')
-const store		= ref('')
-const stores	= ref([])
-const results	= ref([])
+const keyword = ref('')
+const store   = ref('')
+const stores  = ref([])
+const results = ref([])
 
-async function fetchStores() {
-	const list = await api.get('billing/stores/').then(r => r.data)
-	stores.value = [{ id: '', name: '全店舗' }, ...list]
-	store.value  = ''
+async function fetchStores () {
+  const list = await getBillingStores()
+  stores.value = [{ id: '', name: '全店舗' }, ...list]
+  store.value  = ''
 }
 
-const fmt = iso => iso ? new Date(iso).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : ''
+const fmt = (iso) =>
+  iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
 
-async function fetch() {
-  // 1) キャスト一覧
-  const { data: casts } = await api.get('billing/casts/', {
-    params: {
-      store      : store.value || undefined,
-      stage_name : keyword.value || undefined,
-    }
-  })
+async function fetch () {
+  // 1) キャスト一覧（常に最新を取得）
+  const casts = await getBillingCasts(
+    { store: store.value || undefined, stage_name: keyword.value || undefined, _ts: Date.now() },
+    { cache: false }
+  )
 
   // 2) 今日のシフト（cast-shifts を日付絞り）
   const today  = new Date().toISOString().slice(0, 10)
@@ -31,10 +30,10 @@ async function fetch() {
     date : today,
     store: store.value || undefined,
   })
-  const byCast = Object.fromEntries(shifts.map(s => [s.cast_id, s]))
+  const byCast = Object.fromEntries((Array.isArray(shifts) ? shifts : []).map(s => [s.cast_id, s]))
 
   // 3) 表示用
-  results.value = casts.map(c => {
+  results.value = (Array.isArray(casts) ? casts : []).map(c => {
     const sh = byCast[c.id]
     return {
       ...c,
@@ -44,10 +43,11 @@ async function fetch() {
 }
 
 onMounted(async () => {
-	await fetchStores()
-	await fetch()
+  await fetchStores()
+  await fetch()
 })
 </script>
+
 
 <template>
   <div class="py-4">

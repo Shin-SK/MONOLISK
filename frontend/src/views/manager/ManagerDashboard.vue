@@ -189,7 +189,7 @@ const kpiDutyLabel = computed(() =>
 <template>
   <div class="manager-dashboard">
     <!-- 日付コントロール -->
-    <div class="mb-3">
+    <div class="mb-3" style="width: fit-content;">
       <input type="date" v-model="date" class="form-control bg-white" />
     </div>
 
@@ -201,7 +201,7 @@ const kpiDutyLabel = computed(() =>
     <div v-else>
       <div class="area card-area row g-3">
         <!-- 置き換え：今日の売上カード内 -->
-        <div class="col-12 d-flex">
+        <div class="col-12 col-md-3 d-flex">
           <div class="card h-100 w-100">
             <div class="card-header title">今日の売上</div>
             <div class="card-body value sales">
@@ -223,7 +223,7 @@ const kpiDutyLabel = computed(() =>
           </div>
         </div>
         <!-- 来店数 -->
-        <div class="col-4 d-flex">
+        <div class="col-4 col-md-3 d-flex">
           <div class="card h-100 w-100">
             <div class="card-header title">来店数</div>
             <div class="card-body value">{{ kpi.visitors }}</div>
@@ -231,7 +231,7 @@ const kpiDutyLabel = computed(() =>
         </div>
 
         <!-- オープン中 -->
-        <div class="col-4 d-flex">
+        <div class="col-4 col-md-3 d-flex">
           <div class="card h-100 w-100">
             <div class="card-header title">伝票
               <MiniTip v-model="showOpenTip" text="会計済み/オープン中" align="right">
@@ -245,7 +245,7 @@ const kpiDutyLabel = computed(() =>
         </div>
 
         <!-- 出勤数 -->
-        <div class="col-4 d-flex">
+        <div class="col-4 col-md-3 d-flex">
           <div class="card h-100 w-100">
             <div class="card-header title">出勤数
               <MiniTip v-model="showDutyTip" text="キャスト/スタッフ" align="right">
@@ -262,7 +262,7 @@ const kpiDutyLabel = computed(() =>
       <!-- 伝票一覧（ミニ） -->
       <div class="area my-4">
         <div class="h4 fw-bold text-center">今日の伝票</div>
-        <div v-if="!billsToday.length">なし</div>
+        <div class="text-center my-5" v-if="!billsToday.length">まだありません</div>
         <div v-else>
           <div v-for="b in billsToday" :key="b.id" class="mb-3">
             <div class="card p-3">
