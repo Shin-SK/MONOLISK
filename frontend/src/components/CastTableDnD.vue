@@ -198,7 +198,7 @@ const showDetail = computed(() => !isVacant.value)
     <!-- フッター -->
     <div
       v-if="showDetail && !benchArea"
-      class="table-view-footer bg-white p-2 d-flex gap-3 justify-content-between align-items-center fs-4"
+      class="table-view-footer bg-white p-2 d-flex gap-3 justify-content-between align-items-center fs-5"
     >
       <!-- デバイス用 -->
       <div class="table-number align-items-center gap-1 d-md-none d-flex">

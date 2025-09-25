@@ -50,9 +50,12 @@ class StoreAdmin(admin.ModelAdmin):
     )
 @admin.register(Table)
 class TableAdmin(admin.ModelAdmin):
-	list_display  = ('store', 'number')
-	list_filter   = ('store',)
-	search_fields = ('store__slug',)
+	list_display  = ('store', 'code', 'seat_type')
+	list_filter   = ('store','seat_type')
+	search_fields = ('store__slug','code')
+ 
+def __str__(self):
+    return self.code or f'#{self.pk}'
 
 
 @admin.register(Cast)

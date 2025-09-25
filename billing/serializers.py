@@ -21,9 +21,16 @@ class StoreSerializer(serializers.ModelSerializer):
 
 
 class TableSerializer(serializers.ModelSerializer):
+    # 互換：旧 number を復活（中身は code をそのまま返す）
+    number = serializers.SerializerMethodField()
+
+    def get_number(self, obj):
+        return getattr(obj, 'code', '') or ''   # None→'' で undefined回避
+
     class Meta:
-        model    = Table
-        fields    = '__all__'
+        model  = Table
+        fields = ('id', 'code', 'number', 'seat_type', 'store')
+
 
 class StoreSeatSettingSerializer(serializers.ModelSerializer):
     seat_type_display = serializers.CharField(source='get_seat_type_display', read_only=True)
@@ -65,18 +72,24 @@ class BillMiniSerializer(serializers.ModelSerializer):
         fields = ['id', 'opened_at', 'closed_at', 
                   'grand_total','subtotal','table', 'expected_out',
                   'table', 'memo']
-        
+
+
 class TableMiniSerializer(serializers.ModelSerializer):
+    store = serializers.IntegerField(source='store.id', read_only=True)
+    number = serializers.SerializerMethodField()  # 互換：旧 number を復活（中身は code）
+    def get_number(self, obj):
+        return getattr(obj, 'code', '') or ''   # undefined回避
+
     class Meta:
         model  = Table
-        fields = ['number']
-        
+        fields = ('id', 'number', 'code', 'store', 'seat_type')
+
 
 
 class CastItemDetailSerializer(serializers.ModelSerializer):
     bill_id    = serializers.IntegerField(source='bill.id', read_only=True)
     closed_at  = serializers.DateTimeField(source='bill.closed_at', read_only=True)
-    table_no   = serializers.IntegerField(source='bill.table.number', read_only=True)
+    table_no   = serializers.SerializerMethodField()
     subtotal   = serializers.SerializerMethodField()
     back_rate  = serializers.SerializerMethodField()
     amount     = serializers.SerializerMethodField()
@@ -99,7 +112,9 @@ class CastItemDetailSerializer(serializers.ModelSerializer):
         c = getattr(getattr(obj, 'item_master', None), 'category', None)
         if not c: return None
         return {'code': c.code, 'name': c.name, 'show_in_menu': c.show_in_menu}
-
+    def get_table_no(self, obj):
+        tbl = getattr(getattr(obj, 'bill', None), 'table', None)
+        return (getattr(tbl, 'code', '') or '') if tbl else ''
 
 class ItemCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -139,14 +154,6 @@ class ItemMasterSerializer(serializers.ModelSerializer):
             'category', 'category_id',
             'route',
         ]
-
-
-class TableMiniSerializer(serializers.ModelSerializer):
-    store = serializers.IntegerField(source='store.id', read_only=True)   # ★追加
-    class Meta:
-        model  = Table
-        fields = ('id', 'number', 'store')
-
 
 class BillCastStayMini(serializers.ModelSerializer):
     class Meta:
@@ -961,7 +968,8 @@ class OrderTicketSerializer(serializers.ModelSerializer):
 
     def get_table_no(self, obj):
         try:
-            return obj.bill_item.bill.table.number
+            tbl = getattr(getattr(obj.bill_item, 'bill', None), 'table', None)
+            return (getattr(tbl, 'code', '') or '') if tbl else ''
         except Exception:
             return None
 
@@ -1012,7 +1020,8 @@ class OrderTicketHistorySerializer(serializers.ModelSerializer):
 
     def get_table_no(self, obj):
         try:
-            return obj.bill_item.bill.table.number
+            tbl = getattr(getattr(obj.bill_item, 'bill', None), 'table', None)
+            return (getattr(tbl, 'code', '') or '') if tbl else ''
         except Exception:
             return None
 

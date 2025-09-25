@@ -13,7 +13,7 @@ from django.dispatch import receiver
 from datetime import timedelta
 from django.db.models.signals import post_save
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 from django.db.models import Sum, Q, F, IntegerField, ExpressionWrapper
 
 
@@ -72,7 +72,16 @@ class SeatType(models.TextChoices):
 
 class Table(models.Model):
     store  = models.ForeignKey(Store, on_delete=models.CASCADE)
-    number = models.PositiveSmallIntegerField()
+    code   = models.CharField(
+        max_length=16,
+        db_index=True,
+        null=True, blank=True,
+        validators=[RegexValidator(
+            regex=r'^[A-Za-z0-9_-]{1,16}$',
+            message='英数字・ハイフン・アンダースコアのみ（1〜16文字）。例: T01, B02'
+        )],
+        help_text='例: T01, B02（英数字可）'
+    )
     seat_type = models.CharField(
         max_length=16, choices=SeatType.choices,
         default=SeatType.MAIN, db_index=True
@@ -81,10 +90,10 @@ class Table(models.Model):
     class Meta:
         verbose_name = 'テーブル番号'
         verbose_name_plural = verbose_name
-        unique_together = ('store', 'number')
-        ordering = ['store', 'number']
+        unique_together = ('store', 'code')
+        ordering = ['store', 'code']
 
-    def __str__(self): return f'T{self.number}'
+    def __str__(self): return self.code
 
 
 # 席種ごとの店舗設定（席別サービス料率/チャージ/延長等を上書き）
