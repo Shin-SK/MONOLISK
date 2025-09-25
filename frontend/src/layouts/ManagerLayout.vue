@@ -1,6 +1,6 @@
 <!-- /layouts/ManagerLayout.vue -->
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUser } from '@/stores/useUser'
 import { api } from '@/api'
@@ -9,6 +9,11 @@ import { useNow } from '@vueuse/core'
 import { useProfile } from '@/composables/useProfile'
 import ManagerSidebar from '@/components/sidebar/ManagerSidebar.vue'
 import Avatar from '@/components/Avatar.vue'
+import { installOffcanvasSingleton,closeAllOffcanvas } from '@/utils/offcanvas'
+onMounted(() => {
+  installOffcanvasSingleton()
+  router.afterEach(() => { closeAllOffcanvas() })
+})
 
 /* stores / router */
 const router = useRouter()

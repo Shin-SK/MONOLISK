@@ -7,12 +7,20 @@ import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'
 import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
 import StoreSwitcher from '@/components/StoreSwitcher.vue'
+import { closeOffcanvas } from '@/utils/offcanvas'
+
+async function nav(to){
+  const r = router.resolve(to)
+  await router.push(r)
+  closeOffcanvas('#managerSidebar')   // ← ここだけでOK（BackdropはBootstrap任せ）
+}
 
 const router = useRouter()
 const route  = useRoute()
+const current = () => route.fullPath
+
 const user   = useUser()
 const auth   = useAuth()
-
 const { avatarURL, displayName } = useProfile() 
 
 async function logout () {
@@ -23,13 +31,6 @@ async function logout () {
 
 <template>
   <teleport to="body">
-    <!-- <div
-      id="managerSidebar"
-      data-bs-scroll="false"
-      class="offcanvas offcanvas-start"
-      style="--bs-offcanvas-width: min(100vw,300px);"
-      tabindex="-1"
-    > -->
     <div
       id="managerSidebar"
       class="offcanvas offcanvas-start"
@@ -39,24 +40,74 @@ async function logout () {
       data-bs-backdrop="true"
     >
       <div class="offcanvas-header">
-      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="閉じる"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="閉じる"></button>
       </div>
 
       <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
         <!-- -------- ナビ ---------- -->
         <nav class="nav flex-column">
+          <!-- ★ すべて go() で “遷移→閉じる” に統一 -->
+          <RouterLink class="nav-link bg-white"
+            :to="{name:'mng-dashboard'}"
+            @click.prevent="nav({name:'mng-bill-table'})">
+            ダッシュボード
+          </RouterLink>
 
-          <RouterLink class="nav-link bg-white" :to="{name:'mng-dashboard'}" data-bs-dismiss="offcanvas">ダッシュボード</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'mng-bill-table'}" data-bs-dismiss="offcanvas">伝票</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'mng-pl-daily'}" data-bs-dismiss="offcanvas">PL/日次</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'mng-pl-monthly'}" data-bs-dismiss="offcanvas">PL/月次</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'mng-pl-yearly'}" data-bs-dismiss="offcanvas">PL/年次</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'mng-cast-shift'}" data-bs-dismiss="offcanvas">キャストシフト</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'mng-cast-sales'}" data-bs-dismiss="offcanvas">キャスト売上</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'mng-ranking'}" data-bs-dismiss="offcanvas">ランキング</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'mng-customers'}" data-bs-dismiss="offcanvas">顧客情報</RouterLink>
-          <RouterLink class="nav-link mt-2 bg-white" to="/settings" data-bs-dismiss="offcanvas">設定</RouterLink>
-          <!-- ★ ステーション（Bootstrap Accordion/Collapse） -->
+          <RouterLink class="nav-link bg-white"
+            :to="{name:'mng-bill-table'}"
+            @click.prevent="nav({name:'mng-bill-table'})">
+            伝票
+          </RouterLink>
+
+          <RouterLink class="nav-link bg-white"
+            :to="{name:'mng-pl-daily'}"
+            @click.prevent="nav({name:'mng-pl-daily'})">
+            PL/日次
+          </RouterLink>
+
+          <RouterLink class="nav-link bg-white"
+            :to="{name:'mng-pl-monthly'}"
+            @click.prevent="nav({name:'mng-pl-monthly'})">
+            PL/月次
+          </RouterLink>
+
+          <RouterLink class="nav-link bg-white"
+            :to="{name:'mng-pl-yearly'}"
+            @click.prevent="nav({name:'mng-pl-yearly'})">
+            PL/年次
+          </RouterLink>
+
+          <RouterLink class="nav-link bg-white"
+            :to="{name:'mng-cast-shift'}"
+            @click.prevent="nav({name:'mng-cast-shift'})">
+            キャストシフト
+          </RouterLink>
+
+          <RouterLink class="nav-link bg-white"
+            :to="{name:'mng-cast-sales'}"
+            @click.prevent="nav({name:'mng-cast-sales'})">
+            キャスト売上
+          </RouterLink>
+
+          <RouterLink class="nav-link bg-white"
+            :to="{name:'mng-ranking'}"
+            @click.prevent="go(router, {name:'mng-ranking'}, 'managerSidebar', current())">
+            ランキング
+          </RouterLink>
+
+          <RouterLink class="nav-link bg-white"
+            :to="{name:'mng-customers'}"
+            @click.prevent="go(router, {name:'mng-customers'}, 'managerSidebar', current())">
+            顧客情報
+          </RouterLink>
+
+          <RouterLink class="nav-link mt-2 bg-white"
+            :to="{name:'settings'}"
+            @click.prevent="go(router, {name:'mng-settings'}, 'managerSidebar', current())">
+            設定
+          </RouterLink>
+
+          <!-- ★ ステーション（Accordion 内も同様に go()） -->
           <div class="accordion accordion-flush my-2" id="accordionStations">
             <div class="accordion-item">
               <h2 class="accordion-header" id="headingStations">
@@ -79,10 +130,21 @@ async function logout () {
               >
                 <div class="accordion-body py-2 bg-white">
                   <div class="d-flex flex-column">
-                    <!-- 旧: to="/kds/dishup" など（404の原因） -->
-                    <RouterLink class="nav-link ps-3 ms-1 bg-white" :to="{ name:'mng-kds-dishup' }" data-bs-dismiss="offcanvas">デシャップ</RouterLink>
-                    <RouterLink class="nav-link ps-3 ms-1 bg-white" :to="{ name:'mng-kds-kitchen' }"data-bs-dismiss="offcanvas">キッチン</RouterLink>
-                    <RouterLink class="nav-link ps-3 ms-1 bg-white" :to="{ name:'mng-kds-drinker' }"data-bs-dismiss="offcanvas">ドリンカー</RouterLink>
+                    <RouterLink class="nav-link ps-3 ms-1 bg-white"
+                      :to="{ name:'mng-kds-dishup' }"
+                      @click.prevent="nav({name:'mng-kds-dishup'})">
+                      デシャップ
+                    </RouterLink>
+                    <RouterLink class="nav-link ps-3 ms-1 bg-white"
+                      :to="{ name:'mng-kds-kitchen' }"
+                     @click.prevent="nav({name:'mng-kds-kitchen'})">
+                      キッチン
+                    </RouterLink>
+                    <RouterLink class="nav-link ps-3 ms-1 bg-white"
+                      :to="{ name:'mng-kds-drinker' }"
+                      @click.prevent="nav({name:'mng-kds-drinker'})">
+                      ドリンカー
+                    </RouterLink>
                   </div>
                 </div>
               </div>
@@ -102,14 +164,17 @@ async function logout () {
         <!-- -------- フッタ ---------- -->
         <div class="footer d-flex flex-column gap-2">
           <div class="d-flex justify-content-between align-items-center mb-3">
-
             <div class="d-flex align-items-center gap-2">
               <Avatar :url="avatarURL" :size="40" class="rounded-circle"/> 
               <span>{{ displayName }}</span>
             </div>
-            <RouterLink class="nav-link bg-white" :to="{name: 'owner-profile'}"data-bs-dismiss="offcanvas"><IconEdit :size="16" class="text-secondary" /></RouterLink>
+            <RouterLink class="nav-link bg-white"
+              :to="{name: 'mng-profile'}"
+              @click.prevent="nav({name:'mng-profile'})">
+              <IconEdit :size="16" class="text-secondary" />
+            </RouterLink>
           </div>
-          
+
           <button class="btn btn-outline-danger w-100" @click="logout">
             ログアウト
           </button>

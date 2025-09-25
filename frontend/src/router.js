@@ -134,9 +134,7 @@ const routes = [
       { path: 'pl/daily',  name:'mng-pl-daily',  component: () => import('@/views/BillPLDaily.vue'),   meta: { title: '売上-日次', rolesAny: ['owner','superuser'], requiresAuth:true } },
       { path: 'pl/Monthly', name:'mng-pl-monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次', rolesAny: ['owner','superuser'], requiresAuth:true } },
       { path: 'pl/yearly', name:'mng-pl-yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次', rolesAny: ['owner','superuser'], requiresAuth:true } },
-
-      //★以下もmng-って感じのnameをつけて、各種リンクに貼っていく
-
+      
       { path: 'cast-sales', name:'mng-cast-sales', component: () => import('@/views/CastSalesList.vue'),   meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
       { path: 'cast-sales/:id',    component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail', meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
       { path: 'cast-shift', name:'mng-cast-shift' ,component: () => import('@/views/CastShiftList.vue'),   props: true, meta: { title: 'シフト管理' } },
@@ -145,7 +143,7 @@ const routes = [
       { path: 'ranking', name:'mng-ranking',  component: () => import('@/views/CastRanking.vue'),        props: true, meta: { title: 'ランキング',    requiresAuth: true, adminOnly: true } },
       { path: 'table', name:'mng-tables', component: () => import('@/components/BillListTable.vue'), props: true, meta: { title: 'テーブルビュー', requiresAuth: true, adminOnly: true }},
       { path: 'customers', name:'mng-customers', component: () => import('@/views/CustomerPage.vue'),       props: true, meta: { title: '顧客情報',      requiresAuth: true, adminOnly: true }},
-      
+      { path: 'profile', name: 'mng-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ title:'プロフィール編集' } },
       {
         path: 'customers/:id(\\d+)',
         name: 'customer-detail',

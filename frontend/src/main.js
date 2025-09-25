@@ -5,7 +5,7 @@ import App    from './App.vue'
 import router from './router'
 import { setupPWA, restoreRouteIfNeeded } from '@/plugins/pwa'
 setupPWA()
-import 'bootstrap';
+import 'bootstrap/dist/js/bootstrap.bundle.min.js' 
 
 import ganttastic from '@infectoone/vue-ganttastic'
 
