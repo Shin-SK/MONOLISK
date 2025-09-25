@@ -9,7 +9,7 @@ from .views import (
     ItemCategoryViewSet, CastShiftViewSet,
     CastDailySummaryViewSet, CastRankingView,
     StaffViewSet, StaffShiftViewSet,
-    CustomerViewSet, StoreNoticeViewSet,
+    CustomerViewSet, StoreNoticeViewSet, StoreSeatSettingViewSet, DiscountRuleViewSet
 )
 
 from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
@@ -29,6 +29,9 @@ router.register(r"staffs", StaffViewSet, basename="staffs")
 router.register(r"staff-shifts",         StaffShiftViewSet,      basename="staff-shifts")
 router.register(r"customers",            CustomerViewSet,        basename="customers")
 router.register(r"store-notices",        StoreNoticeViewSet,     basename="store-notices")
+router.register(r'seat-settings', StoreSeatSettingViewSet, basename='seat-setting')
+router.register(r'discount-rules', DiscountRuleViewSet, basename='discount-rule')
+
 
 urlpatterns = [
     # ルーター系

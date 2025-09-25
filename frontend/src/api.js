@@ -613,6 +613,35 @@ export const deleteCastGoal = (castId, goalId) =>
 
 
 
+// === 追加: 割引ルール API ===============================
+
+// 一覧（そのまま使える汎用）
+// 返り値は配列に正規化（results/配列どちらでも対応）
+export const fetchDiscountRules = (params = {}) =>
+  api.get('billing/discount-rules/', { params })
+     .then(r => Array.isArray(r.data?.results) ? r.data.results
+              : Array.isArray(r.data)          ? r.data
+              : [])
+
+// Basicsパネル用（is_active & is_basic）
+export const fetchBasicDiscountRules = () =>
+  fetchDiscountRules({ is_active: true, is_basic: true })
+
+// Billに割引ルールをセット（idを直接指定）
+export const updateBillDiscountRule = (billId, ruleId /* or null */) =>
+  patchBill(billId, { discount_rule: ruleId ?? null })
+
+// （必要なら）codeから解決してセット
+export const setBillDiscountByCode = async (billId, code /* string|null */) => {
+  if (!code) return updateBillDiscountRule(billId, null)
+  const list = await fetchDiscountRules({ is_active: true, code })
+  const rule = (Array.isArray(list) ? list : []).find(r => String(r.code) === String(code))
+  return updateBillDiscountRule(billId, rule?.id ?? null)
+}
+
+
+
+
 
 // ───────── Stores (Switcher用) ─────────
 export const listMyStores = () =>

@@ -18,7 +18,6 @@ import 'vue-datepicker-next/index.css'
 import '@/assets/scss/main.scss'
 import '@/plugins/dayjs'
 
-
 import Avatar from '@/components/Avatar.vue' 
 
 import { yen } from '@/utils/money'
@@ -40,6 +39,7 @@ Sortable.mount(new Swap())
   ;(async () => {
     await router.isReady()
     restoreRouteIfNeeded(router)
+    // installOffcanvasSingleton()
     app.mount('#app')
 
 // --- スプラッシュ制御 ---

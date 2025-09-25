@@ -18,6 +18,10 @@ const safeBench = computed(() =>
   Array.isArray(props.benchCasts) ? props.benchCasts.filter(c => c && c.id != null) : []
 )
 
+// 追加：当日出勤かどうか
+const isOnDuty = (c) => Array.isArray(props.onDutyIds) && props.onDutyIds.includes(Number(c?.id))
+
+
 /* 色クラス（free→blue / in→success / main→danger） */
 const tagClass = (c) => (c.role === 'main'
   ? 'bg-danger text-white'
@@ -72,23 +76,28 @@ function toggleFreeInhouse(c){
           </div>
 
           <div class="items">
-            <div v-for="(c,i) in safeBench" :key="c?.id ?? i" class="item">
+            <div
+              v-for="(c,i) in safeBench"
+              :key="c?.id ?? i"
+              class="item"
+              :class="{ 'is-off': !isOnDuty(c) }"
+            >
               <div class="wrap">
                 <div class="avatar">
                   <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="40" />
                 </div>
-                <div class="name">
-                  {{ c.stage_name }}
-                  <span v-if="!onDutyIds.includes(c.id)" class="muted">（本日外）</span>
-                </div>
+                <div class="name">{{ c.stage_name }}</div>
               </div>
-              <div class="button-area">
+
+              <!-- ★ 出勤外はボタンを表示しない（=選択不可） -->
+              <div class="button-area" v-if="isOnDuty(c)">
                 <button class="btn btn-sm bg-blue text-white" @click="emit('setFree', c.id)">フリー</button>
                 <button class="btn btn-sm btn-success" @click="emit('setInhouse', c.id)">場内</button>
                 <button class="btn btn-sm btn-danger"  @click="emit('setMain', c.id)">本指</button>
               </div>
             </div>
           </div>
+
         </div>
       </div>
       <div class="savebutton mt-5">
@@ -96,3 +105,23 @@ function toggleFreeInhouse(c){
       </div>
     </div>
 </template>
+
+
+<style scoped lang="scss">
+
+.casts{
+  .button-area{
+    .btn{
+      white-space: nowrap;
+    }
+  }
+}
+
+.items .item.is-off{
+  opacity: .45;
+  filter: grayscale(100%);
+  pointer-events: none;       /* クリック不可（リンク/ボタン全て） */
+  user-select: none;
+}
+
+</style>

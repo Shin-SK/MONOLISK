@@ -25,7 +25,7 @@ from .permissions import RequireCap, CastHonshimeiForBill, CanOrderBillItem
 from .models import (
     Store, Table, Bill, ItemMaster, BillItem, BillCastStay,
     Cast, CastPayout, ItemCategory, CastShift, CastDailySummary,
-    Staff, StaffShift, Customer, CustomerLog, StoreNotice,
+    Staff, StaffShift, Customer, CustomerLog, StoreNotice, StoreSeatSetting, DiscountRule
 )
 from .serializers import (
     StoreSerializer, TableSerializer, BillSerializer,
@@ -35,7 +35,7 @@ from .serializers import (
     CastRankingSerializer, CastSalesSummarySerializer,
     StaffSerializer, StaffShiftSerializer,
     BillCastStayMiniSerializer, CustomerSerializer, CustomerLogSerializer,
-    StoreNoticeSerializer, ItemCategorySerializer,
+    StoreNoticeSerializer, ItemCategorySerializer, StoreSeatSettingSerializer, DiscountRuleSerializer
 )
 from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales, sync_nomination_fees
@@ -762,3 +762,19 @@ class StoreNoticeViewSet(viewsets.ModelViewSet):
         serializer.save(store_id=sid)
 
 
+# 既存：StoreScopedModelViewSet を継承して “自店だけ” に絞る
+class StoreSeatSettingViewSet(StoreScopedModelViewSet):
+    queryset = StoreSeatSetting.objects.all().select_related('store')
+    serializer_class = StoreSeatSettingSerializer
+    filterset_fields = ['seat_type']  # 任意
+    search_fields = ['memo']          # 任意
+
+
+class DiscountRuleViewSet(ReadOnlyModelViewSet):
+    """
+    GET /billing/discount-rules/?is_active=true&is_basic=true
+    """
+    queryset = DiscountRule.objects.all().order_by('name')
+    serializer_class = DiscountRuleSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['is_active', 'is_basic', 'code']

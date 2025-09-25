@@ -20,7 +20,6 @@ const { displayName, avatarURL } = useProfile()
 async function logout () {
   await auth.logout()
   router.push('/login')
-  closeSidebar()
 }
 </script>
 

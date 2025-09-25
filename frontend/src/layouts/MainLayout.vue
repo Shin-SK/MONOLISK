@@ -4,7 +4,6 @@ import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUser } from '@/stores/useUser'
 import { api } from '@/api'
-import { openSidebar } from '@/utils/offcanvas'
 import dayjs from 'dayjs'
 import { useNow } from '@vueuse/core'
 
@@ -78,7 +77,7 @@ async function logout () {
       </button>
 
       <!-- それ以外は従来の openSidebar -->
-      <button v-else class="nav-link bg-white rounded-circle" @click="openSidebar">
+      <button v-else class="nav-link bg-white rounded-circle">
         <IconMenu2 :size="24" />
       </button>
     </div>

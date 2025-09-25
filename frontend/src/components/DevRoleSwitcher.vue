@@ -4,7 +4,6 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useUser } from '@/stores/useUser'
 import { useRouter } from 'vue-router'
 import { api } from '@/api'
-import { closeSidebar } from '@/utils/offcanvas'
 import { useRoles } from '@/composables/useRoles'
 
 const props = defineProps({
@@ -36,8 +35,6 @@ async function apply(){
 		const me = (await api.get('me/', { headers:{ 'X-Store-Id': sid }})).data
 		user.me = me
 
-		// サイドバーを閉じてから安全ホームへ
-		closeSidebar(props.sidebarId)
 		await nextTick()
 
 		const dest = homePath() || '/'

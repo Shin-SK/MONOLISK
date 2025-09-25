@@ -1,6 +1,5 @@
 <!-- App.vue -->
 <script setup>
-
 </script>
 
 <template>

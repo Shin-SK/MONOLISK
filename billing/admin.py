@@ -166,11 +166,17 @@ class BillCastStayInline(admin.TabularInline):
 
 @admin.register(Bill)
 class BillAdmin(admin.ModelAdmin):
-	list_display       = ('id', 'table', 'opened_at', 'closed_at', 'total')
-	list_filter        = ('table__store', 'closed_at')
-	date_hierarchy     = 'opened_at'
-	inlines = (BillItemInline, BillCastStayInline)
-	filter_horizontal  = ('nominated_casts',)
+    list_display       = ('id', 'table', 'opened_at', 'closed_at', 'total', 'discount_rule')  # ← 追加
+    list_filter        = ('table__store', 'closed_at', 'discount_rule')                        # ← 追加
+    date_hierarchy     = 'opened_at'
+    inlines = (BillItemInline, BillCastStayInline)
+    filter_horizontal  = ('nominated_casts',)
+    fieldsets = (
+        (None, {'fields': ('table', 'opened_at', 'closed_at', 'expected_out', 'memo', 'discount_rule')}),  # ← 追加
+        ('金額', {'fields': ('subtotal', 'service_charge', 'tax', 'grand_total', 'total', 'settled_total')}),
+        ('支払', {'fields': ('paid_cash', 'paid_card')}),
+        ('指名', {'fields': ('main_cast', 'nominated_casts')}),
+    )
 
 
 @admin.register(BillItem)
@@ -315,3 +321,17 @@ class StaffShiftAdmin(admin.ModelAdmin):
     date_hierarchy = 'plan_start'
     autocomplete_fields = ('staff', 'store')
     actions = [action_clock_in_now, action_clock_out_now, action_clear_attendance]
+
+
+
+
+# 末尾付近の他の admin.register 群の近くに追加
+
+from .models import DiscountRule
+
+@admin.register(DiscountRule)
+class DiscountRuleAdmin(admin.ModelAdmin):
+    list_display  = ('name', 'code', 'amount_off', 'percent_off', 'is_active', 'created_at')
+    list_filter   = ('is_active', 'is_basic')
+    search_fields = ('name', 'code')
+    prepopulated_fields = {'code': ('name',)}

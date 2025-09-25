@@ -29,6 +29,7 @@
 
 .offcanvas{
   background-color: white;
+  --bs-offcanvas-width: min(100vw,300px);
 }
 
 .btn-primary{
@@ -109,10 +110,10 @@ input[type="number"]{
   }
 
   .offcanvas{
-    height: 100vh;                     /* 画面全高にする */
-    overflow-y: auto;                   /* 本体で縦スクロールを受ける */
-    -webkit-overflow-scrolling: touch;  /* iOS慣性 */
-    overscroll-behavior: contain;       /* 背景へのスクロール伝搬を止める */
+    height: 100vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     padding-top: var(--safe-top) !important;
     padding-left: var(--safe-left) !important;
     padding-bottom: var(--safe-bottom) !important;
@@ -154,3 +155,4 @@ img, svg {
 .table-light{
   --bs-table-bg: white;
 }
+

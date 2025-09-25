@@ -64,15 +64,53 @@ class Store(models.Model):
     def __str__(self): return self.name
 
 
+class SeatType(models.TextChoices):
+    MAIN    = "main",    "メイン"
+    COUNTER = "counter", "カウンター"
+    BOX     = "box",     "ボックス"
+
+
 class Table(models.Model):
     store  = models.ForeignKey(Store, on_delete=models.CASCADE)
     number = models.PositiveSmallIntegerField()
+    seat_type = models.CharField(
+        max_length=16, choices=SeatType.choices,
+        default=SeatType.MAIN, db_index=True
+    )
+
     class Meta:
         verbose_name = 'テーブル番号'
         verbose_name_plural = verbose_name
         unique_together = ('store', 'number')
         ordering = ['store', 'number']
+
     def __str__(self): return f'T{self.number}'
+
+
+# 席種ごとの店舗設定（席別サービス料率/チャージ/延長等を上書き）
+class StoreSeatSetting(models.Model):
+    store = models.ForeignKey('billing.Store', on_delete=models.CASCADE, related_name='seat_settings')
+    seat_type = models.CharField(max_length=16, choices=SeatType.choices, db_index=True)
+
+    # 席別の上書き値（未設定は Store 側のデフォルトを使用）
+    service_rate = models.DecimalField(  # 0.25 = 25%
+        max_digits=4, decimal_places=2, null=True, blank=True
+    )
+    charge_per_person = models.PositiveIntegerField(null=True, blank=True)
+    extension_30_price = models.PositiveIntegerField(null=True, blank=True)
+    free_time_price    = models.PositiveIntegerField(null=True, blank=True)
+    private_price      = models.PositiveIntegerField(null=True, blank=True)
+
+    memo = models.CharField(max_length=100, blank=True, default="")
+
+    class Meta:
+        unique_together = (('store', 'seat_type'),)
+        verbose_name = "席種設定"
+        verbose_name_plural = "席種設定"
+
+    def __str__(self):
+        return f"{self.store.name} / {self.get_seat_type_display()}"
+
 
 
 # ── バック率を 3 レーン持つカテゴリ
@@ -447,6 +485,62 @@ class Bill(models.Model):
                 setattr(rec, col, (getattr(rec, col) or 0) + amt)
                 rec.save(update_fields=[col])
 
+    # 席別の実効サービス率（% or 小数両対応）を返すヘルパ
+    def _effective_service_rate(self) -> Decimal:
+        """
+        Table.seat_type に応じて StoreSeatSetting の service_rate を優先。
+        未設定なら Store.service_rate を使う。
+        """
+        # デフォルト
+        sr = Decimal('0')
+        store = None
+        if self.table_id:
+            store = self.table.store
+        elif hasattr(self, 'store_id') and self.store_id:
+            # 伝票が直接 store を持っている場合のフォールバック
+            store = Store.objects.filter(id=self.store_id).first()
+
+        if store:
+            sr = Decimal(store.service_rate or 0)
+
+            # Table があり seat_type がある場合は上書きを試みる
+            if self.table_id and self.table.seat_type:
+                s = StoreSeatSetting.objects.filter(
+                    store=store, seat_type=self.table.seat_type
+                ).only('service_rate').first()
+                if s and s.service_rate is not None:
+                    sr = Decimal(s.service_rate)
+
+        # 1.00(=100%) と 0.25(=25%) の両方を許容
+        return (sr / 100) if sr >= 1 else sr
+
+    # 既存の再計算（BillCalculator未移行の旧処理）を席別率で計算するように微修正
+    def recalc(self, save: bool = False):  # noqa: D401
+        """DEPRECATED: BillCalculator へ移行中"""
+        import warnings
+        warnings.warn("Bill.recalc() は BillCalculator に置換予定", DeprecationWarning, stacklevel=2)
+
+        sub = sum(it.subtotal for it in self.items.all())
+
+        # ★ 変更: 席別の実効サービス率・税率を使う
+        sr = self._effective_service_rate()
+        store = self.table.store if self.table_id else None
+        tr = Decimal(store.tax_rate) if store else Decimal('0')
+        tr = (tr / 100) if tr >= 1 else tr
+
+        svc = int((Decimal(sub) * sr).quantize(Decimal('1')))
+        tax = int((Decimal(sub + svc) * tr).quantize(Decimal('1')))
+
+        self.subtotal = sub
+        self.service_charge = svc
+        self.tax = tax
+        self.grand_total = sub + svc + tax
+        if save:
+            self.save(update_fields=['subtotal', 'service_charge', 'tax', 'grand_total'])
+
+
+
+
     class Meta:
         verbose_name = '伝票'
         verbose_name_plural = verbose_name
@@ -757,26 +851,35 @@ def _update_summary(sender, instance, **kwargs):
         CastDailySummary.upsert_from_shift(instance)
         
         
-
 class DiscountRule(models.Model):
     """伝票全体に適用される単発割引（併用不可）"""
-    name = models.CharField(max_length=40)
-    amount_off = models.PositiveIntegerField(null=True, blank=True)  # ¥固定値
+    code = models.SlugField(max_length=40, unique=True, null=True, blank=True, help_text="内部コード（例: initial / agency / referral）")  # ★追加
+    name = models.CharField(max_length=40, help_text="表示名（例: 初回 / 案内所 / 顧客紹介）")
+    amount_off  = models.PositiveIntegerField(null=True, blank=True)             # ¥固定値
     percent_off = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)  # 0.10 = 10%
-    is_active = models.BooleanField(default=True)
-
-    created_at = models.DateTimeField(auto_now_add=True)
+    is_active   = models.BooleanField(default=True)
+    is_basic    = models.BooleanField(default=False, db_index=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = "割引ルール"
         verbose_name_plural = verbose_name
+        ordering = ['-created_at']
 
     def __str__(self):
-        if self.amount_off:
-            return f"{self.name}: -¥{self.amount_off}"
-        if self.percent_off:
-            return f"{self.name}: -{float(self.percent_off)*100}%"
-        return self.name
+        v = f"¥{self.amount_off}" if self.amount_off else f"{float(self.percent_off)*100:.0f}%" if self.percent_off else "—"
+        return f"{self.name} ({self.code}) -{v}"
+
+    def clean(self):
+        # どちらも空はNG／両方指定もNG
+        if not self.amount_off and not self.percent_off:
+            raise ValidationError("金額引きまたは率引きのどちらかを指定してください。")
+        if self.amount_off and self.percent_off:
+            raise ValidationError("金額引きと率引きは同時に指定できません。")
+        # 率が 1.00～100 の表記でも受けるための緩いチェックは Calculator 側で吸収済みだが、簡易チェックだけ
+        if self.percent_off is not None and self.percent_off < 0:
+            raise ValidationError("percent_off は 0 以上で指定してください。")
+
 
 
 class BillCustomer(models.Model):

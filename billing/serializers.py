@@ -1,6 +1,6 @@
 # billing/serializer.py
 from rest_framework import serializers
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule
 from dj_rest_auth.serializers import UserDetailsSerializer
 from .models import User
 from cloudinary.utils import cloudinary_url
@@ -25,6 +25,18 @@ class TableSerializer(serializers.ModelSerializer):
         model    = Table
         fields    = '__all__'
 
+class StoreSeatSettingSerializer(serializers.ModelSerializer):
+    seat_type_display = serializers.CharField(source='get_seat_type_display', read_only=True)
+
+    class Meta:
+        model = StoreSeatSetting
+        fields = [
+            'id', 'store', 'seat_type', 'seat_type_display',
+            'service_rate', 'charge_per_person',
+            'extension_30_price', 'free_time_price', 'private_price',
+            'memo',
+        ]
+        read_only_fields = ['id']
 
 class CastPayoutSerializer(serializers.ModelSerializer):
     class Meta:
@@ -1080,3 +1092,16 @@ class CastGoalSerializer(serializers.ModelSerializer):
         rep['progress_percent'] = pr['percent']
         rep['hits']             = pr['hits']
         return rep
+
+
+
+class DiscountRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = DiscountRule
+        fields = [
+            'id', 'code', 'name',
+            'amount_off', 'percent_off',
+            'is_active', 'is_basic',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
