@@ -240,13 +240,11 @@ function applySet(){
         <div class="title"><IconUserScan /> 顧客</div>
         <div class="form-control bg-light position-relative">
           {{ customerName || '未選択' }}
-          <div class="button-area position-absolute">
-            <button class="" @click="() => emit('searchCustomer', q.value)"><IconSearch :size="16" /></button>
-            <button class="" :disabled="!customerName" @click="$emit('clearCustomer')"><IconX :size="16"/></button>
-          </div>
+          <button class="position-absolute top-0 bottom-0 end-0" :disabled="!customerName" @click="$emit('clearCustomer')"><IconX :size="16"/></button>
         </div>
-        <div class="mt-2">
+        <div class="mt-2 position-relative">
           <input class="form-control" type="text" v-model="q" placeholder="名前／TEL などで検索" @keyup.enter="() => emit('searchCustomer', q.value)">
+          <button class="position-absolute top-0 bottom-0 end-0" @click="() => emit('searchCustomer', q.value)"><IconSearch :size="16" /></button>
         </div>
         <div v-if="customerSearching" class="small text-muted mt-2">検索中…</div>
         <ul v-if="customerResults && customerResults.length" class="mt-2 ps-0" style="list-style:none;">

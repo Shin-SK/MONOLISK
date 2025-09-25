@@ -734,7 +734,7 @@ watch(visible, v => { if (v) pane.value = 'base' })
     <div
       class="p-2 row flex-fill align-items-stretch"
     >
-    <div class="sidebar-cq d-flex col-2">
+    <div class="sidebar-cq d-flex col-3">
       <div class="modal-sidebar outer flex-fill">
           <div class="menu d-md-none">
             <div class="nav nav-pills nav-fill small gap-2">
