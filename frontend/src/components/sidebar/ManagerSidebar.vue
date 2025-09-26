@@ -7,12 +7,11 @@ import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'
 import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
 import StoreSwitcher from '@/components/StoreSwitcher.vue'
-import { closeOffcanvas } from '@/utils/offcanvas'
+import { closeOffcanvas } from '@/utils/bsOffcanvas'
 
 async function nav(to){
-  const r = router.resolve(to)
-  await router.push(r)
-  closeOffcanvas('#managerSidebar')   // ← ここだけでOK（BackdropはBootstrap任せ）
+  await router.push(to)
+  closeOffcanvas('#managerSidebar')
 }
 
 const router = useRouter()
@@ -35,10 +34,8 @@ async function logout () {
       id="managerSidebar"
       class="offcanvas offcanvas-start"
       tabindex="-1"
-      aria-labelledby="managerSidebarLabel"
-      data-bs-scroll="true"
-      data-bs-backdrop="true"
-    >
+      aria-labelledby="managerSidebarLabel">
+
       <div class="offcanvas-header">
         <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="閉じる"></button>
       </div>
@@ -46,79 +43,19 @@ async function logout () {
       <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
         <!-- -------- ナビ ---------- -->
         <nav class="nav flex-column">
-          <!-- ★ すべて go() で “遷移→閉じる” に統一 -->
-          <RouterLink class="nav-link bg-white"
-            :to="{name:'mng-dashboard'}"
-            @click.prevent="nav({name:'mng-bill-table'})">
-            ダッシュボード
-          </RouterLink>
-
-          <RouterLink class="nav-link bg-white"
-            :to="{name:'mng-bill-table'}"
-            @click.prevent="nav({name:'mng-bill-table'})">
-            伝票
-          </RouterLink>
-
-          <RouterLink class="nav-link bg-white"
-            :to="{name:'mng-pl-daily'}"
-            @click.prevent="nav({name:'mng-pl-daily'})">
-            PL/日次
-          </RouterLink>
-
-          <RouterLink class="nav-link bg-white"
-            :to="{name:'mng-pl-monthly'}"
-            @click.prevent="nav({name:'mng-pl-monthly'})">
-            PL/月次
-          </RouterLink>
-
-          <RouterLink class="nav-link bg-white"
-            :to="{name:'mng-pl-yearly'}"
-            @click.prevent="nav({name:'mng-pl-yearly'})">
-            PL/年次
-          </RouterLink>
-
-          <RouterLink class="nav-link bg-white"
-            :to="{name:'mng-cast-shift'}"
-            @click.prevent="nav({name:'mng-cast-shift'})">
-            キャストシフト
-          </RouterLink>
-
-          <RouterLink class="nav-link bg-white"
-            :to="{name:'mng-cast-sales'}"
-            @click.prevent="nav({name:'mng-cast-sales'})">
-            キャスト売上
-          </RouterLink>
-
-          <RouterLink class="nav-link bg-white"
-            :to="{name:'mng-ranking'}"
-            @click.prevent="go(router, {name:'mng-ranking'}, 'managerSidebar', current())">
-            ランキング
-          </RouterLink>
-
-          <RouterLink class="nav-link bg-white"
-            :to="{name:'mng-customers'}"
-            @click.prevent="go(router, {name:'mng-customers'}, 'managerSidebar', current())">
-            顧客情報
-          </RouterLink>
-
-          <RouterLink class="nav-link mt-2 bg-white"
-            :to="{name:'settings'}"
-            @click.prevent="go(router, {name:'mng-settings'}, 'managerSidebar', current())">
-            設定
-          </RouterLink>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-dashboard'})">ダッシュボード</a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-bill-table'})">伝票</a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-daily'})">PL/日次</a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-monthly'})">PL/月次</a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-yearly'})">PL/年次</a>
 
           <!-- ★ ステーション（Accordion 内も同様に go()） -->
           <div class="accordion accordion-flush my-2" id="accordionStations">
             <div class="accordion-item">
               <h2 class="accordion-header" id="headingStations">
-                <button
-                  class="accordion-button collapsed px-2 text-muted bg-white"
-                  type="button"
-                  data-bs-toggle="collapse"
-                  data-bs-target="#collapseStations"
-                  aria-expanded="false"
-                  aria-controls="collapseStations"
-                >
+                <button class="accordion-button collapsed px-2 text-muted bg-white" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#collapseStations"
+                        aria-expanded="false" aria-controls="collapseStations">
                   ステーション
                 </button>
               </h2>
@@ -130,21 +67,9 @@ async function logout () {
               >
                 <div class="accordion-body py-2 bg-white">
                   <div class="d-flex flex-column">
-                    <RouterLink class="nav-link ps-3 ms-1 bg-white"
-                      :to="{ name:'mng-kds-dishup' }"
-                      @click.prevent="nav({name:'mng-kds-dishup'})">
-                      デシャップ
-                    </RouterLink>
-                    <RouterLink class="nav-link ps-3 ms-1 bg-white"
-                      :to="{ name:'mng-kds-kitchen' }"
-                     @click.prevent="nav({name:'mng-kds-kitchen'})">
-                      キッチン
-                    </RouterLink>
-                    <RouterLink class="nav-link ps-3 ms-1 bg-white"
-                      :to="{ name:'mng-kds-drinker' }"
-                      @click.prevent="nav({name:'mng-kds-drinker'})">
-                      ドリンカー
-                    </RouterLink>
+                    <a class="nav-link ps-3 ms-1 bg-white" href="#" @click.prevent="nav({name:'mng-kds-dishup'})">デシャップ</a>
+                    <a class="nav-link ps-3 ms-1 bg-white" href="#" @click.prevent="nav({name:'mng-kds-kitchen'})">キッチン</a>
+                    <a class="nav-link ps-3 ms-1 bg-white" href="#" @click.prevent="nav({name:'mng-kds-drinker'})">ドリンカー</a>
                   </div>
                 </div>
               </div>

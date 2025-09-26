@@ -1,6 +1,6 @@
 <!-- /layouts/StaffLayout.vue -->
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUser } from '@/stores/useUser'
 import { api } from '@/api'
@@ -9,11 +9,22 @@ import { useNow } from '@vueuse/core'
 import StaffSidebar from '@/components/sidebar/StaffSidebar.vue'
 import { useProfile } from '@/composables/useProfile'
 import RefreshAvatar from '@/components/RefreshAvatar.vue'
+import { installAutoCloseOnRoute, openOffcanvas } from '@/utils/bsOffcanvas'
 
 const router = useRouter()
 const route  = useRoute()
 const user   = useUser()
 const { avatarURL, displayName } = useProfile()
+
+
+onMounted(() => {
+  installAutoCloseOnRoute(router)
+})
+
+function openSidebar(){
+  openOffcanvas('#staffSidebar')
+}
+
 
 const pageTitle = computed(() => route.meta.title || 'Untitled')
 const today     = computed(() =>
@@ -21,6 +32,8 @@ const today     = computed(() =>
 )
 
 const isActive = (p) => route.path === p
+
+const isActiveName = (name) => route.name === name  // 追加（name用）
 
 </script>
 
@@ -31,29 +44,25 @@ const isActive = (p) => route.path === p
       <RefreshAvatar />
 
       <RouterLink class="nav-link"
-                  to="/dashboard"
-                  :class="isActive('/dashboard') ? 'bg-dark text-white' : 'bg-white text-dark'">
+                  :to="{ name: 'staff-dashboard' }"
+                  :class="isActiveName('staff-dashboard') ? 'bg-dark text-white' : 'bg-white text-dark'">
         <IconPinned :size="24" />
       </RouterLink>
 
       <RouterLink class="nav-link"
-                  to="/dashboard/list"
-                  :class="isActive('/dashboard/list') ? 'bg-dark text-white' : 'bg-white text-dark'">
+                  :to="{ name: 'staff-dashboard-list' }"
+                  :class="isActiveName('staff-dashboard-list') ? 'bg-dark text-white' : 'bg-white text-dark'">
         <IconList :size="24" />
       </RouterLink>
 
       <RouterLink class="nav-link"
-                  to="/dashboard/timeline"
-                  :class="isActive('/dashboard/timeline') ? 'bg-dark text-white' : 'bg-white text-dark'">
+                  :to="{ name: 'staff-dashboard-timeline' }"
+                  :class="isActiveName('staff-dashboard-timeline') ? 'bg-dark text-white' : 'bg-white text-dark'">
         <IconMenu3 :size="24" />
       </RouterLink>
 
-      <!-- staffなら staffSidebar を開く -->
-      <button 
-              class="nav-link bg-white rounded-circle"
-              data-bs-toggle="offcanvas"
-              data-bs-target="#staffSidebar"
-              aria-controls="staffSidebar">
+      
+      <button class="nav-link text-dark fs-md-2 fs-4" @click="openSidebar" aria-controls="staffSidebar" aria-label="メニューを開く">
         <IconMenu2 :size="24" />
       </button>
 

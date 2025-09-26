@@ -7,12 +7,20 @@ import CastSidebar from '@/components/sidebar/CastSidebar.vue'
 import { useCastEvents } from '@/stores/useCastEvents'
 import { useProfile } from '@/composables/useProfile'
 import RefreshAvatar from '@/components/RefreshAvatar.vue'
+import { installAutoCloseOnRoute, openOffcanvas } from '@/utils/bsOffcanvas'
 
 const router = useRouter()
 const route  = useRoute()
 const user   = useUser()
 const { avatarURL, displayName } = useProfile() 
 
+onMounted(() => {
+  installAutoCloseOnRoute(router)
+})
+
+function openSidebar(){
+  openOffcanvas('#castSidebar')
+}
 
 const candidates = ref([])      // 本指名で「自卓」注文できる Bill 候補
 const singleBillId = computed(() => candidates.value.length === 1 ? candidates.value[0].id : null)
@@ -114,8 +122,12 @@ watch(() => route.fullPath, (p) => {
             <IconFileInvoice :size="40" :stroke="1.5"/>
           </button>
         </div>
-        <!-- 左：サイドバー -->
-        <button
+          <!-- 左：サイドバー -->
+        <button class="avatar-icon btn p-0 border-0 bg-transparent fs-2" @click="openSidebar" aria-controls="castSidebar" aria-label="メニューを開く">
+          <IconMenu2 :size="24" />
+        </button>
+        
+        <!-- <button
           class="avatar-icon btn p-0 border-0 bg-transparent fs-2"
           data-bs-toggle="offcanvas"
           data-bs-target="#castSidebar"
@@ -123,7 +135,7 @@ watch(() => route.fullPath, (p) => {
           title="メニュー"
         >
           <IconMenu2 :size="24"/>
-        </button>
+        </button> -->
 
     </div>
 

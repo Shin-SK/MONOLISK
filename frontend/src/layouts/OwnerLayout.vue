@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUser } from '@/stores/useUser'
 import { api } from '@/api'
@@ -7,10 +7,19 @@ import dayjs from 'dayjs'
 import { useNow } from '@vueuse/core'
 import OwnerSidebar from '@/components/sidebar/OwnerSidebar.vue'
 import RefreshAvatar from '../components/RefreshAvatar.vue'
+import { installAutoCloseOnRoute, openOffcanvas } from '@/utils/bsOffcanvas'
 
 const router = useRouter()
 const route  = useRoute()
 const user   = useUser()
+
+onMounted(() => {
+  installAutoCloseOnRoute(router)
+})
+
+function openSidebar(){
+  openOffcanvas('#ownerSidebar')
+}
 
 const currentRole = computed(() => user.me?.current_role || null)
 const isStaff   = computed(() => currentRole.value === 'staff')
@@ -37,9 +46,10 @@ async function logout () {
       <RouterLink class="nav-link" :to="{name:'owner-pl-yearly'}"  :class="isActive('/dashboard/timeline') ? 'bg-dark text-white' : 'text-dark'"><span class="monst">Y</span></RouterLink>
 
       <!-- 開くのは data-api（Bootstrap任せ） -->
-      <button class="nav-link text-dark fs-md-2 fs-4" data-bs-toggle="offcanvas" data-bs-target="#ownerSidebar" aria-controls="ownerSidebar">
-        <IconMenu2 :size="24"/>
+      <button class="nav-link text-dark fs-md-2 fs-4" @click="openSidebar" aria-controls="ownerSidebar" aria-label="メニューを開く">
+        <IconMenu2 :size="24" />
       </button>
+
       <OwnerSidebar />
     </div>
 

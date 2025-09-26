@@ -9,17 +9,21 @@ import { useNow } from '@vueuse/core'
 import { useProfile } from '@/composables/useProfile'
 import ManagerSidebar from '@/components/sidebar/ManagerSidebar.vue'
 import Avatar from '@/components/Avatar.vue'
-import { installOffcanvasSingleton,closeAllOffcanvas } from '@/utils/offcanvas'
-onMounted(() => {
-  installOffcanvasSingleton()
-  router.afterEach(() => { closeAllOffcanvas() })
-})
+import { installAutoCloseOnRoute, openOffcanvas } from '@/utils/bsOffcanvas'
 
 /* stores / router */
 const router = useRouter()
 const route  = useRoute()
 const user   = useUser()
 const { avatarURL } = useProfile() 
+
+onMounted(() => {
+  installAutoCloseOnRoute(router)
+})
+
+function openSidebar(){
+  openOffcanvas('#managerSidebar')
+}
 
 const currentRole = computed(() => user.me?.current_role || null)
 const isStaff     = computed(() => currentRole.value === 'staff')
@@ -88,13 +92,8 @@ async function logout () {
 
 
       <!-- Manager サイドバー（idは #managerSidebar と一致） -->
-      <button
-        class="nav-link text-dark fs-md-2 fs-4"
-        data-bs-toggle="offcanvas"
-        data-bs-target="#managerSidebar"
-        aria-controls="managerSidebar"
-      >
-        <IconMenu2 :size="24"/>
+      <button class="nav-link text-dark fs-md-2 fs-4" @click="openSidebar" aria-controls="managerSidebar" aria-label="メニューを開く">
+        <IconMenu2 :size="24" />
       </button>
 
       <ManagerSidebar />

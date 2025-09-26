@@ -5,25 +5,21 @@ import { useAuth } from '@/stores/useAuth'
 import { useProfile } from '@/composables/useProfile'
 import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
 import StoreSwitcher from '@/components/StoreSwitcher.vue'
-import { closeOffcanvas } from '@/utils/offcanvas'
+import { closeOffcanvas } from '@/utils/bsOffcanvas'
+
+async function nav(to){
+  await router.push(to)
+  closeOffcanvas('#ownerSidebar')
+}
 
 const router = useRouter()
 const route  = useRoute()
 const { displayName, avatarURL } = useProfile()
 
-// Manager と同じパターン：遷移 → すぐ JS で閉じる（data-bs-dismissは使わない）
-function nav(to){
-  const dst = router.resolve(to)
-  if (route.fullPath !== dst.fullPath) {
-    router.push(dst)
-  }
-  closeOffcanvas('#ownerSidebar')
-}
 
 const auth = useAuth()
 async function logout () {
   await auth.logout()
-  closeOffcanvas('#ownerSidebar')
   router.push('/login')
 }
 </script>
@@ -32,12 +28,9 @@ async function logout () {
   <teleport to="body">
     <div
       id="ownerSidebar"
-      class="offcanvas offcanvas-start flex-shrink-0 border-end bg-white"
+      class="offcanvas offcanvas-start"
       tabindex="-1"
-      style="--bs-offcanvas-width: min(100vw,300px);"
       aria-labelledby="ownerSidebarLabel"
-      data-bs-scroll="true"
-      data-bs-backdrop="true"
     >
       <div class="offcanvas-header bg-white">
         <button class="btn-close" data-bs-dismiss="offcanvas" aria-label="閉じる" />
@@ -45,11 +38,10 @@ async function logout () {
 
       <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
         <nav class="nav flex-column h-100">
-          <RouterLink class="nav-link bg-white" :to="{name:'owner-dashboard'}" @click.prevent="nav({name:'owner-dashboard'})">ダッシュボード</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'owner-pl-daily'}"   @click.prevent="nav({name:'owner-pl-daily'})">PL/日次</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'owner-pl-monthly'}" @click.prevent="nav({name:'owner-pl-monthly'})">PL/月次</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'owner-pl-yearly'}"  @click.prevent="nav({name:'owner-pl-yearly'})">PL/年次</RouterLink>
-          <RouterLink class="nav-link bg-white" :to="{name:'settings'}"         @click.prevent="nav({name:'settings'})">設定</RouterLink>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'owner-dashboard'})">ダッシュボード</a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'owner-pl-daily'})">PL/日次</a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'owner-pl-monthly'})">PL/月次</a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'owner-pl-yearly'})">PL/年次</a>
 
           <div class="mt-auto">
             <a href="https://studio-color.jp/" class="d-flex text-black justify-content-between align-items-center" target="_blank" rel="noopener">

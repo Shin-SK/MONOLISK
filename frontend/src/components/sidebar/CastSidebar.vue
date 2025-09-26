@@ -7,6 +7,13 @@ import { useProfile } from '@/composables/useProfile'
 import { useRoles } from '@/composables/useRoles'
 import { useUser } from '@/stores/useUser'
 import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
+import { closeOffcanvas } from '@/utils/bsOffcanvas'
+
+async function nav(to){
+  await router.push(to)
+  closeOffcanvas('#castSidebar')
+}
+
 
 const router = useRouter()
 const { role } = useRoles()
@@ -22,28 +29,25 @@ async function logout() {
 </script>
 
 <template>
-  <div
-    id="castSidebar"
-    class="offcanvas offcanvas-start"
-    style="--bs-offcanvas-width: min(100vw,300px);"
-    tabindex="-1"
-    aria-labelledby="castSidebarLabel"
-  >
+  <teleport to="body">
+    <div
+      id="castSidebar"
+      class="offcanvas offcanvas-start"
+      tabindex="-1"
+      aria-labelledby="castSidebarLabel"
+    >
     <div class="offcanvas-header">
-      <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"/>
+      <button type="button" class="btn-close text-reset" @click="closeOffcanvas('#castSidebar')" aria-label="閉じる" />
     </div>
 
     <div class="aside offcanvas-body d-flex flex-column justify-content-between v-100">
       <div class="wrap d-flex flex-column gap-1">
-        <RouterLink class="btn w-100 d-flex justify-content-start" :to="{name: 'cast-mypage'}">
-          マイページ
-        </RouterLink>
-        <RouterLink class="btn w-100 d-flex" :to="{name:'cast-profile'}">
-          プロフィール編集
-        </RouterLink>
-        <RouterLink v-if="isCast" class="btn w-100 d-flex" :to="'/cast/sales'">
-          売上
-        </RouterLink>
+          <a class="btn w-100 d-flex justify-content-start" href="#" @click.prevent="nav({name:'cast-mypage'})">
+            マイページ
+          </a>
+          <a class="btn w-100 d-flex" href="#" @click.prevent="nav({name:'cast-profile'})">
+            プロフィール編集
+          </a>
       </div>
 
       <div class="footer d-flex flex-column gap-2">
@@ -53,9 +57,11 @@ async function logout() {
             <Avatar :url="avatarURL" :size="40" class="rounded-circle"/> 
             <span>{{ displayName }}</span>
           </div>
-          <RouterLink class="nav-link bg-white" :to="{name: 'owner-profile'}" @click="closeSidebar"><IconEdit :size="16" class="text-secondary" /></RouterLink>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'cast-profile'})">
+            <IconEdit :size="16" class="text-secondary" />
+          </a>
         </div>
-        
+
         <button class="btn btn-outline-danger w-100" @click="logout">
           ログアウト
         </button>
@@ -63,4 +69,5 @@ async function logout() {
       </div>
     </div>
   </div>
+  </teleport>
 </template>
