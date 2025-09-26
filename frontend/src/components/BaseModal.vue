@@ -56,7 +56,7 @@ onBeforeUnmount(unlockBody)
         @keydown.esc="close"
         v-bind="$attrs"
       >
-        <div class="modal-dialog modal-dialog-scrollable modal-fullscreen p-md-5 p-3">
+        <div class="modal-dialog modal-dialog-scrollable modal-fullscreen p-3">
           <div class="modal-content">
             <!-- ヘッダー -->
             <slot name="header" />
