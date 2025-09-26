@@ -20,7 +20,7 @@ const current = () => route.fullPath
 
 const user   = useUser()
 const auth   = useAuth()
-const { avatarURL, displayName } = useProfile() 
+const { avatarURL, displayName } = useProfile()
 
 async function logout () {
   await auth.logout()
@@ -84,6 +84,47 @@ async function logout () {
           <a class="nav-link mt-2 bg-white" href="#" @click.prevent="nav({name:'settings'})">
             設定
           </a>
+
+
+            <!-- Manual アコーディオン（置き換え） -->
+            <div class="accordion accordion-flush my-2" id="accordionManual">
+              <div class="accordion-item">
+                <h2 class="accordion-header" id="headingManual">
+                  <button
+                    class="accordion-button collapsed px-2 text-muted bg-white"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#collapseManual"
+                    aria-expanded="false"
+                    aria-controls="collapseManual">
+                    マニュアル
+                  </button>
+                </h2>
+                <div
+                  id="collapseManual"
+                  class="accordion-collapse collapse"
+                  aria-labelledby="headingManual"
+                  data-bs-parent="#accordionManual">
+                  <div class="accordion-body py-2 bg-white">
+                    <div class="d-flex flex-column">
+                      <a class="nav-link ps-3 ms-1 bg-white"
+                        href="/manuals/manual-manager.pdf"
+                        target="_blank" rel="noopener"
+                        @click="closeOffcanvas('#managerSidebar')">
+                        基本の使い方など
+                      </a>
+                      <a class="nav-link ps-3 ms-1 bg-white"
+                        href="/manuals/manual-manager-sp.pdf"
+                        target="_blank" rel="noopener"
+                        @click="closeOffcanvas('#managerSidebar')">
+                        注文画面（スマホ版）
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
 
           <!-- ステーション（KDS） -->
           <div class="accordion accordion-flush my-2" id="accordionStations">
