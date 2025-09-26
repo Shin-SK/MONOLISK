@@ -767,7 +767,7 @@ watch(visible, v => { if (v) pane.value = 'base' })
         </div>
       </div>
     </div>
-      <div class="outer d-flex flex-column gap-4 col">
+      <div class="outer d-flex flex-column gap-4 col-5">
         <div class="box">
           <div class="d-flex flex-wrap gap-3 align-items-center">
               <!-- ▼ 表示モード -->
@@ -1042,7 +1042,7 @@ watch(visible, v => { if (v) pane.value = 'base' })
         </button>
       </div>
 
-      <div class="outer col d-flex flex-column position-relative">
+      <div class="outer col-4 d-flex flex-column position-relative">
 
         <!-- タブ -->
         <div class="tab nav nav-pills g-1 mb-5 row w-50" role="tablist" aria-label="右ペイン切替">
