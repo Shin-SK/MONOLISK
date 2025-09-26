@@ -110,18 +110,17 @@ function applySet(){
   const f = Number(femaleRef.value||0)
   if (m + f <= 0) { alert('SETの人数を入力してください'); return }
   emit('applySet', {
-    // ラインは SET と 深夜のみ（クーポン行は追加しない）
     lines: [
       { type:'set',   code:'setMale',   qty:m },
       { type:'set',   code:'setFemale', qty:f },
-      ...(nightRef.value ? [{ type:'addon',  code:'addonNight', qty:(m+f) }] : []),
+      ...(nightRef.value ? [{ type:'addon', code:'addonNight', qty:(m+f) }] : []),
     ],
-    // 表示用の補足（任意）
     config: { night: !!nightRef.value },
-    // ★ 割引は DiscountRule に一本化：選択コードを親へ渡す
     discount_code: (specialRef.value !== 'none') ? String(specialRef.value) : null,
   })
+  alert('追加しました！')
 }
+
 </script>
 
 <template>
