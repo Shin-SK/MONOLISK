@@ -58,7 +58,7 @@ function aggregate () {
 async function load () {
   const [rows, casts] = await Promise.all([
     fetchCastDailySummaries({ from: dateFrom.value, to: dateTo.value }),
-    fetchCasts()                           // 👈 追加
+    fetchCasts()
   ])
   dailyRows.value = rows
   allCasts.value  = casts
@@ -123,7 +123,7 @@ onMounted(load)
             style="cursor:pointer"
             @click="
               router.push({
-                name: 'cast-sales-detail',              // ルート名で指定
+                name: 'cast-sales-detail',
                 params: { id: t.cast.id },              // 必須パラメータ
                 query:  { from: dateFrom, to: dateTo }  // 期間も持たせたい場合（省略可）
               })

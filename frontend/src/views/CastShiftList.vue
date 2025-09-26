@@ -104,7 +104,7 @@ onMounted(load)
           :key="row.cast.id"
         >
           <td>
-            <RouterLink :to="{ name: 'cast-shift-page', params: { id: row.cast.id } }">
+            <RouterLink :to="{ name: 'mng-cast-shift-detail', params: { id: row.cast.id } }">
               {{ row.cast.stage_name }}
             </RouterLink>
           </td>
