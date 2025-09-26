@@ -103,7 +103,7 @@ SITE_ID = 1
 AUTH_USER_MODEL = "accounts.User"
 
 REST_AUTH_SERIALIZERS = {
-    'USER_DETAILS_SERIALIZER': 'accounts.serializers.UserDetailsWithStoreSerializer',
+    'USER_DETAILS_SERIALIZER': 'billing.serializers_user_details.UserDetailsWithAvatarSerializer',
     'LOGIN_SERIALIZER':       'accounts.serializers.LoginWithStoreSerializer',
 }
 
@@ -195,7 +195,7 @@ REST_AUTH = {
     },
     "LOGIN_FIELD": "username",
     "LOGIN_SERIALIZER":        "accounts.serializers.LoginWithStoreSerializer",
-    "USER_DETAILS_SERIALIZER": "accounts.serializers.UserDetailsWithStoreSerializer",
+    "USER_DETAILS_SERIALIZER": "billing.serializers_user_details.UserDetailsWithAvatarSerializer",
     "TOKEN_SERIALIZER":        "accounts.serializers.TokenWithStoreSerializer",
 }
 ACCOUNT_LOGIN_METHODS     = ["username"]

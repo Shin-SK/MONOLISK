@@ -1,8 +1,7 @@
 # billing/serializer.py
 from rest_framework import serializers
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule, CastGoal, User
 from dj_rest_auth.serializers import UserDetailsSerializer
-from .models import User
 from cloudinary.utils import cloudinary_url
 from decimal import Decimal, ROUND_HALF_UP
 from django.contrib.auth import get_user_model
@@ -11,7 +10,8 @@ from datetime import date
 from .services import sync_nomination_fees
 from django.templatetags.static import static
 from django.utils import timezone
-from .models import CastGoal
+from .models_profile import get_user_avatar_url
+
 
 
 class StoreSerializer(serializers.ModelSerializer):
@@ -1114,3 +1114,6 @@ class DiscountRuleSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = ['id', 'created_at']
+
+
+

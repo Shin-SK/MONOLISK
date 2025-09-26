@@ -19,7 +19,7 @@ const msg = ref('')
 /* ── アバター ─────────────────────────── */
 const previewUrl = ref('')       // ローカルプレビューURL
 const avatarFile = ref(null)     // 選択したFile
-const canEditAvatar = ref(false) // cast_idがあるときだけ編集
+const canEditAvatar = ref(true)  // ★ 全員OKに変更
 
 function onPick(e){
   const f = e.target.files?.[0]
@@ -42,54 +42,42 @@ async function load() {
   form.email      = me.email      ?? ''
   form.phone      = me.phone      ?? ''
   form.department = me.department ?? ''
-
-  canEditAvatar.value = !!me.cast_id   // Castがある人だけアバター編集
 }
 
 /* ── 保存（基本情報 + 画像） ─────────── */
-// src/views/ProfileEdit.vue の save() 内
 async function save() {
   saving.value = true
   msg.value = ''
   try {
     const me = meStore.me || (await api.get('me/')).data
 
-    // 送れるのは first_name / last_name / email / （必要なら username）
+    // 基本情報（必要項目だけ）
     const payload = {
       first_name: form.first_name,
       last_name : form.last_name,
       email     : form.email,
     }
-    // username を本当に変更した時だけ付ける（＝一意チェックを回避）
     if ((form.username || '') !== (me.username || '')) {
       payload.username = form.username
     }
-
     await api.patch('dj-rest-auth/user/', payload)
 
-    // 画像は今まで通り
-    if (canEditAvatar.value && avatarFile.value) {
-      const castId = me.cast_id ?? (await api.get('me/')).data.cast_id
-      if (castId) {
-        const fd = new FormData()
-        fd.append('avatar', avatarFile.value)
-        await api.patch(`billing/casts/${castId}/`, fd)
-      }
+    // 画像は常にUserに送る（multipart）
+    if (avatarFile.value) {
+      const fd = new FormData()
+      fd.append('avatar', avatarFile.value)
+      await api.patch('dj-rest-auth/user/', fd)
     }
 
     await meStore.fetchMe?.()
     msg.value = '保存しました'
   } catch (e) {
-    // サーバのフィールドエラーをそのまま表示
     const d = e?.response?.data
     msg.value = d ? JSON.stringify(d) : (e?.message || '保存に失敗しました')
   } finally {
     saving.value = false
   }
 }
-
-
-
 
 onMounted(load)
 </script>
@@ -100,11 +88,11 @@ onMounted(load)
     <div class="mb-4 d-flex align-items-center gap-3">
       <Avatar :url="previewUrl || avatarURL" :size="72" class="rounded-circle" />
       <div class="d-flex flex-column gap-2">
-        <label class="btn btn-outline-secondary mb-0" :class="{disabled: !canEditAvatar}">
+        <label class="btn btn-outline-secondary mb-0">
           画像を選択
-          <input type="file" accept="image/*" class="d-none" :disabled="!canEditAvatar" @change="onPick" />
+          <input type="file" accept="image/*" class="d-none" @change="onPick" />
         </label>
-        <small class="text-muted" v-if="!canEditAvatar">※キャストプロフィールが無いアカウントは、画像変更は不可です。</small>
+        <small class="text-muted">※「保存」で反映されます。</small>
       </div>
     </div>
 
@@ -133,7 +121,6 @@ onMounted(load)
         <label class="form-label">電話番号</label>
         <input v-model="form.phone" class="form-control" />
       </div>
-
     </div>
 
     <div class="mt-4 d-flex align-items-center gap-3">
@@ -145,11 +132,6 @@ onMounted(load)
   </div>
 </template>
 
-
 <style scoped lang="scss">
-
-input{
-  background: white;
-}
-
+input { background: white; }
 </style>

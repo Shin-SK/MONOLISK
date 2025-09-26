@@ -8,3 +8,4 @@ class BillingConfig(AppConfig):
     def ready(self):
         # signals の登録（アプリ起動時に一度だけ）
         from . import signals  # noqa: F401
+        import billing.models_profile
