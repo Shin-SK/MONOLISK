@@ -43,19 +43,60 @@ async function logout () {
       <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
         <!-- -------- ナビ ---------- -->
         <nav class="nav flex-column">
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-dashboard'})">ダッシュボード</a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-bill-table'})">伝票</a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-daily'})">PL/日次</a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-monthly'})">PL/月次</a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-yearly'})">PL/年次</a>
+          <!-- ダッシュボード -->
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-dashboard'})">
+            ダッシュボード
+          </a>
 
-          <!-- ★ ステーション（Accordion 内も同様に go()） -->
+          <!-- 伝票  -->
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-bill-table'})">
+            伝票
+          </a>
+
+          <!-- PL -->
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-daily'})">
+            PL/日次
+          </a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-monthly'})">
+            PL/月次
+          </a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-yearly'})">
+            PL/年次
+          </a>
+
+          <!-- キャスト関連 -->
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-cast-shift'})">
+            キャストシフト
+          </a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-cast-sales'})">
+            キャスト売上
+          </a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-ranking'})">
+            ランキング
+          </a>
+
+          <!-- 顧客 -->
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-customers'})">
+            顧客情報
+          </a>
+
+          <!-- 設定（ManagerLayout配下の /settings） -->
+          <a class="nav-link mt-2 bg-white" href="#" @click.prevent="nav({name:'settings'})">
+            設定
+          </a>
+
+          <!-- ステーション（KDS） -->
           <div class="accordion accordion-flush my-2" id="accordionStations">
             <div class="accordion-item">
               <h2 class="accordion-header" id="headingStations">
-                <button class="accordion-button collapsed px-2 text-muted bg-white" type="button"
-                        data-bs-toggle="collapse" data-bs-target="#collapseStations"
-                        aria-expanded="false" aria-controls="collapseStations">
+                <button
+                  class="accordion-button collapsed px-2 text-muted bg-white"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#collapseStations"
+                  aria-expanded="false"
+                  aria-controls="collapseStations"
+                >
                   ステーション
                 </button>
               </h2>
@@ -67,17 +108,24 @@ async function logout () {
               >
                 <div class="accordion-body py-2 bg-white">
                   <div class="d-flex flex-column">
-                    <a class="nav-link ps-3 ms-1 bg-white" href="#" @click.prevent="nav({name:'mng-kds-dishup'})">デシャップ</a>
-                    <a class="nav-link ps-3 ms-1 bg-white" href="#" @click.prevent="nav({name:'mng-kds-kitchen'})">キッチン</a>
-                    <a class="nav-link ps-3 ms-1 bg-white" href="#" @click.prevent="nav({name:'mng-kds-drinker'})">ドリンカー</a>
+                    <a class="nav-link ps-3 ms-1 bg-white" href="#" @click.prevent="nav({name:'mng-kds-dishup'})">
+                      デシャップ
+                    </a>
+                    <a class="nav-link ps-3 ms-1 bg-white" href="#" @click.prevent="nav({name:'mng-kds-kitchen'})">
+                      キッチン
+                    </a>
+                    <a class="nav-link ps-3 ms-1 bg-white" href="#" @click.prevent="nav({name:'mng-kds-drinker'})">
+                      ドリンカー
+                    </a>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
+          <!-- 広告 -->
           <div class="mt-auto">
-            <a href="https://studio-color.jp/" class="d-flex text-black justify-content-between align-items-center" target="_black">
+            <a href="https://studio-color.jp/" class="d-flex text-black justify-content-between align-items-center" target="_blank" rel="noopener">
               <div class="wrap d-flex flex-column">
                 <span style="font-size: 12px;">キャスト撮影やコンテンツ制作なら</span>
                 <span class="fw-bold fs-5">スタジオカラー</span>
