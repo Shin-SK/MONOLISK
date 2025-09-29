@@ -47,7 +47,10 @@ export default defineConfig(({ mode }) => {
           clientsClaim: true,
           cleanupOutdatedCaches: true,
           navigateFallback: '/index.html',
-          navigateFallbackDenylist: [/^\/api\//],
+          navigateFallbackDenylist: [
+            /^\/api\//,
+            /^\/manuals\//,     // ★ 追加：PDFにSPAフォールバックを当てない
+          ],
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           globIgnores: ['**/*.map'],
           runtimeCaching: [
