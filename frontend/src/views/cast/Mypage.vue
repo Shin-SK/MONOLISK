@@ -4,6 +4,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import RankingBlock from '@/components/RankingBlock.vue'
 import CastGoalsPanel from '@/components/cast/CastGoalsPanel.vue'
+import CustomerDetailModal from '@/components/CustomerDetailModal.vue'
 import dayjs from 'dayjs'
 import {
   fetchBills,
@@ -204,6 +205,19 @@ async function submitAll () {
   }
 }
 
+// モーダル制御
+const showCustomerModal = ref(false)
+const selectedBillId    = ref(null)
+
+function openCustomer(id) {
+  selectedBillId.value = id
+  showCustomerModal.value = true
+}
+function closeCustomerModal(){
+  showCustomerModal.value = false
+}
+
+
 /* ---------- 監視 ---------- */
 watch([dateFrom,dateTo], () => { if (castId.value) { loadShifts(); loadSummary(); loadRankings() } })
 
@@ -226,13 +240,6 @@ const nextShiftStart = computed(() =>
 const nextShiftEnd   = computed(() =>
   nextShift.value ? dayjs(nextShift.value.plan_end).format('HH:mm') : null
 )
-
-/* ───────── 追加③: 顧客行クリック時のハンドラ（暫定） ───────── */
-// まだ遷移先が未決なら no-op でもOK。後で適切な詳細画面に差し替え。
-function open(id) {
-  // 例: 伝票詳細へ飛ばすなら → router.push(`/bills/${id}`)
-  // 今は暫定で何もしない
-}
 
 
 </script>
@@ -556,7 +563,7 @@ function open(id) {
           <tr><th>日時</th><th>顧客名</th><th class="text-end">小計</th></tr>
         </thead>
         <tbody>
-          <tr v-for="b in customerBills" :key="b.id" role="button" @click="open(b.id)">
+          <tr v-for="b in customerBills" :key="b.id" role="button" @click="openCustomer(b.id)">
             <td>{{ dayjs(b.opened_at).format('YYYY/MM/DD HH:mm') }}</td>
             <td>{{ b.customer_display_name || '-' }}</td>
             <td class="text-end">{{ yen(b.subtotal) }}</td>
@@ -570,6 +577,12 @@ function open(id) {
         あなたが担当した顧客情報はまだありません
       </p>
     </div>
+
+    <CustomerDetailModal
+      :bill-id="selectedBillId"
+      :show="showCustomerModal"
+      @close="closeCustomerModal"
+    />
 
     <!-- ▼ お店からのお知らせ -->
     <div class="notice mt-5">

@@ -455,6 +455,11 @@ export const updateCustomer = (id, payload = {}) => {
 export const deleteCustomer = id =>
   api.delete(`billing/customers/${id}/`);
 
+// bill に items が含まれない場合のフォールバック用
+export const fetchBillItemsByBillId = (billId) =>
+  api.get('/billing/bill-items/', { params:{ bill: billId, ordering:'id' } })
+     .then(r => Array.isArray(r.data?.results) ? r.data.results : (Array.isArray(r.data) ? r.data : []))
+
 
 /* ---------- Store Notices (店舗ニュース) ---------- */
 // 一覧（管理側・公開側どっちでも使える）

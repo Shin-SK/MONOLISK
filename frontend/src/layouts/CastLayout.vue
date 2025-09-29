@@ -105,6 +105,7 @@ watch(() => route.fullPath, (p) => {
        'is-open': isOrderPage && showCastFooter
      }"
     >
+      <div class="container d-flex align-items-center justify-content-between">
 
         <!-- 右：マイページへ -->
         <RouterLink class="nav-link d-flex align-items-center justify-content-center" :to="{name: 'cast-mypage'}" title="マイページ">
@@ -136,7 +137,7 @@ watch(() => route.fullPath, (p) => {
         >
           <IconMenu2 :size="24"/>
         </button> -->
-
+        </div>
     </div>
 
     <!-- 伝票画面時のみ：右端にスライドトグル -->

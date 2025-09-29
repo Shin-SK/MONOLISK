@@ -9,10 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@fullcalendar/core": "^6.1.17",
-    "@fullcalendar/interaction": "^6.1.17",
-    "@fullcalendar/timegrid": "^6.1.17",
-    "@fullcalendar/vue3": "^6.1.17",
     "@infectoone/vue-ganttastic": "^2.3.2",
     "@motionone/dom": "^10.18.0",
     "@motionone/easing": "^10.18.0",
