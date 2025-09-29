@@ -71,25 +71,50 @@ async function loadAll(){
       return b.closed_at && pt < st
     }).length
 
-    // 3) 出勤状況（キャスト／スタッフ）
-    const [castShifts, staffShifts] = await Promise.all([
-      fetchCastShifts({ from: d, to: d }),
-      fetchStaffShifts({ time_min: `${d}T00:00:00`, time_max: `${d}T23:59:59` }),
-    ]).catch(()=>[[],[]])
+// 3) 出勤状況（キャスト／スタッフ）
+const [castShiftsRaw, staffShiftsRaw] = await Promise.all([
+  fetchCastShifts({ from: d, to: d }).catch(() => []),
+  fetchStaffShifts({ time_min: `${d}T00:00:00`, time_max: `${d}T23:59:59` }).catch(() => []),
+])
 
-    const castOn  = (Array.isArray(castShifts)  ? castShifts  : []).filter(s => s.clock_in && !s.clock_out).length
-    const staffOn = (Array.isArray(staffShifts) ? staffShifts : []).filter(s => s.clock_in && !s.clock_out).length
+const dayStart = dayjs(`${d}T00:00:00`)
+const dayEnd   = dayjs(`${d}T23:59:59`)
 
-    kpi.value = {
-      sales_total : pl.sales_total || 0,
-      sales_cash  : pl.sales_cash  || 0,
-      sales_card  : pl.sales_card  || 0,
-      visitors    : custSet.size,
-      open_count  : openCnt,
-      unsettled_count: unsettledCnt,
-      cast_on_duty: castOn,
-      staff_on_duty: staffOn,
-    }
+// 「当日打刻のみ」＋「人物でユニーク」に絞る
+const isClockInToday = (s) => {
+  if (!s?.clock_in) return false
+  const ci = dayjs(s.clock_in)
+  return ci.isValid() && ci.isSame(dayStart, 'day')
+}
+const uniqCountBy = (arr, getPersonId) => {
+  const seen = new Set()
+  for (const s of arr) {
+    const pid = getPersonId(s)
+    if (pid != null) seen.add(String(pid))
+  }
+  return seen.size
+}
+
+// キャスト
+const castShiftsToday = (Array.isArray(castShiftsRaw) ? castShiftsRaw : []).filter(isClockInToday)
+// 「退勤済みでも当日ならOK」or「未退勤（勤務中）」のどちらも当日実績として扱う
+const castOn = uniqCountBy(castShiftsToday, s => s.cast?.id ?? s.cast_id)
+
+// スタッフ（構造が cast と同様だと仮定）
+const staffShiftsToday = (Array.isArray(staffShiftsRaw) ? staffShiftsRaw : []).filter(isClockInToday)
+const staffOn = uniqCountBy(staffShiftsToday, s => s.staff?.id ?? s.staff_id)
+
+kpi.value = {
+  sales_total : pl.sales_total || 0,
+  sales_cash  : pl.sales_cash  || 0,
+  sales_card  : pl.sales_card  || 0,
+  visitors    : custSet.size,
+  open_count  : openCnt,
+  unsettled_count: unsettledCnt,
+  cast_on_duty: castOn,
+  staff_on_duty: staffOn,
+}
+
   }catch(e){
     console.warn(e)
     errorMsg.value = '読み込みに失敗しました'
