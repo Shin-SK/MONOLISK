@@ -8,6 +8,8 @@ import Avatar from '@/components/Avatar.vue'
 import DevRoleSwitcher from '@/components/DevRoleSwitcher.vue'
 import StoreSwitcher from '@/components/StoreSwitcher.vue'
 import { closeOffcanvas } from '@/utils/bsOffcanvas'
+import { MANUALS } from '@/plugins/manuals'
+import { openManual } from '@/utils/manuals'
 
 async function nav(to){
   await router.push(to)
@@ -17,6 +19,12 @@ async function nav(to){
 const router = useRouter()
 const route  = useRoute()
 const current = () => route.fullPath
+
+function openManualLink(p){
+  openManual(p, router)
+  closeOffcanvas('#managerSidebar')
+}
+
 
 const user   = useUser()
 const auth   = useAuth()
@@ -86,44 +94,43 @@ async function logout () {
           </a>
 
 
-            <!-- Manual アコーディオン（置き換え） -->
-            <div class="accordion accordion-flush my-2" id="accordionManual">
-              <div class="accordion-item">
-                <h2 class="accordion-header" id="headingManual">
-                  <button
-                    class="accordion-button collapsed px-2 text-muted bg-white"
-                    type="button"
-                    data-bs-toggle="collapse"
-                    data-bs-target="#collapseManual"
-                    aria-expanded="false"
-                    aria-controls="collapseManual">
-                    マニュアル
-                  </button>
-                </h2>
-                <div
-                  id="collapseManual"
-                  class="accordion-collapse collapse"
-                  aria-labelledby="headingManual"
-                  data-bs-parent="#accordionManual">
-                  <div class="accordion-body py-2 bg-white">
-                    <div class="d-flex flex-column">
-                      <a class="nav-link ps-3 ms-1 bg-white"
-                        href="/manuals/manual-manager.pdf"
-                        target="_blank" rel="noopener"
-                        @click="closeOffcanvas('#managerSidebar')">
-                        基本の使い方など
-                      </a>
-                      <a class="nav-link ps-3 ms-1 bg-white"
-                        href="/manuals/manual-manager-sp.pdf"
-                        target="_blank" rel="noopener"
-                        @click="closeOffcanvas('#managerSidebar')">
-                        注文画面（スマホ版）
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <!-- Manual アコーディオン jsとcomponentsから吐き出す -->
+  <div class="accordion accordion-flush my-2" id="accordionManual">
+    <div class="accordion-item">
+      <h2 class="accordion-header" id="headingManual">
+        <button
+          class="accordion-button collapsed px-2 text-muted bg-white"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#collapseManual"
+          aria-expanded="false"
+          aria-controls="collapseManual">
+          マニュアル
+        </button>
+      </h2>
+      <div
+        id="collapseManual"
+        class="accordion-collapse collapse"
+        aria-labelledby="headingManual"
+        data-bs-parent="#accordionManual">
+        <div class="accordion-body py-2 bg-white">
+          <div class="d-flex flex-column">
+            <!-- ★ 一覧をループ -->
+            <a
+              v-for="m in MANUALS"
+              :key="m.path"
+              class="nav-link ps-3 ms-1 bg-white"
+              :href="m.path"
+              target="_blank" rel="noopener"
+              @click.prevent="openManualLink(m.path)"
+            >
+              {{ m.title }}
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
 
           <!-- ステーション（KDS） -->

@@ -201,6 +201,14 @@ const routes = [
   { path: '/login', name: 'login', component: () => import('@/views/Login.vue') },
   { path: '/casts',     redirect: { name: 'settings-cast-list' } },
   { path: '/casts/new', redirect: { name: 'settings-cast-new' } },
+
+  // ---------- その他 ---------- //
+  {
+    path: '/manual-viewer',
+    name: 'manual-viewer',
+    component: () => import('@/views/ManualViewer.vue'),
+    meta: { layout: 'Plain' } // 任意：戻るボタンだけのレイアウト等
+  },
 ]
 
 // --- ここから下を router.js の末尾に置き換え ---
