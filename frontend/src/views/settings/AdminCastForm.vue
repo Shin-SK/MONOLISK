@@ -199,28 +199,30 @@ onMounted(async ()=>{
     <!-- アバター -->
     <div class="mb-3">
       <label class="form-label">アバター</label>
-      <div class="d-flex align-items-center gap-3">
+      <div class="d-flex flex-column flex-md-row gap-3">
         <img
           v-if="avatarUrl"
           :src="avatarUrl"
           class="rounded"
           style="width:80px;height:80px;object-fit:cover;"
         >
-        <input
-          type="file"
-          accept="image/*"
-          class="form-control"
-          style="max-width:240px;"
-          @change="onAvatarChange"
-        >
-        <button
-          v-if="avatarUrl"
-          type="button"
-          class="btn btn-outline-danger btn-sm"
-          @click="clearAvatar"
-        >
-          削除
-        </button>
+        <div class="wrap d-flex align-items-center gap-2">
+          <input
+            type="file"
+            accept="image/*"
+            class="form-control"
+            style="max-width:240px;"
+            @change="onAvatarChange"
+          >
+          <button
+            v-if="avatarUrl"
+            type="button"
+            class="btn btn-outline-danger btn-sm"
+            @click="clearAvatar"
+          >
+            削除
+          </button>
+        </div>
       </div>
     </div>
 
@@ -275,79 +277,81 @@ onMounted(async ()=>{
 
     <div class="mb-4">
       <label class="form-label fw-bold">カテゴリ別バック率 (%)</label>
-      <table class="table table-sm align-middle">
-        <thead class="table-light">
-          <tr>
-            <th style="width:140px">
-              カテゴリ
-            </th>
-            <th>フリー</th><th>本指名</th><th>場内</th><th style="width:60px" />
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(r,idx) in form.category_rates"
-            :key="idx"
-          >
-            <!-- ▼カテゴリ選択（code をバインド） -->
-            <td>
-              <select
-                v-model="r.category"
-                class="form-select form-select-sm"
-              >
-                <option
-                  disabled
-                  value=""
+      <div class="table-responsive">
+        <table class="table table-sm align-middle" style="min-width: 480px;">
+          <thead class="table-light">
+            <tr>
+              <th style="width:140px">
+                カテゴリ
+              </th>
+              <th>フリー</th><th>本指名</th><th>場内</th><th style="width:60px" />
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(r,idx) in form.category_rates"
+              :key="idx"
+            >
+              <!-- ▼カテゴリ選択（code をバインド） -->
+              <td>
+                <select
+                  v-model="r.category"
+                  class="form-select form-select-sm"
                 >
-                  選択…
-                </option>
-                <option
-                  v-for="c in categories"
-                  :key="c.code"
-                  :value="c.code"
+                  <option
+                    disabled
+                    value=""
+                  >
+                    選択…
+                  </option>
+                  <option
+                    v-for="c in categories"
+                    :key="c.code"
+                    :value="c.code"
+                  >
+                    {{ c.name }}
+                  </option>
+                </select>
+              </td>
+              <td>
+                <input
+                  v-model.number="r.rate_free"
+                  type="number"
+                  min="0"
+                  max="100"
+                  class="form-control form-control-sm"
                 >
-                  {{ c.name }}
-                </option>
-              </select>
-            </td>
-            <td>
-              <input
-                v-model.number="r.rate_free"
-                type="number"
-                min="0"
-                max="100"
-                class="form-control form-control-sm"
-              >
-            </td>
-            <td>
-              <input
-                v-model.number="r.rate_nomination"
-                type="number"
-                min="0"
-                max="100"
-                class="form-control form-control-sm"
-              >
-            </td>
-            <td>
-              <input
-                v-model.number="r.rate_inhouse"
-                type="number"
-                min="0"
-                max="100"
-                class="form-control form-control-sm"
-              >
-            </td>
-            <td class="text-center">
-              <button
-                class="btn btn-danger btn-sm"
-                @click="removeRateRow(idx)"
-              >
-                ✕
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+              </td>
+              <td>
+                <input
+                  v-model.number="r.rate_nomination"
+                  type="number"
+                  min="0"
+                  max="100"
+                  class="form-control form-control-sm"
+                >
+              </td>
+              <td>
+                <input
+                  v-model.number="r.rate_inhouse"
+                  type="number"
+                  min="0"
+                  max="100"
+                  class="form-control form-control-sm"
+                >
+              </td>
+              <td class="text-center">
+                <button
+                  class="btn btn-danger btn-sm"
+                  @click="removeRateRow(idx)"
+                >
+                  ✕
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <button
         class="btn btn-outline-secondary btn-sm"
         @click="addRateRow"

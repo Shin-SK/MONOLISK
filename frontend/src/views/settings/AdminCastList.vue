@@ -50,7 +50,8 @@ onMounted(fetchList)
       >新規登録</RouterLink>
     </div>
 
-    <table class="table">
+    <div class="table-responsive">
+    <table class="table align-middle" style="min-width: 480px;">
       <thead class="table-dark">
         <tr>
           <th>ID</th>
@@ -78,6 +79,7 @@ onMounted(fetchList)
         </tr>
       </tbody>
     </table>
+    </div>
   </div>
 </template>
 
