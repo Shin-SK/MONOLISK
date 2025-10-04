@@ -1,7 +1,8 @@
-<!-- src/views/CastShiftList.vue (rev4) → 退勤済みは即リストから除外 → 出勤時間“-” 表示 -->
+<!-- src/views/CastShiftList.vue -->
 <script setup>
 import { ref, onMounted } from 'vue'
 import dayjs from 'dayjs'
+import Avatar from '@/components/Avatar.vue'
 import {
   fetchCastShifts,
   createCastShift,
@@ -17,7 +18,8 @@ const rows = ref([])   // [{ cast, shift|null }]
 /* ---------- データロード ---------- */
 async function load () {
   const [casts, shifts] = await Promise.all([
-    getBillingCasts(),
+    // ★ アバター反映のため常に最新を取得
+    getBillingCasts({ _ts: Date.now() }, { cache: false }),
     fetchCastShifts({ date: todayISO })
   ])
 
@@ -93,19 +95,19 @@ onMounted(load)
           <th>キャスト</th>
           <th>シフト</th>
           <th>出勤時間</th>
-          <th class="text-end">
-            操作
-          </th>
+          <th class="text-end">操作</th>
         </tr>
       </thead>
       <tbody>
-        <tr
-          v-for="row in rows"
-          :key="row.cast.id"
-        >
+        <tr v-for="row in rows" :key="row.cast.id">
           <td>
-            <RouterLink :to="{ name: 'mng-cast-shift-detail', params: { id: row.cast.id } }">
-              {{ row.cast.stage_name }}
+            <RouterLink
+              :to="{ name: 'mng-cast-shift-detail', params: { id: row.cast.id } }"
+              class="d-inline-flex align-items-center gap-2 text-decoration-none"
+            >
+              <!-- ★ アバター表示 -->
+              <Avatar :url="row.cast.avatar_url" :alt="row.cast.stage_name" :size="24" />
+              <span>{{ row.cast.stage_name }}</span>
             </RouterLink>
           </td>
 
@@ -121,36 +123,26 @@ onMounted(load)
               v-if="!row.shift?.clock_in"
               class="btn btn-primary"
               @click="checkIn(row)"
-            >
-              出勤
-            </button>
+            >出勤</button>
 
             <!-- 退勤 -->
             <button
               v-else-if="!row.shift?.clock_out"
               class="btn btn-danger"
               @click="checkOut(row)"
-            >
-              退勤
-            </button>
+            >退勤</button>
 
             <!-- 削除 (退勤済み) -->
             <button
               v-else
               class="btn btn-outline-secondary"
               @click="removeShift(row)"
-            >
-              削除
-            </button>
+            >削除</button>
           </td>
         </tr>
+
         <tr v-if="!rows.length">
-          <td
-            colspan="4"
-            class="text-center text-muted"
-          >
-            本日のシフトはありません
-          </td>
+          <td colspan="4" class="text-center text-muted">本日のシフトはありません</td>
         </tr>
       </tbody>
     </table>
