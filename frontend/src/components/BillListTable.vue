@@ -37,12 +37,14 @@ const todayISO    = dayjs().format('YYYY-MM-DD')
 // ────────────────────────────────
 //  初期ロード
 // ────────────────────────────────
-async function loadCastsAndShifts () {                    // ★名前そのまま
-  await Promise.all([
-    castsStore.fetch(),                                   // キャスト一覧
+async function loadCastsAndShifts () {
+  const [casts, shifts] = await Promise.all([
+    // ★ アバター更新反映のため毎回最新取得
+    getBillingCasts({ _ts: Date.now() }, { cache: false }),
     fetchCastShifts({ date: todayISO })
-      .then(r => (shiftsToday.value = r)),                // 今日のシフト
   ])
+  castsAll.value    = Array.isArray(casts) ? casts : []
+  shiftsToday.value = Array.isArray(shifts) ? shifts : []
 }
 
 onMounted(async () => {                                   // ★tablesStore.fetch だけ
@@ -148,17 +150,20 @@ const unassigned = computed(() => {
       .filter(s => !s.left_at)
       .map(s => Number(s.cast.id)))
   )
+  // ★ 出勤中だけ（clock_in あり && clock_out なし）
   const presentIds = new Set(
-    shiftsToday.value.filter(s => !s.clock_out)
+    shiftsToday.value
+      .filter(s => s.clock_in && !s.clock_out)
       .map(s => Number(s.cast.id))
   )
-  return castsStore.list
+  // ★ アバター最新の castsAll を使う
+  return (castsAll.value || [])
     .filter(c => presentIds.has(Number(c.id)) && !stayIds.has(Number(c.id)))
     .map(c => ({
-      id:     c.id,
-      name:   c.stage_name,
+      id    : c.id,
+      name  : c.stage_name,
       avatar: c.avatar_url,
-      kind:   'free'
+      kind  : 'free'
     }))
 })
 
