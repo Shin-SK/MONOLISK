@@ -15,6 +15,7 @@ import {
   createBill,
   fetchCastShifts,
   updateBillCasts,
+  getBillingCasts,
 } from '@/api'
 import { useTables }  from '@/stores/useTables'
 import { useCasts }   from '@/stores/useCasts'
