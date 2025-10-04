@@ -1,38 +1,28 @@
 <!-- src/views/CastList.vue -->
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getBillingStores, getBillingCasts, fetchCastShifts } from '@/api'
+import Avatar from '@/components/Avatar.vue'
+import { getBillingCasts, fetchCastShifts } from '@/api'
 
 const keyword = ref('')
-const store   = ref('')
-const stores  = ref([])
 const results = ref([])
-
-async function fetchStores () {
-  const list = await getBillingStores()
-  stores.value = [{ id: '', name: '全店舗' }, ...list]
-  store.value  = ''
-}
 
 const fmt = (iso) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
 
-async function fetch () {
-  // 1) キャスト一覧（常に最新を取得）
+async function fetchList () {
+  // 1) キャスト一覧（所属店舗は X-Store-Id によりサーバ側で絞られる）
   const casts = await getBillingCasts(
-    { store: store.value || undefined, stage_name: keyword.value || undefined, _ts: Date.now() },
+    { stage_name: keyword.value || undefined, _ts: Date.now() },
     { cache: false }
   )
 
-  // 2) 今日のシフト（cast-shifts を日付絞り）
+  // 2) 今日のシフト（店舗は送らない）
   const today  = new Date().toISOString().slice(0, 10)
-  const shifts = await fetchCastShifts({
-    date : today,
-    store: store.value || undefined,
-  })
+  const shifts = await fetchCastShifts({ date: today })
   const byCast = Object.fromEntries((Array.isArray(shifts) ? shifts : []).map(s => [s.cast_id, s]))
 
-  // 3) 表示用
+  // 3) 表示用整形
   results.value = (Array.isArray(casts) ? casts : []).map(c => {
     const sh = byCast[c.id]
     return {
@@ -42,34 +32,17 @@ async function fetch () {
   })
 }
 
-onMounted(async () => {
-  await fetchStores()
-  await fetch()
-})
+onMounted(fetchList)
 </script>
-
 
 <template>
   <div class="py-4">
     <div class="d-flex gap-2 mb-5 flex-wrap">
-      <select
-        v-model="store"
-        class="form-select form-control"
-        @change="fetch"
-      >
-        <option
-          v-for="s in stores"
-          :key="s.id"
-          :value="s.id"
-        >
-          {{ s.name }}
-        </option>
-      </select>
       <input
         v-model="keyword"
         class="form-control"
-        placeholder="源氏名"
-        @keyup.enter="fetch"
+        placeholder="源氏名で検索（Enterで実行）"
+        @keyup.enter="fetchList"
       >
       <RouterLink
         :to="{ name: 'settings-cast-new' }"
@@ -79,15 +52,23 @@ onMounted(async () => {
 
     <table class="table">
       <thead class="table-dark">
-        <tr><th>ID</th><th>源氏名</th><th class="text-end">編集</th></tr>
+        <tr>
+          <th>ID</th>
+          <th>源氏名</th>
+          <th>本日の予定</th>
+          <th class="text-end">編集</th>
+        </tr>
       </thead>
       <tbody>
-        <tr
-          v-for="c in results"
-          :key="c.id"
-        >
+        <tr v-for="c in results" :key="c.id">
           <td style="vertical-align:middle;">{{ c.id }}</td>
-          <td style="vertical-align:middle;">{{ c.stage_name }}</td>
+          <td style="vertical-align:middle;">
+            <div class="d-flex align-items-center gap-1">
+              <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" />
+              <span>{{ c.stage_name }}</span>
+            </div>
+          </td>
+          <td style="vertical-align:middle;">{{ c.shiftLabel }}</td>
           <td class="text-end p-2">
             <RouterLink
               :to="{ name:'settings-cast-form', params:{ id:c.id }}"
@@ -101,10 +82,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-
-input,select{
+input{
   background-color: white;
 }
-
-
 </style>
