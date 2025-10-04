@@ -64,7 +64,10 @@ function removeRateRow (idx){
 // /* ---------- 初期化 ---------- */
 async function fetchCast () {
   if (!isEdit) return
-  const { data } = await api.get(`billing/casts/${route.params.id}/`)
+  const { data } = await api.get(`billing/casts/${route.params.id}/`, {
+    cache : false,                   // ★ キャッシュ無効
+    params: { _ts: Date.now() },     // ★ さらにバスター
+  })
   Object.assign(form, {
     ...data,
     username   : data.username_read,
@@ -72,7 +75,7 @@ async function fetchCast () {
     last_name  : data.last_name_read,
     hourly_wage: data.hourly_wage,
   })
-  avatarUrl.value = data.avatar_url || ''
+  avatarUrl.value = data.avatar_url ? `${data.avatar_url}${data.avatar_url.includes('?') ? '&' : '?'}t=${Date.now()}` : ''
 }
 
 /* ---------- 保存 ---------- */
@@ -126,7 +129,7 @@ async function save () {
 
     // 遷移（名前付きルート）
     if (!isEdit) {
-      router.replace({ name: 'settings-cast-form', params: { id: res.data.id } })
+      router.replace({ name: 'settings-cast-form', params: { id: res.data.id }, query: { _ts: Date.now() } })
     } else {
       router.push({ name: 'settings-cast-list' })
     }

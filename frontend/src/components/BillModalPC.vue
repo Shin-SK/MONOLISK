@@ -13,7 +13,8 @@ import {
   updateBillCasts,
   toggleBillInhouse,
   addBillItem, deleteBillItem, closeBill,
-  fetchBill
+  fetchBill,
+  setBillDiscountByCode,
 } from '@/api'
 import { useCasts }     from '@/stores/useCasts'
 import { useMasters }   from '@/stores/useMasters'
@@ -92,6 +93,61 @@ async function refetchAndSync(billId = props.bill?.id){
 	}catch(e){
 		console.error('refresh failed', e);
 	}
+}
+
+/* ── BasicsPanel使えるように ─────────────────────────── */
+const pendingDiscountCode = ref(null)
+const seatType = ref(
+  props.bill?.table?.seat_type != null ? String(props.bill.table.seat_type) : 'main'
+)
+// 伝票のテーブルが差し替わったら追従
+watch(() => props.bill?.table?.seat_type, v => {
+  if (v != null) seatType.value = String(v)
+})
+
+// 席種が変わったら卓選択をリセット（任意）
+watch(seatType, () => { form.table_id = null })
+
+function onApplySet(payload){
+  const lines = Array.isArray(payload?.lines) ? payload.lines : []
+  const discountCode = payload?.discount_code || null
+  if (!lines.length && !discountCode) return
+
+  const byCat  = new Map((masters.value || []).map(m => [String(m?.category?.code || ''), m]))
+  const byCode = new Map((masters.value || []).map(m => [String(m?.code || ''), m]))
+
+  // ① ラインを pending or 即時追加
+  for (const ln of lines){
+    const qty = Number(ln?.qty) || 0
+    if (qty <= 0) continue
+
+    const key = String(ln.code || '')
+    const master = byCat.get(key) || byCode.get(key)
+    if (!master) { console.warn('[applySet] master not found:', ln); continue }
+
+    if (isNew.value){
+      pending.value.push({ master_id: master.id, qty, cast_id: null })
+    }else{
+      addBillItem(props.bill.id, { item_master: master.id, qty })
+        .then(newItem => {
+          props.bill.items.push(newItem)
+          emit('updated', props.bill.id)
+        })
+        .catch(e => { console.error(e); alert('追加に失敗しました') })
+    }
+  }
+
+  // ② 割引コードの適用
+  if (discountCode) {
+    if (isNew.value) {
+      // 新規は保存後に適用するため保留
+      pendingDiscountCode.value = String(discountCode)
+    } else {
+      setBillDiscountByCode(props.bill.id, String(discountCode))
+        .then(() => refetchAndSync(props.bill.id))
+        .catch(e => { console.error(e); alert('割引の適用に失敗しました') })
+    }
+  }
 }
 
 onMounted(async () => {
@@ -461,9 +517,10 @@ const currentCasts = computed(() => {
 
 /* ------- キャスト絞り込み ------- */
 const filteredCasts = computed(() => {
-  if (!castKeyword.value.trim()) return casts.value          // 空なら全件
+  const base = (casts.value || []).filter(c => onDutySet.value.has(c.id)) // ★出勤中だけ
+  if (!castKeyword.value.trim()) return base
   const kw = castKeyword.value.toLowerCase()
-  return casts.value.filter(c => c.stage_name.toLowerCase().includes(kw))
+  return base.filter(c => c.stage_name.toLowerCase().includes(kw))
 })
 
 
@@ -703,6 +760,17 @@ async function save () {
     }
     pending.value = []
 
+    // ❸.5 新規時に pending 割引コードがあれば適用
+    if (pendingDiscountCode.value) {
+      try {
+        await setBillDiscountByCode(billId, String(pendingDiscountCode.value))
+      } catch (e) {
+        console.error(e); alert('割引の適用に失敗しました')
+      } finally {
+        pendingDiscountCode.value = null
+      }
+    }
+
     // ❹ 最新のBillを単発フェッチしてemit
     await refetchAndSync(billId);           // ★ローカルも親も最新化
     rightTab.value = 'bill';                // ★注文後は会計タブに切り替え（任意）
@@ -751,10 +819,15 @@ watch(visible, v => { if (v) pane.value = 'base' })
             :table-id="form.table_id"
             :pax="pax"
             :course-options="courseOptions"
+
+            v-model:seatType="seatType"
+
             @update:tableId="v => (form.table_id = v)"
             @update:pax="v => (pax = v)"
             @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"
             @jumpToBill="rightTab = 'bill'"
+            @applySet="onApplySet"
+            @save="save"
           />
 
           <CustomerPanel

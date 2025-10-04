@@ -335,8 +335,6 @@ const kpiDutyLabel = computed(() =>
 <style scoped lang="scss">
 
 	.manager-dashboard{
-		.card-area{
-		}
 		.card{
 			.title{
 				font-weight: normal;

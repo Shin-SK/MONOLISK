@@ -15,9 +15,10 @@ const safeCurrent = computed(() =>
   Array.isArray(props.currentCasts) ? props.currentCasts.filter(c => c && c.id != null) : []
 )
 const safeBench = computed(() =>
-  Array.isArray(props.benchCasts) ? props.benchCasts.filter(c => c && c.id != null) : []
+  (Array.isArray(props.benchCasts) ? props.benchCasts : [])
+    .filter(c => c && c.id != null)
+    .filter(isOnDuty)
 )
-
 // 追加：当日出勤かどうか
 const isOnDuty = (c) => Array.isArray(props.onDutyIds) && props.onDutyIds.includes(Number(c?.id))
 
