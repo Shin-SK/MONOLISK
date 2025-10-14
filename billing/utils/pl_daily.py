@@ -6,6 +6,7 @@ from datetime    import date
 from typing      import Any, Dict
 
 from django.db.models import F, Sum
+from decimal import Decimal as D
 from django.db.models.functions import Coalesce
 
 from billing.models  import Bill, BillItem
@@ -48,11 +49,10 @@ def get_daily_pl(target_date: date, *, store_id: int, include_breakdown: bool = 
     )["s"] or 0
 
     # 4) 売上（計）：基本は Bill.total 合算。未セット補完は BillCalculator
-    total_agg = bills.aggregate(s=Coalesce(Sum("total"), 0))["s"] or 0
-    if any(b.total in (None, 0) for b in bills):
-        sales_total = sum(b.total or BillCalculator(b).execute().total for b in bills)
-    else:
-        sales_total = total_agg
+
+    sales_total = bills.aggregate(
+        s=Coalesce(Sum("grand_total"), 0)
+    )["s"] or 0
 
     # 5) 明細から各 KPI
     items = BillItem.objects.filter(bill__in=bills).select_related("item_master__category")
