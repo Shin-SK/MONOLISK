@@ -142,6 +142,7 @@ const routes = [
       { path: 'dashboard', name: 'mng-dashboard', component: () => import('@/views/manager/ManagerDashboard.vue'), meta:{ rolesAny: ['manager','superuser'], title:'DASHBOARD' } },
 
       { path: 'bill', name:'mng-bill-table', component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'BILL-TABLE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+      { path: '/bills/:id', name: 'BillDetail', component: () => import('@/views/BillDetailPage.vue'), props: true },
       { path: 'bill/list', name:'mng-bill-list', component: () => import('@/views/DashboardList.vue'),  meta: { title: 'BILL-LIST', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
       { path: 'bill/timeline', name:'mng-bill-tl', component: () => import('@/views/DashboardGantt.vue'), meta: { title: 'BILL-TIMELINE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
 
@@ -170,28 +171,40 @@ const routes = [
       { path: 'staffs/new',      redirect: { name: 'settings-staff-new' } },
       { path: 'casts/:id(\\d+)', redirect: to => ({ name: 'settings-cast-form', params: { id: to.params.id } }) },
       { path: 'casts/new',       redirect: { name: 'settings-cast-new' } },
+      // 給与計算
+      {
+        path: '/payroll',
+        name: 'Payroll',
+        component: () => import('@/views/PayrollPage.vue')
+      },
+      {
+        path: '/payroll/cast/:id',
+        name: 'PayrollCastDetail',
+        component: () => import('@/views/PayrollCastDetail.vue'),
+        props: true
+      },
 
-    {
-      path: 'kds/kitchen',
-      name: 'mng-kds-kitchen',
-      alias: ['/kds/kitchen'],             // ← 互換
-      component: () => import('@/views/KDSStation.vue'),
-      meta: { title: 'KDS Kitchen', requiresAuth: true, kds: true }
-    },
-    {
-      path: 'kds/drinker',
-      name: 'mng-kds-drinker',
-      alias: ['/kds/drinker'],             // ← 互換
-      component: () => import('@/views/KDSStation.vue'),
-      meta: { title: 'KDS Drinker', requiresAuth: true, kds: true }
-    },
-    {
-      path: 'kds/dishup',
-      name: 'mng-kds-dishup',
-      alias: ['/kds/dishup'],              // ← 互換
-      component: () => import('@/views/KDSDishup.vue'),
-      meta: { title: 'KDS Deshap', requiresAuth: true, kds: true }
-    },
+      {
+        path: 'kds/kitchen',
+        name: 'mng-kds-kitchen',
+        alias: ['/kds/kitchen'],             // ← 互換
+        component: () => import('@/views/KDSStation.vue'),
+        meta: { title: 'KDS Kitchen', requiresAuth: true, kds: true }
+      },
+      {
+        path: 'kds/drinker',
+        name: 'mng-kds-drinker',
+        alias: ['/kds/drinker'],             // ← 互換
+        component: () => import('@/views/KDSStation.vue'),
+        meta: { title: 'KDS Drinker', requiresAuth: true, kds: true }
+      },
+      {
+        path: 'kds/dishup',
+        name: 'mng-kds-dishup',
+        alias: ['/kds/dishup'],              // ← 互換
+        component: () => import('@/views/KDSDishup.vue'),
+        meta: { title: 'KDS Deshap', requiresAuth: true, kds: true }
+      },
 
     ]
   },

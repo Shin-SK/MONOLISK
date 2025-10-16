@@ -71,7 +71,9 @@ async function logout () {
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-yearly'})">
             PL/年次
           </a>
-
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'Payroll'})">
+            給与計算
+          </a>
           <!-- キャスト関連 -->
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-cast-shift'})">
             キャストシフト

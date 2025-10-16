@@ -5,6 +5,9 @@ from django.db.models import Sum, F, Q, IntegerField, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+import csv
+from io import StringIO
+from django.http import HttpResponse
 
 from rest_framework import viewsets, status, mixins, generics, permissions, filters
 from rest_framework.decorators import action
@@ -778,3 +781,220 @@ class DiscountRuleViewSet(ReadOnlyModelViewSet):
     serializer_class = DiscountRuleSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['is_active', 'is_basic', 'code']
+
+
+
+# === 給与計算 ===
+from datetime import date
+from django.db.models import Sum, F, Q, Value, IntegerField
+from django.db.models.functions import Coalesce
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
+from .models import Cast, CastShift, CastPayout
+from .serializers import (
+    CastMiniSerializer,
+    CastPayoutDetailSerializer,
+    CastPayrollSummaryRowSerializer,
+)
+
+def _get_store_id_from_header(request):
+    # Store-Locked: ミドルウェアで検証済みでも、ここで参照してフィルタ
+    sid = request.META.get("HTTP_X_STORE_ID")
+    if not sid:
+        raise ValueError("X-Store-Id header is required")
+    return int(sid)
+
+def _get_range(request):
+    df = request.query_params.get("from")
+    dt = request.query_params.get("to")
+    if not (df and dt):
+        today = date.today()
+        df = today.replace(day=1).isoformat()
+        dt = today.isoformat()
+    return df, dt
+
+class CastPayrollSummaryView(APIView):
+    """
+    GET /api/billing/payroll/summary/?from=YYYY-MM-DD&to=YYYY-MM-DD
+    レスポンス: [{ id, stage_name, worked_min, total_hours, hourly_pay, commission, total }, ...]
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sid = _get_store_id_from_header(request)
+        df, dt = _get_range(request)
+
+        # Cast 基点で集計（時給=日次サマリ合算、歩合=CastPayout合算）
+        qs = (
+            Cast.objects.filter(store_id=sid)
+            .annotate(
+                worked_min = Coalesce(
+                    Sum("daily_summaries__worked_min", filter=Q(daily_summaries__work_date__range=(df, dt))),
+                    Value(0),
+                    output_field=IntegerField(),
+                ),
+                hourly_pay = Coalesce(
+                    Sum("daily_summaries__payroll", filter=Q(daily_summaries__work_date__range=(df, dt))),
+                    Value(0),
+                    output_field=IntegerField(),
+                ),
+                commission = Coalesce(
+                    Sum("payouts__amount", filter=Q(payouts__bill__closed_at__date__range=(df, dt))),
+                    Value(0),
+                    output_field=IntegerField(),
+                ),
+            )
+            .annotate(total=F("hourly_pay") + F("commission"))
+            .order_by("stage_name", "id")
+            .values("id", "stage_name", "worked_min", "hourly_pay", "commission", "total")
+        )
+
+        data = []
+        for r in qs:
+            worked_min = int(r["worked_min"] or 0)
+            data.append({
+                "id": r["id"],
+                "stage_name": r["stage_name"],
+                "worked_min": worked_min,
+                "total_hours": round(worked_min / 60.0, 2),
+                "hourly_pay": int(r["hourly_pay"] or 0),
+                "commission": int(r["commission"] or 0),
+                "total": int(r["total"] or 0),
+            })
+        ser = CastPayrollSummaryRowSerializer(data, many=True)
+        return Response(ser.data)
+
+class CastPayrollDetailView(APIView):
+    """
+    GET /api/billing/payroll/casts/<cast_id>/?from=YYYY-MM-DD&to=YYYY-MM-DD
+    レスポンス:
+    {
+      cast: {id, stage_name},
+      range: {from,to},
+      shifts: [{id, clock_in, clock_out, worked_min, hourly_wage_snap, payroll_amount}, ...],
+      payouts: [{id, amount, bill:{id,closed_at}, bill_item:{id,name,price,qty}}, ...],
+      totals: { total_hours, hourly_pay, commission, total }
+    }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, cast_id: int):
+        sid = _get_store_id_from_header(request)
+        df, dt = _get_range(request)
+
+        # シフト（時給）明細
+        shifts = (
+            CastShift.objects
+            .filter(cast_id=cast_id, store_id=sid, clock_in__date__range=(df, dt))
+            .values("id", "clock_in", "clock_out", "worked_min", "hourly_wage_snap", "payroll_amount")
+            .order_by("clock_in", "id")
+        )
+        shifts_list = list(shifts)
+
+        # 歩合（伝票由来）明細
+        payouts_qs = (
+            CastPayout.objects
+            .filter(cast_id=cast_id, bill__table__store_id=sid, bill__closed_at__date__range=(df, dt))
+            .select_related("bill", "bill_item")
+            .order_by("id")
+        )
+        payouts = CastPayoutDetailSerializer(payouts_qs, many=True).data
+
+        # トータル
+        total_hours = round(sum(int(s.get("worked_min") or 0) for s in shifts_list) / 60.0, 2)
+        hourly_pay  = sum(int(s.get("payroll_amount") or 0) for s in shifts_list)
+        commission  = sum(int(p.get("amount") or 0) for p in payouts)
+        total       = hourly_pay + commission
+
+        cast_obj = Cast.objects.filter(id=cast_id, store_id=sid).first()
+        return Response({
+            "cast"   : CastMiniSerializer(cast_obj).data if cast_obj else None,
+            "range"  : {"from": df, "to": dt},
+            "shifts" : shifts_list,
+            "payouts": payouts,
+            "totals" : {
+                "total_hours": total_hours,
+                "hourly_pay" : hourly_pay,
+                "commission" : commission,
+                "total"      : total,
+            },
+        })
+
+
+
+
+class CastPayrollDetailCSVView(APIView):
+    """
+    GET /api/billing/payroll/casts/<cast_id>/export.csv?from=YYYY-MM-DD&to=YYYY-MM-DD
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, cast_id: int):
+        sid = _get_store_id_from_header(request)
+        df, dt = _get_range(request)
+
+        # 明細はJSONの詳細APIと同じロジック
+        shifts = (
+            CastShift.objects
+            .filter(cast_id=cast_id, store_id=sid, clock_in__date__range=(df, dt))
+            .values("id","clock_in","clock_out","worked_min","hourly_wage_snap","payroll_amount")
+            .order_by("clock_in","id")
+        )
+        payouts_qs = (
+            CastPayout.objects
+            .filter(cast_id=cast_id, bill__table__store_id=sid, bill__closed_at__date__range=(df, dt))
+            .select_related("bill","bill_item")
+            .order_by("id")
+        )
+
+        # 合計
+        total_hours = round(sum(int(s.get("worked_min") or 0) for s in shifts) / 60.0, 2)
+        hourly_pay  = sum(int(s.get("payroll_amount") or 0) for s in shifts)
+        commission  = sum(int(getattr(p, "amount", 0)) for p in payouts_qs)
+        total       = hourly_pay + commission
+        cast_obj    = Cast.objects.filter(id=cast_id, store_id=sid).first()
+        cast_name   = getattr(cast_obj, "stage_name", f"cast-{cast_id}")
+
+        # CSV作成（BOM付きでExcel想定）
+        buf = StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["給与明細（キャスト）", cast_name])
+        writer.writerow(["期間", f"{df} ～ {dt}"])
+        writer.writerow(["総勤務時間(h)", total_hours, "時給合計", hourly_pay, "歩合", commission, "総額", total])
+        writer.writerow([])
+
+        # 明細（行を揃える）
+        writer.writerow(["区分","出勤","退勤","勤務分","時給","時給額","伝票ID","明細ID","歩合額"])
+        # シフト行
+        for s in shifts:
+            writer.writerow([
+                "シフト",
+                s.get("clock_in") or "",
+                s.get("clock_out") or "",
+                s.get("worked_min") or 0,
+                s.get("hourly_wage_snap") or 0,
+                s.get("payroll_amount") or 0,
+                "", "", ""
+            ])
+        # 歩合行
+        for p in payouts_qs:
+            writer.writerow([
+                "歩合", "", "", "", "", "",
+                getattr(p.bill, "id", ""),
+                getattr(p.bill_item, "id", ""),
+                getattr(p, "amount", 0),
+            ])
+
+        csv_data = buf.getvalue()
+        buf.close()
+
+        resp = HttpResponse(
+            content="\ufeff" + csv_data,  # UTF-8 BOM
+            content_type="text/csv; charset=utf-8",
+        )
+        filename = f"payroll_{cast_name}_{df}_to_{dt}.csv"
+        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return resp
+

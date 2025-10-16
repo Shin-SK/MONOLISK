@@ -645,7 +645,28 @@ export const setBillDiscountByCode = async (billId, code /* string|null */) => {
 }
 
 
+// ───────── 給与計算 ─────────
 
+// 一覧（キャストごとの集計）
+export async function fetchPayrollSummary(params = {}) {
+  const res = await api.get('billing/payroll/summary/', { params })
+  return res.data
+}
+
+// 詳細（シフト行＋歩合行）
+export async function fetchPayrollDetail(castId, params = {}) {
+  const res = await api.get(`billing/payroll/casts/${castId}/`, { params })
+  return res.data
+}
+
+export async function downloadPayrollDetailCsv(castId, params = {}) {
+  // axiosインスタンス(api)は認証＆X-Store-Idを自動付与
+  const res = await api.get(`billing/payroll/casts/${castId}/export.csv`, {
+    params,
+    responseType: 'blob',
+  })
+  return res.data // Blob
+}
 
 
 // ───────── Stores (Switcher用) ─────────

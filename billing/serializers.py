@@ -1116,4 +1116,33 @@ class DiscountRuleSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
+# === 給与計算ページ ===
+
+
+class CastPayoutBillMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Bill
+        fields = ("id", "closed_at")
+
+class CastPayoutBillItemMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = BillItem
+        fields = ("id", "name", "price", "qty")
+
+class CastPayoutDetailSerializer(serializers.ModelSerializer):
+    bill      = CastPayoutBillMiniSerializer(read_only=True)
+    bill_item = CastPayoutBillItemMiniSerializer(read_only=True)
+
+    class Meta:
+        model  = CastPayout
+        fields = ("id", "amount", "bill", "bill_item")
+
+class CastPayrollSummaryRowSerializer(serializers.Serializer):
+    id          = serializers.IntegerField()
+    stage_name  = serializers.CharField()
+    worked_min  = serializers.IntegerField()
+    total_hours = serializers.FloatField()
+    hourly_pay  = serializers.IntegerField()
+    commission  = serializers.IntegerField()
+    total       = serializers.IntegerField()
 

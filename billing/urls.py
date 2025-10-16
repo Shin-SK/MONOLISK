@@ -9,7 +9,7 @@ from .views import (
     ItemCategoryViewSet, CastShiftViewSet,
     CastDailySummaryViewSet, CastRankingView,
     StaffViewSet, StaffShiftViewSet,
-    CustomerViewSet, StoreNoticeViewSet, StoreSeatSettingViewSet, DiscountRuleViewSet
+    CustomerViewSet, StoreNoticeViewSet, StoreSeatSettingViewSet, DiscountRuleViewSet, CastPayrollSummaryView, CastPayrollDetailView, CastPayrollDetailCSVView
 )
 
 from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
@@ -62,6 +62,11 @@ urlpatterns = [
     path("pl/daily/",   DailyPLAPIView.as_view(),   name="pl-daily"),
     path("pl/monthly/", MonthlyPLAPIView.as_view(), name="pl-monthly"),
     path("pl/yearly/",  YearlyPLAPIView.as_view(),  name="pl-yearly"),
+    
+    # ★給与計算
+    path("payroll/summary/", CastPayrollSummaryView.as_view(), name="payroll-summary"),
+    path("payroll/casts/<int:cast_id>/", CastPayrollDetailView.as_view(), name="payroll-cast-detail"),
+    path("payroll/casts/<int:cast_id>/export.csv", CastPayrollDetailCSVView.as_view(), name="payroll-cast-detail-csv"),
     
     path('kds/tickets/', KDSTicketList.as_view(), name='kds_ticket_list'),
     path('kds/tickets/<int:pk>/ack/', KDSTicketAck.as_view(), name='kds_ticket_ack'),
