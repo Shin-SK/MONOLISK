@@ -9,3 +9,5 @@ class BillingConfig(AppConfig):
         # signals の登録（アプリ起動時に一度だけ）
         from . import signals  # noqa: F401
         import billing.models_profile
+        from billing.payroll.engines import _autodiscover  # noqa
+        _autodiscover()

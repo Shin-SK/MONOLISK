@@ -127,19 +127,33 @@ export const updateBillMemo = (id, memo) =>
  */
 export const updateBillCasts = (
   billId,
-  { nomIds = [], inIds = [], freeIds = [] }
+  { nomIds = [], inIds = [], freeIds = [], dohanIds = [] } = {}
 ) => {
-  return api
-    .patch(`billing/bills/${billId}/`, {
-      nominated_casts : nomIds,   // 本指名
-      inhouse_casts_w : inIds,    // 場内
-      free_ids        : freeIds,  // フリー
-    })
-    .then(res => res.data)        // 成功時は data だけ返す
-    .catch(err => {               // ここで拾っておけば呼び出し側で表示できる
-      throw err
-    })
+  const body = {
+    nominated_casts : nomIds,   // 本指名
+    inhouse_casts_w : inIds,    // 場内
+    free_ids        : freeIds,  // フリー
+  }
+  if (dohanIds && dohanIds.length) body.dohan_ids = dohanIds  // ★同伴（ある時だけ送る）
+  return api.patch(`billing/bills/${billId}/`, body).then(res => res.data)
 }
+
+// 追加：同伴を1人だけ ON にする（既存があればPATCH、無ければPOST）
+export const setBillDohan = async (billId, castId) => {
+  // 既存 stay を特定（PATCH用に一度だけ取得）
+  const bill = await fetchBill(billId).catch(() => null)
+  const stay = (bill?.stays || []).find(s => !s.left_at && Number(s?.cast?.id) === Number(castId))
+
+  if (stay?.id) {
+    await api.patch(`billing/bills/${billId}/stays/${stay.id}/`, { stay_type: 'dohan' })
+  } else {
+    await api.post(`billing/bills/${billId}/stays/`, { cast_id: castId, stay_type: 'dohan' })
+  }
+  // 呼び出し側で同じパターンにしたいので常に最新Billを返す
+  const fresh = await fetchBill(billId)
+  return fresh
+}
+
 
 export const setInhouseStatus = updateBillCasts; //ローダー用にエイリアス
 

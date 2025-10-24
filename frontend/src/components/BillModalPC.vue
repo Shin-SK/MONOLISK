@@ -15,6 +15,7 @@ import {
   addBillItem, deleteBillItem, closeBill,
   fetchBill,
   setBillDiscountByCode,
+  setBillDohan,
 } from '@/api'
 import { useCasts }     from '@/stores/useCasts'
 import { useMasters }   from '@/stores/useMasters'
@@ -196,6 +197,28 @@ function clearCustomer(target) {
     updateBillCustomers(props.bill.id, props.bill.customers)
       .then(() => { originalCustIds.value = [...props.bill.customers] })
       .catch(e => { console.error(e); alert('顧客更新に失敗しました') })
+  }
+}
+
+// ------------------------------------------------
+// 同伴←→本指名トグル
+// ------------------------------------------------
+const dohanSet = ref(new Set())
+
+function isDohanActive(cid){
+  return dohanSet.value.has(cid)
+}
+
+function toggleMainDohan (cid) {
+  const isDohan = dohanSet.value.has(cid)
+  if (isDohan) {
+    // 同伴 → 本指
+    dohanSet.value.delete(cid)
+    if (!mainCastIds.value.includes(cid)) mainCastIds.value.push(cid)
+  } else {
+    // 本指/その他 → 同伴（本指からは外す）
+    mainCastIds.value = mainCastIds.value.filter(x => x !== cid)
+    dohanSet.value.add(cid)
   }
 }
 
@@ -488,30 +511,32 @@ function addSingle () {
 
 
 const currentCasts = computed(() => {
-  // mainCastIds だけ先に並べる
-  const list = mainCastIds.value
-    .map(id => casts.value.find(c => c.id === id))
-    .filter(Boolean)
-    .map(c => ({ ...c, role:'main' }))
+  const list = []
 
+  // 本指（同伴に含まれているIDは除外：同伴優先）
+  for (const id of mainCastIds.value) {
+    if (dohanSet.value.has(id)) continue
+    const c = casts.value.find(x => x.id === id)
+    if (c) list.push({ ...c, role:'main' })
+  }
+
+  // 同伴（グレー）
+  for (const id of dohanSet.value) {
+    const c = casts.value.find(x => x.id === id)
+    if (c) list.push({ ...c, role:'dohan' })
+  }
+
+  // フリー/場内（main と dohan を除外）
   const others = new Set([...freeCastIds.value, ...inhouseSet.value])
-  
   others.forEach(id => {
-    // main と重複しないように
-    if (!mainCastIds.value.includes(id)) {
-      const c = casts.value.find(c => c.id === id)
-      if (c) {
-        list.push({
-          ...c,
-          role    : 'free',             // 見た目は free 行
-          inhouse : inhouseSet.value.has(id)
-        })
-      }
-    }
+    if (mainCastIds.value.includes(id) || dohanSet.value.has(id)) return
+    const c = casts.value.find(x => x.id === id)
+    if (c) list.push({ ...c, role:'free', inhouse: inhouseSet.value.has(id) })
   })
 
   return list
 })
+
 
 
 
@@ -641,36 +666,30 @@ const preview = computed(() => {
 
 /* ---------- 伝票 or stays 変更時 ---------- */
 watch(
-  // ❶ 参照・長さだけをトラック（deep にはしない）
   () => [props.bill, props.bill?.stays?.length],
   () => {
     const b = props.bill
     if (!b) return
-    form.table_id = b.table?.id ?? b.table_id_hint ?? null
 
-    // 支払いも同期
+    form.table_id     = b.table?.id ?? b.table_id_hint ?? null
     form.paid_cash     = b.paid_cash ?? 0
     form.paid_card     = b.paid_card ?? 0
     form.settled_total = b.settled_total ?? b.grand_total ?? 0
-
-    /* ── customers を ID 配列へ統一 ── */
     if (Array.isArray(b.customers)) b.customers = b.customers.map(asId)
+    originalCustIds.value = [...(b.customers ?? [])]
 
-    /* ── 現在アクティブな stays を抽出 ── */
     const active   = (b.stays ?? []).filter(s => !s.left_at)
-    const stayNom  = active.filter(s => s.stay_type === 'nom' ).map(s => s.cast.id)
-    const stayFree = active.filter(s => s.stay_type === 'free').map(s => s.cast.id)
-    const stayIn   = active.filter(s => s.stay_type === 'in'  ).map(s => s.cast.id)
+    const stayNom  = active.filter(s => s.stay_type === 'nom'  ).map(s => s.cast.id)
+    const stayFree = active.filter(s => s.stay_type === 'free' ).map(s => s.cast.id)
+    const stayIn   = active.filter(s => s.stay_type === 'in'   ).map(s => s.cast.id)
+    const stayDhn  = active.filter(s => s.stay_type === 'dohan').map(s => s.cast.id)
 
-    /* ── reactive 変数へ反映 ── */
     mainCastIds.value  = stayNom
     freeCastIds.value  = [...new Set([...stayFree, ...stayIn])]
     inhouseSet.value   = new Set(stayIn)
-
-    form.table_id         = b.table?.id ?? b.table_id_hint ?? null
-    originalCustIds.value = [...(b.customers ?? [])]
+    dohanSet.value     = new Set(stayDhn)         // ★ 同伴の反映
   },
-  { immediate: true }          // deep を外して再帰ループを回避
+  { immediate: true }
 )
 
 
@@ -701,6 +720,7 @@ function removeCast(id) {
 
   // 場内セットからも除外
   inhouseSet.value.delete(id)
+  dohanSet.value.delete(id)
 }
 
 /* ── 保存ボタン ─────────────────────────────── */
@@ -748,6 +768,10 @@ async function save () {
         inIds   : [...inhouseSet.value],
         freeIds : [...freeCastIds.value],
       })
+    }
+
+    for (const cid of dohanSet.value) {
+      await setBillDohan(billId, cid)
     }
 
     // ❸ pending 注文
@@ -914,30 +938,31 @@ watch(visible, v => { if (v) pane.value = 'base' })
               v-for="c in currentCasts"
               :key="c.id"
             >
-              <!-- 本指名 -->
-              <div
-                v-if="c.role==='main'"
-                class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
-                role="button"
-              >
-                <!-- ✕ボタン：単なるアイコンに click を付与 -->
-                <IconX
-                  :size="12"
-                  class="me-2"
-                  role="button"
-                  @click.stop="removeCast(c.id)"
-                />
-                <Avatar
-                  :url="c.avatar_url"
-                  :alt="c.stage_name"
-                  :size="28"
-                  class="me-1"
-                />
-                <span>{{ c.stage_name }}</span>
-                <span class="badge bg-danger text-white ms-1 d-flex align-items-center">
-                  本指名
-                </span>
-              </div>
+<!-- 本指名（クリックで同伴へ） -->
+<div
+  v-if="c.role==='main'"
+  class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
+  role="button"
+  @click="toggleMainDohan(c.id)"
+>
+  <IconX :size="12" class="me-2" role="button" @click.stop="removeCast(c.id)" />
+  <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
+  <span>{{ c.stage_name }}</span>
+  <span class="badge bg-danger text-white ms-1 d-flex align-items-center">本指名</span>
+</div>
+
+<!-- 同伴（クリックで本指へ） -->
+<div
+  v-else-if="c.role==='dohan'"
+  class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
+  role="button"
+  @click="toggleMainDohan(c.id)"
+>
+  <IconX :size="12" class="me-2" role="button" @click.stop="removeCast(c.id)" />
+  <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
+  <span>{{ c.stage_name }}</span>
+  <span class="badge bg-secondary text-white ms-1 d-flex align-items-center">同伴</span>
+</div>
 
               <!-- フリー -->
               <div

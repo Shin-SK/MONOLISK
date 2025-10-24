@@ -15,7 +15,7 @@ const props = defineProps({
   benchArea : { type:Boolean, default:false },
   subtotal   : { type: [Number, null], default: null },
 })
-const kinds = ['free', 'in', 'nom']
+const kinds = ['free', 'in', 'nom', 'dohan']
 const emit = defineEmits(['update-stay', 'toggle-stay'])
 
 
@@ -41,6 +41,7 @@ setInterval(() => (tick.value = Date.now()), 60_000)
 function bgColor(el){
   /* ベンチ列なら一律 primary */
   if (props.benchArea) return 'primary'
+  if (el.kind === 'dohan' || el.dohan === true) return 'secondary'
 
   if (el.kind === 'free'){
     const mins = dayjs(tick.value).diff(dayjs(el.entered_at),'minute')
@@ -50,6 +51,7 @@ function bgColor(el){
          : 'blue'
   }
   return el.kind === 'nom' ? 'danger' : 'success'
+  //★たぶんここに入れるんだと思うんだけど、dohanの場合socondaryにしてほしい
 }
 function afterWidth(el){
   if (props.benchArea || el.kind !== 'free') return null

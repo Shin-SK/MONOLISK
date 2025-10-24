@@ -9,6 +9,7 @@ import {
   updateBillCustomers,
   updateBillTable,
   updateBillCasts,
+  setBillDohan,
   api,
 } from '@/api'
 
@@ -168,6 +169,7 @@ export default function useBillEditor(billObjRef){
   const inhouseIds = ref([])           // 場内（フリーの部分集合）
   const castKeyword = ref('')
   const onDutySet  = ref(new Set())    // 本日出勤中
+  const dohanIds = ref([])
 
   // 初期化：既存伝票のstays → 各配列へ
   function initCastsFromBill(){
@@ -179,37 +181,72 @@ export default function useBillEditor(billObjRef){
     const inRaw      = active.filter(s => s.stay_type === 'in').map(s => s.cast.id)
     inhouseIds.value = [...new Set(inRaw)]
     freeIds.value    = [...new Set([...freeRaw, ...inRaw])]
+    dohanIds.value = active.filter(s => s.stay_type === 'dohan').map(s => s.cast.id)
   }
 
   // 現在の配席一覧（UI表示用）
-  const currentCasts = computed(() => {
-    const list = []
-    // main先頭
-    mainIds.value.forEach(id => {
-      const c = casts.value.find(x => x.id === id); if (c) list.push({ ...c, role:'main', inhouse:false })
+  // currentCasts：main → dohan → free/in の順で、重複なし
+// currentCasts：main → dohan → free/in の順で、重複なし
+const currentCasts = computed(() => {
+  const list = []
+
+  // main（赤）
+  for (const id of mainIds.value) {
+    if (dohanIds.value.includes(id)) continue // 同伴優先で除外
+    const c = casts.value.find(x => x.id === id)
+    if (c) list.push({
+      ...c,
+      name   : c.stage_name ?? c.name ?? '',
+      avatar : c.avatar_url ?? c.avatar ?? '',
+      kind   : 'nom',
+      inhouse: false
     })
-    // free/in（mainと重複しない）
-    const others = new Set([...freeIds.value, ...inhouseIds.value])
-    others.forEach(id => {
-      if (mainIds.value.includes(id)) return
-      const c = casts.value.find(x => x.id === id)
-      if (c) list.push({ ...c, role:'free', inhouse: inhouseIds.value.includes(id) })
+  }
+
+  // dohan（グレー＝secondary）
+  for (const id of dohanIds.value) {
+    const c = casts.value.find(x => x.id === id)
+    if (c) list.push({
+      ...c,
+      name   : c.stage_name ?? c.name ?? '',
+      avatar : c.avatar_url ?? c.avatar ?? '',
+      kind   : 'dohan',   // ← これが重要（CastTableDnD は kind を見る）
+      inhouse: false,
+      dohan  : true       // （CastsPanel用の色分けに使うなら）
     })
-    return list
-  })
+  }
+
+  // free/in（緑/青）… main/dohan と重複しない
+  const others = new Set([...freeIds.value, ...inhouseIds.value])
+  for (const id of others) {
+    if (mainIds.value.includes(id) || dohanIds.value.includes(id)) continue
+    const c = casts.value.find(x => x.id === id)
+    if (c) list.push({
+      ...c,
+      name   : c.stage_name ?? c.name ?? '',
+      avatar : c.avatar_url ?? c.avatar ?? '',
+      kind   : 'free',
+      inhouse: inhouseIds.value.includes(id)
+    })
+  }
+
+  return list
+})
+
+
 
   // ベンチ（未選択）
-  const benchCasts = computed(() => {
-    const chosen = new Set([...mainIds.value, ...freeIds.value, ...inhouseIds.value])
-    const kw = castKeyword.value.trim().toLowerCase()
-    const list = Array.isArray(casts.value) ? casts.value : []
-    return list.filter(c => {
-      if (!c || c.id == null) return false
-      if (chosen.has(c.id)) return false
-      if (!kw) return true
-      return (c.stage_name || '').toLowerCase().includes(kw)
-    })
+const benchCasts = computed(() => {
+  const chosen = new Set([...mainIds.value, ...freeIds.value, ...inhouseIds.value, ...dohanIds.value])
+  const kw = castKeyword.value.trim().toLowerCase()
+  const list = Array.isArray(casts.value) ? casts.value : []
+  return list.filter(c => {
+    if (!c || c.id == null) return false
+    if (chosen.has(c.id)) return false
+    if (!kw) return true
+    return (c.stage_name || '').toLowerCase().includes(kw)
   })
+})
 
   // 同期（既存伝票のみ）
   async function syncCasts(){
@@ -218,6 +255,7 @@ export default function useBillEditor(billObjRef){
       nomIds:  [...mainIds.value],
       inIds:   [...inhouseIds.value],
       freeIds: [...freeIds.value],
+      dohanIds: [...dohanIds.value],
     })
   }
 
@@ -236,6 +274,23 @@ export default function useBillEditor(billObjRef){
     if (!inhouseIds.value.includes(id)) inhouseIds.value.push(id)
     await syncCasts()
   }
+
+async function setDohan(id){
+  const billId = bill.value?.id
+  if (!billId) return alert('伝票が未作成です')
+  try{
+    await setBillDohan(billId, id)   // ← stays API (POST/PATCH) で確実に保存
+    // ローカル配列も他ボタン同様に整える
+    mainIds.value    = mainIds.value.filter(x => x !== id)
+    inhouseIds.value = inhouseIds.value.filter(x => x !== id)
+    if (!dohanIds.value.includes(id)) dohanIds.value.push(id)
+    // 表示を即反映（最新Bill取得でもOK）
+    // initCastsFromBill()
+  }catch(e){ console.error(e); alert('同伴の設定に失敗しました') }
+}
+
+
+
   async function setMain(id){
     if (!mainIds.value.includes(id)) mainIds.value.push(id)
     ensureFree(id)
@@ -245,6 +300,7 @@ export default function useBillEditor(billObjRef){
     mainIds.value    = mainIds.value.filter(x => x !== id)
     freeIds.value    = freeIds.value.filter(x => x !== id)
     inhouseIds.value = inhouseIds.value.filter(x => x !== id)
+    dohanIds.value   = dohanIds.value.filter(x => x !== id)
     await syncCasts()
   }
 
@@ -279,7 +335,7 @@ export default function useBillEditor(billObjRef){
     casts, onDutySet, castKeyword,
     mainIds, freeIds, inhouseIds,
     currentCasts, benchCasts,
-    setFree, setInhouse, setMain, removeCast,
+    setFree, setInhouse, setMain, setDohan, removeCast,
 
     // Order
 

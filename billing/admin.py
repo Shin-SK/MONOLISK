@@ -116,10 +116,9 @@ class CastAdmin(admin.ModelAdmin):
     user_link.short_description = "User"
 
 
-# ★ 追加：カテゴリ ──────────────────────
 @admin.register(ItemCategory)
 class ItemCategoryAdmin(ImportExportModelAdmin):
-    resource_classes = [ItemCategoryRes]
+    resource_class = ItemCategoryRes
     list_display = ("code", "name", "show_in_menu",
                     "back_rate_free", "back_rate_nomination", "back_rate_inhouse",
                     "route")  # ←追加
@@ -129,7 +128,7 @@ class ItemCategoryAdmin(ImportExportModelAdmin):
 
 @admin.register(ItemMaster)
 class ItemMasterAdmin(ImportExportModelAdmin):
-    resource_classes = [ItemMasterRes]
+    resource_class = ItemMasterRes
     list_display  = ("store", "category", "code", "name",
                      "price_regular", "duration_min", "route", "effective_route",
                      "track_stock", "exclude_from_payout")
@@ -143,7 +142,8 @@ class ItemMasterAdmin(ImportExportModelAdmin):
         return obj.route
     effective_route.short_description = "実ルート"
 
-
+    def get_resource_class(self):
+        return ItemMasterRes
 
 @admin.register(ItemStock)
 class ItemStockAdmin(admin.ModelAdmin):

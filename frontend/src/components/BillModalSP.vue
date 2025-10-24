@@ -351,6 +351,7 @@ const handleSave = async () => {
       @update:keyword="v => (ed.castKeyword.value = v)"
       @setFree="ed.setFree"
       @setInhouse="ed.setInhouse"
+      @setDohan="ed.setDohan"
       @setMain="ed.setMain"
       @removeCast="ed.removeCast"
       @save="handleSave"

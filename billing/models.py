@@ -280,6 +280,11 @@ class ItemMaster(models.Model):
     )
 
     def __str__(self): return self.name
+    
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['store', 'code'], name='uniq_store_code'),  # ★これ
+        ]
 
 
 class ItemStock(models.Model):
@@ -657,6 +662,7 @@ class BillCastStay(models.Model):
         ('free', 'フリー'),      # 付け回し・フリー
         ('in',   '場内指名'),
         ('nom',  '本指名'),
+        ('dohan','同伴'),
     ]
     bill = models.ForeignKey(
         Bill, on_delete=models.CASCADE, related_name='stays'
@@ -669,12 +675,26 @@ class BillCastStay(models.Model):
         null=True, blank=True,
         help_text='この伝票だけの本指名バック用ウェイト。未入力なら1扱い'
     )
-    stay_type  = models.CharField(max_length=4, choices=STAY_TYPE, default='free')
+    stay_type  = models.CharField(max_length=16, choices=STAY_TYPE, db_index=True)  
     is_inhouse = models.BooleanField(null=True, blank=True)
     is_honshimei = models.BooleanField(default=False)  # 本指名トグル（UIでON/OFF）
+    is_dohan = models.BooleanField(default=False) #このトグル使うと思う
  
     class Meta:
         ordering = ['entered_at']
+        
+    def save(self, *args, **kwargs):
+        # 併用不可：stay_type を真実としてフラグを同期
+        if self.stay_type == 'dohan':
+            self.is_dohan = True
+            self.is_honshimei = False
+        elif self.stay_type == 'nom':
+            self.is_honshimei = True
+            self.is_dohan = False
+        else:
+            self.is_honshimei = False
+            self.is_dohan = False
+        super().save(*args, **kwargs)
 
 
 

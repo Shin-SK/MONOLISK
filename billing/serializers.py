@@ -160,26 +160,53 @@ class BillCastStayMini(serializers.ModelSerializer):
         model  = BillCastStay
         fields = ('cast',)           # cast は {id, stage_name} で返る
 
+
 class BillCastStayMiniSerializer(serializers.ModelSerializer):
     cast_id = serializers.PrimaryKeyRelatedField(
         source='cast', queryset=Cast.objects.all(), write_only=True
     )
-
-    def create(self, vd):
-        if vd.get('stay_type') == 'nom' and 'is_honshimei' not in vd:
-            vd['is_honshimei'] = True
-        return super().create(vd)
-
-    def update(self, inst, vd):
-        st = vd.get('stay_type', inst.stay_type)
-        if st == 'nom' and vd.get('is_honshimei') is None:
-            vd['is_honshimei'] = True
-        return super().update(inst, vd)
+    # UIトグル（WRITE用）
+    is_honshimei = serializers.BooleanField(required=False)
+    is_dohan     = serializers.BooleanField(required=False)
 
     class Meta:
         model  = BillCastStay
-        fields = ('id', 'cast_id', 'stay_type', 'is_honshimei', 'entered_at', 'left_at')
+        fields = ('id', 'cast_id', 'stay_type', 'is_honshimei', 'is_dohan', 'entered_at', 'left_at')
         read_only_fields = ('entered_at', 'left_at')
+
+    # ---- 正規化（stay_type とトグルの整合）----
+    def _normalize(self, attrs):
+        st  = attrs.get('stay_type')
+        hon = attrs.pop('is_honshimei', None)
+        doh = attrs.pop('is_dohan', None)
+
+        # 併用不可
+        if hon is True and doh is True:
+            raise serializers.ValidationError({'non_field_errors': ['本指名と同伴は同時指定できません。']})
+
+        # トグル優先で stay_type 決定
+        if doh is True:
+            st = 'dohan'
+        elif hon is True:
+            st = 'nom'
+        elif doh is False and st == 'dohan':
+            st = 'free'
+        elif hon is False and st == 'nom':
+            st = 'free'
+
+        if st:
+            attrs['stay_type'] = st
+        return attrs
+
+    def validate(self, attrs):
+        return self._normalize(dict(attrs))
+
+    def create(self, vd):
+        return super().create(self._normalize(vd))
+
+    def update(self, inst, vd):
+        return super().update(inst, self._normalize(vd))
+
 
 
 class CastMiniSerializer(serializers.ModelSerializer):
@@ -378,10 +405,20 @@ class CastSerializer(serializers.ModelSerializer):
 
 class BillCastStaySerializer(serializers.ModelSerializer):
     cast = CastMiniSerializer()
+
+    is_honshimei = serializers.BooleanField(read_only=True)
+    is_dohan     = serializers.BooleanField(read_only=True)
+
     class Meta:
         model  = BillCastStay
-        fields = ("cast", "stay_type", "is_honshimei", "entered_at", "left_at")
+        fields = ("cast", "stay_type", "is_honshimei", "is_dohan", "entered_at", "left_at")
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        st = instance.stay_type
+        data["is_honshimei"] = (st == "nom")
+        data["is_dohan"]     = (st == "dohan")
+        return data
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -642,6 +679,51 @@ class BillSerializer(serializers.ModelSerializer):
                 if stay.cast_id not in free_ids:
                     stay.left_at = timezone.now()
                     stay.save(update_fields=["left_at"])
+
+        # ===============================================================
+        #  D. 同伴 (dohan)
+        # ===============================================================
+        dohan_raw = validated_data.pop('dohan_ids', None)
+        if dohan_raw is not None:
+            # id -> stay オブジェクトのキャッシュ（既存を流用）
+            stay_map = {s.cast_id: s for s in instance.stays.all()}
+            # 数値ID配列へ正規化
+            to_ids = lambda raw: [c.id if isinstance(c, Cast) else c for c in (raw or [])]
+            dohan_ids = set(to_ids(dohan_raw))
+
+            # 1) dohan に含まれる cast を同伴に（併用不可なので本指/場内フラグも落とす）
+            for cid in dohan_ids:
+                stay = stay_map.get(cid)
+                if not stay:
+                    BillCastStay.objects.create(
+                        bill=instance, cast_id=cid,
+                        entered_at=timezone.now(), stay_type='dohan'
+                    )
+                else:
+                    if stay.stay_type != 'dohan':
+                        stay.stay_type = 'dohan'
+                        stay.left_at = None
+                        stay.save(update_fields=['stay_type','left_at'])
+                # 本指/場内に載っていたら落とす
+                if instance.nominated_casts.filter(id=cid).exists():
+                    instance.nominated_casts.remove(cid)
+                s = stay_map.get(cid)
+                if s and s.stay_type == 'in':  # 直近で上書きしていれば 'dohan' になっているのでOK
+                    s.stay_type = 'dohan'
+                    s.save(update_fields=['stay_type'])
+
+            # 2) 以前 dohan だったが今回外れた cast は free に戻す
+            prev_dohan = set(
+                instance.stays.filter(stay_type='dohan', left_at__isnull=True)
+                        .values_list('cast_id', flat=True)
+            )
+            removed = prev_dohan - dohan_ids
+            for cid in removed:
+                s = stay_map.get(cid)
+                if s:
+                    s.stay_type = 'free'
+                    s.save(update_fields=['stay_type'])
+
 
         # ---------- 3) 更新後スナップショット ----------
         new_main = set(instance.nominated_casts.values_list('id', flat=True))

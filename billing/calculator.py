@@ -5,6 +5,7 @@ Bill / CastPayout 計算ロジック（割引フック + 席種別サービス�
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_FLOOR
 from typing import List, Dict
+from billing.payroll.engines import get_engine
 
 @dataclass(slots=True)
 class BillCalculationResult:
@@ -69,34 +70,28 @@ class BillCalculator:
         return ((subtotal + service_fee) * rate).quantize(0, rounding=ROUND_FLOOR)
 
     # --------------- CastPayout ----------------
-    def _cast_payouts(self) -> List["CastPayout"]:
+    def _cast_payouts(self):
         from .models import CastPayout
-        totals: Dict[int, int] = {}
+        totals = {}
 
-        # A) アイテムバック（nomination 除外）
+        # A) 明細の back_rate（共通） … nomination 明細は除外
         for item in self.bill.items.select_related("item_master__category", "served_by_cast"):
             if item.exclude_from_payout or not item.served_by_cast or item.is_nomination:
                 continue
-            amt = (Decimal(item.subtotal) * item.back_rate).quantize(0, rounding=ROUND_FLOOR)
+            amt = (Decimal(item.subtotal) * Decimal(item.back_rate)).quantize(0, rounding=ROUND_FLOOR)
             if amt:
                 totals[item.served_by_cast_id] = totals.get(item.served_by_cast_id, 0) + int(amt)
 
-        # B) 本指名プール
-        pool_total = sum(it.subtotal for it in self.bill.items.all() if it.is_nomination)
-        if pool_total:
-            pr = Decimal(str(self.store.nom_pool_rate or 0))
-            if pr >= 1:
-                pr /= 100
-            cast_total = (Decimal(pool_total) * pr).quantize(0, rounding=ROUND_FLOOR)
-            casts = list(self.bill.nominated_casts.all())
-            if self.bill.main_cast and self.bill.main_cast not in casts:
-                casts.append(self.bill.main_cast)
-            if casts:
-                each = int(cast_total // len(casts))
-                for c in casts:
-                    totals[c.id] = totals.get(c.id, 0) + each
+        # B) 店舗別：本指名
+        engine = get_engine(self.store)
+        for cid, add in (engine.nomination_payouts(self.bill) or {}).items():
+            totals[cid] = totals.get(cid, 0) + int(add or 0)
 
-        # C) CastPayout objs
+        # C) 店舗別：同伴
+        for cid, add in (engine.dohan_payouts(self.bill) or {}).items():
+            totals[cid] = totals.get(cid, 0) + int(add or 0)
+
+        # materialize
         cast_objs = {c.id: c for c in self.bill.nominated_casts.all()}
         if self.bill.main_cast:
             cast_objs[self.bill.main_cast.id] = self.bill.main_cast
@@ -105,12 +100,13 @@ class BillCalculator:
                 cast_objs[item.served_by_cast.id] = item.served_by_cast
 
         return [
-            CastPayout(bill=self.bill, bill_item=None, cast=cast_objs[cid], amount=amt)
+            CastPayout(bill=self.bill, bill_item=None, cast=cast_objs.get(cid), amount=amt)
             for cid, amt in totals.items()
+            if cast_objs.get(cid)
         ]
 
-    # ---------------- 公開 API ----------------
-    def execute(self) -> BillCalculationResult:
+
+    def execute(self):
         subtotal0 = self._subtotal_raw()
         subtotal  = self._apply_discounts(subtotal0)
         svc       = self._service_fee(subtotal)
@@ -124,3 +120,7 @@ class BillCalculator:
             total=int(total),
             cast_payouts=payouts,
         )
+
+    # 後方互換（古い呼び出しが .calc() の場合に備えて）
+    def calc(self):
+        return self.execute()

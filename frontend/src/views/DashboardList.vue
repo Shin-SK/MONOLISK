@@ -167,6 +167,7 @@ function liveCasts (b) {
     avatar : stay.cast?.avatar_url || "/img/user-default.png",
     color  : stay.stay_type === "nom" ? "danger"
            : stay.stay_type === "in"  ? "success"
+           : stay.stay_type === "dohan"  ? "secondary"
            : "blue",
     present                                // ★ これでテンプレ側で判別
   }));
