@@ -74,33 +74,31 @@ class BillCalculator:
         from .models import CastPayout
         totals = {}
 
-        # A) 明細ごとの歩合（固定＞％）… nomination 明細は除外
+        engine = get_engine(self.store)
+
+        # A) 明細ごとの歩合（店舗エンジンの上書き > 既定：％ back_rate）
         for item in self.bill.items.select_related("item_master__category", "served_by_cast"):
             if item.exclude_from_payout or not item.served_by_cast or item.is_nomination:
                 continue
 
-            cat  = getattr(getattr(item, "item_master", None), "category", None)
-            stay = "in" if item.is_inhouse else "free"   # 今回は free / inhouse のみ対象
-            qty  = int(item.qty or 0)
-            price = int(item.price or 0)
+            stay = "in" if getattr(item, "is_inhouse", False) else "free"  # 今回は free/in だけ対象
 
-            # ① free / inhouse で “固定バックON + 金額あり” なら 固定×数量
-            if stay in ("free", "in") and cat and getattr(cat, "use_fixed_payout_free_in", False) and getattr(cat, "payout_fixed_per_item", None) is not None:
-                amt = int(cat.payout_fixed_per_item) * qty
+            # ① 店舗エンジンに委譲（dosukoi-asa ならここで金額確定）
+            override = engine.item_payout_override(self.bill, item, stay_type=stay)
+            if override is not None:
+                amt = int(override)
             else:
-                # ② それ以外は ％（item.back_rate は 0.20 のような実数前提）
-                from decimal import Decimal, ROUND_FLOOR
-                amt = int((Decimal(price * qty) * Decimal(item.back_rate)).quantize(0, rounding=ROUND_FLOOR))
+                # ② 既定：％で (price*qty)×back_rate
+                amt = int((Decimal(item.subtotal) * Decimal(item.back_rate)).quantize(0, rounding=ROUND_FLOOR))
 
             if amt:
-                totals[item.served_by_cast_id] = totals.get(item.served_by_cast_id, 0) + int(amt)
+                totals[item.served_by_cast_id] = totals.get(item.served_by_cast_id, 0) + amt
 
-        # B) 店舗別：本指名
-        engine = get_engine(self.store)
+        # B) 本指名（既存エンジン）
         for cid, add in (engine.nomination_payouts(self.bill) or {}).items():
             totals[cid] = totals.get(cid, 0) + int(add or 0)
 
-        # C) 店舗別：同伴
+        # C) 同伴（既存エンジン）
         for cid, add in (engine.dohan_payouts(self.bill) or {}).items():
             totals[cid] = totals.get(cid, 0) + int(add or 0)
 
@@ -108,16 +106,15 @@ class BillCalculator:
         cast_objs = {c.id: c for c in self.bill.nominated_casts.all()}
         if self.bill.main_cast:
             cast_objs[self.bill.main_cast.id] = self.bill.main_cast
-        for item in self.bill.items.select_related("served_by_cast"):
-            if item.served_by_cast:
-                cast_objs[item.served_by_cast.id] = item.served_by_cast
+        for it in self.bill.items.select_related("served_by_cast"):
+            if it.served_by_cast:
+                cast_objs[it.served_by_cast.id] = it.served_by_cast
 
         return [
             CastPayout(bill=self.bill, bill_item=None, cast=cast_objs.get(cid), amount=amt)
-            for cid, amt in totals.items()
-            if cast_objs.get(cid)
+            for cid, amt in totals.items() if cast_objs.get(cid)
         ]
-
+        
 
     def execute(self):
         subtotal0 = self._subtotal_raw()

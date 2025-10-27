@@ -34,6 +34,8 @@ class BaseEngine:
         """
         return {}
 
+    def item_payout_override(self, bill, item, stay_type: str) -> int | None:
+        return None
 
 class DefaultEngine(BaseEngine):
     pass  # Base のまま（従来どおりの本指名プール）

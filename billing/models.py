@@ -136,11 +136,11 @@ class ItemCategory(models.Model):
     back_rate_nomination = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
     back_rate_inhouse    = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
     use_fixed_payout_free_in = models.BooleanField(
-        default=False, help_text='フリー/場内は％ではなく固定額(円)で支払う'
+        verbose_name='ボトル判定',
+        default=False,
+        help_text='ボトル判定後はpayroll/engines'
     )
-    payout_fixed_per_item = models.PositiveIntegerField(
-        null=True, blank=True, help_text='固定バック（円/個）。例: ボトル=500'
-    )
+    payout_fixed_per_item = models.PositiveIntegerField(null=True, blank=True)  # ← 復活
     show_in_menu = models.BooleanField(
         default=False,
         verbose_name='POSメニューに表示'

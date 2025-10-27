@@ -7,6 +7,7 @@ from ..base import BaseEngine
 class DosukoiAsaEngine(BaseEngine):
     RATE_NOM   = Decimal("0.20")  # 本指名 20%
     RATE_DOHAN = Decimal("0.30")  # 同伴   30%
+    
 
     def _has_dohan(self, bill) -> bool:
         return bill.stays.filter(stay_type='dohan').exists()
@@ -61,3 +62,27 @@ class DosukoiAsaEngine(BaseEngine):
             return {}
         each = int(payout // len(ids))
         return {cid: each for cid in ids}
+
+
+    def item_payout_override(self, bill, item, stay_type: str) -> int | None:
+        if stay_type not in ("free", "in"):
+            return None
+
+        im  = getattr(item, "item_master", None)
+        cat = getattr(im, "category", None)
+        if not cat:
+            return None
+
+        qty   = int(item.qty or 0)
+        price = int(item.price or 0)
+        if not qty:
+            return None
+
+        # ★ カテゴリのフラグで「固定バック対象」を判定
+        if getattr(cat, "use_fixed_payout_free_in", False):
+            return 500 * qty  # 固定500円/本（カテゴリ金額を使うならここを cat.payout_fixed_per_item に）
+
+        # フラグOFFは％で計算（例：ドリンク20%）
+        from decimal import Decimal, ROUND_FLOOR
+        amt = (Decimal(price * qty) * Decimal(item.back_rate)).quantize(0, rounding=ROUND_FLOOR)
+        return int(amt)
