@@ -1,32 +1,48 @@
 // src/stores/useFetchOnce.js
 import { defineStore } from 'pinia'
 import { api } from '@/api'
+import { listenStoreChanged, getPinnedStoreId } from './storeScope'
 
 export const useFetchOnce = defineStore('fetchOnce', {
   state: () => ({
-    cache   : {},        // URL → data
-    pending : {},        // URL → Promise
+    cache   : {},   // key → data
+    pending : {},   // key → Promise
+    _unsub  : null,
   }),
 
   actions: {
+    _key (url) {
+      const sid = getPinnedStoreId() || 'none'
+      // 同じURLでも store が違えば別キャッシュにする
+      return `[sid:${sid}] ${String(url)}`
+    },
+
+    _wireOnce () {
+      if (this._unsub) return
+      this._unsub = listenStoreChanged(() => {
+        // 店舗切替でキャッシュ/pendingを全て捨てる
+        this.cache = {}
+        this.pending = {}
+      })
+    },
+
     async get (url, force = false) {
-      // 既にキャッシュがあれば即返す
-      if (!force && this.cache[url]) return this.cache[url]
+      this._wireOnce()
+      const key = this._key(url)
 
-      // 取得中ならその Promise を待つ
-      if (this.pending[url]) return this.pending[url]
+      if (!force && this.cache[key]) return this.cache[key]
+      if (this.pending[key]) return this.pending[key]
 
-      // 新規リクエスト
-      this.pending[url] = api.get(url).then(r => r.data).then(data => {
-        this.cache[url] = data
-        delete this.pending[url]
+      this.pending[key] = api.get(url).then(r => r.data).then(data => {
+        this.cache[key] = data
+        delete this.pending[key]
         return data
       }).catch(err => {
-        delete this.pending[url]
+        delete this.pending[key]
         throw err
       })
 
-      return this.pending[url]
+      return this.pending[key]
     }
   }
 })

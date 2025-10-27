@@ -21,15 +21,11 @@ class StoreSerializer(serializers.ModelSerializer):
 
 
 class TableSerializer(serializers.ModelSerializer):
-    # 互換：旧 number を復活（中身は code をそのまま返す）
     number = serializers.SerializerMethodField()
-
-    def get_number(self, obj):
-        return getattr(obj, 'code', '') or ''   # None→'' で undefined回避
-
+    def get_number(self, obj): return getattr(obj, 'code', '') or ''
     class Meta:
         model  = Table
-        fields = ('id', 'code', 'number', 'seat_type', 'store')
+        fields = ('id', 'code', 'number', 'seat_type')  # ← store を外す
 
 
 class StoreSeatSettingSerializer(serializers.ModelSerializer):

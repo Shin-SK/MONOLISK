@@ -28,5 +28,10 @@ export const useCasts = defineStore('casts', {
       this.byId[id] = cast
       return cast
     },
+    reset () {
+      this.list = []
+      this.byId = {}
+      this.loaded = false
+    },
   },
 })

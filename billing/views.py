@@ -97,10 +97,11 @@ def _can_edit_cast_goals(user, cast):
 
 
 class CacheListMixin:
-	@method_decorator(cache_page(60 * 10))            # ← 10分(=600秒)
-	@method_decorator(vary_on_headers('X-Store-Id'))  # ← 店舗ごとに別キャッシュ
-	def list(self, request, *args, **kwargs):
-		return super().list(request, *args, **kwargs)
+    @method_decorator(cache_page(60 * 10))
+    @method_decorator(vary_on_headers('X-Store-Id','Authorization'))  # ← 認証者別にも分離
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -147,13 +148,9 @@ class StoreScopedModelViewSet(viewsets.ModelViewSet):
 
     # --- GET: 自店フィルタ ---
     def get_queryset(self):
+        # ★ ここを厳格化：例外を握りつぶさず必ず store で絞る
+        sid = self.require_store(self.request)
         qs = super().get_queryset()
-        try:
-            sid = self.require_store(self.request)
-        except Exception:
-            # 一部の完全グローバル資源（本当にロック不要なもの）があればここでそのまま返す
-            # ただしセキュリティ上、基本は require_store() で縛ること推奨
-            return qs
         return self.filter_queryset_by_store(qs, sid)
 
     # --- POST: store を注入 or 不正修正 ---

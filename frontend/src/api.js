@@ -45,7 +45,6 @@ api.interceptors.request.use(cfg => {
     /^billing\/bills(\/|$)/.test(path) ||       // ← 伝票リスト/個票は常に最新
     path.startsWith('billing/cast-shifts/')     // ← シフトも常に最新
   if (noCache) { cfg.cache = false; return cfg }
-    if (noCache) { cfg.cache = false; return cfg }
 
 	// ⚠️ Store違いでキャッシュが混ざらないよう、疑似パラメータで分離
 	const sid = localStorage.getItem('store_id')

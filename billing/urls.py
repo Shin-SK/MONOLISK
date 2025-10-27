@@ -78,4 +78,5 @@ urlpatterns = [
     path('kds/staffs/', StaffList.as_view(), name='kds_staff_list'),
     path('kds/taken-today/', KDSTakenTodayList.as_view(), name='kds_taken_today'),
     path('order-events/', order_events, name='order-events'),
+
 ]
