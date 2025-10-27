@@ -1,12 +1,16 @@
 # utils/pl_daily.py
 from __future__ import annotations
 from datetime import date
-from django.db.models import F, Sum, Value, IntegerField
+from django.db.models import F, Sum, Value, IntegerField, Q 
 from django.db.models.functions import Coalesce
 from billing.models  import Bill, BillItem
 from billing.utils.services import cast_payout_sum_by_closed_window, cast_payroll_sum_by_business_date
 from billing.calculator import BillCalculator
 from billing.utils.bizday import get_business_window
+from django.conf import settings
+
+DRINK_CATEGORY_CODES = set(getattr(settings, "PL_DRINK_CATEGORY_CODES", {"cast-drink"}))
+DRINK_ITEM_PREFIXES  = set(getattr(settings, "PL_DRINK_ITEM_PREFIXES",  set()))
 
 __all__ = ["get_daily_pl"]
 
@@ -43,7 +47,11 @@ def get_daily_pl(target_date: date, *, store_id: int, include_breakdown: bool = 
 
     extension_qty = items.filter(item_master__category__code="ext").aggregate(c=Coalesce(Sum("qty"), 0))["c"]
 
-    drink_items = items.filter(item_master__category__code="drink")
+    drink_q = Q(item_master__category__code__in=DRINK_CATEGORY_CODES)
+    for p in DRINK_ITEM_PREFIXES:
+        drink_q |= Q(item_master__code__istartswith=p)
+
+    drink_items = items.filter(drink_q)
     drink_sales = drink_items.aggregate(s=Coalesce(Sum(F("price") * F("qty")), 0))["s"]
     drink_qty   = drink_items.aggregate(c=Coalesce(Sum("qty"), 0))["c"]
     drink_unit_price = int(drink_sales // drink_qty) if drink_qty else 0

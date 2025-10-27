@@ -242,6 +242,7 @@ export const fetchCastSalesDetail = (castId, params = {}) =>
   api.get('billing/cast-payouts/', {
     params: { cast: castId, ...params }
   }).then(r => r.data)
+  
 
 // キーの正規化: from/to を date_from/date_to へ
 const _normalizeRange = (p = {}) => {
@@ -257,6 +258,13 @@ export const fetchCastItemDetails = (castId, params = {}) =>
     params: { cast: castId, ..._normalizeRange(params) }
   }).then(r => r.data)
 
+
+// CastPayout を期間指定で一覧取得（全キャスト分）。limit大きめでページング回避
+export const listCastPayouts = async (params = {}) => {
+  const q = { limit: 10000, ...params }   // 必要ならもっと上げる
+  const { data } = await api.get('billing/cast-payouts/', { params: q, cache: false })
+  return Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
+}
 /**
  * 一覧取得
  *   params: { cast, date, ordering, ... }

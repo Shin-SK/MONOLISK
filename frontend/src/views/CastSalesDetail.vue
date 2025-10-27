@@ -45,23 +45,45 @@ const totalPayout = computed(() => payouts.value.reduce((s,p)=>s+p.amount,0))
 const payrollSum  = computed(() => shifts.value.reduce((s,sh)=>s+(sh.payroll_amount||0),0))
 
 /* 指名区分とバッジ */
-const nomType = p => {
-  if (!p.bill_item)           return '本指名'
-  if (p.bill_item.is_inhouse) return '場内'
-  return 'フリー'
-}
-const badgeClass = p => {
-  if (!p.bill_item)           return 'badge bg-danger text-white'
-  if (p.bill_item.is_inhouse) return 'badge bg-success text-white'
-  return 'badge bg-primary text-white'
-}
-
+  const nomType = p => {
+    // サーバが返す stay_type を最優先
+    const st = p.stay_type
+    if (st === 'nom')   return '本指名'
+    if (st === 'in')    return '場内'
+    if (st === 'dohan') return '同伴'
+    return 'フリー'
+  }
+  const badgeClass = p => {
+    const st = p.stay_type
+    return st === 'nom'   ? 'badge bg-danger text-white'
+         : st === 'in'    ? 'badge bg-success text-white'
+         : st === 'dohan' ? 'badge bg-secondary text-white'
+                           : 'badge bg-primary text-white'
+  }
 /* Bill.id → items[] マップ */
 const detailMap = computed(() => {
   const m = {}
   items.value.forEach(it => { (m[it.bill_id] ??= []).push(it) })
   return m
 })
+
+  const rowSubtotal = (billId) =>
+    (detailMap.value[billId] || [])
+      .reduce((s, it) => s + (Number(it.subtotal) || 0), 0)
+  
+  // 売上合計（伝票ごとに一意に合算）
+  const salesTotal = computed(() => {
+    const seen = new Set()
+    let sum = 0
+    for (const p of (payouts.value || [])) {
+      const bid = p.bill?.id
+      if (!bid || seen.has(bid)) continue
+      sum += rowSubtotal(bid)
+      seen.add(bid)
+    }
+    return sum
+  })
+
 </script>
 
 <template>
@@ -140,7 +162,7 @@ const detailMap = computed(() => {
             </td>
             <td />
             <td class="text-end">
-              {{ yen(p.bill.subtotal) }}
+              {{ yen(rowSubtotal(p.bill.id)) }}
             </td>
             <td class="text-end">
               {{ yen(p.amount) }}
@@ -167,15 +189,15 @@ const detailMap = computed(() => {
         </template>
       </tbody>
       <tfoot class="fw-bold table-light">
-        <tr>
+        <tr><!-- ★ここはギャラ合計としたいこの伝票で得たギャラの合計 -->
           <td
             colspan="5"
             class="text-end"
           >
-            売上合計
+            ギャラ合計
           </td>
           <td class="text-end">
-            {{ yen(payouts.reduce((sum, p) => sum + p.bill.subtotal, 0)) }}
+            {{ yen(totalPayout) }}
           </td>
         </tr>
         <tr>

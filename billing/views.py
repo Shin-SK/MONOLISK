@@ -1,7 +1,7 @@
 # billing/views.py
 from datetime import date
 from django.db import models, transaction
-from django.db.models import Sum, F, Q, IntegerField, Value
+from django.db.models import Sum, F, Q, IntegerField, Value, OuterRef, Subquery
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -812,55 +812,80 @@ def _get_range(request):
     return df, dt
 
 class CastPayrollSummaryView(APIView):
-    """
-    GET /api/billing/payroll/summary/?from=YYYY-MM-DD&to=YYYY-MM-DD
-    レスポンス: [{ id, stage_name, worked_min, total_hours, hourly_pay, commission, total }, ...]
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         sid = _get_store_id_from_header(request)
         df, dt = _get_range(request)
 
-        # Cast 基点で集計（時給=日次サマリ合算、歩合=CastPayout合算）
+        # --- Subquery: commission（CastPayout合計） ---
+        commission_sq = (
+            CastPayout.objects
+            .filter(
+                cast_id=OuterRef('pk'),
+                bill__table__store_id=sid,
+                bill__closed_at__date__range=(df, dt),
+            )
+            .values('cast')           # グルーピングキー
+            .annotate(total=Sum('amount'))
+            .values('total')[:1]
+        )
+
+        # --- Subquery: hourly_pay & worked_min（CastDailySummary合計） ---
+        hourly_sq = (
+            CastDailySummary.objects
+            .filter(
+                cast_id=OuterRef('pk'),
+                store_id=sid,
+                work_date__range=(df, dt),
+            )
+            .values('cast')
+            .annotate(total=Sum('payroll'))
+            .values('total')[:1]
+        )
+
+        worked_min_sq = (
+            CastDailySummary.objects
+            .filter(
+                cast_id=OuterRef('pk'),
+                store_id=sid,
+                work_date__range=(df, dt),
+            )
+            .values('cast')
+            .annotate(total=Sum('worked_min'))
+            .values('total')[:1]
+        )
+
         qs = (
             Cast.objects.filter(store_id=sid)
             .annotate(
-                worked_min = Coalesce(
-                    Sum("daily_summaries__worked_min", filter=Q(daily_summaries__work_date__range=(df, dt))),
-                    Value(0),
-                    output_field=IntegerField(),
-                ),
-                hourly_pay = Coalesce(
-                    Sum("daily_summaries__payroll", filter=Q(daily_summaries__work_date__range=(df, dt))),
-                    Value(0),
-                    output_field=IntegerField(),
-                ),
-                commission = Coalesce(
-                    Sum("payouts__amount", filter=Q(payouts__bill__closed_at__date__range=(df, dt))),
-                    Value(0),
-                    output_field=IntegerField(),
-                ),
+                commission = Coalesce(Subquery(commission_sq), Value(0), output_field=IntegerField()),
+                hourly_pay = Coalesce(Subquery(hourly_sq),     Value(0), output_field=IntegerField()),
+                worked_min = Coalesce(Subquery(worked_min_sq), Value(0), output_field=IntegerField()),
             )
-            .annotate(total=F("hourly_pay") + F("commission"))
-            .order_by("stage_name", "id")
-            .values("id", "stage_name", "worked_min", "hourly_pay", "commission", "total")
+            .values('id', 'stage_name', 'worked_min', 'hourly_pay', 'commission')
+            .order_by('stage_name', 'id')
         )
 
         data = []
         for r in qs:
-            worked_min = int(r["worked_min"] or 0)
+            worked_min = int(r['worked_min'] or 0)
+            hourly_pay = int(r['hourly_pay'] or 0)
+            commission = int(r['commission'] or 0)
             data.append({
-                "id": r["id"],
-                "stage_name": r["stage_name"],
-                "worked_min": worked_min,
-                "total_hours": round(worked_min / 60.0, 2),
-                "hourly_pay": int(r["hourly_pay"] or 0),
-                "commission": int(r["commission"] or 0),
-                "total": int(r["total"] or 0),
+                'id': r['id'],
+                'stage_name': r['stage_name'],
+                'worked_min': worked_min,
+                'total_hours': round(worked_min / 60.0, 2),
+                'hourly_pay': hourly_pay,
+                'commission': commission,
+                'total': hourly_pay + commission,   # 合計＝歩合＋時給のみ
             })
+
         ser = CastPayrollSummaryRowSerializer(data, many=True)
         return Response(ser.data)
+    
+    
 
 class CastPayrollDetailView(APIView):
     """

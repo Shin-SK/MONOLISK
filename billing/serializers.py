@@ -225,18 +225,19 @@ class CastPayoutDetailSerializer(serializers.ModelSerializer):
     cast = CastMiniSerializer(read_only=True)
     bill      = BillMiniSerializer(read_only=True)
     bill_item = BillItemMiniSerializer(read_only=True)
+    stay_type = serializers.SerializerMethodField()
 
     class Meta:
         model  = CastPayout
-        fields = ('id', 'amount', 'bill', 'bill_item', 'cast')
+        fields = ('id', 'amount', 'bill', 'bill_item', 'cast', 'stay_type')
 
-    def get_bill(self, obj):
-        if obj.bill is None:                # ← ★ null セーフ
+    def get_stay_type(self, obj):
+        # 該当伝票でのそのキャストの最新 stay を見る（entered_at の新しいもの）
+        try:
+            s = obj.bill.stays.filter(cast_id=obj.cast_id).order_by('-entered_at').first()
+            return getattr(s, 'stay_type', None) if s else None   # 'nom' | 'in' | 'free' | 'dohan' | None
+        except Exception:
             return None
-        return {
-            'id'       : obj.bill_id,
-            'closed_at': obj.bill.closed_at,
-        }
   
 
 
