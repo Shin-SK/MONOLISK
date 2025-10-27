@@ -60,31 +60,43 @@ function onSelectChange () {
 }
 
 async function apply () {
-  if (!canApply.value) return
   applying.value = true
+  const sid = String(selectedSid.value || '')
+  console.log('[SWITCHER] apply start', { sid_before: localStorage.getItem('store_id'), selectedSid: sid })
+
   try {
-    // 1) サーバ側の“現在店舗”を切替（/meも再取得）
-    const me = await switchStore(selectedSid.value)
-    u.me = me
-    currentSid.value = String(selectedSid.value)
-    localStorage.setItem('store_id', currentSid.value)
+    // A) 先にローカル確定（リロード後も反映）
+    if (sid) {
+      localStorage.setItem('store_id', sid)
+      currentSid.value = sid
+      notifyStoreChanged(sid)
+      console.log('[SWITCHER] set store_id (localStorage)', sid)
+    } else {
+      console.warn('[SWITCHER] empty sid; fallback to existing')
+    }
 
-    // 2) 全体通知（各Piniaで reset→fetch などが走る）
-    notifyStoreChanged(currentSid.value)
+    // B) サーバ側スイッチ（失敗しても必ずリロードは行う）
+    try {
+      const me = await switchStore(sid)
+      u.me = me
+      console.log('[SWITCHER] switchStore OK', { sid })
+    } catch (e) {
+      console.warn('[SWITCHER] switchStore failed (will reload anyway)', e)
+    }
 
-    // 3) 主要ストアは明示的に更新（体感向上）
-    tables?.reset(); await tables?.fetch(true)
-    casts?.reset?.();  await casts?.fetch?.(true)
-    items?.reset?.();  await items?.fetch?.(true)
-
-    // 4) 今いるURLのまま。最後にサイドバーを閉じる
-    closeOffcanvas(props.offcanvas)   // ★ 追加：オフキャンバスを閉じる
-  } catch (e) {
-    console.error('[StoreSwitcher] apply failed', e)
+    // C) サイドバーを閉じて即リロード（__sid は1個だけ付け直す）
+    closeOffcanvas(props.offcanvas)
+    const url = new URL(window.location.href)
+    url.searchParams.delete('__sid') // 既存を全部削除
+    url.searchParams.append('__sid', `${currentSid.value}-${Date.now()}`)
+    console.log('[SWITCHER] reload replace ->', url.toString())
+    window.location.replace(url.toString()) // これ1発でOK。setTimeout不要
   } finally {
     applying.value = false
   }
 }
+
+
 </script>
 
 <template>
@@ -103,16 +115,17 @@ async function apply () {
     </div>
 
 	<div class="col-3 d-flex align-items-center">
-	<button
+		<button
+		type="button"
 		class="btn btn-sm w-100"
 		:class="['btn-outline-secondary', { 'disabled': !canApply, 'pe-none': !canApply }]"
 		:aria-disabled="!canApply ? 'true' : 'false'"
-		@click="canApply && apply()"
+		@click="apply"
 		title="選択中の店舗に切り替える（現在のページのまま再読込）"
 		style="white-space: nowrap;"
-	>
+		>
 		{{ buttonLabel }}
-	</button>
+		</button>
 	</div>
 
   </div>

@@ -95,10 +95,9 @@ def _can_edit_cast_goals(user, cast):
 
 
 
-
 class CacheListMixin:
     @method_decorator(cache_page(60 * 10))
-    @method_decorator(vary_on_headers('X-Store-Id','Authorization'))  # ← 認証者別にも分離
+    @method_decorator(vary_on_headers('X-Store-Id', 'Authorization'))  # ← 追加
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -349,7 +348,7 @@ class CastSalesView(APIView):
 # ────────────────────────────────────────────────────────────────────
 # キャスト / 明細・配分
 # ────────────────────────────────────────────────────────────────────
-class CastViewSet(CacheListMixin, StoreScopedModelViewSet):
+class CastViewSet(StoreScopedModelViewSet):
     queryset = Cast.objects.select_related("store").prefetch_related("category_rates")
     serializer_class = CastSerializer
     permission_classes = [permissions.IsAuthenticated]

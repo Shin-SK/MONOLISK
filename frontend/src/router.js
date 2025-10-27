@@ -14,41 +14,7 @@ import { useRoles } from '@/composables/useRoles'
 
 
 const routes = [
-  // ---------- キャバクラ版 ---------- //
-  // {
-  //   path: '/',
-  //   component: MainLayout,
-  //   meta: { requiresAuth: true, adminOnly: true },
-  //   children: [
-  //     { path: 'dashboard',            component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'DASHBOARD', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
-  //     { path: 'dashboard/list',       component: () => import('@/views/DashboardList.vue'),  meta: { title: 'DASHBOARD-LIST', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
-  //     { path: 'dashboard/timeline',   component: () => import('@/views/DashboardGantt.vue'), meta: { title: 'DASHBOARD-TIMELINE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
 
-  //     { path: '', component: () => import('@/views/DashboardList.vue'), meta: { title: '伝票' }},
-
-  //     { path: 'pl/daily',  name:'pl-daily',  component: () => import('@/views/BillPLDaily.vue'),   meta: { title: '売上-日次', rolesAny: ['manager','owner','superuser'], requiresAuth:true } },
-  //     { path: 'pl/Monthly', name:'pl-monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次', rolesAny: ['manager','owner','superuser'], requiresAuth:true } },
-  //     { path: 'pl/yearly', name:'pl-yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次', rolesAny: ['manager','owner','superuser'], requiresAuth:true } },
-
-  //     { path: 'cast-sales',           component: () => import('@/views/CastSalesList.vue'),   meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
-  //     { path: 'cast-sales/:id',       component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail', meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
-  //     { path: 'cast-shift',            component: () => import('@/views/CastShiftList.vue'),   props: true, meta: { title: 'シフト管理' } },
-  //     { path: 'cast-shift/:id(\\d+)/shifts', component: () => import('@/views/CastShiftPage.vue'), props: true ,name: 'cast-shift-page', meta: { title: 'シフト管理' } },
-
-  //     { path: 'ranking',   component: () => import('@/views/CastRanking.vue'),        props: true, meta: { title: 'ランキング',    requiresAuth: true, adminOnly: true } },
-  //     { path: 'table',     component: () => import('@/components/BillListTable.vue'), props: true, meta: { title: 'テーブルビュー', requiresAuth: true, adminOnly: true }},
-  //     { path: 'customers', component: () => import('@/views/CustomerPage.vue'),       props: true, meta: { title: '顧客情報',      requiresAuth: true, adminOnly: true }},
-
-  //     { path: 'staff/:id(\\d+)', redirect: to => ({ name: 'settings-staff-form', params: { id: to.params.id } }) },
-  //     { path: 'staffs/new',      redirect: { name: 'settings-staff-new' } },
-  //     { path: 'casts/:id(\\d+)', redirect: to => ({ name: 'settings-cast-form', params: { id: to.params.id } }) },
-  //     { path: 'casts/new',       redirect: { name: 'settings-cast-new' } },
-  //     { path: 'kds/kitchen', name:'kds-kitchen', component: () => import('@/views/KDSStation.vue'), meta: { title: 'KDS Kitchen', requiresAuth: true, kds: true } },
-  //     { path: 'kds/drinker', name:'kds-drinker', component: () => import('@/views/KDSStation.vue'), meta: { title: 'KDS Drinker', requiresAuth: true, kds: true } },
-  //     { path: 'kds/dishup', name:'kds-dishup',  component: () => import('@/views/KDSDishup.vue'),  meta: { title: 'KDS Deshap',  requiresAuth: true, kds: true } },
-
-  //   ],
-  // },
 
   {
     path: '/settings',
@@ -224,7 +190,27 @@ const routes = [
   },
 ]
 
-// --- ここから下を router.js の末尾に置き換え ---
+
+// === store_id 解決ユーティリティ ===
+function pickSidFromQuery(route) {
+  // __sid が複数ある場合は“最後の1個”を採用
+  const q = route.fullPath.split('?')[1] || ''
+  const params = new URLSearchParams(q)
+  const all = params.getAll('__sid')
+  if (!all.length) return ''
+  const last = all[all.length - 1] || ''
+  const sid = last.split('-')[0].trim()
+  return sid || ''
+}
+
+function stripSidFromUrl() {
+  const url = new URL(window.location.href)
+  // URLSearchParams.delete は同名を“すべて”削除する
+  url.searchParams.delete('__sid')
+  window.history.replaceState(null, '', url.toString())
+}
+
+
 
 const router = createRouter({
   history: createWebHistory(),
@@ -235,15 +221,27 @@ const KDS_ENABLED = import.meta.env.VITE_KDS_ENABLED === 'true'
 
 
 router.beforeEach(async (to, from, next) => {
-  const token   = getToken()
-  const storeId = getStoreId()
+  const token = getToken()
+
+  // 1) __sid が来ていれば最優先で採用→localStorageへ→URLから除去
+  const sidFromQuery = pickSidFromQuery(to)
+  if (sidFromQuery) {
+    localStorage.setItem('store_id', String(sidFromQuery))
+    stripSidFromUrl()
+  }
+
+  // 2) ここで storeId を確定（以降の判定はこれを使う）
+  let storeId = getStoreId()
+
   const meStore = useUser()
-  const { hasRole, hasRoleOrSuper, homePath } = useRoles()
+  const { hasRoleOrSuper, homePath } = useRoles()
+
   const roleProtected = to.matched.some(r => Array.isArray(r.meta?.rolesAny))
   const requiresAuth  = to.matched.some(r => r.meta?.requiresAuth) || roleProtected
 
   console.log('[guard] →', to.fullPath, { token: !!token, storeId, requiresAuth })
 
+  // 3) 認証済み & storeIdがあるのに me 未取得なら fetch
   if ((token && storeId) && !meStore.me) {
     try {
       console.log('[guard] fetchMe start')
@@ -254,14 +252,22 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
-  if (meStore.me?.current_store_id) {
-    const sid = String(meStore.me.current_store_id)
-    if (localStorage.getItem('store_id') !== sid) {
-      localStorage.setItem('store_id', sid)
-      console.log('[guard] synced store_id ->', sid)
+  // 4) store_id の確定ロジック（上書きしない！）
+  //    __sid > localStorage（現状）> me（保険） の順で充当
+  if (!storeId) {
+    const fromMe =
+      (meStore.me?.current_store_id && String(meStore.me.current_store_id)) ||
+      (Array.isArray(meStore.me?.stores) && meStore.me.stores[0] && String(meStore.me.stores[0].id)) ||
+      ''
+    if (fromMe) {
+      localStorage.setItem('store_id', fromMe)
+      storeId = fromMe
+      console.log('[guard] store_id fallback from me ->', fromMe)
     }
   }
+  // ★ ここで “me に合わせて同期上書き” はしない（今回のバグ源）
 
+  // 5) ルートガード基本
   if (to.path === '/') {
     if (!token || !storeId) { console.log('[guard] / → login'); return next('/login') }
     const dest = homePath() || '/'
@@ -280,10 +286,10 @@ router.beforeEach(async (to, from, next) => {
     return next({ path: '/login', query: { next: to.fullPath } })
   }
 
-  const requiredRoles = to.matched.map(r => r.meta?.rolesAny).find(a => Array.isArray(a))
-  if (requiredRoles && !hasRoleOrSuper(requiredRoles)) {
+  const required = to.matched.map(r => r.meta?.rolesAny).find(a => Array.isArray(a))
+  if (required && !hasRoleOrSuper(required)) {
     const dest = homePath() || '/'
-    console.log('[guard] role mismatch →', dest, 'required=', requiredRoles)
+    console.log('[guard] role mismatch →', dest, 'required=', required)
     if (dest === to.fullPath || dest === from.fullPath) return next()
     return next({ path: dest, replace: true })
   }
@@ -291,6 +297,7 @@ router.beforeEach(async (to, from, next) => {
   console.log('[guard] pass')
   return next()
 })
+
 
 
 export default router

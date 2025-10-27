@@ -104,6 +104,13 @@ export function wireInterceptors(api) {
       cfg.url = qs ? `${path}?${qs}` : path
     }
 
+    if (import.meta.env.DEV) {
+      console.log('[API:REQ]', cfg.method?.toUpperCase(), cfg.url, {
+        x_store_id: cfg.headers?.['X-Store-Id'] || cfg.headers?.['x-store-id'],
+        auth: !!cfg.headers?.Authorization
+      })
+    }
+    
     return cfg
   })
 
