@@ -1,37 +1,45 @@
-// src/stores/useCasts.js
+// src/stores/useCasts.js（丸ごと置換）
 import { defineStore } from 'pinia'
-import { useFetchOnce } from './useFetchOnce'
+import { api } from '@/api'
+import { listenStoreChanged } from './storeScope'
 
 export const useCasts = defineStore('casts', {
-  state : () => ({
-    list   : [],            // 一覧
-    byId   : {},            // { 1: {...}, 2: {...} }
-    loaded : false,
+  state: () => ({
+    list: [],
+    loaded: false,
+    error: '',
+    _unsub: null,
   }),
-
-  actions : {
-    /** 一覧を取得（キャッシュ付） */
-    async fetch (force = false) {
-      if (this.loaded && !force) return
-      const once = useFetchOnce()
-      const raw  = await once.get('/billing/casts/', force)
-	  this.list  = raw.results ?? raw
-      this.byId = Object.fromEntries(this.list.map(c => [c.id, c]))
-      this.loaded = true
+  actions: {
+    _wireOnce () {
+      if (this._unsub) return
+      this._unsub = listenStoreChanged(async () => {
+        this.reset()
+        await this.fetch(true)
+      })
     },
-
-    /** 個別取得（キャッシュに無ければ API へ） */
-    async get (id, force = false) {
-      if (!force && this.byId[id]) return this.byId[id]
-      const once = useFetchOnce()
-      const cast = await once.get(`/billing/casts/${id}/`, force)
-      this.byId[id] = cast
-      return cast
+    async fetch (force = false) {
+      this._wireOnce()
+      if (this.loaded && !force) return
+      this.error = ''
+      try {
+        // ★ キャッシュ無効 + タイムスタンプで確実に最新化
+        const { data } = await api.get('billing/casts/', {
+          cache: false,
+          params: { _ts: Date.now() }
+        })
+        this.list = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
+        this.loaded = true
+      } catch (e) {
+        this.error = e?.response?.data?.detail || e.message
+        this.list = []
+        this.loaded = false
+      }
     },
     reset () {
       this.list = []
-      this.byId = {}
       this.loaded = false
-    },
-  },
+      this.error = ''
+    }
+  }
 })
