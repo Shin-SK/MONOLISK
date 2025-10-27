@@ -6,24 +6,26 @@ from .models import (
     Store, Table, ItemCategory, ItemMaster, Bill, BillItem,
     BillCastStay, Cast, CastPayout, ItemStock, BillingUser, CastCategoryRate, Customer
 )
-from django.contrib import admin
-from .models import Store
+
 from django import forms
 from django.utils.safestring import mark_safe
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 from .resources import ItemCategoryRes, ItemMasterRes
+from django.contrib.admin.sites import NotRegistered
+
 
 User = get_user_model()  
-
-
-
 
 
 class CastCategoryRateInline(admin.TabularInline):
     model = CastCategoryRate
     extra = 1
 
+try:
+    admin.site.unregister(Store)
+except NotRegistered:
+    pass
 
 # ───────── マスター ─────────
 class StoreForm(forms.ModelForm):
@@ -31,23 +33,39 @@ class StoreForm(forms.ModelForm):
         model  = Store
         fields = "__all__"
         widgets = {
-            # 0.01 刻みで入力。 % ではなく「0.50 = 50%」方式に統一
             "nom_pool_rate": forms.NumberInput(attrs={"step": "0.01"}),
+            "back_rate_free_default": forms.NumberInput(attrs={"step":"0.01"}),
+            "back_rate_nomination_default": forms.NumberInput(attrs={"step":"0.01"}),
+            "back_rate_inhouse_default": forms.NumberInput(attrs={"step":"0.01"}),
+            "back_rate_dohan_default": forms.NumberInput(attrs={"step":"0.01"}),
         }
 
 @admin.register(Store)
 class StoreAdmin(admin.ModelAdmin):
     form = StoreForm
+    # ★ これが必須（autocomplete の相手にされるため）
+    search_fields = ("name", "slug")
 
-    list_display  = ("name", "service_rate", "tax_rate", "nom_pool_rate", "business_day_cutoff_hour")
-    list_editable = ("service_rate", "tax_rate", "nom_pool_rate")
-    search_fields = ("name", "slug")  # ★追加：autocomplete用の検索項目
-
+    list_display  = (
+        "name",
+        "service_rate", "tax_rate", "nom_pool_rate",
+        "back_rate_free_default","back_rate_nomination_default","back_rate_inhouse_default","back_rate_dohan_default",
+        "business_day_cutoff_hour",
+    )
+    list_editable = (
+        "service_rate","tax_rate","nom_pool_rate",
+        "back_rate_free_default","back_rate_nomination_default","back_rate_inhouse_default","back_rate_dohan_default",
+    )
     fieldsets = (
         ("営業日設定", {"fields": ("business_day_cutoff_hour",)}),
         (None, {"fields": ("name", "slug")}),
-        ("各種レート", {"fields": ("service_rate","tax_rate","nom_pool_rate")}),
+        ("各種レート", {"fields": (
+            "service_rate","tax_rate","nom_pool_rate",
+            "back_rate_free_default","back_rate_nomination_default","back_rate_inhouse_default","back_rate_dohan_default",
+        )}),
     )
+    
+    
 @admin.register(Table)
 class TableAdmin(admin.ModelAdmin):
 	list_display  = ('store', 'code', 'seat_type')

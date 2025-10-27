@@ -74,11 +74,24 @@ class BillCalculator:
         from .models import CastPayout
         totals = {}
 
-        # A) 明細の back_rate（共通） … nomination 明細は除外
+        # A) 明細ごとの歩合（固定＞％）… nomination 明細は除外
         for item in self.bill.items.select_related("item_master__category", "served_by_cast"):
             if item.exclude_from_payout or not item.served_by_cast or item.is_nomination:
                 continue
-            amt = (Decimal(item.subtotal) * Decimal(item.back_rate)).quantize(0, rounding=ROUND_FLOOR)
+
+            cat  = getattr(getattr(item, "item_master", None), "category", None)
+            stay = "in" if item.is_inhouse else "free"   # 今回は free / inhouse のみ対象
+            qty  = int(item.qty or 0)
+            price = int(item.price or 0)
+
+            # ① free / inhouse で “固定バックON + 金額あり” なら 固定×数量
+            if stay in ("free", "in") and cat and getattr(cat, "use_fixed_payout_free_in", False) and getattr(cat, "payout_fixed_per_item", None) is not None:
+                amt = int(cat.payout_fixed_per_item) * qty
+            else:
+                # ② それ以外は ％（item.back_rate は 0.20 のような実数前提）
+                from decimal import Decimal, ROUND_FLOOR
+                amt = int((Decimal(price * qty) * Decimal(item.back_rate)).quantize(0, rounding=ROUND_FLOOR))
+
             if amt:
                 totals[item.served_by_cast_id] = totals.get(item.served_by_cast_id, 0) + int(amt)
 
@@ -91,7 +104,7 @@ class BillCalculator:
         for cid, add in (engine.dohan_payouts(self.bill) or {}).items():
             totals[cid] = totals.get(cid, 0) + int(add or 0)
 
-        # materialize
+        # materialize（既存どおり）
         cast_objs = {c.id: c for c in self.bill.nominated_casts.all()}
         if self.bill.main_cast:
             cast_objs[self.bill.main_cast.id] = self.bill.main_cast

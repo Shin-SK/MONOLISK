@@ -52,6 +52,12 @@ class Store(models.Model):
     name = models.CharField(max_length=50)
     service_rate = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.10'))
     tax_rate     = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.10'))
+
+    back_rate_free_default       = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    back_rate_nomination_default = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    back_rate_inhouse_default    = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    back_rate_dohan_default      = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+
     nom_pool_rate = models.DecimalField(  # 0.50 = 50 %
         max_digits=4, decimal_places=2, default=Decimal("0.50"),
         verbose_name="本指名率")
@@ -129,6 +135,12 @@ class ItemCategory(models.Model):
     back_rate_free       = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
     back_rate_nomination = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
     back_rate_inhouse    = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
+    use_fixed_payout_free_in = models.BooleanField(
+        default=False, help_text='フリー/場内は％ではなく固定額(円)で支払う'
+    )
+    payout_fixed_per_item = models.PositiveIntegerField(
+        null=True, blank=True, help_text='固定バック（円/個）。例: ボトル=500'
+    )
     show_in_menu = models.BooleanField(
         default=False,
         verbose_name='POSメニューに表示'
@@ -585,6 +597,10 @@ class BillItem(models.Model):
     is_inhouse = models.BooleanField(default=False, null=True)
     exclude_from_payout = models.BooleanField(default=False, null=True)
 
+    back_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    is_nomination = models.BooleanField(default=False)
+    is_inhouse    = models.BooleanField(default=False)
+
     class Meta:
         ordering = ['id']
 
@@ -626,6 +642,29 @@ class BillItem(models.Model):
         else:
             return (self.served_by_cast.back_rate_free_override
                     or cat.back_rate_free)
+
+
+    def _stay_type_hint(self) -> str:
+        if getattr(self, 'is_nomination', False): return 'nom'
+        if getattr(self, 'is_inhouse', False):    return 'in'
+        if getattr(self, 'is_dohan', False):    return 'dohan'
+        return 'free'
+
+    def save(self, *args, **kwargs):
+        try:
+            from billing.services.backrate import resolve_back_rate
+            bill   = getattr(self, 'bill', None)
+            im     = getattr(self, 'item_master', None)
+            store  = getattr(getattr(bill, 'table', None), 'store', None)
+            cat    = getattr(im, 'category', None)
+            cast   = getattr(self, 'served_by_cast', None)
+            stay   = self._stay_type_hint()
+            if store:
+                self.back_rate = resolve_back_rate(store=store, category=cat, cast=cast, stay_type=stay)
+        except Exception:
+            # 失敗しても保存は続行（0.00のまま）
+            pass
+        return super().save(*args, **kwargs)
 
     # --------------- save / delete ---------------
     def save(self, *args, **kwargs):
