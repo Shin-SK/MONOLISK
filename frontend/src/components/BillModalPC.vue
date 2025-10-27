@@ -130,8 +130,8 @@ function onApplySet(payload){
       pending.value.push({ master_id: master.id, qty, cast_id: null })
     }else{
       addBillItem(props.bill.id, { item_master: master.id, qty })
-        .then(newItem => {
-          props.bill.items.push(newItem)
+        .then(async () => {
+          await refreshTotals()
           emit('updated', props.bill.id)
         })
         .catch(e => { console.error(e); alert('追加に失敗しました') })
@@ -445,8 +445,8 @@ async function cancelItem(idx, item){
   if(!confirm('この注文をキャンセルしますか？')) return
 
   try{
-    await deleteBillItem(props.bill.id, item.id)   // ← billId も渡す
-    props.bill.items.splice(idx, 1)                // UI から即時削除
+      await deleteBillItem(props.bill.id, item.id)
+      await refreshTotals()
   }catch(e){
     console.error('cancel failed', e)
     alert('キャンセルに失敗しました')
@@ -637,16 +637,14 @@ async function saveTimes () {
 
 /* ------- 現状（確定済み）計算 ------------------- */
 const current = computed(() => {
-  const sub = props.bill.items.reduce(
-    (s, it) => s + it.qty *
-      (masters.value.find(m => m.id === it.item_master)?.price_regular || it.price || 0),
-    0
-  )
-  const svc = Math.round(sub * props.serviceRate)
-  const tax = Math.round((sub + svc) * props.taxRate)
-  return { sub, svc, tax, total: sub + svc + tax }
+  const b = bill.value || {}
+  // サーバ計算結果をそのまま表示（席種別サービス率・丸め方も一致）
+  const sub  = Number(b.subtotal ?? 0)
+  const svc  = Number(b.service_charge ?? 0)
+  const tax  = Number(b.tax ?? 0)
+  const total = Number(b.grand_total ?? (sub + svc + tax))
+  return { sub, svc, tax, total }
 })
-
 /* ------- draft を pending に載せる ---------- */
 const pending = ref([])   // [{ master_id, qty }]
 
