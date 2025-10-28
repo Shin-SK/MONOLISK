@@ -23,7 +23,7 @@ const hasMemo = (b) => !!(b?.memo && String(b.memo).trim())
 
 
 /* ───── 初回ロード ───── */
-onMounted(() => bills.loadAll())
+onMounted(() => bills.loadAll(true))
 
 /* ===== セグメント & アクティブのみ ===== */
 const seg = ref('today')  // 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth' | 'all' | 'range'

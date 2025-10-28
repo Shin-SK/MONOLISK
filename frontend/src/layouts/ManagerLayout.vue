@@ -50,20 +50,14 @@ async function refreshPage () {
   }
 }
 
-// ダッシュボタン押下時の挙動：
-//  - すでにダッシュボードなら再読込
-//  - 別ページなら遷移して、遷移完了で回転停止
-async function onClickDashboard () {
-  if (route.name === 'mng-dashboard') {
-    await refreshPage()
-  } else {
+// ★ いまのページを“軽く”リフレッシュ（子コンポーネント再マウント）
+async function onClickRefresh () {
+  try {
     refreshing.value = true
-    try {
-      await router.push({ name: 'mng-dashboard' })
-    } finally {
-      // ルート遷移後にちょい待って停止
-      setTimeout(() => { refreshing.value = false }, SPIN_MS + 100)
-    }
+    viewKey.value += 1     // ← これで <component :key="viewKey" /> が再マウント
+    await nextTick()
+  } finally {
+    setTimeout(() => { refreshing.value = false }, SPIN_MS + 100)
   }
 }
 
@@ -124,8 +118,8 @@ async function logout () {
       <!-- ★ ダッシュボタン：色固定（反転なし） -->
       <button
         class="nav-link bg-white text-dark"
-        @click="onClickDashboard"
-        aria-label="ダッシュボードを再表示"
+        @click="onClickRefresh"
+        aria-label="ページを再読み込み"
       >
         <IconRefresh :size="24" :class="{ spin: refreshing }" />
       </button>

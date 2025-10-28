@@ -6,42 +6,61 @@ import { useFetchOnce } from './useFetchOnce'
 
 export const useBills = defineStore('bills', {
   state : () => ({
-    list     : [],     // ← 参照を不変に保つ（空にしない）
-    current  : null,
-    _inflight: false,
-    _timer   : null,
+    list       : [],     // 参照は保つ
+    current    : null,
+    _inflight  : false,
+    _timer     : null,
     lastUpdated: null,
     _pollCount : 0,
   }),
 
   actions: {
-    async loadAll (force = false) { await this.fetch(force) },
+    async loadAll (force = false) {
+      await this.fetch(force)
+    },
 
-    // 一覧の取得：配列“丸ごと代入”をやめ、差分パッチに変更
+    // 一覧の取得：force=true は “本当に”キャッシュ無視で取り直し
     async fetch (force=false) {
       if (this._inflight) return
       this._inflight = true
       try {
-        const fetchOnce = useFetchOnce()
-        const data = await fetchOnce.get('/billing/bills/', force) // Array
+        let data
+        if (force) {
+          // ★ キャッシュ無効 + ブレーカー
+          const { data:raw } = await api.get('billing/bills/', {
+            params: { _ts: Date.now() },
+            cache : false,
+          })
+          data = this._normalizeList(raw)
+        } else {
+          const fetchOnce = useFetchOnce()
+          const raw = await fetchOnce.get('/billing/bills/', force) // Array or {results}
+          data = this._normalizeList(raw)
+        }
         this._patchListInPlace(data)
+        this.lastUpdated = new Date().toISOString()
       } finally {
         this._inflight = false
       }
     },
 
-    // 背景更新（ローダーを出さない版）
+    // 背景更新（ローダーなし）
     async fetchBg () {
       if (this._inflight) return
       this._inflight = true
       try {
-        const { data } = await api.get('billing/bills/', {
-          meta: { silent: true }   // ← ヘッダではなく meta を使う
+        const { data:raw } = await api.get('billing/bills/', {
+          params: { _ts: Date.now() },
+          cache : false,
+          meta  : { silent: true },   // ← ローディング非表示
         })
+        const data = this._normalizeList(raw)
         this._patchListInPlace(data)
-        this._pollCount
+        this._pollCount += 1
         this.lastUpdated = new Date().toISOString()
-        console.debug('[poll]', this._pollCount, this.lastUpdated, { count: this.list.length })
+        if (import.meta.env.DEV) {
+          console.debug('[poll]', this._pollCount, this.lastUpdated, { count: this.list.length })
+        }
       } finally {
         this._inflight = false
       }
@@ -53,17 +72,25 @@ export const useBills = defineStore('bills', {
       const seen = new Set()
 
       for (const nb of newList) {
+        if (!nb || nb.id == null) continue
         const ex = byId.get(nb.id)
         if (ex) {
-          Object.assign(ex, nb)     // ← 既存オブジェクトを上書き
+          Object.assign(ex, nb)     // 既存オブジェクトを上書き
         } else {
-          this.list.push(nb)        // ← 新規だけ追加
+          this.list.push(nb)        // 新規だけ追加
         }
         seen.add(nb.id)
       }
       for (let i = this.list.length - 1; i >= 0; i--) {
-        if (!seen.has(this.list[i].id)) this.list.splice(i, 1) // ← 消えたものだけ削除
+        if (!seen.has(this.list[i].id)) this.list.splice(i, 1) // 消えたものを削除
       }
+    },
+
+    // DRFの {results:[]} / 素配列 の両対応
+    _normalizeList(raw) {
+      if (Array.isArray(raw?.results)) return raw.results
+      if (Array.isArray(raw)) return raw
+      return []
     },
 
     // ポーリング制御（画面側から呼ぶ）
@@ -79,7 +106,7 @@ export const useBills = defineStore('bills', {
       this._timer = null
     },
 
-    /* ---------- 個別・操作系はそのまま ---------- */
+    /* ---------- 個別・操作系 ---------- */
     async open (id) {
       const loading = useLoading()
       loading.start()
