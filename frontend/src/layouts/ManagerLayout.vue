@@ -1,6 +1,6 @@
 <!-- /layouts/ManagerLayout.vue -->
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUser } from '@/stores/useUser'
 import { api } from '@/api'
@@ -34,8 +34,38 @@ const today     = computed(() =>
   dayjs(useNow({ interval: 60_000 }).value).format('YYYY.MM.DD (ddd)')
 )
 
-/* ★ ここを使う（このレイアウトでは useProfile を使っていない） */
-const avatarSrc = computed(() => user.avatar || '/img/user-default.png')
+/* ★ リフレッシュ制御 */
+const refreshing = ref(false)
+const viewKey    = ref(0)
+const SPIN_MS    = 2500 
+
+async function refreshPage () {
+  try {
+    refreshing.value = true
+    // 子コンポーネントを再マウントして各画面の onMounted/load を再実行
+    viewKey.value += 1
+    await nextTick()
+  } finally {
+    setTimeout(() => { refreshing.value = false }, SPIN_MS + 100) // 少し余裕を見て止める
+  }
+}
+
+// ダッシュボタン押下時の挙動：
+//  - すでにダッシュボードなら再読込
+//  - 別ページなら遷移して、遷移完了で回転停止
+async function onClickDashboard () {
+  if (route.name === 'mng-dashboard') {
+    await refreshPage()
+  } else {
+    refreshing.value = true
+    try {
+      await router.push({ name: 'mng-dashboard' })
+    } finally {
+      // ルート遷移後にちょい待って停止
+      setTimeout(() => { refreshing.value = false }, SPIN_MS + 100)
+    }
+  }
+}
 
 /* ───── active 判定ヘルパ（name で判定） ───── */
 const isActiveName = (name) => route.name === name
@@ -53,9 +83,10 @@ async function logout () {
     <!-- ────────── footer ────────── -->
     <div class="sidebar d-flex align-items-center justify-content-md-start justify-content-between gap-3 gap-md-5">
 
-      <RouterLink class="nav-link" :to="{ name: 'mng-dashboard' }">
+      <!-- Manager サイドバー（idは #managerSidebar と一致） -->
+      <button class="nav-link text-dark fs-md-2 fs-4" @click="openSidebar" aria-controls="managerSidebar" aria-label="メニューを開く">
         <Avatar :url="avatarURL" :size="40" class="rounded-circle" />
-      </RouterLink>
+      </button>
 
       <RouterLink :to="{ name:'mng-bill-table' }" v-slot="{ href, navigate, isExactActive }">
         <a
@@ -90,10 +121,13 @@ async function logout () {
         </a>
       </RouterLink>
 
-
-      <!-- Manager サイドバー（idは #managerSidebar と一致） -->
-      <button class="nav-link text-dark fs-md-2 fs-4" @click="openSidebar" aria-controls="managerSidebar" aria-label="メニューを開く">
-        <IconMenu2 :size="24" />
+      <!-- ★ ダッシュボタン：色固定（反転なし） -->
+      <button
+        class="nav-link bg-white text-dark"
+        @click="onClickDashboard"
+        aria-label="ダッシュボードを再表示"
+      >
+        <IconRefresh :size="24" :class="{ spin: refreshing }" />
       </button>
 
       <ManagerSidebar />
@@ -112,7 +146,8 @@ async function logout () {
           <router-view v-slot="{ Component }">
             <Suspense>
               <template #default>
-                <component :is="Component" />
+                <!-- ★ viewKey で子を再マウント -->
+                <component :is="Component" :key="viewKey" />
               </template>
             </Suspense>
           </router-view>
@@ -127,4 +162,21 @@ async function logout () {
 .fade-leave-active { transition: opacity .1s ease; }
 .fade-enter-from,
 .fade-leave-to { opacity: 0; }
+
+/* ★回転アニメーション */
+.spin {
+  display: inline-block;
+  animation: spinBackish 2.5s cubic-bezier(.175,.885,.32,1.275) 1 both;
+  /*  ↑ Index と同じカーブ/中間角度、1回だけ再生＆最終フレーム保持 */
+}
+@keyframes spinBackish {
+  0%   { transform: rotate(0deg); }
+  60%  { transform: rotate(380deg); } /* オーバーシュート */
+  100% { transform: rotate(360deg); } /* 少し戻して止まる */
+}
+
+/* 配慮: 低モーション設定のときはアニメ停止 */
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
+}
 </style>

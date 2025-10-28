@@ -184,8 +184,8 @@ export default function useBillEditor(billObjRef){
     dohanIds.value = active.filter(s => s.stay_type === 'dohan').map(s => s.cast.id)
   }
 
-  // 現在の配席一覧（UI表示用）
-  // currentCasts：main → dohan → free/in の順で、重複なし
+// 現在の配席一覧（UI表示用）
+// 現在の配席一覧（UI表示用）
 // currentCasts：main → dohan → free/in の順で、重複なし
 const currentCasts = computed(() => {
   const list = []
@@ -198,7 +198,8 @@ const currentCasts = computed(() => {
       ...c,
       name   : c.stage_name ?? c.name ?? '',
       avatar : c.avatar_url ?? c.avatar ?? '',
-      kind   : 'nom',
+      kind      : 'nom',
+      stay_type : 'nom',         // ← ★ これを必ず持たせる
       inhouse: false
     })
   }
@@ -210,9 +211,10 @@ const currentCasts = computed(() => {
       ...c,
       name   : c.stage_name ?? c.name ?? '',
       avatar : c.avatar_url ?? c.avatar ?? '',
-      kind   : 'dohan',   // ← これが重要（CastTableDnD は kind を見る）
+      kind      : 'dohan',
+      stay_type : 'dohan',
       inhouse: false,
-      dohan  : true       // （CastsPanel用の色分けに使うなら）
+      dohan  : true
     })
   }
 
@@ -221,18 +223,21 @@ const currentCasts = computed(() => {
   for (const id of others) {
     if (mainIds.value.includes(id) || dohanIds.value.includes(id)) continue
     const c = casts.value.find(x => x.id === id)
-    if (c) list.push({
-      ...c,
-      name   : c.stage_name ?? c.name ?? '',
-      avatar : c.avatar_url ?? c.avatar ?? '',
-      kind   : 'free',
-      inhouse: inhouseIds.value.includes(id)
-    })
+    if (c) {
+      const isIn = inhouseIds.value.includes(id)
+      list.push({
+        ...c,
+        name   : c.stage_name ?? c.name ?? '',
+        avatar : c.avatar_url ?? c.avatar ?? '',
+        kind      : 'free',
+        inhouse   : isIn,
+        stay_type : isIn ? 'in' : 'free',   // ← ★ 追加
+      })
+    }
   }
 
   return list
 })
-
 
 
   // ベンチ（未選択）
@@ -275,20 +280,26 @@ const benchCasts = computed(() => {
     await syncCasts()
   }
 
-async function setDohan(id){
-  const billId = bill.value?.id
-  if (!billId) return alert('伝票が未作成です')
-  try{
-    await setBillDohan(billId, id)   // ← stays API (POST/PATCH) で確実に保存
-    // ローカル配列も他ボタン同様に整える
-    mainIds.value    = mainIds.value.filter(x => x !== id)
-    inhouseIds.value = inhouseIds.value.filter(x => x !== id)
-    if (!dohanIds.value.includes(id)) dohanIds.value.push(id)
-    // 表示を即反映（最新Bill取得でもOK）
-    // initCastsFromBill()
-  }catch(e){ console.error(e); alert('同伴の設定に失敗しました') }
-}
-
+  async function setDohan(id){
+    const billId = bill.value?.id
+    // 新規（未作成）なら他ボタンと同じ：ローカルだけ更新して終了
+    if (!billId) {
+      mainIds.value    = mainIds.value.filter(x => x !== id)
+      inhouseIds.value = inhouseIds.value.filter(x => x !== id)
+      if (!dohanIds.value.includes(id)) dohanIds.value.push(id)
+      return
+    }
+    // 既存伝票はサーバに反映
+    try {
+      await setBillDohan(billId, id)
+      mainIds.value    = mainIds.value.filter(x => x !== id)
+      inhouseIds.value = inhouseIds.value.filter(x => x !== id)
+      if (!dohanIds.value.includes(id)) dohanIds.value.push(id)
+    } catch (e) {
+      console.error(e)
+      alert('同伴の設定に失敗しました')
+    }
+  }
 
 
   async function setMain(id){

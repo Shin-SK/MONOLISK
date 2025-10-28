@@ -23,24 +23,45 @@ const safeBench = computed(() =>
     .filter(isOnDuty)
 )
 
-/* 色クラス
-   role === 'main' -> 本指（赤）
-   c.dohan         -> 同伴（黄）
-   c.inhouse       -> 場内（緑）
-   else            -> フリー（青）
+/* 色クラス（堅牢版）
+   優先: stay_type → role/dohan/inhouse → is_honshimei/is_main
+   'nom'   = 本指（赤）
+   'dohan' = 同伴（グレー/黄）
+   'in'    = 場内（緑）
+   それ以外 = フリー（青）
 */
 const tagClass = (c) => {
-  if (c?.role === 'main') return 'bg-danger text-white'
-  if (c?.dohan)          return 'bg-secondary text-white'
-  return c?.inhouse ? 'bg-success text-white' : 'bg-blue text-white'
+  // 1) stay_type が来ていればそれで確定
+  let st = c?.stay_type
+  // 2) 互換: role/dohan/inhouse から推定
+  if (!st) {
+    if (c?.role === 'main') st = 'nom'
+    else if (c?.dohan)      st = 'dohan'
+    else if (c?.inhouse)    st = 'in'
+  }
+  // 3) さらに互換: is_honshimei / is_main 系
+  if (!st) {
+    if (c?.is_honshimei || c?.is_main) st = 'nom'
+  }
+  // 4) マッピング
+  return st === 'nom'   ? 'bg-danger text-white'
+       : st === 'in'    ? 'bg-success text-white'
+       : st === 'dohan' ? 'bg-secondary text-white'
+       :                  'bg-blue text-white'
 }
-
 /* フリー⇄場内トグル（本指/同伴はここでは触らない） */
 function toggleFreeInhouse(c){
   if (c.role === 'main' || c.dohan) return
   if (c.inhouse) emit('setFree', c.id)
   else           emit('setInhouse', c.id)
 }
+
+if (import.meta.env.DEV) {
+  // 今出ている配列が見たい時
+  window.__cur = safeCurrent
+  window.__bench = safeBench
+}
+
 </script>
 
 <template>
