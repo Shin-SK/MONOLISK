@@ -1199,14 +1199,24 @@ class DiscountRuleSerializer(serializers.ModelSerializer):
 
 
 class CastPayoutBillMiniSerializer(serializers.ModelSerializer):
+    table_no   = serializers.SerializerMethodField()
+    opened_at  = serializers.DateTimeField(read_only=True)   # あると便利
+    subtotal   = serializers.IntegerField(read_only=True)
+
     class Meta:
         model  = Bill
-        fields = ("id", "closed_at")
+        fields = ("id", "opened_at", "closed_at", "subtotal", "table_no")
+
+    def get_table_no(self, obj):
+        try:
+            return getattr(obj.table, "code", None) or getattr(obj.table, "number", None)
+        except Exception:
+            return None
 
 class CastPayoutBillItemMiniSerializer(serializers.ModelSerializer):
     class Meta:
         model  = BillItem
-        fields = ("id", "name", "price", "qty")
+        fields = ("id", "name", "price", "qty", "is_inhouse")
 
 class CastPayoutDetailSerializer(serializers.ModelSerializer):
     bill      = CastPayoutBillMiniSerializer(read_only=True)
@@ -1215,6 +1225,21 @@ class CastPayoutDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model  = CastPayout
         fields = ("id", "amount", "bill", "bill_item")
+
+class CastPayoutListSerializer(serializers.ModelSerializer):
+    cast      = CastMiniSerializer(read_only=True)                 # ★ 一覧にも cast を
+    bill      = CastPayoutBillMiniSerializer(read_only=True)
+    bill_item = CastPayoutBillItemMiniSerializer(read_only=True)
+    stay_type = serializers.SerializerMethodField()                # ★ stay_type も返す
+
+    class Meta:
+        model  = CastPayout
+        fields = ('id', 'amount', 'cast', 'bill', 'bill_item', 'stay_type')
+
+    def get_stay_type(self, obj):
+        # 伝票内でそのキャストの最新 stay を見る
+        s = obj.bill.stays.filter(cast_id=obj.cast_id).order_by('-entered_at').first()
+        return getattr(s, 'stay_type', None)
 
 class CastPayrollSummaryRowSerializer(serializers.Serializer):
     id          = serializers.IntegerField()

@@ -3,17 +3,23 @@
 import { ref, onMounted } from 'vue'
 import { useRouter }      from 'vue-router'
 import dayjs              from 'dayjs'
-import { fetchCastDailySummaries, fetchCasts, fetchPayrollSummary } from '@/api'
+import {
+  fetchCastDailySummaries,   // ← champ 売上（sales_champ）用
+  fetchCasts,
+  fetchPayrollSummary,       // ← 時給合計
+  listCastPayouts         // ← 期間の CastPayout 明細（stay_type 付き）
+} from '@/api'
 
 /* ---------- 期間 ---------- */
 const dateFrom = ref(dayjs().startOf('month').format('YYYY-MM-DD'))
 const dateTo   = ref(dayjs().format('YYYY-MM-DD'))
 
 /* ---------- データ ---------- */
-const dailyRows   = ref([])   // CastDailySummary（日別の売上金額・時給）
+const dailyRows   = ref([])   // CastDailySummary（日毎）
 const totals      = ref([])   // 画面に出すキャスト別集計
-const allCasts    = ref([])   // 全キャスト（売上ゼロも表示用）
-const paySummary  = ref([])   // fetchPayrollSummary（出来高=commission / 時給=hourly_pay）
+const allCasts    = ref([])   // 全キャスト（ゼロも表示）
+const paySummary  = ref([])   // {id, hourly_pay, commission, ...}
+const payouts     = ref([])   // CastPayout（stay_type 付き）
 
 const router = useRouter()
 const yen = n => `¥${(+n || 0).toLocaleString()}`
@@ -22,44 +28,62 @@ const yen = n => `¥${(+n || 0).toLocaleString()}`
 function aggregate () {
   const map = new Map()
 
-  // Payrollサマリ → {castId: commission/hourly} マップ
-  const commByCast = new Map()
+  // 1) champ 売上（CastDailySummary）
+  const champByCast = new Map()
+  for (const r of (dailyRows.value || [])) {
+    const cid = r.cast?.id
+    if (!cid) continue
+    champByCast.set(cid, (champByCast.get(cid) || 0) + (Number(r.sales_champ) || 0))
+  }
+
+  // 2) 歩合内訳（CastPayout の stay_type 別）
+  const nomByCast = new Map()
+  const inByCast  = new Map()
+  const freeByCast= new Map()
+  for (const p of (payouts.value || [])) {
+    const cid = (typeof p.cast === 'object' ? p.cast?.id : p.cast) ?? p.cast_id
+    if (!cid) continue
+    const amt = Number(p.amount) || 0
+    const st  = p.stay_type || (p.bill_item?.is_inhouse ? 'in' : 'free')
+    if (st === 'nom')      nomByCast.set(cid,  (nomByCast.get(cid)   || 0) + amt)
+    else if (st === 'in')  inByCast.set(cid,   (inByCast.get(cid)    || 0) + amt)
+    else                   freeByCast.set(cid, (freeByCast.get(cid)  || 0) + amt)
+  }
+
+  // 3) 時給（PayrollSummary）
   const payByCast  = new Map()
   for (const s of (paySummary.value || [])) {
-    const cid = Number(s.id) // { id, commission, hourly_pay, total, ... }
+    const cid = Number(s.id)
     if (!cid) continue
-    commByCast.set(cid, Number(s.commission)  || 0)
-    payByCast.set(cid,  Number(s.hourly_pay) || 0)
+    payByCast.set(cid, Number(s.hourly_pay) || 0)
   }
 
-  // 実売上があるキャスト（日次サマリから金額列を合算）
-  for (const r of (dailyRows.value || [])) {
-    const id = r.cast.id
-    if (!map.has(id)) {
-      map.set(id, {
-        cast: r.cast, champ:0, nom:0, in:0, free:0,
-        comm:0, pay:0, grand:0
-      })
-    }
-    const t = map.get(id)
-    t.champ += Number(r.sales_champ) || 0
-    t.nom   += Number(r.sales_nom)   || 0
-    t.in    += Number(r.sales_in)    || 0
-    t.free  += Number(r.sales_free)  || 0
-    // 歩合は CastPayout 合算（店舗エンジンの 20%/500 反映）
-    t.comm   = commByCast.get(id) || 0
-    // 時給は日次サマリ（複数日分を都度加算）
-    t.pay   += Number(r.payroll) || 0
-    t.grand  = t.comm + t.pay
-  }
+  // 4) 行を作る（ゼロも表示）
+  const every = new Set([
+    ...Array.from(champByCast.keys()),
+    ...Array.from(nomByCast.keys()),
+    ...Array.from(inByCast.keys()),
+    ...Array.from(freeByCast.keys()),
+    ...Array.from(payByCast.keys()),
+    ...allCasts.value.map(c => c.id),
+  ])
 
-  // 売上ゼロのキャストも行を作る
-  for (const c of (allCasts.value || [])) {
-    if (!map.has(c.id)) {
-      const comm = commByCast.get(c.id) || 0
-      const pay  = payByCast.get(c.id)  || 0
-      map.set(c.id, { cast:c, champ:0, nom:0, in:0, free:0, comm, pay, grand: comm + pay })
-    }
+  for (const cid of every) {
+    const cast = (allCasts.value || []).find(c => c.id === cid) || { id: cid, stage_name: `#${cid}` }
+    const champ = champByCast.get(cid)   || 0
+    const nom   = nomByCast.get(cid)     || 0
+    const inn   = inByCast.get(cid)      || 0
+    const free  = freeByCast.get(cid)    || 0
+    const pay   = payByCast.get(cid)     || 0
+    const comm  = nom + inn + free
+
+    map.set(cid, {
+      cast, champ,
+      nom, in: inn, free,
+      comm,            // 歩合小計 = 3区分の合計
+      pay,
+      grand: comm + pay,
+    })
   }
 
   totals.value = [...map.values()].sort((a,b) => b.grand - a.grand)
@@ -67,14 +91,16 @@ function aggregate () {
 
 /* ---------- 取得 ---------- */
 async function load () {
-  const [rows, casts, sum] = await Promise.all([
+  const [rows, casts, sum, pays] = await Promise.all([
     fetchCastDailySummaries({ from: dateFrom.value, to: dateTo.value }),
     fetchCasts(),
-    fetchPayrollSummary({ from: dateFrom.value, to: dateTo.value })
+    fetchPayrollSummary({ from: dateFrom.value, to: dateTo.value }),
+    listCastPayouts({ from: dateFrom.value, to: dateTo.value, limit: 10000 })   // stay_type 付きで取得
   ])
   dailyRows.value   = Array.isArray(rows) ? rows : []
   allCasts.value    = Array.isArray(casts?.results) ? casts.results : (Array.isArray(casts) ? casts : [])
   paySummary.value  = Array.isArray(sum)  ? sum  : []
+  payouts.value     = Array.isArray(pays) ? pays : []
   aggregate()
 }
 

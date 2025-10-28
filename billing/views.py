@@ -38,7 +38,8 @@ from .serializers import (
     CastRankingSerializer, CastSalesSummarySerializer,
     StaffSerializer, StaffShiftSerializer,
     BillCastStayMiniSerializer, CustomerSerializer, CustomerLogSerializer,
-    StoreNoticeSerializer, ItemCategorySerializer, StoreSeatSettingSerializer, DiscountRuleSerializer
+    StoreNoticeSerializer, ItemCategorySerializer, StoreSeatSettingSerializer, DiscountRuleSerializer,
+    CastPayoutListSerializer,
 )
 from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales, sync_nomination_fees
@@ -49,6 +50,21 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import CastGoal
 from .serializers import CastGoalSerializer
+
+from datetime import date
+from django.db.models import Sum, F, Q, Value, IntegerField
+from django.db.models.functions import Coalesce
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
+from .models import Cast, CastShift, CastPayout
+from .serializers import (
+    CastMiniSerializer,
+    CastPayoutDetailSerializer,
+    CastPayrollSummaryRowSerializer,
+    CastPayoutListSerializer,
+)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -417,18 +433,17 @@ class CastViewSet(StoreScopedModelViewSet):
 
 
 class CastPayoutListView(generics.ListAPIView):
-    serializer_class = CastPayoutDetailSerializer
+    serializer_class = CastPayoutListSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_class  = CastPayoutFilter
 
     def get_queryset(self):
         sid = StoreScopedModelViewSet.require_store(self, self.request)
-        qs = (
-            CastPayout.objects
-            .select_related("cast", "bill", "bill__table", "bill_item", "bill_item__item_master")
-            .filter(bill__isnull=False, bill__table__store_id=sid)
-        )
+        qs = (CastPayout.objects
+              .select_related("cast", "bill", "bill__table", "bill_item", "bill_item__item_master")
+              .prefetch_related("bill__stays")                          # ← stay_type 計算のため
+              .filter(bill__isnull=False, bill__table__store_id=sid))
         if (cid := self.request.query_params.get("cast")):
             qs = qs.filter(cast_id=cid)
         f = self.request.query_params.get("from")
@@ -781,19 +796,7 @@ class DiscountRuleViewSet(ReadOnlyModelViewSet):
 
 
 # === 給与計算 ===
-from datetime import date
-from django.db.models import Sum, F, Q, Value, IntegerField
-from django.db.models.functions import Coalesce
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 
-from .models import Cast, CastShift, CastPayout
-from .serializers import (
-    CastMiniSerializer,
-    CastPayoutDetailSerializer,
-    CastPayrollSummaryRowSerializer,
-)
 
 def _get_store_id_from_header(request):
     # Store-Locked: ミドルウェアで検証済みでも、ここで参照してフィルタ
