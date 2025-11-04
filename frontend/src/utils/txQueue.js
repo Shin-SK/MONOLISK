@@ -5,7 +5,7 @@
 import {
   fetchBill, createBill, patchBill, addBillItem,
   updateBillCustomers, updateBillCasts, updateBillTable,
-  deleteBill
+  deleteBill, closeBill
 } from '@/api'
 import { useBills } from '@/stores/useBills'
 
@@ -52,11 +52,13 @@ const runners = {
   async addBillItem(p){ await addBillItem(p.id, p.item) },              // {id, item:{ item_master, qty, served_by_cast_id? }}
   async updateBillTable(p){ await updateBillTable(p.id, p.table_id) },  // {id, table_id}
   deleteBill: deleteBillRunner,
+  async closeBill(p){            // { id, payload:{ settled_total } }
+    await closeBill(p.id, p.payload || {})
+  },
   async reconcile(p){                                                   // {id}
     const real = await fetchBill(p.id).catch(()=>null)
     if (real) upsertBillInStore(real)
   }
-
 }
 
 export function startTxQueue(){

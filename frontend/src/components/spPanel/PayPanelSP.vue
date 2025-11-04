@@ -229,7 +229,7 @@ const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
       </div>
       <!-- ▼ 確定 -->
       <div class="paybutton">
-        <button class="btn btn-primary w-100" type="button" :disabled="!canClose" @click="$emit('confirmClose')">お会計</button>
+        <button class="btn btn-primary w-100" type="button" :disabled="!canClose || closing" @click="$emit('confirmClose')">お会計</button>
       </div>
 	</div>
   </div>

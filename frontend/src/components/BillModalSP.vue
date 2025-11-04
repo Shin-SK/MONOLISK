@@ -235,21 +235,49 @@ async function confirmClose(){
   closing.value = true
   try{
     await nextTick()
-    const memoStr = payRef.value?.getMemo?.() ?? ''
-    await api.patch(`billing/bills/${props.bill.id}/`, {
-      paid_cash: Number(paidCashRef.value)||0,
-      paid_card: Number(paidCardRef.value)||0,
-      memo: memoStr,
-    })
-    await api.post(`billing/bills/${props.bill.id}/close/`, {
-      settled_total: Number(settledTotalRef.value)||Number(displayGrandTotal.value)||0,
-    })
-    const fresh = await fetchBill(props.bill.id).catch(()=>null)
-    emit('saved', fresh || props.bill.id)
+    const billId   = props.bill.id
+    const memoStr  = (payRef.value?.getMemo?.() ?? '').toString()
+    const settled  = Number(settledTotalRef.value) || Number(displayGrandTotal.value) || 0
+    const paidCash = Number(paidCashRef.value) || 0
+    const paidCard = Number(paidCardRef.value) || 0
+
+    // ① 楽観反映（UI即更新）
+    props.bill.paid_cash     = paidCash
+    props.bill.paid_card     = paidCard
+    props.bill.settled_total = settled
+    props.bill.memo          = memoStr
+    props.bill.closed_at     = new Date().toISOString()   // “閉店”を即時表示
+    // 可能ならリスト側も同期
+    try{
+      const { useBills } = await import('@/stores/useBills')
+      const bs = useBills()
+      const i = bs.list.findIndex(b => Number(b.id) === Number(billId))
+      if (i >= 0) {
+        bs.list[i] = { ...bs.list[i],
+          paid_cash: paidCash, paid_card: paidCard, settled_total: settled,
+          memo: memoStr, closed_at: props.bill.closed_at
+        }
+      }
+    }catch{}
+
+    // ② 裏送信（順序安全：patch → close → reconcile）
+    enqueue('patchBill', { id: billId, payload: {
+      paid_cash: paidCash, paid_card: paidCard, memo: memoStr,
+    }})
+    enqueue('closeBill', { id: billId, payload: { settled_total: settled }})
+    enqueue('reconcile', { id: billId })
+
+    // ③ 親へ通知（UIはもう閉店表示。ここでモーダルも閉じる）
+    emit('saved', { id: billId })
     visible.value = false
-  }catch(e){ console.error(e); alert('会計に失敗しました') }
-  finally{ closing.value = false }
+  }catch(e){
+    console.error(e)
+    alert('会計に失敗しました（オフラインでも後で確定されます）')
+  }finally{
+    closing.value = false
+  }
 }
+
 
 /* 保存（既存） */
 const saving = ref(false)
