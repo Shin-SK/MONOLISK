@@ -37,8 +37,6 @@ function calVerJST() {
 }
 let appVersion =
   process.env.APP_VERSION ||                    // CIで明示指定があれば最優先
-  (() => { try { return execSync('git describe --tags --abbrev=0').toString().trim(); } catch { return ''; } })() ||
-  (() => { try { return JSON.parse(readFileSync(PKG_F, 'utf8')).version || ''; } catch { return ''; } })() ||
   '';                                          // 何も無ければ後でCalVer採用
 
 const sha = shortSha();
