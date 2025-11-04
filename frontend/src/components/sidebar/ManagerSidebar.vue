@@ -10,6 +10,8 @@ import StoreSwitcher from '@/components/StoreSwitcher.vue'
 import { closeOffcanvas } from '@/utils/bsOffcanvas'
 import { MANUALS } from '@/plugins/manuals'
 import { openManual } from '@/utils/manuals'
+import { APP_VERSION, GIT_SHA, BUILD_AT } from '@/version.gen.js'
+
 
 async function nav(to){
   await router.push(to)
@@ -203,6 +205,9 @@ async function logout () {
           </button>
           <StoreSwitcher class="mt-5" />
           <DevRoleSwitcher class="mt-1 mb-2"/>
+          <div class="version text-muted small text-center w-100">
+            v{{ APP_VERSION }}
+          </div>
         </div>
       </aside>
     </div>
