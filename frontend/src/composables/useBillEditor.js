@@ -12,7 +12,8 @@ import {
   setBillDohan,
   api,
 } from '@/api'
-
+import { enqueue } from '@/utils/txQueue'
+import { useBills } from '@/stores/useBills'
 
 export default function useBillEditor(billObjRef){
   const bill = toRef(billObjRef)
@@ -146,22 +147,28 @@ export default function useBillEditor(billObjRef){
     showCustModal.value = false
   }
 
-  async function chooseCourse(opt){
-    if (!opt) return { updated:false }
-    if (isNew.value){
-      pending.value.push({ master_id: opt.id, qty: pax.value, cast_id: null })
-      return { pending:true, updated:false }
-    }
-    const newItem = await addBillItem(bill.value.id, { item_master: opt.id, qty: pax.value })
-    bill.value.items = bill.value.items || []
-    bill.value.items.push(newItem)
-
-    const currentTableId = bill.value.table?.id ?? bill.value.table ?? null
-    if (tableId.value !== currentTableId) {
-      await updateBillTable(bill.value.id, tableId.value)
-    }
-    return { pending:false, updated:true, item:newItem }
+async function chooseCourse(opt){
+  if (!opt) return { updated:false }
+  if (isNew.value){
+    pending.value.push({ master_id: opt.id, qty: pax.value, cast_id: null })
+    return { pending:true, updated:false }
   }
+  // ★ 即ローカルで行を足す
+  bill.value.items = bill.value.items || []
+  bill.value.items.push({
+    id: `tmp-${Date.now()}`, item_master: opt.id, qty: pax.value, price: null
+  })
+  // テーブル変更が必要なら裏送信
+  const currentTableId = bill.value.table?.id ?? bill.value.table ?? null
+  if (tableId.value !== currentTableId) {
+    enqueue('updateBillTable', { id: bill.value.id, table_id: tableId.value })
+  }
+  // 明細追加を裏送信
+  enqueue('addBillItem', { id: bill.value.id, item: { item_master: opt.id, qty: pax.value } })
+
+  return { pending:false, updated:true }
+}
+
 
   /* ===== Casts（ドラッグ無し／ボタン操作） ===== */
   const mainIds    = ref([])           // 本指名
@@ -184,83 +191,84 @@ export default function useBillEditor(billObjRef){
     dohanIds.value = active.filter(s => s.stay_type === 'dohan').map(s => s.cast.id)
   }
 
-// 現在の配席一覧（UI表示用）
-// 現在の配席一覧（UI表示用）
-// currentCasts：main → dohan → free/in の順で、重複なし
-const currentCasts = computed(() => {
-  const list = []
+  // 現在の配席一覧（UI表示用）
+  // currentCasts：main → dohan → free/in の順で、重複なし
+  const currentCasts = computed(() => {
+    const list = []
 
-  // main（赤）
-  for (const id of mainIds.value) {
-    if (dohanIds.value.includes(id)) continue // 同伴優先で除外
-    const c = casts.value.find(x => x.id === id)
-    if (c) list.push({
-      ...c,
-      name   : c.stage_name ?? c.name ?? '',
-      avatar : c.avatar_url ?? c.avatar ?? '',
-      kind      : 'nom',
-      stay_type : 'nom',         // ← ★ これを必ず持たせる
-      inhouse: false
-    })
-  }
-
-  // dohan（グレー＝secondary）
-  for (const id of dohanIds.value) {
-    const c = casts.value.find(x => x.id === id)
-    if (c) list.push({
-      ...c,
-      name   : c.stage_name ?? c.name ?? '',
-      avatar : c.avatar_url ?? c.avatar ?? '',
-      kind      : 'dohan',
-      stay_type : 'dohan',
-      inhouse: false,
-      dohan  : true
-    })
-  }
-
-  // free/in（緑/青）… main/dohan と重複しない
-  const others = new Set([...freeIds.value, ...inhouseIds.value])
-  for (const id of others) {
-    if (mainIds.value.includes(id) || dohanIds.value.includes(id)) continue
-    const c = casts.value.find(x => x.id === id)
-    if (c) {
-      const isIn = inhouseIds.value.includes(id)
-      list.push({
+    // main（赤）
+    for (const id of mainIds.value) {
+      if (dohanIds.value.includes(id)) continue // 同伴優先で除外
+      const c = casts.value.find(x => x.id === id)
+      if (c) list.push({
         ...c,
         name   : c.stage_name ?? c.name ?? '',
         avatar : c.avatar_url ?? c.avatar ?? '',
-        kind      : 'free',
-        inhouse   : isIn,
-        stay_type : isIn ? 'in' : 'free',   // ← ★ 追加
+        kind      : 'nom',
+        stay_type : 'nom',         // ← ★ これを必ず持たせる
+        inhouse: false
       })
     }
-  }
 
-  return list
-})
+    // dohan（グレー＝secondary）
+    for (const id of dohanIds.value) {
+      const c = casts.value.find(x => x.id === id)
+      if (c) list.push({
+        ...c,
+        name   : c.stage_name ?? c.name ?? '',
+        avatar : c.avatar_url ?? c.avatar ?? '',
+        kind      : 'dohan',
+        stay_type : 'dohan',
+        inhouse: false,
+        dohan  : true
+      })
+    }
+
+    // free/in（緑/青）… main/dohan と重複しない
+    const others = new Set([...freeIds.value, ...inhouseIds.value])
+    for (const id of others) {
+      if (mainIds.value.includes(id) || dohanIds.value.includes(id)) continue
+      const c = casts.value.find(x => x.id === id)
+      if (c) {
+        const isIn = inhouseIds.value.includes(id)
+        list.push({
+          ...c,
+          name   : c.stage_name ?? c.name ?? '',
+          avatar : c.avatar_url ?? c.avatar ?? '',
+          kind      : 'free',
+          inhouse   : isIn,
+          stay_type : isIn ? 'in' : 'free',   // ← ★ 追加
+        })
+      }
+    }
+
+    return list
+  })
 
 
   // ベンチ（未選択）
-const benchCasts = computed(() => {
-  const chosen = new Set([...mainIds.value, ...freeIds.value, ...inhouseIds.value, ...dohanIds.value])
-  const kw = castKeyword.value.trim().toLowerCase()
-  const list = Array.isArray(casts.value) ? casts.value : []
-  return list.filter(c => {
-    if (!c || c.id == null) return false
-    if (chosen.has(c.id)) return false
-    if (!kw) return true
-    return (c.stage_name || '').toLowerCase().includes(kw)
+  const benchCasts = computed(() => {
+    const chosen = new Set([...mainIds.value, ...freeIds.value, ...inhouseIds.value, ...dohanIds.value])
+    const kw = castKeyword.value.trim().toLowerCase()
+    const list = Array.isArray(casts.value) ? casts.value : []
+    return list.filter(c => {
+      if (!c || c.id == null) return false
+      if (chosen.has(c.id)) return false
+      if (!kw) return true
+      return (c.stage_name || '').toLowerCase().includes(kw)
+    })
   })
-})
 
   // 同期（既存伝票のみ）
   async function syncCasts(){
     if (isNew.value) return
-    await updateBillCasts(bill.value.id, {
+    // ★ サーバ待ちなし：裏送信のみ
+    enqueue('updateBillCasts', {
+      billId: bill.value.id,
       nomIds:  [...mainIds.value],
       inIds:   [...inhouseIds.value],
       freeIds: [...freeIds.value],
-      dohanIds: [...dohanIds.value],
+      dohanIds:[...dohanIds.value],
     })
   }
 
@@ -281,25 +289,22 @@ const benchCasts = computed(() => {
   }
 
   async function setDohan(id){
-    const billId = bill.value?.id
-    // 新規（未作成）なら他ボタンと同じ：ローカルだけ更新して終了
-    if (!billId) {
-      mainIds.value    = mainIds.value.filter(x => x !== id)
-      inhouseIds.value = inhouseIds.value.filter(x => x !== id)
-      if (!dohanIds.value.includes(id)) dohanIds.value.push(id)
-      return
-    }
-    // 既存伝票はサーバに反映
-    try {
-      await setBillDohan(billId, id)
-      mainIds.value    = mainIds.value.filter(x => x !== id)
-      inhouseIds.value = inhouseIds.value.filter(x => x !== id)
-      if (!dohanIds.value.includes(id)) dohanIds.value.push(id)
-    } catch (e) {
-      console.error(e)
-      alert('同伴の設定に失敗しました')
-    }
+    // 即ローカル反映（同伴は他カテゴリと排他）
+    mainIds.value    = mainIds.value.filter(x => x !== id)
+    inhouseIds.value = inhouseIds.value.filter(x => x !== id)
+    freeIds.value    = freeIds.value.filter(x => x !== id)
+    if (!dohanIds.value.includes(id)) dohanIds.value.push(id)
+
+    if (isNew.value) return
+    enqueue('updateBillCasts', {
+      billId: bill.value.id,
+      nomIds:  [...mainIds.value],
+      inIds:   [...inhouseIds.value],
+      freeIds: [...freeIds.value],
+      dohanIds:[...dohanIds.value],
+    })
   }
+
 
 
   async function setMain(id){
@@ -334,6 +339,75 @@ const benchCasts = computed(() => {
     } catch(e) { console.error('fetch failed', e) }
   })
 
+  async function save(){
+    // 楽観用の即時Billを構築
+    const billsStore = useBills()
+    const isNewBill  = !bill.value?.id
+    const nowISO     = new Date().toISOString()
+
+    // stays（本指名/場内/フリー/同伴）の現在値を作る
+    const stays = []
+    ;(mainIds.value || []).forEach(id => stays.push({ cast:{id}, stay_type:'nom',  entered_at: nowISO, left_at:null }))
+    ;(dohanIds.value|| []).forEach(id => stays.push({ cast:{id}, stay_type:'dohan',entered_at: nowISO, left_at:null }))
+    ;(freeIds.value || []).forEach(id => {
+      const isIn = inhouseIds.value.includes(id)
+      stays.push({ cast:{id}, stay_type: isIn ? 'in' : 'free', entered_at: nowISO, left_at:null })
+    })
+
+    const table_id = tableId.value ?? (bill.value?.table?.id ?? bill.value?.table ?? null)
+    const optimisticId = isNewBill ? -Date.now() : bill.value.id
+    const optimisticBill = {
+      id: optimisticId,
+      table: { id: table_id, number: bill.value?.table?.number ?? null, store: bill.value?.table?.store ?? null },
+      customers: bill.value?.customers || [],
+      stays,
+      opened_at: bill.value?.opened_at || nowISO,
+      expected_out: null,
+      pax: pax.value ?? bill.value?.pax ?? null,
+      subtotal: bill.value?.subtotal ?? 0,
+      closed_at: null
+    }
+
+    // UIへ即時反映（upsert）
+    const i = billsStore.list.findIndex(b => Number(b.id) === Number(optimisticId))
+    if (i >= 0) billsStore.list[i] = optimisticBill
+    else billsStore.list.unshift(optimisticBill)
+
+    // キュー投入（裏で確定）
+    const memoStr = ''  // 必要ならモーダル側から受け取って渡す
+
+    if (isNewBill){
+      enqueue('createBill', { tempId: optimisticId, table_id, opened_at: optimisticBill.opened_at, expected_out: null, memo: memoStr })
+      enqueue('updateBillTable', { id: optimisticId, table_id })
+    }else{
+      const currentTableId = bill.value.table?.id ?? bill.value.table ?? null
+      if (table_id !== currentTableId) enqueue('updateBillTable', { id: optimisticId, table_id })
+      enqueue('patchBill', { id: optimisticId, payload: { memo: memoStr } })
+    }
+
+    if ((bill.value?.customers?.length ?? 0) > 0){
+      enqueue('updateBillCustomers', { id: optimisticId, customer_ids: bill.value.customers })
+    }
+
+    enqueue('updateBillCasts', {
+      billId: optimisticId,
+      nomIds: [...(mainIds.value||[])],
+      inIds : [...(inhouseIds.value||[])],
+      freeIds: [...(freeIds.value||[])],
+      dohanIds: [...(dohanIds.value||[])],
+    })
+
+    for (const it of pending.value || []){
+      enqueue('addBillItem', { id: optimisticId, item: { item_master: it.master_id, qty: it.qty, served_by_cast_id: it.cast_id ?? undefined } })
+    }
+    pending.value = []
+
+    enqueue('reconcile', { id: optimisticId })
+
+    return optimisticBill
+  }
+
+
   return {
     /* Basics */
     isNew, tables, masters, tableId, pax, pending,
@@ -357,6 +431,6 @@ const benchCasts = computed(() => {
     // SP: 顧客インライン検索
     custQuery, custResults, custLoading, searchCustomers, resetCustomerSearch, pickCustomerInline,
 
-
+    save,
   }
 }

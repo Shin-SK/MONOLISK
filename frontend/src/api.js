@@ -84,10 +84,22 @@ if (import.meta.env.DEV) window.__API__ = api
 
 // すでに baseURL が `/api/` なので “billing/...” を付ける
 
-export const fetchBills   = (params={}) =>
-  api.get('billing/bills/', { params }).then(r=>r.data)
 
-export const fetchBill    = id      => api.get(`billing/bills/${id}/`).then(r=>r.data)
+export const fetchBill = (id, { noCache=false } = {}) =>
+  api.get(`billing/bills/${id}/`, noCache ? { cache:false } : undefined)
+     .then(r => r.data)
+
+// 一覧リロード用の helper（任意。なければ store 側で api.get を直叩きでOK）
+export const fetchBillsList = ({ params={}, noCache=false } = {}) =>
+  api.get('billing/bills/', {
+    params,
+    ...(noCache ? { cache:false } : {})
+  }).then(r => Array.isArray(r.data?.results) ? r.data.results : (Array.isArray(r.data) ? r.data : []))
+
+  export const fetchBills = (params = {}) =>
+  fetchBillsList({ params, noCache: true })
+
+
 export const createBill = (arg = {}) => {
 	const payload = (typeof arg === 'number') ? { table_id: arg } : { ...arg }
 	const body = {

@@ -110,7 +110,10 @@ export function wireInterceptors(api) {
         auth: !!cfg.headers?.Authorization
       })
     }
-    
+
+    if ((cfg.method || 'get').toLowerCase() === 'delete') {
+      cfg.cache = false
+    }
     return cfg
   })
 

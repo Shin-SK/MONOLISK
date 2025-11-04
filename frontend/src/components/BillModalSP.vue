@@ -18,6 +18,7 @@ import {
 const { hasRole } = useRoles()
 const canProvisional = computed(() => hasRole(['manager','owner']))
 
+
 const props = defineProps({
   modelValue: Boolean,
   bill: { type: Object, required: true },
@@ -33,7 +34,7 @@ const visible = computed({
 const pane = ref('base')
 
 /* composable */
-const ed = useBillEditor(toRef(props, 'bill'))
+const ed = useBillEditor(toRef(props,'bill'))
 
 /* 席種は親でローカル管理 */
 const seatType = ref('main')
@@ -252,55 +253,12 @@ async function confirmClose(){
 
 /* 保存（既存） */
 const saving = ref(false)
-const handleSave = async () => {
+async function handleSave(){
   if (saving.value) return
   saving.value = true
   try{
-    await nextTick()
-    const memoStr = payRef.value?.getMemo?.() ?? ''
-    let billId = props.bill?.id ?? null
-
-    if (!ed.isNew.value) {
-      const currentTableId = props.bill.table?.id ?? props.bill.table ?? null
-      if (ed.tableId.value !== currentTableId) {
-        await updateBillTable(props.bill.id, ed.tableId.value)
-      }
-      await patchBill(props.bill.id, { memo: memoStr })
-      billId = props.bill.id
-    } else {
-      const created = await createBill({
-        table_id: ed.tableId.value ?? null,
-        opened_at: new Date().toISOString(),
-        expected_out: null,
-        memo: memoStr,
-      })
-      billId = created.id
-
-      if ((props.bill.customers?.length ?? 0) > 0) {
-        await updateBillCustomers(billId, props.bill.customers)
-      }
-      if (ed.mainIds.value.length || ed.inhouseIds.value.length || ed.freeIds.value.length) {
-        await updateBillCasts(billId, {
-          nomIds:[...ed.mainIds.value],
-          inIds:[...ed.inhouseIds.value],
-          freeIds:[...ed.freeIds.value],
-        })
-      }
-    }
-
-    for (const it of ed.pending.value) {
-      await addBillItem(billId, {
-        item_master: it.master_id,
-        qty: it.qty,
-        served_by_cast_id: it.cast_id ?? undefined,
-      })
-    }
-    ed.pending.value = []
-
-    const fresh = await fetchBill(billId).catch(() => null)
-    emit('saved', fresh || billId)
-  }catch(e){
-    console.error(e); alert('保存に失敗しました')
+    const optimistic = await ed.save()
+    emit('saved', optimistic)   // 親はこのイベントでカード即時反映済み
   }finally{
     saving.value = false
   }
