@@ -273,7 +273,7 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
             </div>
             <div class="d-flex align-items-center gap-2">
               <IconRefresh />
-              <span>延長 {{ extCountView }}</span>
+              <span>{{ extCountView }}</span>
             </div>
           </div>
         </div>
