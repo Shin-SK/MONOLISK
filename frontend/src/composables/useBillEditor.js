@@ -30,7 +30,7 @@ export default function useBillEditor(billObjRef){
   const casts   = computed(() => Array.isArray(castsStore.list)   ? castsStore.list.filter(Boolean)   : [])
 
   /* ===== Basics ===== */
-  const tableId = ref(bill.value?.table?.id ?? null)
+  const tableId = ref(bill.value?.table?.id ?? bill.value?.table_id_hint ?? null)
   const pax     = ref(1)
   const pending = ref([])
 

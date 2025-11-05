@@ -230,6 +230,18 @@ function fillRemainderToCard(){
   paidCardRef.value = need
 }
 
+// ★ BasicsPanel からの時間更新を受けて patch（即時反映＋裏送信）
+function onUpdateTimes({ opened_at, expected_out }){
+  if (!props.bill?.id) return
+  const id = props.bill.id
+  // 楽観更新
+  if (opened_at !== undefined)  props.bill.opened_at  = opened_at
+  if (expected_out !== undefined) props.bill.expected_out = expected_out
+  // 送信キューで確定
+  enqueue('patchBill', { id, payload: { opened_at, expected_out }})
+  enqueue('reconcile', { id })
+}
+
 const closing = ref(false)
 async function confirmClose(){
   if (closing.value || !props.bill?.id) return
@@ -298,7 +310,7 @@ async function handleSave(){
   <BaseModal v-if="bill" v-model="visible" class="billmodal-sp">
     <template #header>
       <div id="header" class="header-bar">
-        <div class="page-title">{{ pageTitle }}</div>
+        <div class="page-title fs-1">{{ pageTitle }}</div>
         <div class="button-area fs-5">
           <button :disabled="saving" @click="handleSave" aria-label="save"><IconDeviceFloppy /></button>
           <button @click="$emit('update:modelValue', false)" aria-label="close"><IconX /></button>
@@ -318,6 +330,11 @@ async function handleSave(){
       :customer-name="ed.customerName.value"
       :customer-results="ed.custResults.value"
       :customer-searching="ed.custLoading.value"
+      :opened-at="bill.opened_at"
+      :expected-out="bill.expected_out"
+      :ext-minutes="bill.ext_minutes || 0"
+      :set-rounds="bill.set_rounds || 0"
+      @update-times="onUpdateTimes"
       @update:seatType="onSeatTypeChange" 
       @update:tableId="v => (ed.tableId.value = v)"
       @update:pax="v => (ed.pax.value = v)"

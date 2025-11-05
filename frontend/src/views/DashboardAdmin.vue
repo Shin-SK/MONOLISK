@@ -38,7 +38,11 @@ async function openBillEditor({ billId }){
 }
 
 function handleNewBill({ tableId }){
-  currentBill.value = buildBillDraft({ tableId, storeId: myStoreId.value })
+  const d = buildBillDraft({ tableId, storeId: myStoreId.value }) || {}
+  // BasicPanel は ed.tableId.value(= bill.table.id or table_id_hint) を読む
+  d.table = d.table || { id: tableId }         // ← これで “選択済み” になる
+  d.table_id_hint = tableId                     // ← 念のため hint も入れておく
+  currentBill.value = d
   showModal.value   = true
 }
 
@@ -51,7 +55,6 @@ function handleSaved(){
   spRef.value?.reload?.()
 }
 
-/* （日付UIは既存のまま必要なら） */
 </script>
 
 <template>

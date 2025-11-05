@@ -24,7 +24,8 @@ import dayjs from 'dayjs'
 import CustomerModal from '@/components/CustomerModal.vue'
 import BasicsPanel   from '@/components/panel/BasicsPanel.vue'
 import CustomerPanel from '@/components/CustomerPanel.vue'
-import OrderPanelSP from '@/components/spPanel/OrderPanelSP.vue'  // ← SP版をそのまま使う前提
+import OrderPanelSP from '@/components/spPanel/OrderPanelSP.vue'
+import { enqueue } from '@/utils/txQueue'
 
 
 /* ── props / emit ─────────────────────────────── */
@@ -194,9 +195,10 @@ function clearCustomer(target) {
   props.bill.customers = (props.bill.customers || []).filter(c => asId(c) !== id)
   props.bill.customer_display_name = props.bill.customers.length ? props.bill.customer_display_name : ''
   if (!isNew.value) {
-    updateBillCustomers(props.bill.id, props.bill.customers)
-      .then(() => { originalCustIds.value = [...props.bill.customers] })
-      .catch(e => { console.error(e); alert('顧客更新に失敗しました') })
+    const ids = (props.bill.customers||[]).map(asId).filter(Boolean)
+    enqueue('patchBill', { id: props.bill.id, payload: { customer_ids: ids }})
+    enqueue('reconcile', { id: props.bill.id })
+    originalCustIds.value = [...ids]
   }
 }
 
@@ -300,10 +302,10 @@ async function handleCustPicked (cust) {
   props.bill.customer_display_name = cust.alias?.trim() || cust.full_name || `#${cust.id}`
 
   if (!isNew.value) {
-    try {
-      await updateBillCustomers(props.bill.id, props.bill.customers)
-      originalCustIds.value = [...props.bill.customers]
-    } catch (e) { console.error(e); alert('顧客情報の取得に失敗しました') }
+    const list = props.bill.customers.map(asId).filter(Boolean)
+    enqueue('patchBill', { id: props.bill.id, payload: { customer_ids: list }})
+    enqueue('reconcile', { id: props.bill.id })
+    originalCustIds.value = [...list]
   }
   showCustModal.value = false
 }
@@ -396,20 +398,28 @@ async function confirmClose(){
   if (closing.value) return
   closing.value = true
   try{
-    // 支払内訳 → クローズ
-    await api.patch(`billing/bills/${props.bill.id}/`, {
-      paid_cash: form.paid_cash || 0,
-      paid_card: form.paid_card || 0,
-      memo     : String(memoRef.value || ''),
+    const billId   = props.bill.id
+    const memoStr  = String(memoRef.value || '')
+    const settled  = form.settled_total || displayGrandTotal.value
+    const paidCash = form.paid_cash || 0
+    const paidCard = form.paid_card || 0
+
+    // ① 楽観反映（UI即時）
+    Object.assign(props.bill, {
+      paid_cash: paidCash, paid_card: paidCard,
+      settled_total: settled, memo: memoStr,
+      closed_at: new Date().toISOString(),
     })
-    await api.post(`billing/bills/${props.bill.id}/close/`, {
-      settled_total: form.settled_total || displayGrandTotal.value,
-    })
-    await refetchAndSync(props.bill.id);    // ★最新反映
-    if (CLOSE_AFTER_SETTLE) visible.value = false; // 動作方針で切替
+    // ② 裏送信（順序: patch → close → reconcile）
+    enqueue('patchBill', { id: billId, payload: { paid_cash: paidCash, paid_card: paidCard, memo: memoStr }})
+    enqueue('closeBill', { id: billId, payload: { settled_total: settled }})
+    enqueue('reconcile', { id: billId })
+
+    emit('saved', { id: billId })
+    if (CLOSE_AFTER_SETTLE) visible.value = false
   }catch(e){
     console.error(e)
-    alert('会計に失敗しました')
+    alert('会計に失敗しました（オフラインでも後で確定されます）')
   }finally{
     closing.value = false
   }
@@ -473,12 +483,16 @@ async function chooseCourse(opt, qtyOverride = null){
 		pending.value.push({ master_id: opt.id, qty, cast_id: null })
 		return
 	}
-	const newItem = await addBillItem(props.bill.id, { item_master: opt.id, qty })
-	props.bill.items.push(newItem)
-	emit('updated', props.bill.id)
-	if (form.table_id !== props.bill.table?.id) {
-		await api.patch(`billing/bills/${props.bill.id}/`, { table_id: form.table_id })
-	}
+  // 楽観行追加
+  props.bill.items = props.bill.items || []
+  props.bill.items.push({ id:`tmp-${Date.now()}`, item_master: opt.id, qty, subtotal: 0 })
+  // 卓変更が必要なら裏送信
+  const curTid = props.bill.table?.id ?? props.bill.table ?? null
+  if (form.table_id !== curTid) {
+    enqueue('updateBillTable', { id: props.bill.id, table_id: form.table_id })
+  }
+  enqueue('addBillItem', { id: props.bill.id, item: { item_master: opt.id, qty }})
+  enqueue('reconcile', { id: props.bill.id })
 }
 
 /* ------- コース追加ボタン専用 ------- */
