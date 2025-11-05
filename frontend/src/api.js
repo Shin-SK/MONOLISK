@@ -432,8 +432,10 @@ export const patchBill = (id, payload) =>
 export const updateBillTimes = (id, { opened_at, expected_out }) =>
   patchBill(id, { opened_at, expected_out })
 
-export const updateBillCustomers = (id, customer_ids = []) =>
-  patchBill(id, { customer_ids })
+export const updateBillCustomers = (id, customer_ids = []) => {
+  const ids = (customer_ids || []).map(v => (typeof v === 'object' ? v.id : v)).filter(Boolean)
+  return patchBill(id, { customer_ids: ids })
+}
 
 export const updateBillTable = (id, table_id = null) =>
   patchBill(id, { table_id })

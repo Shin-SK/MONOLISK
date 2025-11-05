@@ -8,6 +8,7 @@ import PayPanelSP    from '@/components/spPanel/PayPanelSP.vue'
 import useBillEditor from '@/composables/useBillEditor'
 import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
 import { useRoles } from '@/composables/useRoles'
+import { enqueue } from '@/utils/txQueue'
 import {
   api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts,
   fetchBill, deleteBillItem, patchBillItemQty, fetchMasters,
