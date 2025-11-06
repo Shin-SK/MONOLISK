@@ -485,6 +485,11 @@ class BillSerializer(serializers.ModelSerializer):
     )
     change_due  = serializers.SerializerMethodField()
     paid_total  = serializers.IntegerField(read_only=True)
+    discount_rule = serializers.PrimaryKeyRelatedField(
+        queryset=DiscountRule.objects.all(),   # 後で store で絞る
+        required=False,
+        allow_null=True
+    )
 
 
     class Meta:
@@ -505,6 +510,7 @@ class BillSerializer(serializers.ModelSerializer):
             'customers',      # READ
             'customer_ids',   # WRITE
             'customer_display_name',
+            'discount_rule',  # 割引ルールID
         )
         read_only_fields = (
             "subtotal", "service_charge", "tax", "grand_total", "total",
@@ -512,6 +518,18 @@ class BillSerializer(serializers.ModelSerializer):
             "paid_total","change_due",
         )
         depth = 2
+        
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # ② 要求店舗で絞る（無ければ全件でも可）
+        req = self.context.get('request')
+        if req and getattr(req, 'store', None):
+            self.fields['discount_rule'].queryset = DiscountRule.objects.filter(
+                store=req.store, is_active=True
+            )
+        else:
+            self.fields['discount_rule'].queryset = DiscountRule.objects.filter(is_active=True)
 
     def get_change_due(self, obj):
         st = obj.settled_total if obj.settled_total is not None else obj.grand_total
@@ -565,175 +583,143 @@ class BillSerializer(serializers.ModelSerializer):
     # --------------------------------------------------
     #                 UPDATE
     # --------------------------------------------------
-    # billing/serializers.py  ── BillSerializer.update
 
     def update(self, instance, validated_data):
-        # ---------- 0) 更新前スナップショット（ここが最重要） ----------
+        # ---------- 0) 更新前スナップショット ----------
         prev_main = set(instance.nominated_casts.values_list("id", flat=True))
         prev_in   = set(
             instance.stays.filter(stay_type="in", left_at__isnull=True)
-                .values_list("cast_id", flat=True)
+                    .values_list("cast_id", flat=True)
         )
 
-        # ---------- 1) M2M/配列系は validated_data から先に抜く ----------
-        cust_ids       = validated_data.pop('customer_ids', None)
-        nominated_raw  = validated_data.pop("nominated_casts", None)
-        inhouse_raw    = validated_data.pop("inhouse_casts_w", None)
-        free_raw       = validated_data.pop("free_ids", None)
+        # ---------- 1) M2M/配列系は先に抜く ----------
+        cust_ids      = validated_data.pop('customer_ids', None)
+        nominated_raw = validated_data.pop("nominated_casts", None)
+        inhouse_raw   = validated_data.pop("inhouse_casts_w", None)
+        free_raw      = validated_data.pop("free_ids", None)
 
-        # ---------- 2) 通常フィールドだけ parent で更新（※1回だけ） ----------
+        # ---------- 1.5) discount_rule 現状維持の“保険” ----------
+        if 'discount_rule' not in validated_data:
+            validated_data['discount_rule'] = instance.discount_rule
+
+        # ---------- 2) 通常フィールドを一括更新（※ここで1回だけ） ----------
         instance = super().update(instance, validated_data)
 
         # 顧客 M2M
         if cust_ids is not None:
             instance.customers.set(cust_ids)
 
-        # ユーティリティ
-        to_ids = lambda raw: [c.id if isinstance(c, Cast) else c for c in (raw or [])]
-        nominated_ids = to_ids(nominated_raw)
-        inhouse_ids   = to_ids(inhouse_raw)
-        free_ids_orig = to_ids(free_raw)
+        # 以降：stay／指名・場内・フリー・同伴の同期（元の実装をそのまま下に置く）
+        to_ids = lambda raw: [c.id if hasattr(c, 'id') else c for c in (raw or [])]
+        nominated_ids = set(to_ids(nominated_raw))
+        inhouse_ids   = set(to_ids(inhouse_raw))
+        free_ids_orig = set(to_ids(free_raw))
 
-        # 既存 stay をキャッシュ
         stay_map = {s.cast_id: s for s in instance.stays.all()}
 
-        # ===============================================================
-        #  A. 本指名 (nom)
-        # ===============================================================
+        # --- 本指名 (nom) ---
         if nominated_raw is not None:
-            instance.nominated_casts.set(nominated_ids)
+            instance.nominated_casts.set(list(nominated_ids))
             for cid in nominated_ids:
-                stay = stay_map.get(cid)
-                if not stay:
+                st = stay_map.get(cid)
+                if not st:
+                    from .models import BillCastStay
                     BillCastStay.objects.create(
                         bill=instance, cast_id=cid,
-                        entered_at=timezone.now(),
-                        stay_type="nom",
-                        is_honshimei=True,
+                        entered_at=timezone.now(), stay_type="nom", is_honshimei=True
                     )
                 else:
-                    stay.stay_type = "nom"
-                    stay.left_at   = None
-                    upd = ["stay_type", "left_at"]
-                    if not stay.is_honshimei:
-                        stay.is_honshimei = True
-                        upd.append("is_honshimei")
-                    stay.save(update_fields=upd)
+                    if st.stay_type != "nom" or st.left_at:
+                        st.stay_type = "nom"; st.left_at = None
+                    if not getattr(st, 'is_honshimei', False):
+                        st.is_honshimei = True
+                    st.save(update_fields=["stay_type","left_at","is_honshimei"])
 
-            for cid, stay in stay_map.items():
-                if cid not in nominated_ids and stay.stay_type == "nom":
-                    stay.stay_type = "in" if cid in inhouse_ids else "free"
-                    upd = ["stay_type"]
-                    if stay.is_honshimei:
-                        stay.is_honshimei = False
-                        upd.append("is_honshimei")
-                    stay.save(update_fields=upd)
+            for cid, st in stay_map.items():
+                if cid not in nominated_ids and st.stay_type == "nom":
+                    st.stay_type = "in" if cid in inhouse_ids else "free"
+                    if getattr(st, 'is_honshimei', False):
+                        st.is_honshimei = False
+                        st.save(update_fields=["stay_type","is_honshimei"])
+                    else:
+                        st.save(update_fields=["stay_type"])
 
-        # ===============================================================
-        #  B. 場内 (in)
-        # ===============================================================
+        # --- 場内 (in) ---
         if inhouse_raw is not None:
+            from .models import BillCastStay
             for cid in inhouse_ids:
-                stay = stay_map.get(cid)
-                if not stay:
+                st = stay_map.get(cid)
+                if not st:
                     BillCastStay.objects.create(
                         bill=instance, cast_id=cid,
                         entered_at=timezone.now(), stay_type="in"
                     )
                 else:
-                    stay.stay_type = "in"
-                    stay.left_at   = None
-                    stay.save(update_fields=["stay_type", "left_at"])
-            for cid, stay in stay_map.items():
-                if cid not in inhouse_ids and stay.stay_type == "in":
-                    stay.stay_type = "free"
-                    stay.save(update_fields=["stay_type"])
+                    if st.stay_type != "in" or st.left_at:
+                        st.stay_type = "in"; st.left_at = None
+                        st.save(update_fields=["stay_type","left_at"])
+            for cid, st in stay_map.items():
+                if cid not in inhouse_ids and st.stay_type == "in":
+                    st.stay_type = "free"
+                    st.save(update_fields=["stay_type"])
 
-        # ===============================================================
-        #  C. フリー (free)
-        # ===============================================================
+        # --- フリー (free) ---
         if free_raw is not None:
-            free_ids = [cid for cid in free_ids_orig if cid not in inhouse_ids and cid not in nominated_ids]
+            from .models import BillCastStay
+            free_ids = [cid for cid in free_ids_orig
+                        if cid not in inhouse_ids and cid not in nominated_ids]
             for cid in free_ids:
-                stay = stay_map.get(cid)
-                if not stay:
+                st = stay_map.get(cid)
+                if not st or st.left_at:
                     BillCastStay.objects.create(
                         bill=instance, cast_id=cid,
                         entered_at=timezone.now(), stay_type="free"
                     )
-                else:
-                    if stay.left_at:
-                        BillCastStay.objects.create(
-                            bill=instance, cast_id=cid,
-                            entered_at=timezone.now(), stay_type="free"
-                        )
-                    elif stay.stay_type != "free":
-                        stay.stay_type = "free"
-                        stay.save(update_fields=["stay_type"])
+                elif st.stay_type != "free":
+                    st.stay_type = "free"; st.save(update_fields=["stay_type"])
 
             active_free = instance.stays.filter(stay_type="free", left_at__isnull=True)
-            for stay in active_free:
-                if stay.cast_id not in free_ids:
-                    stay.left_at = timezone.now()
-                    stay.save(update_fields=["left_at"])
+            for st in active_free:
+                if st.cast_id not in free_ids:
+                    st.left_at = timezone.now()
+                    st.save(update_fields=["left_at"])
 
-        # ===============================================================
-        #  D. 同伴 (dohan)
-        # ===============================================================
-        dohan_raw = validated_data.pop('dohan_ids', None)
+        # --- 同伴 (dohan) ---
+        dohan_raw = self.context['request'].data.get('dohan_ids', None)
         if dohan_raw is not None:
-            # id -> stay オブジェクトのキャッシュ（既存を流用）
-            stay_map = {s.cast_id: s for s in instance.stays.all()}
-            # 数値ID配列へ正規化
-            to_ids = lambda raw: [c.id if isinstance(c, Cast) else c for c in (raw or [])]
+            from .models import BillCastStay
             dohan_ids = set(to_ids(dohan_raw))
-
-            # 1) dohan に含まれる cast を同伴に（併用不可なので本指/場内フラグも落とす）
             for cid in dohan_ids:
-                stay = stay_map.get(cid)
-                if not stay:
+                st = stay_map.get(cid)
+                if not st:
                     BillCastStay.objects.create(
                         bill=instance, cast_id=cid,
                         entered_at=timezone.now(), stay_type='dohan'
                     )
                 else:
-                    if stay.stay_type != 'dohan':
-                        stay.stay_type = 'dohan'
-                        stay.left_at = None
-                        stay.save(update_fields=['stay_type','left_at'])
-                # 本指/場内に載っていたら落とす
-                if instance.nominated_casts.filter(id=cid).exists():
-                    instance.nominated_casts.remove(cid)
-                s = stay_map.get(cid)
-                if s and s.stay_type == 'in':  # 直近で上書きしていれば 'dohan' になっているのでOK
-                    s.stay_type = 'dohan'
-                    s.save(update_fields=['stay_type'])
+                    if st.stay_type != 'dohan' or st.left_at:
+                        st.stay_type = 'dohan'; st.left_at = None
+                        st.save(update_fields=['stay_type','left_at'])
+                instance.nominated_casts.remove(cid)
 
-            # 2) 以前 dohan だったが今回外れた cast は free に戻す
             prev_dohan = set(
                 instance.stays.filter(stay_type='dohan', left_at__isnull=True)
                         .values_list('cast_id', flat=True)
             )
-            removed = prev_dohan - dohan_ids
-            for cid in removed:
-                s = stay_map.get(cid)
-                if s:
-                    s.stay_type = 'free'
-                    s.save(update_fields=['stay_type'])
+            for cid in (prev_dohan - dohan_ids):
+                st = stay_map.get(cid)
+                if st:
+                    st.stay_type = 'free'
+                    st.save(update_fields=['stay_type'])
 
-
-        # ---------- 3) 更新後スナップショット ----------
-        new_main = set(instance.nominated_casts.values_list('id', flat=True))
-        new_in   = set(
-            instance.stays.filter(stay_type='in', left_at__isnull=True)
-                    .values_list('cast_id', flat=True)
+        # ---------- 3) 料金行を差分同期 ----------
+        sync_nomination_fees(
+            instance,
+            prev_main, set(instance.nominated_casts.values_list('id', flat=True)),
+            prev_in,   set(instance.stays.filter(stay_type='in', left_at__isnull=True)
+                                .values_list('cast_id', flat=True)),
         )
-
-        # ---------- 4) 料金行を差分同期 ----------
-        sync_nomination_fees(instance, prev_main, new_main, prev_in, new_in)
         return instance
-
-
 
 
     def _store_rates(self, obj):
@@ -1184,15 +1170,26 @@ class CastGoalSerializer(serializers.ModelSerializer):
 
 
 class DiscountRuleSerializer(serializers.ModelSerializer):
+    store_name = serializers.CharField(source='store.name', read_only=True)
+
     class Meta:
-        model  = DiscountRule
+        model = DiscountRule
         fields = [
-            'id', 'code', 'name',
+            'id', 'store', 'store_name', 'code', 'name',
             'amount_off', 'percent_off',
             'is_active', 'is_basic',
-            'created_at',
+            'show_in_basics', 'show_in_pay',
+            'sort_order', 'created_at',
         ]
-        read_only_fields = ['id', 'created_at']
+
+    def validate(self, attrs):
+        amt = attrs.get('amount_off', getattr(self.instance, 'amount_off', None))
+        pct = attrs.get('percent_off', getattr(self.instance, 'percent_off', None))
+        if not amt and not pct:
+            raise serializers.ValidationError("amount_off か percent_off のどちらかを指定してください。")
+        if amt and pct:
+            raise serializers.ValidationError("amount_off と percent_off は同時に指定できません。")
+        return attrs
 
 
 # === 給与計算ページ ===

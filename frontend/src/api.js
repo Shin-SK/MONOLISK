@@ -668,16 +668,20 @@ export const fetchBasicDiscountRules = () =>
   fetchDiscountRules({ is_active: true, is_basic: true })
 
 // Billに割引ルールをセット（idを直接指定）
-export const updateBillDiscountRule = (billId, ruleId /* or null */) =>
-  patchBill(billId, { discount_rule: ruleId ?? null })
+export const updateBillDiscountRule = (billId, ruleId /* number|null|undefined */) => {
+  // 初期マウント時の未確定値は無視（送らない）
+  if (ruleId === undefined) return Promise.resolve();
+  return patchBill(billId, { discount_rule: ruleId === null ? null : Number(ruleId) });
+};
 
-// （必要なら）codeから解決してセット
-export const setBillDiscountByCode = async (billId, code /* string|null */) => {
-  if (!code) return updateBillDiscountRule(billId, null)
-  const list = await fetchDiscountRules({ is_active: true, code })
-  const rule = (Array.isArray(list) ? list : []).find(r => String(r.code) === String(code))
-  return updateBillDiscountRule(billId, rule?.id ?? null)
-}
+export const setBillDiscountByCode = async (billId, code) => {
+  if (code === undefined) return Promise.resolve(); // 初期未確定は無視
+  if (!code) return updateBillDiscountRule(billId, null);
+  const list = await fetchDiscountRules({ is_active: true, code }); // code はサーバではフィルタされないがOK
+  const rule = (Array.isArray(list) ? list : []).find(r => String(r.code) === String(code));
+  return updateBillDiscountRule(billId, rule?.id ?? null);
+};
+
 
 
 // ───────── 給与計算 ─────────

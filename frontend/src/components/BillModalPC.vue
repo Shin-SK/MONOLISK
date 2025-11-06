@@ -25,6 +25,7 @@ import CustomerModal from '@/components/CustomerModal.vue'
 import BasicsPanel   from '@/components/panel/BasicsPanel.vue'
 import CustomerPanel from '@/components/CustomerPanel.vue'
 import OrderPanelSP from '@/components/spPanel/OrderPanelSP.vue'
+import PayPanel from '@/components/panel/PayPanel.vue'
 import { enqueue } from '@/utils/txQueue'
 
 
@@ -65,7 +66,7 @@ const mastersStore = useMasters()
 const tablesStore  = useTables()
 const castKeyword = ref('')
 const customers = useCustomers()
-const fmt = (n) => (Number(unref(n)) || 0).toLocaleString()
+
 
 /* ── 初回 ─────────────── */
 const isNew = computed(() => !props.bill?.id)
@@ -207,9 +208,6 @@ function clearCustomer(target) {
 // ------------------------------------------------
 const dohanSet = ref(new Set())
 
-function isDohanActive(cid){
-  return dohanSet.value.has(cid)
-}
 
 function toggleMainDohan (cid) {
   const isDohan = dohanSet.value.has(cid)
@@ -223,6 +221,15 @@ function toggleMainDohan (cid) {
     dohanSet.value.add(cid)
   }
 }
+
+function handleUpdateDiscountRule(ruleId){
+  // null許可でそのままpatch（キュー経由でも直送でもOK）
+  enqueue('patchBill', { id: props.bill.id, payload: { discount_rule: ruleId }})
+  enqueue('reconcile', { id: props.bill.id })
+  // 最新化
+  refetchAndSync(props.bill.id)
+}
+
 
 // ------------------------------------------------
 // オーダーパネルをこっちに移植しようぜ
@@ -381,17 +388,10 @@ const diff        = computed(() => paidTotal.value - targetTotal.value)
 const overPay     = computed(() => Math.max(0, diff.value))
 const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= targetTotal.value)
 
-function useGrandTotal () { form.settled_total = displayGrandTotal.value }
 function fillRemainderToCard () {
   const need = Math.max(0, targetTotal.value - (form.paid_cash || 0))
   form.paid_card = need
 }
-
-const diffClass = computed(() => ({
-  'text-danger': diff.value !== 0,
-  'text-success': diff.value === 0,
-}))
-
 
 const closing = ref(false)
 async function confirmClose(){
@@ -426,37 +426,13 @@ async function confirmClose(){
 }
 
 
-
-/* --- 会計確定処理 --- */
-const settleAmount = ref(null)
-
-async function settleBill () {
-	if (!settleAmount.value || settleAmount.value <= 0) return
-	try{
-		/*  バックエンド側で settled_total と closed_at を確定させる */
-		await closeBill(props.bill.id, { settled_total: settleAmount.value })
-		emit('saved', props.bill.id)       // 親に再フェッチさせる
-	}catch(e){
-		console.error('settle failed', e)
-		alert('会計に失敗しました')
-	}
-}
-
-/* ------- draft ------- */
-const draftCode = ref('')   // 'set60' など
-const pax       = ref(1)    // 人数
-const draftMasterId = ref(null)   // 品名
-const draftCastId   = ref(null)   // 誰が注文したか（任意）
-const draftQty      = ref(1)      // 数量
-
-
-
 async function cancelItem(idx, item){
   if(!confirm('この注文をキャンセルしますか？')) return
 
   try{
-      await deleteBillItem(props.bill.id, item.id)
-      await refreshTotals()
+    await deleteBillItem(props.bill.id, item.id)
+    enqueue('reconcile', { id: props.bill.id })
+    await refetchAndSync(props.bill.id)
   }catch(e){
     console.error('cancel failed', e)
     alert('キャンセルに失敗しました')
@@ -493,33 +469,6 @@ async function chooseCourse(opt, qtyOverride = null){
   }
   enqueue('addBillItem', { id: props.bill.id, item: { item_master: opt.id, qty }})
   enqueue('reconcile', { id: props.bill.id })
-}
-
-/* ------- コース追加ボタン専用 ------- */
-function addCourse () {
-  if (!draftCode.value){
-    alert('セットを選択');
-    return;
-  }
-  chooseCourse(draftCode.value);   // ← 既存ヘルパを再利用
-}
-
-
-/* ------- 注文とか ------- */
-function addSingle () {
-  if (!draftMasterId.value) { alert('品名を選択'); return }
-  if (draftQty.value <= 0)  { alert('数量を入力'); return }
-
-  pending.value.push({
-    master_id : draftMasterId.value,
-    qty       : draftQty.value,
-    cast_id   : draftCastId.value || null
-  })
-
-  // リセット
-  draftMasterId.value = null
-  draftCastId.value   = null
-  draftQty.value      = 1
 }
 
 
@@ -662,19 +611,6 @@ const current = computed(() => {
 /* ------- draft を pending に載せる ---------- */
 const pending = ref([])   // [{ master_id, qty }]
 
-
-/* ------- 仮計算 本計算はバックエンドで ---------- */
-
-const preview = computed(() => {
-  const sub = pending.value.reduce(
-    (s, i) =>
-      s + i.qty * (masters.value.find(m => m.id === i.master_id)?.price_regular || 0),
-    0
-  )
-  const svc = Math.round(sub * props.serviceRate)  // ← 追加した prop を参照
-  const tax = Math.round((sub + svc) * props.taxRate)
-  return { sub, svc, tax, total: sub + svc + tax }
-})
 
 /* ---------- 伝票 or stays 変更時 ---------- */
 watch(
@@ -1159,19 +1095,19 @@ watch(visible, v => { if (v) pane.value = 'base' })
           <button
             type="button"
             class="nav-link col d-flex align-items-center gap-2"
-            :class="{ active: isBillTab }"
-            role="tab"
-            :aria-selected="isBillTab"
-            @click="rightTab='bill'"
-          ><IconReceiptYen />会計</button>
-          <button
-            type="button"
-            class="nav-link col d-flex align-items-center gap-2"
             :class="{ active: isOrderTab }"
             role="tab"
             :aria-selected="isOrderTab"
             @click="rightTab='order'"
           ><IconShoppingCart />注文</button>
+          <button
+            type="button"
+            class="nav-link col d-flex align-items-center gap-2"
+            :class="{ active: isBillTab }"
+            role="tab"
+            :aria-selected="isBillTab"
+            @click="rightTab='bill'"
+          ><IconReceiptYen />会計</button>
         </div>
         <div class="order-panel-pc" v-show="isOrderTab">
             <OrderPanelSP
@@ -1194,131 +1130,39 @@ watch(visible, v => { if (v) pane.value = 'base' })
             />
         </div>
 
-        <div class="summary d-flex flex-column flex-fill" v-if="isBillTab">
-          <table class="table table-sm table-striped mt-auto">
-            <thead>
-              <tr>
-                <th /><th>品名</th><th>キャスト</th><th class="text-end">
-                  数
-                </th><th class="text-end">
-                  小計
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(it, idx) in props.bill.items"
-                :key="it.id"
-              >
-                <!-- キャンセル -->
-                <td class="text-center">
-                  <IconX
-                    :size="12"
-                    class="text-danger"
-                    role="button"
-                    @click="cancelItem(idx, it)"
-                  />
-                </td>
-                <td>{{ it.name }}</td>
-                <td>{{ it.served_by_cast?.stage_name || '‑' }}</td>
-                <td class="text-end">
-                  {{ it.qty }}
-                </td>
-                <td class="text-end">
-                  {{ it.subtotal.toLocaleString() }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="summary" v-if="isBillTab">
+          <PayPanel
+            :items="props.bill.items || []"
+            :master-name-map="masterNameMap"
+            :served-by-map="servedByMap"
 
-          <!-- ▼いつも出す：現状確定分 -------------------- -->
-          <table class="table table-sm mb-3 text-end">
-            <tbody>
-              <tr>
-                <th class="text-start">
-                  小計
-                </th>      <td>{{ current.sub.toLocaleString() }}</td>
-              </tr>
-              <tr>
-                <th class="text-start">
-                  サービス料
-                </th><td>{{ current.svc.toLocaleString() }}</td>
-              </tr>
-              <tr>
-                <th class="text-start">
-                  消費税
-                </th>    <td>{{ current.tax.toLocaleString() }}</td>
-              </tr>
-              <tr class="fw-bold">
-                <th class="text-start">
-                  合計
-                </th>
-                <td>{{ current.total.toLocaleString() }}</td>
-              </tr>
-            </tbody>
-          </table>
+            :current="current"
+            :display-grand-total="displayGrandTotal"
 
-          <!-- BillModal.vue のフッター付近などに追記 -->
-          <div class="card mt-3">
-            <div class="card-header">会計</div>
-            <div class="card-body">
-              <div class="row g-2">
-                <div class="col-4">
-                  <label class="form-label">会計金額（上書き可）</label>
-                  <div class="position-relative">
-                    <input type="number" min="0" class="form-control"
-                          v-model.number="form.settled_total">
-                    <button 
-                      class="position-absolute end-0 top-0 bottom-0 m-auto"
-                      @click="useGrandTotal"
-                      ><IconRefresh :size="16"/></button>
-                  </div>
-                </div>
-                <div class="col-4">
-                  <label class="form-label">現金</label>
-                  <input type="number" min="0" class="form-control"
-                        v-model.number="form.paid_cash">
-                </div>
-                <div class="col-4">
-                  <label class="form-label">カード</label>
-                  <div class="position-relative">
-                  <input type="number" min="0" class="form-control"
-                        v-model.number="form.paid_card">
-                  <button
-                    class="position-absolute end-0 top-0 bottom-0 m-auto"
-                    @click="fillRemainderToCard">
-                      <IconTransferVertical :size="16" />
-                  </button>
-                  
-                  </div>
-                </div>
-              </div>
+            :settled-total="form.settled_total"
+            :paid-cash="form.paid_cash"
+            :paid-card="form.paid_card"
+            :bill-opened-at="props.bill.opened_at || ''"
 
-              <div class="mt-2 small text-muted">
-                伝票合計: ¥{{ fmt(displayGrandTotal) }} /
-                受領合計: ¥{{ fmt(paidTotal) }} /
-                差額: <span :class="diffClass">¥{{ fmt(diff) }}</span>
-              </div>
-               <!-- ▼ メモ（SP同等。保存 or 会計確定時に送信） -->
-               <div class="mt-3">
-                 <label class="form-label">メモ</label>
-                 <textarea
-                   class="form-control"
-                   rows="3"
-                   v-model="memoRef"
-                   placeholder="伝票メモ（備考）"></textarea>
-               </div>
-              <div class="mt-3 d-flex gap-2">
-                <button class="btn btn-primary"
-                        :disabled="closing || !canClose"
-                        @click="confirmClose">
-                  <span v-if="closing" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                  会計確定
-                </button>
-                <div v-if="overPay" class="text-danger small">※お釣り発生: ¥{{ fmt(overPay) }}</div>
-              </div>
-            </div>
-          </div>
+            :diff="diff"
+            :over-pay="overPay"
+            :can-close="canClose"
+
+            :memo="memoRef"
+            :discount-rule-id="props.bill.discount_rule"
+
+            @update:settledTotal="v => (form.settled_total = v)"
+            @update:paidCash="v => (form.paid_cash = v)"
+            @update:paidCard="v => (form.paid_card = v)"
+            @fillRemainderToCard="fillRemainderToCard"
+            @confirmClose="confirmClose"
+            @update:discountRule="handleUpdateDiscountRule"
+
+            @incItem="it => enqueue('addBillItem', { id: props.bill.id, item: { item_master: it.item_master, qty: 1 }})"
+            @decItem="it => enqueue('addBillItem', { id: props.bill.id, item: { item_master: it.item_master, qty: -1 }})"
+            @deleteItem="it => cancelItem(0, it)"
+          />
+
         </div>
       </div>
     </div>

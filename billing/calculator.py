@@ -117,17 +117,35 @@ class BillCalculator:
         
 
     def execute(self):
+        # ★ 変更: 合計（小計+サービス料+税）から割引を引く方式に変更
         subtotal0 = self._subtotal_raw()
-        subtotal  = self._apply_discounts(subtotal0)
-        svc       = self._service_fee(subtotal)
-        tax       = self._tax(subtotal, svc)
-        total     = subtotal + svc + tax
-        payouts   = self._cast_payouts()
+        # まずサービス料・税を計算（割引前）
+        svc0 = self._service_fee(subtotal0)
+        tax0 = self._tax(subtotal0, svc0)
+        total_before_discount = subtotal0 + svc0 + tax0
+        
+        # 合計から割引を適用
+        disc = getattr(self.bill, "discount_rule", None)
+        discount_amount = Decimal(0)
+        if disc and disc.is_active:
+            if disc.amount_off:
+                discount_amount = Decimal(disc.amount_off)
+            elif disc.percent_off:
+                rate = Decimal(disc.percent_off)
+                if rate >= 1:
+                    rate /= 100
+                discount_amount = total_before_discount * rate
+        
+        total_after_discount = max(Decimal(0), total_before_discount - discount_amount)
+        
+        # subtotal/service_charge/taxは割引前の値を返す（表示用）
+        # totalは割引適用後の金額
+        payouts = self._cast_payouts()
         return BillCalculationResult(
-            subtotal=int(subtotal),
-            service_fee=int(svc),
-            tax=int(tax),
-            total=int(total),
+            subtotal=int(subtotal0),
+            service_fee=int(svc0),
+            tax=int(tax0),
+            total=int(total_after_discount),
             cast_payouts=payouts,
         )
 

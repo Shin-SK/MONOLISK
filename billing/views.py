@@ -252,7 +252,19 @@ class BillViewSet(viewsets.ModelViewSet):
         table = serializer.validated_data.get("table", getattr(serializer.instance, "table", None))
         if table and table.store_id != sid:
             raise ValidationError({"table": "他店舗の卓は指定できません。"})
+        
+        # discount_ruleが更新された場合、再計算を実行
+        bill = serializer.instance
+        discount_rule_updated = 'discount_rule' in serializer.validated_data
+        old_discount_rule_id = bill.discount_rule_id if hasattr(bill, 'discount_rule_id') else None
+        
         serializer.save()
+        
+        # discount_ruleが変更された場合、金額を再計算
+        if discount_rule_updated:
+            from .models import _recalc_bill_after_items_change
+            bill.refresh_from_db()
+            _recalc_bill_after_items_change(bill)
 
     @action(detail=True, methods=["post"])
     def close(self, request, pk=None):
@@ -784,14 +796,42 @@ class StoreSeatSettingViewSet(StoreScopedModelViewSet):
     search_fields = ['memo']          # 任意
 
 
-class DiscountRuleViewSet(ReadOnlyModelViewSet):
-    """
-    GET /billing/discount-rules/?is_active=true&is_basic=true
-    """
-    queryset = DiscountRule.objects.all().order_by('name')
+class DiscountRuleViewSet(mixins.ListModelMixin,
+                          mixins.RetrieveModelMixin,
+                          mixins.CreateModelMixin,
+                          mixins.UpdateModelMixin,
+                          mixins.DestroyModelMixin,
+                          viewsets.GenericViewSet):
+    permission_classes = [IsAuthenticated]
     serializer_class = DiscountRuleSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['is_active', 'is_basic', 'code']
+    queryset = DiscountRule.objects.all()
+
+    def get_queryset(self):
+        # ★ 既存の Store-Locked 決定ロジックだけを使う（グローバル変更なし）
+        sid = StoreScopedModelViewSet.require_store(self, self.request)
+        # 店舗のレコード + グローバル(null) を許可
+        qs = DiscountRule.objects.filter(Q(store_id=sid) | Q(store__isnull=True))
+        # 状態
+        is_active = self.request.query_params.get('is_active')
+        if is_active in ('1','true','True'):
+            qs = qs.filter(is_active=True)
+        # 基本フラグ
+        is_basic = self.request.query_params.get('is_basic')
+        if is_basic in ('1','true','True'):
+            qs = qs.filter(is_basic=True)
+        # 表示場所
+        place = self.request.query_params.get('place')  # basics | pay
+        if place == 'basics':
+            qs = qs.filter(show_in_basics=True)
+        elif place == 'pay':
+            qs = qs.filter(show_in_pay=True)
+
+        # code/name 検索
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(Q(code__icontains=q) | Q(name__icontains=q))
+
+        return qs.order_by('store_id', 'sort_order', '-created_at')
 
 
 

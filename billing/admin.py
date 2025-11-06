@@ -352,7 +352,16 @@ from .models import DiscountRule
 
 @admin.register(DiscountRule)
 class DiscountRuleAdmin(admin.ModelAdmin):
-    list_display  = ('name', 'code', 'amount_off', 'percent_off', 'is_active', 'created_at')
-    list_filter   = ('is_active', 'is_basic')
-    search_fields = ('name', 'code')
-    prepopulated_fields = {'code': ('name',)}
+    list_display  = ('id','store','code','name','_kind','is_active','is_basic','show_in_basics','show_in_pay','sort_order','created_at')
+    list_filter   = ('store','is_active','is_basic','show_in_basics','show_in_pay')
+    search_fields = ('code','name')
+    ordering      = ('store','sort_order','-created_at')
+    readonly_fields = ('created_at',)
+
+    def _kind(self, obj):
+        if obj.amount_off is not None:
+            return f"¥{obj.amount_off}"
+        if obj.percent_off is not None:
+            return f"{float(obj.percent_off)*100:.0f}%"
+        return '—'
+    _kind.short_description = '割引'

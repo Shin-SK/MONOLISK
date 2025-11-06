@@ -61,7 +61,7 @@ onBeforeUnmount(unlockBody)
             <!-- ヘッダー -->
             <slot name="header" />
 
-            <div class="modal-body d-flex p-2">
+            <div class="modal-body d-flex p-3">
               <slot />
             </div>
 

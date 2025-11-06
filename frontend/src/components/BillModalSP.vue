@@ -4,7 +4,7 @@ import BaseModal from '@/components/BaseModal.vue'
 import BasicsPanel from '@/components/panel/BasicsPanel.vue'
 import CastsPanelSP  from '@/components/spPanel/CastsPanelSP.vue'
 import OrderPanelSP  from '@/components/spPanel/OrderPanelSP.vue'
-import PayPanelSP    from '@/components/spPanel/PayPanelSP.vue'
+import PayPanel from '@/components/panel/PayPanel.vue'
 import useBillEditor from '@/composables/useBillEditor'
 import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
 import { useRoles } from '@/composables/useRoles'
@@ -224,7 +224,6 @@ const removeItem = async (it) => {
 const setSettledTotal = (v) => { settledTotalRef.value = Number(v) || 0 }
 const setPaidCash     = (v) => { paidCashRef.value     = Number(v) || 0 }
 const setPaidCard     = (v) => { paidCardRef.value     = Number(v) || 0 }
-function useGrandTotal(){ settledTotalRef.value = Number(displayGrandTotal.value) || 0 }
 function fillRemainderToCard(){
   const need = Math.max(0, targetTotal.value - (Number(paidCashRef.value)||0))
   paidCardRef.value = need
@@ -240,6 +239,26 @@ function onUpdateTimes({ opened_at, expected_out }){
   // 送信キューで確定
   enqueue('patchBill', { id, payload: { opened_at, expected_out }})
   enqueue('reconcile', { id })
+}
+
+// ★ PayPanelSP からの割引ルール変更を受けて patch
+async function onDiscountRuleChange(ruleId) {
+  if (!props.bill?.id) return
+  const billId = props.bill.id
+  try {
+    // 楽観更新
+    props.bill.discount_rule = ruleId
+    // 即時反映
+    await updateBillDiscountRule(billId, ruleId)
+    // 伝票を再取得して金額を再計算
+    const fresh = await fetchBill(billId).catch(() => null)
+    if (fresh) {
+      emit('updated', fresh)
+    }
+  } catch (e) {
+    console.error('[BillModalSP] failed to update discount rule', e)
+    alert('割引の適用に失敗しました')
+  }
 }
 
 const closing = ref(false)
@@ -274,9 +293,14 @@ async function confirmClose(){
     }catch{}
 
     // ② 裏送信（順序安全：patch → close → reconcile）
+    // discount_ruleも保存（閉じた伝票でも割引情報を保持）
+    // ★ 重要: patchBillを先に実行してdiscount_ruleを確実に保存してからcloseBillを実行
+    const discountRuleId = props.bill?.discount_rule ? Number(props.bill.discount_rule) : null
     enqueue('patchBill', { id: billId, payload: {
       paid_cash: paidCash, paid_card: paidCard, memo: memoStr,
+      discount_rule: discountRuleId,
     }})
+    // closeBillはpatchBillの後に実行される（キューが順次実行されることを前提）
     enqueue('closeBill', { id: billId, payload: { settled_total: settled }})
     enqueue('reconcile', { id: billId })
 
@@ -379,13 +403,13 @@ async function handleSave(){
       @placeOrder="handleSave"
     />
 
-    <PayPanelSP
-      v-show="pane==='pay'"
-      ref="payRef"
-      :items="bill.items || []"
-      :master-name-map="masterNameMap"
-      :served-by-map="servedByMap"
-      :bill-opened-at="bill.opened_at || ''"
+    <PayPanel
+       v-show="pane==='pay'"
+       ref="payRef"
+       :items="bill.items || []"
+       :master-name-map="masterNameMap"
+       :served-by-map="servedByMap"
+       :bill-opened-at="bill.opened_at || ''"
       :current="payCurrent"
       :display-grand-total="displayGrandTotal"
       :memo="props.bill?.memo || ''"
@@ -395,16 +419,17 @@ async function handleSave(){
       :diff="diff"
       :over-pay="overPay"
       :can-close="canClose"
+      :discount-rule-id="props.bill?.discount_rule ? Number(props.bill.discount_rule) : null"
       @update:settledTotal="setSettledTotal"
       @update:paidCash="setPaidCash"
       @update:paidCard="setPaidCard"
-      @useGrandTotal="useGrandTotal"
       @fillRemainderToCard="fillRemainderToCard"
       @confirmClose="confirmClose"
       @incItem="incItem"
       @decItem="decItem"
       @deleteItem="removeItem"
-    />
+      @update:discountRule="onDiscountRuleChange"
+     />
 
     <ProvisionalPanelSP
       v-show="pane==='prov' && canProvisional"

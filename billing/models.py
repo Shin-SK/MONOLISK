@@ -444,6 +444,9 @@ class Bill(models.Model):
     def close(self, settled_total: int | None = None):
         from .calculator import BillCalculator
         """伝票を締め、金額・CastPayout・日次サマリを確定保存"""
+        # ★ discount_ruleを確実に取得するため、DBから最新状態を取得
+        self.refresh_from_db()
+        
         result = BillCalculator(self).execute()
 
         # ← ここを追加
@@ -469,10 +472,10 @@ class Bill(models.Model):
                 for s in self.stays.filter(left_at__isnull=True)
             }
 
-            # ② 伝票を確定
+            # ② 伝票を確定（discount_ruleも保存）
             self.save(update_fields=[
                 'subtotal', 'service_charge', 'tax', 'grand_total',
-                'total', 'settled_total', 'closed_at'
+                'total', 'settled_total', 'closed_at', 'discount_rule'
             ])
 
             # ③ 一括退席
@@ -917,26 +920,64 @@ class CastDailySummary(models.Model):
 def _update_summary(sender, instance, **kwargs):
     if instance.clock_in and instance.clock_out:
         CastDailySummary.upsert_from_shift(instance)
-        
-        
+
+
+
 class DiscountRule(models.Model):
     """伝票全体に適用される単発割引（併用不可）"""
-    code = models.SlugField(max_length=40, unique=True, null=True, blank=True, help_text="内部コード（例: initial / agency / referral）")  # ★追加
+
+    # ★ 追加: 店舗スコープ
+    store = models.ForeignKey(
+        'billing.Store',
+        on_delete=models.CASCADE,
+        related_name='discount_rules',
+        null=True, blank=True,   # ← 既存データ移行のため一旦許可（後述）
+        db_index=True,
+        help_text="この割引ルールを適用できる店舗"
+    )
+
+    code = models.SlugField(max_length=40, unique=True, null=True, blank=True,
+                            help_text="内部コード（例: initial / agency / referral）")
     name = models.CharField(max_length=40, help_text="表示名（例: 初回 / 案内所 / 顧客紹介）")
+
     amount_off  = models.PositiveIntegerField(null=True, blank=True)             # ¥固定値
     percent_off = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)  # 0.10 = 10%
+
     is_active   = models.BooleanField(default=True)
     is_basic    = models.BooleanField(default=False, db_index=True)
+
+    # ★ 追加: 表示場所フラグ
+    show_in_basics = models.BooleanField(default=True, help_text="Basicパネルに表示する")
+    show_in_pay    = models.BooleanField(default=True, help_text="会計パネルに表示する")
+
+    # ★ 追加: 並び順（小さいほど上）
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
     created_at  = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = "割引ルール"
         verbose_name_plural = verbose_name
-        ordering = ['-created_at']
+        ordering = ['store', 'sort_order', '-created_at']
+        constraints = [
+            # 店舗+code の組み合わせでユニーク（codeが空のときは除外されることに注意）
+            models.UniqueConstraint(
+                fields=['store', 'code'],
+                name='uniq_store_code_on_discount_rule',
+                condition=~models.Q(code__isnull=True) & ~models.Q(code='')
+            ),
+        ]
 
     def __str__(self):
-        v = f"¥{self.amount_off}" if self.amount_off else f"{float(self.percent_off)*100:.0f}%" if self.percent_off else "—"
-        return f"{self.name} ({self.code}) -{v}"
+        v = (
+            f"¥{self.amount_off}"
+            if self.amount_off is not None
+            else f"{float(self.percent_off)*100:.0f}%"
+            if self.percent_off is not None
+            else "—"
+        )
+        s = self.store.name if self.store_id else "GLOBAL"
+        return f"[{s}] {self.name} ({self.code or '-'}) -{v}"
 
     def clean(self):
         # どちらも空はNG／両方指定もNG
@@ -944,9 +985,9 @@ class DiscountRule(models.Model):
             raise ValidationError("金額引きまたは率引きのどちらかを指定してください。")
         if self.amount_off and self.percent_off:
             raise ValidationError("金額引きと率引きは同時に指定できません。")
-        # 率が 1.00～100 の表記でも受けるための緩いチェックは Calculator 側で吸収済みだが、簡易チェックだけ
         if self.percent_off is not None and self.percent_off < 0:
             raise ValidationError("percent_off は 0 以上で指定してください。")
+        
 
 
 

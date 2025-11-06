@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
-import { fetchBasicDiscountRules } from '@/api'
+import { fetchBasicDiscountRules, fetchDiscountRules } from '@/api'
 
 const props = defineProps({
   tables: { type: Array, default: () => [] },
@@ -105,20 +105,25 @@ const qtyOf = (k) => (k==='male' ? Number(maleRef.value)||0 : Number(femaleRef.v
 function inc(k){ if (k==='male') maleRef.value = qtyOf('male')+1; else femaleRef.value = qtyOf('female')+1 }
 function dec(k){ if (k==='male') maleRef.value = Math.max(0, qtyOf('male')-1); else femaleRef.value = Math.max(0, qtyOf('female')-1) }
 
-/* ===== 割引ルール ===== */
+/* ===== 割引ルール（店舗×Basic用だけ出す） ===== */
 const discountRules = ref([{ code: 'none', name: '通常' }])
+const hydrated = ref(false)
+
 onMounted(async () => {
   try {
-    const list = await fetchBasicDiscountRules()
+    const list = await fetchDiscountRules({ is_active: true, place: 'basics' })
     const arr = (Array.isArray(list) ? list : [])
       .filter(r => r && r.code && r.name)
-      .map(r => ({ code:String(r.code), name:String(r.name) }))
-    discountRules.value = [{ code:'none', name:'通常' }, ...arr]
-    if (!discountRules.value.some(r => r.code === specialRef.value)) specialRef.value = 'none'
+      .map(r => ({ code: String(r.code), name: String(r.name) }))
+    discountRules.value = [{ code: 'none', name: '通常' }, ...arr]
+    if (!discountRules.value.some(r => r.code === specialRef.value)) {
+      specialRef.value = 'none'
+    }
   } catch {
-    discountRules.value = [{ code:'none', name:'通常' }]
+    discountRules.value = [{ code: 'none', name: '通常' }]
     specialRef.value = 'none'
   }
+  hydrated.value = true
 })
 
 /* ===== 情報パネル（PC/List準拠） ===== */
@@ -214,6 +219,7 @@ function applySet(){
     config: { night: !!nightRef.value },
     discount_code: (specialRef.value !== 'none') ? String(specialRef.value) : null,
   })
+  alert('SETを追加しました！')
 }
 
 const q = ref('')
@@ -364,6 +370,7 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
         </div>
 
         <button class="btn btn-warning w-100 my-5" @click="applySet">この内容を追加</button>
+        
       </div>
 
       <!-- 顧客 -->
