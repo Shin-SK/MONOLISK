@@ -369,7 +369,7 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
           </div>
         </div>
 
-        <button class="btn btn-warning w-100 my-5" @click="applySet">この内容を追加</button>
+        <button class="btn btn-warning w-100 my-5" @click="applySet">伝票を作成</button>
         
       </div>
 
