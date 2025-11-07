@@ -163,41 +163,62 @@ def get_cast_sales(date_from, date_to, store_id=None):
 
 
 
+# billing/services.py
 def _bill_store(bill):
-    # 1. まず Bill.table.store を見る
-    table = getattr(bill, "table", None)
-    if table is not None and getattr(table, "store", None) is not None:
+    # 1. 通常: 卓から
+    table = getattr(bill, 'table', None)
+    if table and getattr(table, 'store', None):
         return table.store
-    # 2. stay 経由のフォールバック（table 無し伝票の保険）
-    st = bill.stays.select_related("bill__table__store").first()
-    if st and getattr(st.bill, "table", None) and getattr(st.bill.table, "store", None):
+
+    # 2. 明細の ItemMaster から（最も堅いフォールバック）
+    it = bill.items.select_related('item_master__store').first()
+    if it and getattr(getattr(it, 'item_master', None), 'store', None):
+        return it.item_master.store
+
+    # 3. 本指名 or 指名キャストから
+    mc = getattr(bill, 'main_cast', None)
+    if mc and getattr(mc, 'store', None):
+        return mc.store
+    try:
+        nc = bill.nominated_casts.first()
+        if nc and getattr(nc, 'store', None):
+            return nc.store
+    except Exception:
+        pass
+
+    # 4. stays 経由（保険）
+    st = bill.stays.select_related('bill__table__store').first()
+    if st and getattr(getattr(st, 'bill', None), 'table', None):
         return st.bill.table.store
-    # 3. どうしても分からない場合は None を返す
+
+    # 5. 見つからない場合は None
     return None
 
 
-
-# billing/services.py
-from typing import Iterable, Set
 from .models import Bill, BillItem, ItemMaster
 
-_MAIN_FEE_CODE   = "mainNom-fee"      # ← ItemMaster.code
-_INHOUSE_FEE_CODE = "houseNom-fee"    # ← ItemMaster.code
-
+_MAIN_FEE_CODE    = "mainNom-fee"
+_INHOUSE_FEE_CODE = "houseNom-fee"
 
 def _sync_fee_lines(
     bill: Bill,
-    cast_ids_added: Iterable[int],
-    cast_ids_removed: Iterable[int],
+    cast_ids_added,
+    cast_ids_removed,
     item_code: str,
 ):
-    
-    master = ItemMaster.objects.get(
-        code=item_code,
-        store=_bill_store(bill)
-    )
+    # 店舗を安全に解決
+    store = _bill_store(bill)
+    if store is None:
+        # 店舗が分からない“裸のBill”は静かにスキップ（500防止）
+        return
 
-    # 追加 ────────────────────────────
+    # マスターを1回だけ安全に解決
+    try:
+        master = ItemMaster.objects.get(store=store, code=item_code)
+    except ItemMaster.DoesNotExist:
+        return  # 見つからなければ何もしない
+
+    # 追加
     for cid in cast_ids_added:
         BillItem.objects.get_or_create(
             bill=bill,
@@ -205,21 +226,20 @@ def _sync_fee_lines(
             served_by_cast_id=cid,
             defaults=dict(
                 qty=1,
-                price=master.price_regular,     # 販売価格
+                price=master.price_regular,
                 exclude_from_payout=True,
-                is_nomination = (item_code == _MAIN_FEE_CODE),
-                is_inhouse    = (item_code == _INHOUSE_FEE_CODE),
+                is_nomination=(item_code == _MAIN_FEE_CODE),
+                is_inhouse   =(item_code == _INHOUSE_FEE_CODE),
             ),
         )
 
-    # 削除 ────────────────────────────
+    # 削除
     if cast_ids_removed:
         BillItem.objects.filter(
             bill=bill,
             item_master=master,
             served_by_cast_id__in=cast_ids_removed,
         ).delete()
-
 
 def sync_nomination_fees(
     bill: Bill,
