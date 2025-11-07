@@ -1,106 +1,46 @@
 # billing/services.py
-from decimal import Decimal, ROUND_HALF_UP
+
+from decimal import Decimal, ROUND_HALF_UP, ROUND_FLOOR
+from typing import Set, Iterable          # 追加
 from django.db.models import Sum, Case, When, IntegerField, F, Q, Value
 from django.db.models.functions import Coalesce
-from .models import Cast, CastPayout
+from .models import Cast, CastPayout, Bill, BillItem, ItemMaster
 
+
+# 旧ロジックが必要なら残してOKだが いまは BillCalculator を真とする
 def calc_bill_totals(bill):
-	items	 = bill.items.select_related('item_master', 'served_by_cast')
-	subtotal = sum(i.subtotal for i in items)
+    items = bill.items.select_related('item_master', 'served_by_cast')
+    subtotal = sum(i.subtotal for i in items)
 
-	store	 = bill.table.store
-	svc_rate = Decimal(store.service_rate)
-	tax_rate = Decimal(store.tax_rate)
+    store = _bill_store(bill)
+    if store is None:
+        return {'subtotal': subtotal, 'service': 0, 'tax': 0, 'total': subtotal, 'payouts': []}
 
-	service_amt = round(sum(i.subtotal
-							for i in items
-							if i.item_master.apply_service) * svc_rate)
-	tax_amt		= round((subtotal + service_amt) * tax_rate)
+    sr = Decimal(str(store.service_rate or 0))
+    tr = Decimal(str(store.tax_rate or 0))
+    if sr >= 1: sr /= 100
+    if tr >= 1: tr /= 100
 
-	# ─────────────────────────────────────
-	# ❶ 本指名キャスト集合（stay 行が無くても拾う）
-	nom_ids = set()
-	if bill.main_cast_id:
-		nom_ids.add(bill.main_cast_id)
-	nom_ids.update(bill.nominated_casts.values_list('id', flat=True))
-	nom_ids.update(
-		bill.stays.filter(stay_type='nom')
-				  .values_list('cast_id', flat=True)
-	)
-	nom_cast_map = {c.id: c for c in Cast.objects.filter(id__in=nom_ids)}
+    # 新ポリシー - サ別は小計×率 税は小計×率
+    service_amt = (Decimal(subtotal) * sr).quantize(0, ROUND_FLOOR)
+    tax_amt     = (Decimal(subtotal) * tr).quantize(0, ROUND_FLOOR)
 
-	# ─────────────────────────────────────
-	# ❷ 個別バック ＆ プール振り分け
-	payout_rows = []		# [(cast, bill_item, amt), …]
-	for it in items:
-		if it.exclude_from_payout or it.back_rate == 0:
-			continue
+    total = int(Decimal(subtotal) + service_amt + tax_amt)
 
-		amt = round(it.subtotal * it.back_rate)
-
-		if it.served_by_cast_id in nom_ids:
-			# 本指名キャスト絡みの品目 → プールへ
-			payout_rows.append(('NOM_POOL', it, amt))
-		else:
-			# フリー／場内 → 個別バック
-			payout_rows.append((it.served_by_cast, it, amt))
-
-	# ─────────────────────────────────────
-	# ❸ プール再配分
-	pool_rate  = store.nom_pool_rate
-	pool_total = int((Decimal(subtotal) * pool_rate)
-					 .quantize(Decimal('1'), ROUND_HALF_UP))
-
-	weight_map = {
-		s.cast_id: (s.nom_weight or Decimal('1'))
-		for s in bill.stays.filter(stay_type='nom')
-	}
-	weights	 = [weight_map.get(cid, Decimal('1')) for cid in nom_ids]
-	weight_sum = sum(weights) or Decimal('1')
-
-	pool_rows, rest = [], pool_total
-	for cid, w in zip(nom_ids, weights):
-		share = int((pool_total * w / weight_sum)
-					.quantize(Decimal('1'), ROUND_HALF_UP))
-		rest -= share
-		pool_rows.append((nom_cast_map[cid], None, share))
-
-	if rest and pool_rows:				# 1 円余り補正
-		c, bi, amt = pool_rows[0]
-		pool_rows[0] = (c, bi, amt + rest)
-
-	# ─────────────────────────────────────
-	fixed_item_rows = [
-		(c, bi, amt) for (c, bi, amt) in payout_rows
-		if c != 'NOM_POOL'
-	]
-	payouts = fixed_item_rows + pool_rows
-
-	return {
-		'subtotal': subtotal,
-		'service' : service_amt,
-		'tax'	 : tax_amt,
-		'total'   : subtotal + service_amt + tax_amt,
-		'payouts' : payouts,
-	}
-
-
-
-
-
+    return {
+        'subtotal': int(subtotal),
+        'service' : int(service_amt),
+        'tax'     : int(tax_amt),
+        'total'   : total,
+        'payouts' : [],
+    }
 
 
 def get_cast_sales(date_from, date_to, store_id=None):
-    """
-    指定期間 & 店舗で “全キャスト” の売上サマリを返す。
-      ‑ 集計０件のキャストも 0 埋めで必ず出す
-    """
-    # ─ 集計対象 Cast 一覧 ─────────────────────────
     cast_qs = Cast.objects.all()
     if store_id:
         cast_qs = cast_qs.filter(store_id=store_id)
 
-    # ─ 期間内の CastPayout をベースに各種集計 ──────
     period_payouts = CastPayout.objects.filter(
         bill__opened_at__date__range=(date_from, date_to)
     )
@@ -151,31 +91,30 @@ def get_cast_sales(date_from, date_to, store_id=None):
 
     return list(
         cast_qs.values(
-            'stage_name',                  # ← フィールドそのまま列挙
-            cast_id       = F('id'),
-            sales_nom     = F('sales_nom'),
-            sales_in      = F('sales_in'),
-            sales_free    = F('sales_free'),
-            sales_champ   = Value(0, output_field=IntegerField()),
-            total         = F('total'),
+            'stage_name',
+            cast_id     = F('id'),
+            sales_nom   = F('sales_nom'),
+            sales_in    = F('sales_in'),
+            sales_free  = F('sales_free'),
+            sales_champ = Value(0, output_field=IntegerField()),
+            total       = F('total'),
         )
     )
 
 
-
-# billing/services.py
+# 安全な store 解決 - 卓が無くても落とさない
 def _bill_store(bill):
-    # 1. 通常: 卓から
+    # 1 まず卓から
     table = getattr(bill, 'table', None)
     if table and getattr(table, 'store', None):
         return table.store
 
-    # 2. 明細の ItemMaster から（最も堅いフォールバック）
+    # 2 明細の ItemMaster.store
     it = bill.items.select_related('item_master__store').first()
     if it and getattr(getattr(it, 'item_master', None), 'store', None):
         return it.item_master.store
 
-    # 3. 本指名 or 指名キャストから
+    # 3 本指名または指名キャスト
     mc = getattr(bill, 'main_cast', None)
     if mc and getattr(mc, 'store', None):
         return mc.store
@@ -186,39 +125,34 @@ def _bill_store(bill):
     except Exception:
         pass
 
-    # 4. stays 経由（保険）
+    # 4 stays 経由の保険
     st = bill.stays.select_related('bill__table__store').first()
     if st and getattr(getattr(st, 'bill', None), 'table', None):
         return st.bill.table.store
 
-    # 5. 見つからない場合は None
+    # 5 見つからないなら None
     return None
 
-
-from .models import Bill, BillItem, ItemMaster
 
 _MAIN_FEE_CODE    = "mainNom-fee"
 _INHOUSE_FEE_CODE = "houseNom-fee"
 
 def _sync_fee_lines(
     bill: Bill,
-    cast_ids_added,
-    cast_ids_removed,
+    cast_ids_added: Iterable[int],
+    cast_ids_removed: Iterable[int],
     item_code: str,
 ):
-    # 店舗を安全に解決
     store = _bill_store(bill)
     if store is None:
-        # 店舗が分からない“裸のBill”は静かにスキップ（500防止）
+        # 裸のBillは同期をスキップ - 500防止
         return
 
-    # マスターを1回だけ安全に解決
     try:
         master = ItemMaster.objects.get(store=store, code=item_code)
     except ItemMaster.DoesNotExist:
-        return  # 見つからなければ何もしない
+        return
 
-    # 追加
     for cid in cast_ids_added:
         BillItem.objects.get_or_create(
             bill=bill,
@@ -233,7 +167,6 @@ def _sync_fee_lines(
             ),
         )
 
-    # 削除
     if cast_ids_removed:
         BillItem.objects.filter(
             bill=bill,
@@ -241,15 +174,13 @@ def _sync_fee_lines(
             served_by_cast_id__in=cast_ids_removed,
         ).delete()
 
+
 def sync_nomination_fees(
     bill: Bill,
     prev_main: Set[int], new_main: Set[int],
     prev_in:   Set[int], new_in:   Set[int],
 ):
-    """
-    ・mainNom‑fee / houseNom‑fee の BillItem を差分で整合させる
-    ・最後に bill.recalc() で金額を確定
-    """
+    # mainNom-fee と houseNom-fee を差分同期
     _sync_fee_lines(
         bill,
         cast_ids_added=new_main - prev_main,
@@ -268,7 +199,7 @@ def sync_nomination_fees(
 from .calculator import BillCalculator
 
 def apply_bill_calculation(bill):
-    """BillCalculatorの結果をBillに反映して保存"""
+    # BillCalculator の結果を Bill に反映して保存
     r = BillCalculator(bill).execute()
     bill.subtotal       = r.subtotal
     bill.service_charge = r.service_fee
