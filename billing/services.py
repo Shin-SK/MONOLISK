@@ -163,6 +163,20 @@ def get_cast_sales(date_from, date_to, store_id=None):
 
 
 
+def _bill_store(bill):
+    # 1. まず Bill.table.store を見る
+    table = getattr(bill, "table", None)
+    if table is not None and getattr(table, "store", None) is not None:
+        return table.store
+    # 2. stay 経由のフォールバック（table 無し伝票の保険）
+    st = bill.stays.select_related("bill__table__store").first()
+    if st and getattr(st.bill, "table", None) and getattr(st.bill.table, "store", None):
+        return st.bill.table.store
+    # 3. どうしても分からない場合は None を返す
+    return None
+
+
+
 # billing/services.py
 from typing import Iterable, Set
 from .models import Bill, BillItem, ItemMaster
@@ -180,7 +194,7 @@ def _sync_fee_lines(
     
     master = ItemMaster.objects.get(
         code=item_code,
-        store=bill.table.store if bill.table_id else bill.store  # bill.tableが無い場合保険
+        store=_bill_store(bill)
     )
 
     # 追加 ────────────────────────────

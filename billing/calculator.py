@@ -28,8 +28,17 @@ class BillCalculator:
 
     def __init__(self, bill):
         self.bill = bill
-        # Table 経由で Store を取得（table が無い場合は bill.store も許容）
-        self.store = bill.table.store if getattr(bill, "table_id", None) else bill.store
+        table = getattr(bill, "table", None)
+        self.store = getattr(table, "store", None)
+        # 保険: stays 経由
+        if self.store is None:
+            st = bill.stays.select_related("bill__table__store").first()
+            if st and getattr(st.bill, "table", None):
+                self.store = getattr(st.bill.table, "store", None)
+        if self.store is None:
+            # どうしても取れない場合は 0%計算 or 例外。ここでは 0% にフォールバック。
+            class _Dummy: service_rate = 0; tax_rate = 0
+            self.store = _Dummy()
 
     # ---------------- 金額計算 ----------------
     def _subtotal_raw(self) -> Decimal:
