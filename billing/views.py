@@ -790,7 +790,7 @@ class StoreNoticeViewSet(viewsets.ModelViewSet):
 
 # 既存：StoreScopedModelViewSet を継承して “自店だけ” に絞る
 class StoreSeatSettingViewSet(StoreScopedModelViewSet):
-    queryset = StoreSeatSetting.objects.all().select_related('store')
+    queryset = StoreSeatSetting.objects.all().select_related('store','seat_type')
     serializer_class = StoreSeatSettingSerializer
     filterset_fields = ['seat_type']  # 任意
     search_fields = ['memo']          # 任意

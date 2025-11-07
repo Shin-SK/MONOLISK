@@ -64,10 +64,15 @@ class BillCalculator:
         return (subtotal * rate).quantize(0, rounding=ROUND_FLOOR)
 
     def _tax(self, subtotal: Decimal, service_fee: Decimal) -> Decimal:
+        """
+        グローバル既定：税は小計にのみ課税（サービス料には課税しない）
+        """
         rate = Decimal(str(self.store.tax_rate or 0))
         if rate >= 1:
             rate /= 100
-        return ((subtotal + service_fee) * rate).quantize(0, rounding=ROUND_FLOOR)
+
+        base = subtotal  # ★変更点：小計のみ課税
+        return (base * rate).quantize(0, rounding=ROUND_FLOOR)
 
     # --------------- CastPayout ----------------
     def _cast_payouts(self):

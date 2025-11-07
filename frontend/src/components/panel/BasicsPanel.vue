@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
-import { fetchBasicDiscountRules, fetchDiscountRules } from '@/api'
+import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings } from '@/api'  // ← 追加
 
 const props = defineProps({
   tables: { type: Array, default: () => [] },
@@ -54,10 +54,48 @@ const safeTables = computed(() =>
   Array.isArray(props.tables) ? props.tables.filter(t => t && t.id!=null) : []
 )
 
+// 自店舗の "使える席種" 候補を API で取得（StoreSeatSetting 起点）
+const storeSeatSettings = ref([])    // ← 追加
+// code -> id のマップ（StoreSeatSetting に seat_type が載ってる）
+const seatTypeIdByCode = computed(() => {
+  const m = new Map()
+  for (const s of storeSeatSettings.value || []) {
+    const code = String(s.seat_type_code || '')
+    const id   = Number(s.seat_type)
+    if (code && Number.isFinite(id)) m.set(code, id)
+  }
+  return m
+})
+
+onMounted(async () => {
+  try {
+    storeSeatSettings.value = await fetchStoreSeatSettings()
+    // 初期 seatType が候補に無ければ、先頭に合わせる
+    const codes = new Set((storeSeatSettings.value||[]).map(s => s.seat_type_code))
+    if (!codes.has(String(seatTypeRef.value)) && codes.size) {
+      seatTypeRef.value = Array.from(codes)[0]
+      emit('update:seatType', seatTypeRef.value)
+    }
+  } catch (e) { console.warn('[BasicsPanel] load seat settings failed', e) }
+})
+
+// UI表示用の席種ボタン（コード＋表示名）
 const seatTypeOptionsAuto = computed(() => {
+  const list = storeSeatSettings.value || []
+  if (list.length) {
+    const seen = new Map()
+    for (const s of list) {
+      const code = String(s.seat_type_code || '')
+      if (!code) continue
+      if (!seen.has(code)) seen.set(code, { code, label: s.seat_type_display || code })
+    }
+    return Array.from(seen.values())
+  }
+  // フォールバック：渡ってきた tables から自動推定（初期表示用）
   const set = new Map()
   for (const t of safeTables.value) {
-    const code = String(t?.seat_type || 'main')
+    const code = String(t?.seat_type_code ?? t?.seat_type ?? '')
+    if (!code) continue
     if (!set.has(code)) {
       set.set(code, {
         code,
@@ -68,8 +106,21 @@ const seatTypeOptionsAuto = computed(() => {
       })
     }
   }
-  const fromProps = (props.seatTypeOptions || []).filter(o => o?.code)
-  return fromProps.length ? fromProps : Array.from(set.values())
+  return Array.from(set.values())
+})
+
+// 卓の絞り込みは seat_type（id）で
+const filteredTables = computed(() => {
+  const code = String(seatTypeRef.value || '')
+  if (!code) return safeTables.value
+  // ① code で合うテーブル（サーバが seat_type_code を返せる場合）
+  const byCode = safeTables.value.filter(t => String(t?.seat_type_code ?? '') === code)
+  if (byCode.length) return byCode
+  // ② 保険：code -> id に変換して id で絞る（古いレスポンスでも動く）
+  const id = seatTypeIdByCode.value.get(code)
+  if (id != null) return safeTables.value.filter(t => Number(t?.seat_type) === id)
+  // ③ 何も合わなければ全件（UX保険）
+  return safeTables.value
 })
 
 function onSeatTypeInput (e){
@@ -77,12 +128,6 @@ function onSeatTypeInput (e){
   emit('update:seatType', v)
 }
 
-const filteredTables = computed(() => {
-  const code = seatTypeRef.value
-  if (!safeTables.value.length) return []
-  if (safeTables.value[0]?.seat_type == null) return safeTables.value
-  return safeTables.value.filter(t => String(t.seat_type) === String(code))
-})
 
 /* ===== SET（男・女・深夜・特例） ===== */
 const maleRef    = ref(props.male)

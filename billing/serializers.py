@@ -22,19 +22,30 @@ class StoreSerializer(serializers.ModelSerializer):
 
 class TableSerializer(serializers.ModelSerializer):
     number = serializers.SerializerMethodField()
+    seat_type_code = serializers.SerializerMethodField()
+    seat_type_name = serializers.SerializerMethodField()
+
     def get_number(self, obj): return getattr(obj, 'code', '') or ''
+    def get_seat_type_code(self, obj):
+        st = getattr(obj, 'seat_type', None)
+        return getattr(st, 'code', None)
+    def get_seat_type_name(self, obj):
+        st = getattr(obj, 'seat_type', None)
+        return getattr(st, 'name', None)
+
     class Meta:
         model  = Table
-        fields = ('id', 'code', 'number', 'seat_type')  # ← store を外す
+        fields = ('id','code','number','seat_type','seat_type_code','seat_type_name')
 
 
 class StoreSeatSettingSerializer(serializers.ModelSerializer):
-    seat_type_display = serializers.CharField(source='get_seat_type_display', read_only=True)
+    seat_type_display = serializers.CharField(source='seat_type.name', read_only=True)
+    seat_type_code    = serializers.CharField(source='seat_type.code', read_only=True)
 
     class Meta:
         model = StoreSeatSetting
         fields = [
-            'id', 'store', 'seat_type', 'seat_type_display',
+            'id', 'store', 'seat_type', 'seat_type_code', 'seat_type_display',
             'service_rate', 'charge_per_person',
             'extension_30_price', 'free_time_price', 'private_price',
             'memo',
@@ -73,12 +84,23 @@ class BillMiniSerializer(serializers.ModelSerializer):
 class TableMiniSerializer(serializers.ModelSerializer):
     store = serializers.IntegerField(source='store.id', read_only=True)
     number = serializers.SerializerMethodField()  # 互換：旧 number を復活（中身は code）
+    seat_type_name = serializers.SerializerMethodField()
+    seat_type_code = serializers.SerializerMethodField()
     def get_number(self, obj):
         return getattr(obj, 'code', '') or ''   # undefined回避
 
+    def get_seat_type_code(self, obj):
+        st = getattr(obj, 'seat_type', None)
+        return getattr(st, 'code', None)
+
+    def get_seat_type_name(self, obj):
+        st = getattr(obj, 'seat_type', None)
+        return getattr(st, 'name', None)
+
     class Meta:
         model  = Table
-        fields = ('id', 'number', 'code', 'store', 'seat_type')
+        fields = ('id','number','code','store','seat_type',
+                  'seat_type_code','seat_type_name')
 
 
 
@@ -532,7 +554,8 @@ class BillSerializer(serializers.ModelSerializer):
             self.fields['discount_rule'].queryset = DiscountRule.objects.filter(is_active=True)
 
     def get_change_due(self, obj):
-        st = obj.settled_total if obj.settled_total is not None else obj.grand_total
+        # 会計金額は settled_total（手入力・確定）を優先、なければ Calculator の割引後合計で算出
+        st = obj.settled_total if obj.settled_total is not None else self.get_grand_total(obj)
         st = st or 0
         return max(0, obj.paid_total - st)
 
@@ -726,17 +749,39 @@ class BillSerializer(serializers.ModelSerializer):
         """DEPRECATED: 計算は BillCalculator に統合済み。"""
         return Decimal("0"), Decimal("0")
 
+    # ---- Calculator を1回だけ走らせてキャッシュ ----
+    def _calc(self, obj):
+        res = getattr(obj, "_calc_cache", None)
+        if res is None:
+            from .calculator import BillCalculator
+            obj._calc_cache = res = BillCalculator(obj).execute()
+        return res
+
+    # ★ 追加: 締め済みか判定
+    def _is_closed(self, obj):
+        return bool(getattr(obj, "closed_at", None))
+
     def get_subtotal(self, obj):
-        return obj.subtotal
+        # 締め済みは保存値、未締めはCalculator
+        return int(obj.subtotal) if self._is_closed(obj) else int(self._calc(obj).subtotal)
 
     def get_service_charge(self, obj):
-        return obj.service_charge
+        return int(obj.service_charge) if self._is_closed(obj) else int(self._calc(obj).service_fee)
 
     def get_tax(self, obj):
-        return obj.tax
+        return int(obj.tax) if self._is_closed(obj) else int(self._calc(obj).tax)
 
     def get_grand_total(self, obj):
-        return obj.total or obj.grand_total
+        # 締め済みは保存された total（なければ grand_total）を優先
+        if self._is_closed(obj):
+            return int(obj.total or obj.grand_total or 0)
+        return int(self._calc(obj).total)
+
+    def get_change_due(self, obj):
+        # 会計金額は settled_total（確定額）を優先、なければ表示用合計
+        st = obj.settled_total if obj.settled_total is not None else self.get_grand_total(obj)
+        st = st or 0
+        return max(0, obj.paid_total - st)
 
 
 class CastShiftSerializer(serializers.ModelSerializer):
@@ -783,11 +828,6 @@ class CastShiftSerializer(serializers.ModelSerializer):
         return super().create(validated)
 
 
-class CastMiniSerializer(serializers.ModelSerializer):
-    """最小限だけ返すネスト用"""
-    class Meta:
-        model  = Cast
-        fields = ('id', 'stage_name')
 
 class CastDailySummarySerializer(serializers.ModelSerializer):
     cast   = CastMiniSerializer(read_only=True)
@@ -813,13 +853,8 @@ class CastDailySummarySerializer(serializers.ModelSerializer):
 
     def get_total(self, obj):
         return (
-            obj.payroll
-            + obj.sales_free
-            + obj.sales_in
-            + obj.sales_nom
-            + obj.sales_champ
+            obj.payroll + obj.sales_free + obj.sales_in + obj.sales_nom + obj.sales_champ
         )
-
 
 
 class CastRankingSerializer(serializers.ModelSerializer):

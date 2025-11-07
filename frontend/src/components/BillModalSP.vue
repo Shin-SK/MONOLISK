@@ -162,14 +162,19 @@ const servedByOptions = computed(() => {
 const servedByMap = computed(() => { const map = {}; for (const c of servedByOptions.value || []) map[String(c.id)] = c.label; return map })
 
 /* Pay 周り（既存） */
-const displayGrandTotal = computed(() => props.bill?.grand_total ?? 0)
+const displayGrandTotal = computed(() => {
+  const b = props.bill || {}
+  return Number((b.total != null && b.total > 0) ? b.total : (b.grand_total ?? 0))
+})
 const payCurrent = computed(() => {
-  const items = Array.isArray(props.bill?.items) ? props.bill.items : []
-  const priceOf = (id) => (ed.masters?.value || []).find(m => m.id === id)?.price_regular || 0
-  const sub = items.reduce((s,it) => s + ((Number(it.qty)||0) * priceOf(it.item_master, it.price)), 0)
-  const svc = Math.round(sub * (props.serviceRate || 0))
-  const tax = Math.round((sub + svc) * (props.taxRate || 0))
-  return { sub, svc, tax, total: sub + svc + tax }
+  const b = props.bill || {}
+  const sub  = Number(b.subtotal       ?? 0)
+  const svc  = Number(b.service_charge ?? 0)
+  const tax  = Number(b.tax            ?? 0)
+  // 未締め: total=0 のことが多いので grand_total を優先
+  const total = Number((b.total != null && b.total > 0) ? b.total
+                       : (b.grand_total ?? (sub + svc + tax)))
+  return { sub, svc, tax, total }
 })
 const paidCashRef     = ref(props.bill?.paid_cash ?? 0)
 const paidCardRef     = ref(props.bill?.paid_card ?? 0)

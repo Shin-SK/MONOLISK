@@ -29,7 +29,7 @@ router.register(r"staffs", StaffViewSet, basename="staffs")
 router.register(r"staff-shifts",         StaffShiftViewSet,      basename="staff-shifts")
 router.register(r"customers",            CustomerViewSet,        basename="customers")
 router.register(r"store-notices",        StoreNoticeViewSet,     basename="store-notices")
-router.register(r'seat-settings', StoreSeatSettingViewSet, basename='seat-setting')
+router.register(r'store-seat-settings', StoreSeatSettingViewSet, basename='store-seat-settings')
 router.register(r'discount-rules', DiscountRuleViewSet, basename='discount-rule')
 
 

@@ -496,6 +496,23 @@ export const fetchBillItemsByBillId = (billId) =>
      .then(r => Array.isArray(r.data?.results) ? r.data.results : (Array.isArray(r.data) ? r.data : []))
 
 
+/* ---------- 席指定と席ごとのサービス料 ---------- */
+export const fetchStoreSeatSettings = () =>
+  api.get('billing/store-seat-settings/').then(r => r.data)
+
+// 現在店舗に適用されている席種だけを {id,label} 配列で返す
+export const fetchSeatTypesForCurrentStore = async () => {
+  const list = await fetchStoreSeatSettings()
+  const uniq = new Map()
+  for (const s of (Array.isArray(list) ? list : [])) {
+    if (s && s.seat_type != null) {
+      uniq.set(s.seat_type, s.seat_type_display || `#${s.seat_type}`)
+    }
+  }
+  return Array.from(uniq, ([id, label]) => ({ id: Number(id), label: String(label) }))
+}
+
+
 /* ---------- Store Notices (店舗ニュース) ---------- */
 // 一覧（管理側・公開側どっちでも使える）
  export const listStoreNotices = async (params = {}) => {

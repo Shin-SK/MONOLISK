@@ -4,7 +4,8 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from .models import (
     Store, Table, ItemCategory, ItemMaster, Bill, BillItem,
-    BillCastStay, Cast, CastPayout, ItemStock, BillingUser, CastCategoryRate, Customer
+    BillCastStay, Cast, CastPayout, ItemStock, BillingUser, CastCategoryRate, Customer,
+    StoreSeatSetting, SeatType
 )
 
 from django import forms
@@ -74,6 +75,31 @@ class TableAdmin(admin.ModelAdmin):
  
 def __str__(self):
     return self.code or f'#{self.pk}'
+
+
+@admin.register(SeatType)
+class SeatTypeAdmin(admin.ModelAdmin):
+    list_display  = ('code', 'name')
+    search_fields = ('code', 'name')
+    ordering = ('code',)
+
+
+@admin.register(StoreSeatSetting)
+class StoreSeatSettingAdmin(admin.ModelAdmin):
+    list_display  = ('store', 'seat_type', 'service_rate', 'charge_per_person', 
+                     'extension_30_price', 'free_time_price', 'private_price', 'memo')
+    list_filter   = ('store', 'seat_type')
+    search_fields = ('store__name', 'memo')
+    list_editable  = ('service_rate', 'charge_per_person', 'extension_30_price', 
+                      'free_time_price', 'private_price')
+    fieldsets = (
+        (None, {'fields': ('store', 'seat_type')}),
+        ('料金設定', {'fields': (
+            'service_rate', 'charge_per_person', 
+            'extension_30_price', 'free_time_price', 'private_price'
+        )}),
+        ('その他', {'fields': ('memo',)}),
+    )
 
 
 @admin.register(Cast)

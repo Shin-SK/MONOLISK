@@ -70,10 +70,18 @@ class Store(models.Model):
     def __str__(self): return self.name
 
 
-class SeatType(models.TextChoices):
-    MAIN    = "main",    "メイン"
-    COUNTER = "counter", "カウンター"
-    BOX     = "box",     "ボックス"
+class SeatType(models.Model):
+    """席種マスター（Adminで管理）"""
+    code = models.CharField(max_length=16, unique=True, db_index=True)
+    name = models.CharField(max_length=50)
+
+    class Meta:
+        verbose_name = '席種'
+        verbose_name_plural = '席種'
+        ordering = ['code']
+
+    def __str__(self):
+        return self.name
 
 
 class Table(models.Model):
@@ -88,9 +96,10 @@ class Table(models.Model):
         )],
         help_text='例: T01, B02（英数字可）'
     )
-    seat_type = models.CharField(
-        max_length=16, choices=SeatType.choices,
-        default=SeatType.MAIN, db_index=True
+    seat_type = models.ForeignKey(
+        SeatType, on_delete=models.PROTECT, db_index=True,
+        null=True, blank=True,
+        help_text='席種（未設定可）'
     )
 
     class Meta:
@@ -105,7 +114,7 @@ class Table(models.Model):
 # 席種ごとの店舗設定（席別サービス料率/チャージ/延長等を上書き）
 class StoreSeatSetting(models.Model):
     store = models.ForeignKey('billing.Store', on_delete=models.CASCADE, related_name='seat_settings')
-    seat_type = models.CharField(max_length=16, choices=SeatType.choices, db_index=True)
+    seat_type = models.ForeignKey(SeatType, on_delete=models.CASCADE, db_index=True, null=True, blank=True)
 
     # 席別の上書き値（未設定は Store 側のデフォルトを使用）
     service_rate = models.DecimalField(  # 0.25 = 25%
@@ -124,7 +133,8 @@ class StoreSeatSetting(models.Model):
         verbose_name_plural = "席種設定"
 
     def __str__(self):
-        return f"{self.store.name} / {self.get_seat_type_display()}"
+        seat_name = self.seat_type.name if self.seat_type else "未設定"
+        return f"{self.store.name} / {seat_name}"
 
 
 
@@ -404,23 +414,16 @@ class Bill(models.Model):
 
     # ─── 金額再計算 ───────────────────────────────
     def recalc(self, save: bool = False):  # noqa: D401
-        """DEPRECATED: BillCalculator へ移行中"""
-        warnings.warn("Bill.recalc() は BillCalculator に置換予定", DeprecationWarning, stacklevel=2)
-        
-        sub = sum(it.subtotal for it in self.items.all())
-        store = self.table.store if self.table_id else None
-        sr = Decimal(store.service_rate) if store else Decimal('0')
-        tr = Decimal(store.tax_rate) if store else Decimal('0')
-        sr = sr / 100 if sr >= 1 else sr
-        tr = tr / 100 if tr >= 1 else tr
-        svc = int((Decimal(sub) * sr).quantize(Decimal('1'), ROUND_HALF_UP))
-        tax = int((Decimal(sub + svc) * tr).quantize(Decimal('1'), ROUND_HALF_UP))
-        self.subtotal = sub
-        self.service_charge = svc
-        self.tax = tax
-        self.grand_total = sub + svc + tax
+        from .calculator import BillCalculator
+        r = BillCalculator(self).execute()
+
+        self.subtotal       = r.subtotal
+        self.service_charge = r.service_fee
+        self.tax            = r.tax
+        self.grand_total    = r.total
+
         if save:
-            self.save(update_fields=['subtotal', 'service_charge', 'tax', 'grand_total'])
+            self.save(update_fields=['subtotal','service_charge','tax','grand_total'])
         return self.grand_total
 
     # ─── 退店予定再計算 ───────────────────────────

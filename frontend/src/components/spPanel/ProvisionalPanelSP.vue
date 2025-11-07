@@ -26,10 +26,27 @@ function calcTotals(items) {
     const unit = Number(it.price ?? priceOf(it.item_master))
     return s + unit * (Number(it.qty) || 0)
   }, 0)
-  const svc = Math.round(sub * (props.serviceRate || 0))
-  const tax = Math.round((sub + svc) * (props.taxRate || 0))
+  const sr  = Number(props.serviceRate || 0)
+  const tr  = Number(props.taxRate || 0)
+  // バックエンド準拠：切り捨て、税は“小計にのみ”
+  const svc = Math.floor(sub * effServiceRate.value)
+  const tax = Math.floor(sub * effTaxRate.value)
   return { sub, svc, tax, total: sub + svc + tax }
 }
+
+// 実効レート（伝票に値があればそこから逆算、無ければ props）
+const effServiceRate = computed(() => {
+  const sub = Number(props.bill?.subtotal ?? 0)
+  const svc = Number(props.bill?.service_charge ?? 0)
+  if (sub > 0) return svc / sub
+  return Number(props.serviceRate || 0)
+})
+const effTaxRate = computed(() => {
+  const sub = Number(props.bill?.subtotal ?? 0)
+  const tax = Number(props.bill?.tax ?? 0)
+  if (sub > 0) return tax / sub                 // 税は“小計のみ課税”の新ルール
+  return Number(props.taxRate || 0)
+})
 
 /* ===== 既存伝票 → 基準 ===== */
 const baseItems = computed(() => {
@@ -42,7 +59,22 @@ const baseItems = computed(() => {
     name: it.name || nameOf(it.item_master),
   }))
 })
-const baseTotals = computed(() => calcTotals(baseItems.value))
+
+const baseTotals = computed(() => {
+  const b = props.bill || {}
+  const hasServer =
+    b.subtotal != null && b.service_charge != null && b.tax != null
+  if (hasServer) {
+    const sub = Number(b.subtotal) || 0
+    const svc = Number(b.service_charge) || 0
+    const tax = Number(b.tax) || 0
+    const total = Number(b.total != null && b.total > 0 ? b.total
+                  : (b.grand_total ?? (sub + svc + tax)))
+    return { sub, svc, tax, total }
+  }
+  return calcTotals(baseItems.value)
+})
+
 const baseEndAt = computed(() => {
   const opened = props.bill?.opened_at ? dayjs(props.bill.opened_at) : null
   if (!opened) return null
