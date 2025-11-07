@@ -640,6 +640,15 @@ watch(
   { immediate: true }
 )
 
+/* ---------- 人数引き継ぎ ---------- */
+
+ const maleFromItems = computed(() =>
+   (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setMale'   ? Number(it.qty||0) : 0), 0)
+ )
+ const femaleFromItems = computed(() =>
+   (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setFemale' ? Number(it.qty||0) : 0), 0)
+ )
+ const paxFromItems = computed(() => maleFromItems.value + femaleFromItems.value)
 
 /* ---------- ウォッチャー ---------- */
 /* main が変わったら free から除去 */
@@ -789,7 +798,9 @@ watch(visible, v => { if (v) pane.value = 'base' })
             :active-pane="pane"
             :tables="tables"
             :table-id="form.table_id"
-            :pax="pax"
+            :pax="paxFromItems"
+            :male="maleFromItems"
+            :female="femaleFromItems"
             :course-options="courseOptions"
 
             v-model:seatType="seatType"

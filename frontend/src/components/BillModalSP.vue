@@ -45,7 +45,9 @@ function onSeatTypeChange (v) {
 
 watch(visible, v => {
   if (!v) return
-  seatType.value = props.bill?.table?.seat_type || 'main'
+ // bill.table が持っているテーブルIDで ed.tableId を初期化
+ const initTid = props.bill?.table?.id ?? props.bill?.table ?? null
+ if (initTid != null) ed.tableId.value = Number(initTid)
 })
 
 /* テーブル配列から席種候補を自動生成 */
@@ -88,6 +90,25 @@ const getMasterId = (code, ...alts) => {
   console.warn('[master not found candidates]', cand)
   return null
 }
+
+ // テーブル変更のサーバ同期（既存Billのみ）
+ watch(() => ed.tableId.value, async (tid, prev) => {
+   if (!props.bill?.id) return             // 新規は保存時にPOSTで送る
+   const cur = props.bill?.table?.id ?? null
+   if (Number(tid) && Number(tid) !== Number(cur)) {
+     try {
+       await updateBillTable(props.bill.id, Number(tid))          // PATCH /bills/:id/
+       // ローカルBillにも即反映（UIが空表示にならないように）
+       const list = ed.tables.value || []
+       props.bill.table = list.find(t => Number(t.id) === Number(tid)) || { id: Number(tid) }
+     } catch (e) {
+       console.error('[BillModalPC] updateBillTable failed', e)
+       // 失敗したらロールバック
+       ed.tableId.value = cur
+       alert('テーブルの更新に失敗しました')
+     }
+   }
+ })
 
 /* Bill 確保 → 行追加の順に統一 */
 async function ensureBillId () {
@@ -134,6 +155,20 @@ async function onApplySet (payload){
   const fresh = await fetchBill(billId).catch(()=>null)
   emit('updated', fresh || billId)
 }
+
+// 人数状態を引き継ぎ
+ const maleFromItems = computed(() =>
+   (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setMale'   ? Number(it.qty||0) : 0), 0)
+ )
+ const femaleFromItems = computed(() =>
+   (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setFemale' ? Number(it.qty||0) : 0), 0)
+ )
+ const paxFromItems = computed(() => maleFromItems.value + femaleFromItems.value)
+
+ // ほかで p ax を参照しているなら同期しておくと吉
+ watch([maleFromItems, femaleFromItems], ([m,f]) => {
+   if (ed?.pax) ed.pax.value = m + f
+ }, { immediate:true })
 
 /* 既存 */
 const onChooseCourse = async (opt) => {
@@ -351,7 +386,6 @@ async function handleSave(){
       v-show="pane==='base'"
       :tables="ed.tables.value || []"
       :table-id="ed.tableId.value"
-      :pax="ed.pax.value"
       :course-options="ed.courseOptions.value || []"
       :seat-type-options="seatTypeOptions"
       :seat-type="seatType"
@@ -363,6 +397,9 @@ async function handleSave(){
       :expected-out="bill.expected_out"
       :ext-minutes="bill.ext_minutes || 0"
       :set-rounds="bill.set_rounds || 0"
+      :pax="paxFromItems"
+      :male="maleFromItems"
+      :female="femaleFromItems"
       @update-times="onUpdateTimes"
       @update:seatType="onSeatTypeChange" 
       @update:tableId="v => (ed.tableId.value = v)"
