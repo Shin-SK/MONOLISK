@@ -81,7 +81,6 @@ export default defineConfig(({ mode }) => {
 
     server: {
       host: '0.0.0.0',
-      // ★ ここを localhost → web (Compose の Django サービス名) に変更
       proxy: { '/api': { target: 'http://web:8000', changeOrigin: true } },
       allowedHosts: true,
       hmr: useTunnel ? { host: HMR_HOST, protocol: 'wss', clientPort: 443 } : undefined,

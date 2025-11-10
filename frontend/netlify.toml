@@ -1,11 +1,6 @@
-# API を先にバックエンドへプロキシ
-[[redirects]]
-  from = "/api/*"
-  to   = "https://api.monolisk-app.com/api/:splat"
-  status = 200
-  force = true
+# ===== 共通（どの環境でも有効） =====
 
-# ★ 追加：manuals は静的配信（index.html へフォールバックさせない）
+# manuals は静的配信（index.html へフォールバックさせない）
 [[redirects]]
   from = "/manuals/*"
   to   = "/manuals/:splat"
@@ -17,19 +12,20 @@
   to   = "/index.html"
   status = 200
 
-# すべての「HTMLとして返るパス」をデフォルト no-store（SPAの /xxx も含む）
+# --------- Cache / Headers 共通 ---------
+# すべてのHTMLは no-store（SPA全体）
 [[headers]]
   for = "/*"
   [headers.values]
     Cache-Control = "no-store"
 
-# index.html 明示（どちらか片方でも良いが両方あっても害なし）
+# index.html 明示（保険）
 [[headers]]
   for = "/index.html"
   [headers.values]
     Cache-Control = "no-store"
 
-# SW本体/Workbox は毎回検査
+# Service Worker/Workbox は毎回検査
 [[headers]]
   for = "/sw.js"
   [headers.values]
@@ -40,21 +36,50 @@
   [headers.values]
     Cache-Control = "no-cache"
 
-# 任意：ビルド番号ファイル
+# ビルド番号（任意）
 [[headers]]
   for = "/version.json"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
-# ハッシュ付き資産は長期キャッシュ（ここで no-store を上書き）
+# ハッシュ付き資産は長期キャッシュ
 [[headers]]
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
+# PDFはブラウザ内表示 + キャッシュ
 [[headers]]
   for = "/manuals/*.pdf"
   [headers.values]
     Content-Type = "application/pdf"
     Content-Disposition = "inline"
     Cache-Control = "public, max-age=31536000, immutable"
+
+
+# ====== 本番（mainブランチ / Production） ======
+[context.production]
+  # API を本番バックエンドへ
+  [[context.production.redirects]]
+    from = "/api/*"
+    to   = "https://api.monolisk-app.com/api/:splat"
+    status = 200
+    force = true
+
+
+# ====== ステージング（staging等のブランチ / Branch Deploy） ======
+[context.branch-deploy]
+  # API を Heroku ステージングへ
+  [[context.branch-deploy.redirects]]
+    from = "/api/*"
+    to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/api/:splat"
+    status = 200
+    force = true
+
+# Netlify の Deploy Preview（PRプレビュー）も同じ先へ
+[context.deploy-preview]
+  [[context.deploy-preview.redirects]]
+    from = "/api/*"
+    to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/api/:splat"
+    status = 200
+    force = true

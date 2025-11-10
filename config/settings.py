@@ -13,7 +13,7 @@ env = environ.Env()
 env.read_env(BASE_DIR / ".env")
 
 DEBUG = env.bool("DJANGO_DEBUG", default=True)
-SECRET_KEY = env("DJANGO_SECRET_KEY", default="django-insecure-dev-key")
+SECRET_KEY = env("SECRET_KEY", default=None) or env("DJANGO_SECRET_KEY", default="django-insecure-dev-key")
 
 # ── Cloudinary ──────────────────────────────────────────────────────
 cloudinary.config(
@@ -23,50 +23,34 @@ cloudinary.config(
     secure     = True,
 )
 
-# ── Hosts / CORS / CSRF ──────────────────────
-if DEBUG:
+# ── Hosts / CORS / CSRF ─────────────────────────────────────────────
+if env.bool("FORCE_OPEN_HOSTS", default=False):
     ALLOWED_HOSTS = ["*"]
 else:
-    ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[".monolisk-app.com"])
+    ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=(["*"] if DEBUG else []))
 
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
-SESSION_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
-CSRF_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
+# クロスサイト Cookie（Netlify↔Heroku）前提で secure/samesite をENVで調整可
+CROSS_SITE = env.bool("CROSS_SITE_COOKIES", default=not DEBUG)
+SESSION_COOKIE_SECURE   = env.bool("SESSION_COOKIE_SECURE", default=CROSS_SITE or not DEBUG)
+CSRF_COOKIE_SECURE      = env.bool("CSRF_COOKIE_SECURE",  default=CROSS_SITE or not DEBUG)
+SESSION_COOKIE_SAMESITE = env("SESSION_COOKIE_SAMESITE", default=("None" if CROSS_SITE else "Lax"))
+CSRF_COOKIE_SAMESITE    = env("CSRF_COOKIE_SAMESITE",    default=("None" if CROSS_SITE else "Lax"))
 
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://monolisk-app.com",
-    "https://www.monolisk-app.com",
-    "https://monolisk-stg.netlify.app",
-]
+from corsheaders.defaults import default_headers
+CORS_ALLOW_CREDENTIALS = env.bool("CORS_ALLOW_CREDENTIALS", default=True)
+CORS_ALLOWED_ORIGINS   = env.list("CORS_ALLOWED_ORIGINS", default=[
+    "http://localhost:5173", "http://127.0.0.1:5173"
+])
+CSRF_TRUSTED_ORIGINS   = env.list("CSRF_TRUSTED_ORIGINS", default=[
+    "http://localhost:5173", "http://127.0.0.1:5173"
+])
+
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https:\/\/([a-z0-9-]+\.)?monolisk-app\.com$",
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://monolisk-app.com",
-    "https://*.monolisk-app.com",
-    "https://api.monolisk-app.com",
-    "https://monolisk-stg.netlify.app",
-    "https://monolisk-stg-192515f15c7f.herokuapp.com",
-]
-
-CORS_ALLOW_HEADERS = list(default_headers) + [
-    "x-store-id",   # ← これを許可
-    "x-silent",     # ← 既存で使っているなら許可（meta→headerの互換向け）
-    "cache-control",
-    "pragma",          # ← これが今足りない
-    "expires",         # ← 念のため一緒に許可（no-cache系で付くことがある）
-]
-
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_SSL_REDIRECT = not DEBUG
-
+SECURE_SSL_REDIRECT     = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
 
 # ── Apps ────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
