@@ -1,4 +1,8 @@
-# ========== 共通（ヘッダのみ：リダイレクトは書かない） ==========
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# 共通
 [[headers]]
   for = "/*"
   [headers.values]
@@ -37,79 +41,18 @@
     Cache-Control = "public, max-age=31536000, immutable"
 
 
-# ========== 本番（Production / main） ==========
+# main → production API
 [context.production]
-
-  [[context.production.redirects]]
-    from = "/api"
-    to   = "https://api.monolisk-app.com/api"
-    status = 200
-    force = true
-
   [[context.production.redirects]]
     from = "/api/*"
-    to   = "https://api.monolisk-app.com/api/:splat"
+    to = "https://api.example.com/:splat"
     status = 200
     force = true
 
-  [[context.production.redirects]]
-    from = "/manuals/*"
-    to   = "/manuals/:splat"
-    status = 200
-
-  [[context.production.redirects]]
-    from = "/*"
-    to   = "/index.html"
-    status = 200
-
-
-# ========== ステージング（Branch deploy / staging） ==========
+# staging branch → Heroku API
 [context.branch-deploy]
-
-  [[context.branch-deploy.redirects]]
-    from = "/api"
-    to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/api"
-    status = 200
-    force = true
-
   [[context.branch-deploy.redirects]]
     from = "/api/*"
-    to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/api/:splat"
+    to = "https://myapp-staging.herokuapp.com/:splat"
     status = 200
     force = true
-
-  [[context.branch-deploy.redirects]]
-    from = "/manuals/*"
-    to   = "/manuals/:splat"
-    status = 200
-
-  [[context.branch-deploy.redirects]]
-    from = "/*"
-    to   = "/index.html"
-    status = 200
-
-
-# ========== Deploy Preview（PRプレビュー） ==========
-[context.deploy-preview]
-
-  [[context.deploy-preview.redirects]]
-    from = "/api"
-    to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/api"
-    status = 200
-    force = true
-
-  [[context.deploy-preview.redirects]]
-    from = "/api/*"
-    to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/api/:splat"
-    status = 200
-    force = true
-
-  [[context.deploy-preview.redirects]]
-    from = "/manuals/*"
-    to   = "/manuals/:splat"
-    status = 200
-
-  [[context.deploy-preview.redirects]]
-    from = "/*"
-    to   = "/index.html"
-    status = 200
