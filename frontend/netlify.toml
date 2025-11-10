@@ -1,6 +1,4 @@
-# ========= 共通（ヘッダのみ・リダイレクトは書かない） =========
-
-# HTMLは都度取得（PWAの混線回避）
+# ========== 共通（ヘッダのみ：リダイレクトは書かない） ==========
 [[headers]]
   for = "/*"
   [headers.values]
@@ -11,7 +9,6 @@
   [headers.values]
     Cache-Control = "no-store"
 
-# SW/Workbox は毎回検査
 [[headers]]
   for = "/sw.js"
   [headers.values]
@@ -22,19 +19,16 @@
   [headers.values]
     Cache-Control = "no-cache"
 
-# 任意：バージョン表示は必ず最新
 [[headers]]
   for = "/version.json"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
-# ハッシュ付き資産は長期キャッシュ
 [[headers]]
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# PDFはブラウザ内表示 + キャッシュ
 [[headers]]
   for = "/manuals/*.pdf"
   [headers.values]
@@ -43,10 +37,9 @@
     Cache-Control = "public, max-age=31536000, immutable"
 
 
-# ========= 本番 (main / production) =========
+# ========== 本番（Production / main） ==========
 [context.production]
 
-  # 1) /api を本番APIへ
   [[context.production.redirects]]
     from = "/api"
     to   = "https://api.monolisk-app.com/api"
@@ -59,23 +52,20 @@
     status = 200
     force = true
 
-  # 2) manuals は静的配信（SPAに吸わせない）
   [[context.production.redirects]]
     from = "/manuals/*"
     to   = "/manuals/:splat"
     status = 200
 
-  # 3) SPA ルーティング（最後）
   [[context.production.redirects]]
     from = "/*"
     to   = "/index.html"
     status = 200
 
 
-# ========= ステージング (staging / branch-deploy) =========
+# ========== ステージング（Branch deploy / staging） ==========
 [context.branch-deploy]
 
-  # 1) /api を Heroku STG へ
   [[context.branch-deploy.redirects]]
     from = "/api"
     to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/api"
@@ -88,20 +78,18 @@
     status = 200
     force = true
 
-  # 2) manuals は静的配信
   [[context.branch-deploy.redirects]]
     from = "/manuals/*"
     to   = "/manuals/:splat"
     status = 200
 
-  # 3) SPA（最後）
   [[context.branch-deploy.redirects]]
     from = "/*"
     to   = "/index.html"
     status = 200
 
 
-# ========= Deploy Preview (PRプレビュー) =========
+# ========== Deploy Preview（PRプレビュー） ==========
 [context.deploy-preview]
 
   [[context.deploy-preview.redirects]]
