@@ -40,6 +40,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "https://monolisk-app.com",
     "https://www.monolisk-app.com",
+    "https://monolisk-stg.netlify.app",
 ]
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https:\/\/([a-z0-9-]+\.)?monolisk-app\.com$",
@@ -51,6 +52,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://monolisk-app.com",
     "https://*.monolisk-app.com",
     "https://api.monolisk-app.com",
+    "https://monolisk-stg.netlify.app",
+    "https://monolisk-stg-192515f15c7f.herokuapp.com",
 ]
 
 CORS_ALLOW_HEADERS = list(default_headers) + [
