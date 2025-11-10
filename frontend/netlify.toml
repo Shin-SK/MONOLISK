@@ -1,7 +1,7 @@
 # API を先にバックエンドへプロキシ
 [[redirects]]
   from = "/api/*"
-  to   = "https://api.monolisk-app.com/api/:splat"
+  to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/:splat"
   status = 200
   force = true
 
