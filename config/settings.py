@@ -52,6 +52,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT     = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
 
+
 # ── Apps ────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
     "django.contrib.postgres",

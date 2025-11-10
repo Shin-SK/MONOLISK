@@ -1,0 +1,4 @@
+/api     https://api.monolisk-app.com/api     200
+/api/*   https://api.monolisk-app.com/api/:splat   200
+/manuals/*   /manuals/:splat   200
+/*       /index.html   200

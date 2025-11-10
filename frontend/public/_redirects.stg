@@ -1,0 +1,4 @@
+/api     https://monolisk-stg-192515f15c7f.herokuapp.com/api     200
+/api/*   https://monolisk-stg-192515f15c7f.herokuapp.com/api/:splat   200
+/manuals/*   /manuals/:splat   200
+/*       /index.html   200

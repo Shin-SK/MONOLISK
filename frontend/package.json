@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node scripts/gen-version.cjs",
     "dev": "vite",
-    "prebuild": "node scripts/gen-version.cjs",
+    "prebuild": "node scripts/gen-version.cjs && bash scripts/select-redirects.sh",
     "build": "vite build",
     "preview": "vite preview"
   },
