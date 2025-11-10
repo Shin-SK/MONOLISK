@@ -1,17 +1,3 @@
-# API を先にバックエンドへプロキシ
-[[redirects]]
-  from = "/api"
-  to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/api"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/*"
-  to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/api/:splat"
-  status = 200
-  force = true
-
-
 # ★ 追加：manuals は静的配信（index.html へフォールバックさせない）
 [[redirects]]
   from = "/manuals/*"
