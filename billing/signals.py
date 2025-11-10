@@ -40,7 +40,10 @@ def auto_create_staff(sender, instance, created, **kwargs):
 
 # ---------- Bill ↔ Customer 連携（前回情報書き戻し等） ----------
 @receiver(post_save, sender=Bill)
-def attach_customer_and_snapshot(sender, instance: Bill, created, **kw):
+def attach_customer_and_snapshot(sender, instance: Bill, created, **kwargs):
+    # loaddataでデータを復元しているときは発火しない
+    if kwargs.get("raw"):  
+        return
     # ① 新規 Bill：顧客が 0 人なら stub を 1 人作る
     if created and not instance.customers.exists():
         stub = Customer.objects.create()
@@ -79,6 +82,9 @@ def attach_customer_and_snapshot(sender, instance: Bill, created, **kw):
 # ---------- BillItem 作成時：KDSチケット自動発行（1品=1枚） ----------
 @receiver(post_save, sender=BillItem)
 def create_order_tickets_on_item_create(sender, instance: 'BillItem', created, **kwargs):
+    if kwargs.get("raw"):
+        return
+
     if not created:
         return
     im = getattr(instance, 'item_master', None)
@@ -216,14 +222,20 @@ def _rebuild_after_bill_delete(sender, instance: Bill, **kwargs):
 
 @receiver(post_save, sender=Bill)
 def _rebuild_after_bill_close(sender, instance: Bill, created, **kwargs):
+    # loaddata中は発火させない
+    if kwargs.get("raw"):
+        return
+
     # 新規作成時は何もしない（close時にだけ走らせたい）
     if not instance.closed_at:
         return
+
     try:
         store_id = instance.table.store_id if instance.table_id else None
         work_date = instance.closed_at.date()
     except Exception:
         store_id = None
         work_date = None
+
     if store_id and work_date:
         transaction.on_commit(lambda: _rebuild_cast_daily_summaries(store_id, work_date))

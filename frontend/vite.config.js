@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
       // ← 手動登録に一本化（injectRegister を無効化）
       VitePWA({
         registerType: 'autoUpdate',
-        injectRegister: null,                 // ★重要：自動登録を止める
+        injectRegister: null,
         devOptions: { enabled: mode === 'development', type: 'module' },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         workbox: {
@@ -47,10 +47,7 @@ export default defineConfig(({ mode }) => {
           clientsClaim: true,
           cleanupOutdatedCaches: true,
           navigateFallback: '/index.html',
-          navigateFallbackDenylist: [
-            /^\/api\//,
-            /^\/manuals\//,     // ★ 追加：PDFにSPAフォールバックを当てない
-          ],
+          navigateFallbackDenylist: [/^\/api\//, /^\/manuals\//],
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           globIgnores: ['**/*.map'],
           runtimeCaching: [
@@ -84,7 +81,8 @@ export default defineConfig(({ mode }) => {
 
     server: {
       host: '0.0.0.0',
-      proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } },
+      // ★ ここを localhost → web (Compose の Django サービス名) に変更
+      proxy: { '/api': { target: 'http://web:8000', changeOrigin: true } },
       allowedHosts: true,
       hmr: useTunnel ? { host: HMR_HOST, protocol: 'wss', clientPort: 443 } : undefined,
     },

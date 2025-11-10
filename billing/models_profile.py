@@ -28,6 +28,8 @@ class UserProfile(models.Model):
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def ensure_user_profile(sender, instance, created, **kwargs):
+    if kwargs.get("raw"):  # ← loaddata中はここで止まる！
+        return
     if created:
         UserProfile.objects.get_or_create(user=instance)
 

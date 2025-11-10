@@ -222,7 +222,14 @@ REST_FRAMEWORK = {
 REST_SESSION_LOGIN = False
 
 # ── DB ───────────────────────────────────────────────────────────────
-if DEBUG:
+db_url = env("DATABASE_URL", default=None)
+
+if db_url:
+    # DATABASE_URL があれば、DEBUGでも常にそれを使う（Postgres推奨）
+    DATABASES = {
+        "default": dj_database_url.parse(db_url, conn_max_age=600)
+    }
+elif DEBUG:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
@@ -231,11 +238,9 @@ if DEBUG:
     }
 else:
     DATABASES = {
-        "default": dj_database_url.config(
-            conn_max_age=600,
-            ssl_require=True,
-        )
+        "default": dj_database_url.config(conn_max_age=600, ssl_require=True)
     }
+
 
 # ── i18n/tz ──────────────────────────────────────────────────────────
 LANGUAGE_CODE = "ja"

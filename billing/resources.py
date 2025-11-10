@@ -84,3 +84,60 @@ class ItemMasterRes(resources.ModelResource):
             return ItemMaster.objects.get(store=store_obj, code=code_val)
         except ObjectDoesNotExist:
             return None
+
+
+# billing/resources.py
+from import_export import resources, fields, widgets
+from billing.models import Store, Table, SeatType, DiscountRule
+
+# === Table (座席) の CSV ===
+class TableRes(resources.ModelResource):
+    store = fields.Field(
+        column_name="store_slug",
+        attribute="store",
+        widget=widgets.ForeignKeyWidget(Store, "slug"),
+    )
+    seat_type = fields.Field(
+        column_name="seat_type_code",
+        attribute="seat_type",
+        widget=widgets.ForeignKeyWidget(SeatType, "code"),
+    )
+    code = fields.Field(attribute="code", column_name="code")
+
+    class Meta:
+        model = Table
+        import_id_fields = ("code", "store")          # 取り込み時用（任意）
+        fields = ("store", "code", "seat_type")
+        export_order = ("store", "code", "seat_type")
+
+# === DiscountRule (割引ルール) の CSV ===
+class DiscountRuleRes(resources.ModelResource):
+    store = fields.Field(
+        column_name="store_slug",
+        attribute="store",
+        widget=widgets.ForeignKeyWidget(Store, "slug"),
+    )
+    code           = fields.Field(attribute="code",           column_name="code")
+    name           = fields.Field(attribute="name",           column_name="name")
+    amount_off     = fields.Field(attribute="amount_off",     column_name="amount_off")
+    percent_off    = fields.Field(attribute="percent_off",    column_name="percent_off")
+    is_active      = fields.Field(attribute="is_active",      column_name="is_active",
+                                  widget=widgets.BooleanWidget())
+    is_basic       = fields.Field(attribute="is_basic",       column_name="is_basic",
+                                  widget=widgets.BooleanWidget())
+    show_in_basics = fields.Field(attribute="show_in_basics", column_name="show_in_basics",
+                                  widget=widgets.BooleanWidget())
+    show_in_pay    = fields.Field(attribute="show_in_pay",    column_name="show_in_pay",
+                                  widget=widgets.BooleanWidget())
+    sort_order     = fields.Field(attribute="sort_order",     column_name="sort_order")
+    created_at     = fields.Field(attribute="created_at",     column_name="created_at")
+
+    class Meta:
+        model = DiscountRule
+        import_id_fields = ("store", "code")   # 取り込み時の一意キー（任意）
+        fields = ("store","code","name","amount_off","percent_off",
+                  "is_active","is_basic","show_in_basics","show_in_pay",
+                  "sort_order","created_at")
+        export_order = ("store","code","name","amount_off","percent_off",
+                        "is_active","is_basic","show_in_basics","show_in_pay",
+                        "sort_order","created_at")

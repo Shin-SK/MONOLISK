@@ -16,6 +16,13 @@ class UserRes(resources.ModelResource):
         widget=widgets.BooleanWidget()
     )
 
+    # ── User.store を slug で入出力 ──── ★追加
+    store = fields.Field(
+        column_name="store_slug",           # CSV列名
+        attribute="store",                   # User.store (FK)
+        widget=widgets.ForeignKeyWidget(Store, "slug"),
+    )
+
     # ── Cast 1:1 ───────────────────────
     stage_name = fields.Field(column_name="stage_name")
     cast_store = fields.Field(
@@ -34,8 +41,21 @@ class UserRes(resources.ModelResource):
         import_id_fields = ("username",)
         skip_unchanged   = True
         report_skipped   = True
+        # fields を明示したい場合は以下のように列順を固定してもOK
+        # fields = ("username","email","is_staff","store","stage_name","cast_store","staff_stores","password")
+
+    # ---------- 行データの受け渡し ----------
+    def before_import_row(self, row, **kwargs):
+        # after_save_instance で使用するため保持
+        self._current_row = row
 
     # ---------- エクスポート用 ----------
+    def dehydrate_store(self, user):
+        try:
+            return user.store.slug if getattr(user, "store_id", None) else ""
+        except Exception:
+            return ""
+
     def dehydrate_stage_name(self, user):
         try:
             return user.cast.stage_name

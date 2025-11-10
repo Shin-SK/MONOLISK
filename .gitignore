@@ -58,3 +58,17 @@ coverage.xml
 *.orig
 *.old
 *.tmp
+
+
+# Docker (local-only)
+docker-compose.override.yml
+.docker/
+docker-data/
+postgres_data/
+
+# Env (secrets)
+.env
+*.env
+.env.docker
+.env.local
+.env.*.local
