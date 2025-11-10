@@ -74,3 +74,4 @@ postgres_data/
 .env.*.local
 # Local Netlify folder
 .netlify
+frontend/public/_redirects
