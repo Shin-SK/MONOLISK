@@ -1,0 +1,38 @@
+@use "@/assets/scss/global/tokens" as *;
+
+/* 実CSSはここだけで出す（SFC側では使わないこと） */
+html{ font-size:100%; }
+html { -webkit-text-size-adjust: 100%; }
+body{
+  font-size: 16px;  
+  font-family:$gosic;
+  line-height:normal;
+  a{ color:$black; text-decoration:none; &:hover{ @include transition(); opacity:.8; } }
+  img{ max-width:100%; height:auto; }
+}
+.mincho{ font-family:$mincho; @include fs(30); }
+section{ margin-bottom:40px; }
+
+input,textarea{
+  font-size: 16px !important;
+}
+/* drawer類や共通レイアウト */
+.drawer-hamburger{ top:unset; width:30px; display:none; @include sp{ display:block; } }
+.drawer-nav{ background:#fafafa; }
+/* …（ここに body/ナビ/共通クラス等の“実CSS”を集約）… */
+
+.material-symbols-outlined{
+  font-family:"Material Symbols Outlined";
+  font-style:normal; line-height:1;
+  font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;
+}
+
+/* モバイル底余白など */
+.main{ @include md{ padding-bottom:80px !important; } }
+.sp-footer{ padding:8px; position:fixed; bottom:0; width:100%; z-index:999; background:#fff; display:flex; justify-content:space-around; }
+
+.df-center{
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}

@@ -1,9 +1,11 @@
-<template>
-  <router-view />  <!-- ✅ ルーターのページを表示する -->
-</template>
-
+<!-- App.vue -->
 <script setup>
 </script>
 
-<style scoped>
-</style>
+<template>
+
+  <RouterView />
+  <div class="cr">
+    MONOLISK
+  </div>
+</template>

@@ -1,0 +1,134 @@
+@use "@/assets/scss/global/tokens" as *;
+
+.modal-body{
+	.tab-item{
+		position: relative;
+		&.active{
+			&:after{
+				content: '';
+				height: 2px;
+				width: 100%;
+				background-color: $mc;
+				position: absolute;
+				bottom: 0;
+				left: 0;
+				right: 0;
+				margin: auto;
+			}
+		}
+	}
+	.order-form{
+		select{
+			min-height: 43px;
+			background: transparent;
+			border: #e8e8e8 1px solid;
+		}
+	}
+}
+
+
+/* ラッパを“コンテナ”化 */
+.sidebar-cq {
+	container-type: inline-size;
+	min-width: 160px;
+}
+
+/* 既定は縦並び（PC想定） */
+.modal-sidebar{
+  display:flex;        /* 念のため明示 */
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ラッパ（祖先コンテナ）の幅で切替える */
+@container (max-width: 200px){
+  .modal-sidebar{
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+.sidebar{
+	flex-direction: column;
+	padding: 16px;
+	min-width: fit-content;
+	.wrap{
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 8px;
+		margin-bottom: 16px;
+		.title{
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			margin-bottom: 8px;
+			background-color: #f7f7f7;
+			padding: 4px;
+			width: 100%;
+		}
+		.items{
+			margin-left: 16px;
+			.btn{
+				align-items: flex-start;
+				padding-left: 4px;
+				display: block;
+				text-align: left;
+				margin-bottom: 8px;
+				&:last-child{
+					margin-bottom: 0;
+				}
+			}
+		}
+	}
+	@include md{
+		padding: 8px;
+		position: fixed;
+		bottom: 0;
+		width: 100%;
+		height: auto;
+		display: flex;
+		align-items: center;
+		justify-content: space-around;
+		flex-direction: row;
+		z-index: 999;
+		background-color: white;
+	}
+}
+
+
+.aside{
+	padding:8px;
+	color: black;
+	background-color: white;
+	position: relative;
+	height: 100vh;
+	h1{
+		@include fs(16);
+		font-weight: bold;
+		margin-bottom: 40px;
+	}
+	.nav{
+		@include md{
+			gap: unset;	
+		}
+		a{
+			padding: 8px;
+		}
+		.router-link-active{
+			color: $mc;
+			background-color: rgba($mc, 0.1);
+			position: relative;
+			font-weight: bold;
+			border-radius: 16px;
+			&::before{
+				content: '';
+				position: absolute;
+				width: 4px;
+				height: 100%;
+				background-color: $mc;
+				top: 0;
+				left: -8px;
+			}
+		}
+	}
+}

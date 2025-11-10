@@ -1,0 +1,61 @@
+@use "@/assets/scss/global/tokens" as *;
+
+.admin{
+	.sidebar{
+		.nav-link{
+			@include flex();
+			border-radius: 50%;
+			aspect-ratio: 1/1;
+			width: 40px;
+			height: 40px;
+			font-size: 20px;
+		}
+	}
+	.auth{
+		@include flex();
+		justify-content: flex-start;
+		position: absolute;
+		bottom: 16px;
+		left: 8px;
+		.icon{
+			img{
+				width: 40px;
+				height: 40px;
+				border-radius: 50%;
+				object-fit: cover;
+			}
+		}
+		.name{
+			font-weight: bold;
+		}
+	}
+	.h3{
+		text-align: center;
+		margin-bottom: 16px;
+		font-weight: bold;
+		color: $mc;
+	}
+	.ReservationList{
+		.list{
+			.cast-icon{
+				width: 40px;
+				height: 40px;
+			}
+			td.cast{
+				display: flex;
+				align-items: center;
+				gap: 8px;
+			}
+		}
+	}
+	.main{
+		.wrapper{
+			.header{
+				height: 40px;
+				width: 100%;
+			}
+		}
+	}
+
+}
+

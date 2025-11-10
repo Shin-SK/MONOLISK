@@ -1,0 +1,46 @@
+@use "@/assets/scss/global/tokens" as *;
+
+.mypage{
+	display:flex;
+	flex-direction:column;
+	min-height:100vh;
+	h5{
+		@include flex();
+		font-weight: bold;
+		flex-direction: column;
+		gap: 16px;
+		margin-bottom: 16px;
+		&::after {
+			content: '';
+			width: 40px;
+			height: 4px;
+			background-color: black;
+			border-radius: 100px;
+		}
+	}
+	.header{
+		&__wrap{
+			padding-top: 8px;
+			padding-bottom: 8px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+	}//header
+	main{
+		flex:1 1 auto;			// 残りを全部
+		display:flex;
+		flex-direction:column;
+		min-height:0;		
+	}
+
+	.mini-nav{
+		@include flex();
+		gap: 16px;
+		.btn{
+			@include flex();
+			border-radius: 100%;
+			padding: 8px;
+		}
+	}
+}//driver

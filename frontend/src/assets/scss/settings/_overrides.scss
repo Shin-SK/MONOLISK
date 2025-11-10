@@ -1,0 +1,158 @@
+// _overrides.scss
+@use "@/assets/scss/global/tokens" as *;
+
+:root { 
+  --safe-top: env(safe-area-inset-top, 0px); 
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --bs-body-bg: var(--bs-light);
+}
+
+
+.form-control{
+	padding: 8px;
+  height: 40px;
+  border: unset;
+}
+
+.table-striped-even {
+  /* 奇数行を透明に戻す */
+  > tbody > tr:nth-of-type(odd)  > * {
+    background-color: transparent;
+  }
+  /* 偶数行に色を付ける  */
+  > tbody > tr:nth-of-type(even) > * {
+    background-color: var(--bs-table-striped-bg);
+    color:            var(--bs-table-striped-color);
+  }
+}
+
+.offcanvas{
+  background-color: white;
+  --bs-offcanvas-width: min(100vw,300px);
+}
+
+.btn-primary{
+  color: white;
+}
+
+.btn .badge{
+  top: 0 !important;
+}
+
+.bg-orange { background-color:#ff922b !important; }
+
+.bg-blue { background-color:#0d6efd !important;}
+
+.fs-7{
+  @include fs(8);
+}
+
+.modal-fullscreen .modal-content {
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    min-height: 100%;
+      
+}
+
+/* 生のボタン/入力だけ黒に固定（Bootstrapの .btn は触らない） */
+button:not(.btn):not(.btn-link):not(.nav-link),
+input[type="button"]:not(.btn),
+input[type="submit"]:not(.btn),
+input[type="reset"]:not(.btn),
+input[type="file"]::file-selector-button,
+input[type="file"]::-webkit-file-upload-button {
+  color: #000; /* あるいは var(--bs-body-color) */
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button{
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+/* Firefox */
+input[type="number"]{
+	-moz-appearance: textfield;
+	appearance: textfield; /* 標準 */
+}
+
+
+
+@media (display-mode: standalone) {
+  .sidebar, .sp-footer, .cast-footer {
+    padding-bottom : var(--safe-bottom) !important;
+  }
+  .cast-footer .order-button{
+    bottom: var(--safe-bottom) !important;
+  }
+  .offcanvas{
+    padding-top: var(--safe-top) !important;
+    padding-left: var(--safe-left) !important;
+    padding-bottom: var(--safe-bottom) !important;
+  }
+
+  .add-button{
+    bottom: 96px !important;
+  }
+
+  /* ここから */
+
+  body { padding-top: var(--safe-top); }   /* ← これが肝 */
+
+  /* ★ サイドバー(#castSidebar)だけは最上部まで背景を伸ばす */
+  #castSidebar{
+    height: 100vh;                /* 画面全高 */
+  }
+  #castSidebar .offcanvas-header{
+    padding-top: calc(var(--bs-offcanvas-padding-y) + var(--safe-top));
+  }
+
+  .offcanvas{
+    height: 100vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-top: var(--safe-top) !important;
+    padding-left: var(--safe-left) !important;
+    padding-bottom: var(--safe-bottom) !important;
+  }
+  /* 任意：ヘッダーでのドラッグでも背景に伝搬しにくくする */
+  .offcanvas, .offcanvas * { touch-action: pan-y; }
+  
+  .modal{
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    overscroll-behavior: contain;
+  }
+  .modal-open{
+    position: unset!important; //PWA重なるやつ用 どうやらtransformとfixedが悪さをしてるらしい
+    overscroll-behavior: contain;
+  }
+}
+
+img, svg {
+    vertical-align: middle;
+    width: auto;
+    height: auto;
+}
+
+
+//card系
+.card{
+  --bs-card-bg: white;
+  --bs-card-border-width: 0;
+  // --bs-card-cap-bg: rgba(var(--bs-black-rgb), .01);
+  --bs-card-cap-bg: white;
+}
+
+.card-header{
+  --bs-card-border-width: 1px;
+}
+
+
+.table-light{
+  --bs-table-bg: white;
+}
+

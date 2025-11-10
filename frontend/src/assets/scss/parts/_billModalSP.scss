@@ -1,0 +1,188 @@
+@use "@/assets/scss/global/tokens" as *;
+
+.billmodal-sp{
+	.page-title{
+		font-weight: bold;
+		@include fs(18);
+	}
+	.header-bar{
+		display:flex;
+		align-items:center;
+		justify-content:space-between;
+		padding:8px 12px;
+		.button-area{
+			@include flex();
+		}
+	}
+	.panel{
+		display: flex;
+		flex:1 1 auto;
+		flex-direction: column;
+		justify-content: space-between;
+		width: 100%;
+		.title{
+			font-weight: bold;
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			margin-bottom: 4px;
+		}
+	}
+	.base{
+		.button-area{
+			right: 0;
+			bottom: 0;
+			top: 0;
+			margin: auto;
+			@include flex();
+		}
+	}
+	.casts{
+		.now-cast{
+			background-color: var(--bs-body-bg);
+			padding: 8px;
+			margin-bottom: 40px;
+			.items{
+				display: flex;
+				justify-content: flex-start;
+				flex-wrap: wrap;
+				gap: 8px;
+				.item{
+					display: flex;
+					align-items: center;
+					padding: 4px;
+					border-radius: 4px;
+					width: fit-content;
+					.wrap{
+						@include flex();
+						gap: 8px;
+					}
+				}
+			}
+		}
+		.bench-cast{
+			.search{
+				margin-bottom: 16px;
+				position: relative;
+				input{
+					padding-left: 28px;
+					border-radius: 100px;
+				}
+				.icon{
+					position: absolute;
+					top: 0;
+					bottom: 0;
+					left: 8px;
+					margin: auto;
+				}
+			}
+			.items{
+				display: flex;
+				flex-direction: column;
+				gap: 8px;
+				overflow-y: scroll;
+				.item{
+					display: flex;
+					justify-content: space-between;
+					align-items: center;
+					border-bottom: 1px lightgray solid;
+					padding: 8px 0px;
+					.wrap{
+						display: flex;
+						align-items: center;
+						gap: 4px;
+						.name{
+							@include fs(10);
+						}
+					}
+				}
+			}
+			.button-area{
+				display: flex;
+				gap: 4px;
+			}
+		}
+	}
+}
+
+	.order{
+		.order-tabs{
+			display:flex;
+			gap:8px;
+			overflow-x:auto;
+			padding:8px 0;
+		}
+		.tab{
+			padding:6px 10px;
+			border:1px solid #ccc;
+			border-radius:6px;
+			white-space:nowrap;
+			&.active{
+				border-color:#333;
+				font-weight:700;
+			}
+		}
+		.served-by{
+			display:flex;
+			align-items:center;
+			gap:8px;
+			margin:8px 0;
+		}
+
+		.served-pills{display:flex;
+			gap:8px;
+			overflow-x:auto;
+			padding:4px 0;
+		}
+
+		.pill{ padding:6px 10px;
+			border:1px solid #ccc;
+			border-radius:9999px;
+			background:#fff;
+			white-space:nowrap;
+			&.active{
+				border-color:#333; 
+				font-weight:700; 
+			}
+		}
+		.served-label{
+			font-weight:600;
+		}
+		.served-select{
+			min-width: 160px;
+		}
+		.order-list {
+		list-style: none;
+		padding: 0;
+		}
+
+		.order-row {
+		width: 100%;
+		text-align: left;
+		padding: 10px 12px;
+		border: 1px solid #eee;
+		border-radius: 6px;
+		background: #fff;
+
+		&.active {
+			border-color: #333;
+			font-weight: 700;
+		}
+
+		+ li .order-row {
+			margin-top: 8px;
+		}
+		}
+
+		.cart {
+			.cart-items{
+				border-top:8px #f5f5f5 solid;
+				.cart-item{
+					border-bottom: 1px #f5f5f5 solid ;
+					padding: 8px 4px;
+					margin: 8px auto;
+				}
+			}
+		}
+		
+	}

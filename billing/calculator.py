@@ -1,0 +1,168 @@
+from __future__ import annotations
+"""
+Bill / CastPayout 計算ロジック（割引フック + 席種別サービス率対応）
+"""
+from dataclasses import dataclass
+from decimal import Decimal, ROUND_FLOOR
+from typing import List, Dict
+from billing.payroll.engines import get_engine
+
+@dataclass(slots=True)
+class BillCalculationResult:
+    subtotal: int
+    service_fee: int
+    tax: int
+    total: int
+    cast_payouts: List["CastPayout"]
+
+    def as_dict(self) -> dict:
+        return {
+            "subtotal": self.subtotal,
+            "service_fee": self.service_fee,
+            "tax": self.tax,
+            "total": self.total,
+        }
+
+class BillCalculator:
+    """伝票(Bill)を入力して金額 & CastPayout を計算する"""
+
+    def __init__(self, bill):
+        self.bill = bill
+        table = getattr(bill, "table", None)
+        self.store = getattr(table, "store", None)
+        # 保険: stays 経由
+        if self.store is None:
+            st = bill.stays.select_related("bill__table__store").first()
+            if st and getattr(st.bill, "table", None):
+                self.store = getattr(st.bill.table, "store", None)
+        if self.store is None:
+            # どうしても取れない場合は 0%計算 or 例外。ここでは 0% にフォールバック。
+            class _Dummy: service_rate = 0; tax_rate = 0
+            self.store = _Dummy()
+
+    # ---------------- 金額計算 ----------------
+    def _subtotal_raw(self) -> Decimal:
+        return Decimal(sum(it.subtotal for it in self.bill.items.all()))
+
+    def _apply_discounts(self, subtotal: Decimal) -> Decimal:
+        """DiscountRule を 1 つだけ適用（併用不可）"""
+        disc = getattr(self.bill, "discount_rule", None)
+        if not disc or not disc.is_active:
+            return subtotal.quantize(0, rounding=ROUND_FLOOR)
+
+        if disc.amount_off:
+            subtotal = max(Decimal(0), subtotal - Decimal(disc.amount_off))
+        elif disc.percent_off:
+            rate = Decimal(disc.percent_off)
+            # 1.00 (=100%) と 0.10 (=10%) の両方許容
+            if rate >= 1:
+                rate /= 100
+            subtotal = subtotal * (Decimal(1) - rate)
+
+        return subtotal.quantize(0, rounding=ROUND_FLOOR)
+
+    def _service_fee(self, subtotal: Decimal) -> Decimal:
+        """席種別の実効サービス率（Bill._effective_service_rate）を優先"""
+        # Bill にヘルパがある想定（過去に追加済み）。無ければ store.service_rate を使う。
+        if hasattr(self.bill, "_effective_service_rate"):
+            rate = Decimal(str(self.bill._effective_service_rate()))
+        else:
+            rate = Decimal(str(self.store.service_rate or 0))
+            if rate >= 1:
+                rate /= 100
+        return (subtotal * rate).quantize(0, rounding=ROUND_FLOOR)
+
+    def _tax(self, subtotal: Decimal, service_fee: Decimal) -> Decimal:
+        """
+        グローバル既定：税は小計にのみ課税（サービス料には課税しない）
+        """
+        rate = Decimal(str(self.store.tax_rate or 0))
+        if rate >= 1:
+            rate /= 100
+
+        base = subtotal  # ★変更点：小計のみ課税
+        return (base * rate).quantize(0, rounding=ROUND_FLOOR)
+
+    # --------------- CastPayout ----------------
+    def _cast_payouts(self):
+        from .models import CastPayout
+        totals = {}
+
+        engine = get_engine(self.store)
+
+        # A) 明細ごとの歩合（店舗エンジンの上書き > 既定：％ back_rate）
+        for item in self.bill.items.select_related("item_master__category", "served_by_cast"):
+            if item.exclude_from_payout or not item.served_by_cast or item.is_nomination:
+                continue
+
+            stay = "in" if getattr(item, "is_inhouse", False) else "free"  # 今回は free/in だけ対象
+
+            # ① 店舗エンジンに委譲（dosukoi-asa ならここで金額確定）
+            override = engine.item_payout_override(self.bill, item, stay_type=stay)
+            if override is not None:
+                amt = int(override)
+            else:
+                # ② 既定：％で (price*qty)×back_rate
+                amt = int((Decimal(item.subtotal) * Decimal(item.back_rate)).quantize(0, rounding=ROUND_FLOOR))
+
+            if amt:
+                totals[item.served_by_cast_id] = totals.get(item.served_by_cast_id, 0) + amt
+
+        # B) 本指名（既存エンジン）
+        for cid, add in (engine.nomination_payouts(self.bill) or {}).items():
+            totals[cid] = totals.get(cid, 0) + int(add or 0)
+
+        # C) 同伴（既存エンジン）
+        for cid, add in (engine.dohan_payouts(self.bill) or {}).items():
+            totals[cid] = totals.get(cid, 0) + int(add or 0)
+
+        # materialize（既存どおり）
+        cast_objs = {c.id: c for c in self.bill.nominated_casts.all()}
+        if self.bill.main_cast:
+            cast_objs[self.bill.main_cast.id] = self.bill.main_cast
+        for it in self.bill.items.select_related("served_by_cast"):
+            if it.served_by_cast:
+                cast_objs[it.served_by_cast.id] = it.served_by_cast
+
+        return [
+            CastPayout(bill=self.bill, bill_item=None, cast=cast_objs.get(cid), amount=amt)
+            for cid, amt in totals.items() if cast_objs.get(cid)
+        ]
+        
+
+    def execute(self):
+        # ★ 変更: 合計（小計+サービス料+税）から割引を引く方式に変更
+        subtotal0 = self._subtotal_raw()
+        # まずサービス料・税を計算（割引前）
+        svc0 = self._service_fee(subtotal0)
+        tax0 = self._tax(subtotal0, svc0)
+        total_before_discount = subtotal0 + svc0 + tax0
+        
+        # 合計から割引を適用
+        disc = getattr(self.bill, "discount_rule", None)
+        discount_amount = Decimal(0)
+        if disc and disc.is_active:
+            if disc.amount_off:
+                discount_amount = Decimal(disc.amount_off)
+            elif disc.percent_off:
+                rate = Decimal(disc.percent_off)
+                if rate >= 1:
+                    rate /= 100
+                discount_amount = total_before_discount * rate
+        
+        total_after_discount = max(Decimal(0), total_before_discount - discount_amount)
+        
+        # subtotal/service_charge/taxは割引前の値を返す（表示用）
+        # totalは割引適用後の金額
+        payouts = self._cast_payouts()
+        return BillCalculationResult(
+            subtotal=int(subtotal0),
+            service_fee=int(svc0),
+            tax=int(tax0),
+            total=int(total_after_discount),
+            cast_payouts=payouts,
+        )
+
+    # 後方互換（古い呼び出しが .calc() の場合に備えて）
+    def calc(self):
+        return self.execute()

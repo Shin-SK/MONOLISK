@@ -1,0 +1,63 @@
+<script setup>
+import { ref, nextTick } from 'vue'
+import { useAuth } from '@/stores/useAuth'
+import { useRouter, useRoute } from 'vue-router'
+
+const auth   = useAuth()
+const router = useRouter()
+const route  = useRoute()
+
+const form = ref({ username:'', password:'' })
+const err  = ref('')
+
+const submit = async () => {
+	err.value = ''
+	try {
+		await auth.login(form.value.username, form.value.password)
+		// ★ ここが重要：/ に移動して beforeEach の安全ホーム分岐に任せる
+		await router.replace('/')
+	} catch (e) {
+		err.value = 'ユーザー名かパスワードが違います'
+	}
+}
+</script>
+
+
+<template>
+  <div class="d-flex align-items-center justify-content-center flex-column gap-4 min-vh-100 p-3">
+    <img src="/img/logo-full.webp" alt="" style="width: 96px;">
+    <div class="container bg-white p-4" style="max-width:420px">
+      <!-- Enter で送信できるよう <form> を使う -->
+      <form @submit.prevent="submit" novalidate>
+        <div class="mb-3">
+          <label class="form-label">ユーザー名</label>
+          <input
+            v-model="form.username"
+            class="form-control"
+            autocomplete="username"
+            autofocus
+          >
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label">パスワード</label>
+          <input
+            v-model="form.password"
+            type="password"
+            class="form-control"
+            autocomplete="current-password"
+          >
+        </div>
+
+        <div v-if="err" class="alert alert-danger py-1">
+          {{ err }}
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100">
+          ログイン
+        </button>
+      </form>
+    </div>
+  </div>
+
+</template>

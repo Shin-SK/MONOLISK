@@ -1,0 +1,44 @@
+@forward "sass:math";   // ← bootstrap と一緒に使うなら入れておくと警告が減る
+
+@use "global/global";
+
+// ① 変数を import
+@use "settings/variables" as *;
+
+// ② Bootstrap 本体を読み込み（with でも OK）
+@use "bootstrap/scss/bootstrap" with (
+  $font-size-base: $font-size-base,
+  $body-color:     $body-color,
+  $body-bg:        $body-bg,
+  $border-width: $border-width,
+  $btn-border-width: $btn-border-width,
+  $primary: $primary,
+  $btn-padding-y: $btn-padding-y,
+  $btn-padding-x: $btn-padding-x,
+  $table-bg: $table-bg,
+  $table-striped-bg:$table-striped-bg,
+  $table-striped-color:$table-striped-color,
+  $modal-content-bg: $modal-content-bg,
+);
+
+@use "settings/overrides";
+
+@use "parts/base";
+@use "parts/header";
+
+@use "parts/form";
+@use "parts/admin";
+@use "parts/mypage";
+@use "parts/timeline";
+@use "parts/customer";
+@use "parts/dashboard";
+@use "parts/tables";
+@use "parts/sales";
+@use "parts/pl";
+@use "parts/bill";
+@use "parts/castMypage";
+@use "parts/ranking";
+@use "parts/owner";
+@use "parts/billModalSP";
+
+@use "parts/monolisk";

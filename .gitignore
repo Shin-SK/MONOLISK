@@ -1,7 +1,76 @@
+# --- Python / Django -------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.Python
+*.zip
+env/
+env*/
 venv/
-_old-v1-250227/
-frontend/.vscode/
-frontend/node_modules/
-
-.DS_Store
+venv*/
+.idea/
+.vscode/
+*.sqlite3
+# Django collectstatic
+/staticfiles/
+# local settings / secrets
 .env
+*.env
+
+# --- Frontend (Vue / Vite) ------------------------------------------
+node_modules/
+dist/
+coverage/
+*.log
+*.local
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# Vite cache
+.vite/
+
+# --- OS / Editor cruft ----------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+# JetBrains / VS Code metadata
+.idea/
+.vscode/
+*.code-workspace
+
+# --- Heroku ----------------------------------------------------------
+# Heroku slug artifacts
+*.slugignore
+
+# --- Testing & Reports ----------------------------------------------
+htmlcov/
+.pytest_cache/
+junit-*.xml
+coverage.xml
+
+# --- Misc ------------------------------------------------------------
+*.bak
+*.orig
+*.old
+*.tmp
+
+
+# Docker (local-only)
+docker-compose.override.yml
+.docker/
+docker-data/
+postgres_data/
+
+# Env (secrets)
+.env
+*.env
+.env.docker
+.env.local
+.env.*.local
+# Local Netlify folder
+.netlify

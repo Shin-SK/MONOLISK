@@ -1,19 +1,94 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + Vue</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
-    <script src="https://kit.fontawesome.com/66f29bbc2b.js" crossorigin="anonymous"></script>
-    <link rel="stylesheet" href="/src/assets/css/style.css">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>MONOLISK</title>
+
+    <meta name="theme-color" content="#111111">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="MONOLISK">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="application-name" content="MONOLISK" />
+    <link rel="manifest" href="/manifest.webmanifest">
+    
+    <link rel="icon" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+    <link rel="preload" as="style"
+          href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;900&display=swap"
+          onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;900&display=swap"></noscript>
+    <!-- スピナー -->
+    <link rel="preload" as="image" href="/img/logo.webp" as="image">
+    <style>
+      #splash{
+        position:fixed; inset:0; z-index:2147483647;
+        display:flex; align-items:center; justify-content:center; flex-direction:column;
+        background:#f7f7f7;
+
+        /* デフォルトは非表示（最初の1秒は出さない） */
+        opacity:0; transform: translateY(8px) scale(.985); filter: blur(1.2px);
+        transition:
+          opacity   .60s cubic-bezier(.22,.61,.36,1),
+          transform .60s cubic-bezier(.22,.61,.36,1),
+          filter    .60s ease;
+      }
+      /* 1秒経っても終わってなければ表示 */
+      #splash.visible{
+        opacity:1; transform: translateY(0) scale(1); filter: blur(0);
+      }
+      /* 消すときはさらにふわっと */
+      #splash.hide{
+        opacity:0; transform: translateY(10px) scale(.98); filter: blur(1.6px);
+        pointer-events:none;
+      }
+
+      #splash .logo{ width:64px; height:64px; display:block; object-fit:contain; }
+      #splash .name{ margin-top:.5rem; width:80px; height:auto; }
+
+      @keyframes spinBackish {
+        0% { transform:rotate(0deg) }
+        60%{ transform:rotate(380deg) }
+        100%{ transform:rotate(360deg) }
+      }
+      #splash .logo{ animation:spinBackish 2.5s cubic-bezier(.175,.885,.32,1.275) infinite; }
+      @media (prefers-reduced-motion: reduce){
+        #splash, #splash.visible, #splash.hide{ transition:none }
+        #splash .logo{ animation:none }
+      }
+
+      /* app のふわっと入場はそのまま */
+      #app.app-hidden{ opacity:0; transform: translateY(2px); transition: opacity .36s ease, transform .36s ease; }
+      #app.app-shown { opacity:1; transform:none; }
+      @media (prefers-reduced-motion: reduce){
+        #app.app-hidden, #app.app-shown{ transition:none }
+      }
+    </style>
+    <script>
+      (function(){
+        window.__splashStart = performance.now();
+        const SHOW_AFTER = 2000; // 最初の1秒は出さない
+        function showIfStillLoading(){
+          if (window.__splashDone) return; // もう終わってたら出さない
+          const el = document.getElementById('splash');
+          el && el.classList.add('visible');
+        }
+        window.__splashShowTimer = setTimeout(showIfStillLoading, SHOW_AFTER);
+      })();
+    </script>
+
   </head>
   <body>
-
-    <div id="app"></div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+    <!-- スピナー -->
+    <div id="splash">
+      <img class="logo" src="/img/logo.webp" alt="MONOLISK-icon">
+      <img class="name" src="/img/app-name.webp" alt="MONOLISK-name">
+    </div>
+    <div id="app" class="app-hidden"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
