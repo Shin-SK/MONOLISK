@@ -1,11 +1,11 @@
-# /api を Heroku STG へリライト（POST/OPTIONS も含め常時）
+# /api を Heroku STG へ確実にリライト
 [[redirects]]
   from = "/api/*"
-  to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/:splat"
+  to   = "https://monolisk-stg-192515f15c7f.herokuapp.com/api/:splat"
   status = 200
   force = true
 
-# SPA ルーティング（GETのみ index.html へ）
+# SPA ルーティング（APIの次に書く）
 [[redirects]]
   from = "/*"
   to   = "/index.html"
