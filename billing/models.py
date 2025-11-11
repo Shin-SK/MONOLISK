@@ -387,6 +387,10 @@ class Bill(models.Model):
     paid_card = models.PositiveIntegerField(default=0)  # カード請求
 
     @property
+    def manual_discount_total(self) -> int:
+        return self.manual_discounts.aggregate(s=models.Sum('amount'))['s'] or 0
+
+    @property
     def paid_total(self):
         return (self.paid_cash or 0) + (self.paid_card or 0)
 
@@ -1125,6 +1129,8 @@ try:
 except Exception:
     from django.contrib.postgres.fields import JSONField
 
+
+
 class CastGoal(models.Model):
     # 指標
     METRIC_REVENUE       = 'revenue'          # 売上金額（担当分）
@@ -1277,3 +1283,27 @@ class CastGoal(models.Model):
             self.milestones_hit = sorted(cur.union(new))
             self.save(update_fields=['milestones_hit','updated_at'])
         return new, pr
+
+
+
+class BillDiscountLine(models.Model):
+    """
+    手入力の割引明細（ラベル＋金額）。
+    - 常に「減額」を表す前提なので、amount は正の整数（円）。
+    - 並び順は sort_order → id の順。
+    """
+    bill = models.ForeignKey('billing.Bill', on_delete=models.CASCADE,
+                             related_name='manual_discounts')
+    label = models.CharField('割引明細', max_length=120)
+    amount = models.PositiveIntegerField('金額（円・正の値）')
+    sort_order = models.PositiveIntegerField('表示順', default=0)
+    created_at = models.DateTimeField('作成日時', auto_now_add=True)
+    updated_at = models.DateTimeField('更新日時', auto_now=True)
+
+    class Meta:
+        verbose_name = '手入力割引明細'
+        verbose_name_plural = verbose_name
+        ordering = ('sort_order', 'id')
+
+    def __str__(self):
+        return f'{self.label}: -¥{self.amount:,}'

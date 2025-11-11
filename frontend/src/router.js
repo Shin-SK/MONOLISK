@@ -239,14 +239,14 @@ router.beforeEach(async (to, from, next) => {
   const roleProtected = to.matched.some(r => Array.isArray(r.meta?.rolesAny))
   const requiresAuth  = to.matched.some(r => r.meta?.requiresAuth) || roleProtected
 
-  console.log('[guard] →', to.fullPath, { token: !!token, storeId, requiresAuth })
+  // console.log('[guard] →', to.fullPath, { token: !!token, storeId, requiresAuth })
 
   // 3) 認証済み & storeIdがあるのに me 未取得なら fetch
   if ((token && storeId) && !meStore.me) {
     try {
-      console.log('[guard] fetchMe start')
+      // console.log('[guard] fetchMe start')
       await meStore.fetchMe?.()
-      console.log('[guard] fetchMe done', meStore.me?.current_role, meStore.me?.current_store_id)
+      // console.log('[guard] fetchMe done', meStore.me?.current_role, meStore.me?.current_store_id)
     } catch (e) {
       console.warn('[guard] fetchMe error', e)
     }
@@ -262,7 +262,7 @@ router.beforeEach(async (to, from, next) => {
     if (fromMe) {
       localStorage.setItem('store_id', fromMe)
       storeId = fromMe
-      console.log('[guard] store_id fallback from me ->', fromMe)
+      // console.log('[guard] store_id fallback from me ->', fromMe)
     }
   }
   // ★ ここで “me に合わせて同期上書き” はしない（今回のバグ源）
@@ -271,30 +271,30 @@ router.beforeEach(async (to, from, next) => {
   if (to.path === '/') {
     if (!token || !storeId) { console.log('[guard] / → login'); return next('/login') }
     const dest = homePath() || '/'
-    console.log('[guard] / →', dest)
+    // console.log('[guard] / →', dest)
     if (to.fullPath === dest || from.fullPath === dest) return next()
     return next({ path: dest, replace: true })
   }
 
   if (to.name === 'login') {
-    console.log('[guard] login route, token?', !!token, 'store?', !!storeId)
+    // console.log('[guard] login route, token?', !!token, 'store?', !!storeId)
     return next(token && storeId ? '/' : undefined)
   }
 
   if (requiresAuth && (!token || !storeId)) {
-    console.log('[guard] need auth → /login')
+    // console.log('[guard] need auth → /login')
     return next({ path: '/login', query: { next: to.fullPath } })
   }
 
   const required = to.matched.map(r => r.meta?.rolesAny).find(a => Array.isArray(a))
   if (required && !hasRoleOrSuper(required)) {
     const dest = homePath() || '/'
-    console.log('[guard] role mismatch →', dest, 'required=', required)
+    // console.log('[guard] role mismatch →', dest, 'required=', required)
     if (dest === to.fullPath || dest === from.fullPath) return next()
     return next({ path: dest, replace: true })
   }
 
-  console.log('[guard] pass')
+  // console.log('[guard] pass')
   return next()
 })
 

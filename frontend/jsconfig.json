@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] },
+
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "moduleResolution": "Bundler"
+  },
+  "include": ["src/**/*.js", "src/**/*.vue", ".volar/global.d.ts"],
+  "vueCompilerOptions": {
+    "globalTypesPath": "./.volar/global.d.ts"
+  }
+}

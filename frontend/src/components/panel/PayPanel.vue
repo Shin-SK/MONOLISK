@@ -3,29 +3,60 @@ import { ref, watch, computed, onMounted, nextTick } from 'vue'
 import dayjs from 'dayjs'
 import { fetchDiscountRules } from '@/api'
 
+/* ---------------------------------------------------------
+ * Props / Emits
+ * --------------------------------------------------------- */
 const props = defineProps({
+  // 履歴・表示用
   items: { type: Array, default: () => [] },
   masterNameMap: { type: Object, default: () => ({}) },
   servedByMap:   { type: Object, default: () => ({}) },
+
+  // 金額（サーバ計算の転送値）
   current: { type: Object, default: () => ({ sub:0, svc:0, tax:0, total:0 }) },
   displayGrandTotal: { type: Number, default: 0 },
+
+  // 入力モデル（v-model:風に双方向）
   settledTotal: { type: Number, default: 0 },
   paidCash:     { type: Number, default: 0 },
   paidCard:     { type: Number, default: 0 },
+
+  // 表示補助
   billOpenedAt: { type: String, default: '' },
   diff:     { type: Number, default: 0 },
   overPay:  { type: Number, default: 0 },
   canClose: { type: Boolean, default: false },
+
+  // 備考
   memo: { type: String, default: '' },
+
+  // 割引（サーバ側の単発適用用）
   discountRuleId: { type: [Number, null], default: null },
+
+  // 店舗識別（親から slug を渡す）
+  storeSlug: { type: String, default: '' },
+
+  // （互換）単位指定：現行の“ステップ割引”では Admin 側ルールを使うため未使用だが props として残す
+  dosukoiDiscountUnit: { type: Number, default: 1000 },
 })
+
 const emit = defineEmits([
-  'update:settledTotal','update:paidCash','update:paidCard',
-  'fillRemainderToCard','confirmClose','incItem','decItem','deleteItem',
+  'update:settledTotal',
+  'update:paidCash',
+  'update:paidCard',
+  'fillRemainderToCard',
+  'confirmClose',
+  'incItem',
+  'decItem',
+  'deleteItem',
   'update:discountRule',
 ])
 
+/* ---------------------------------------------------------
+ * 初期状態 / ユーティリティ
+ * --------------------------------------------------------- */
 const dirtyTotal = ref(false)
+
 const hasExistingPayment = computed(() => {
   const c = Number(props.paidCash || 0)
   const k = Number(props.paidCard || 0)
@@ -33,11 +64,17 @@ const hasExistingPayment = computed(() => {
 })
 
 onMounted(() => {
-  if (hasExistingPayment.value) {
-    dirtyTotal.value = true
-  }
+  if (hasExistingPayment.value) dirtyTotal.value = true
 })
 
+/* 時刻表示など（履歴カード用） */
+const pickTime = (it) =>
+  it?.ordered_at || it?.served_at || it?.created_at || it?.updated_at || props.billOpenedAt || null
+const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
+
+/* ---------------------------------------------------------
+ * 会計金額の自動追従（サーバ計算→クライアント settledTotal へ）
+ * --------------------------------------------------------- */
 watch(
   () => props.current.total,
   (v) => {
@@ -48,12 +85,12 @@ watch(
   { immediate: true }
 )
 
-/* 時刻表示など */
-const pickTime = (it) =>
-  it?.ordered_at || it?.served_at || it?.created_at || it?.updated_at || props.billOpenedAt || null
-const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
-
-/* ===== 割引 ===== */
+/* ---------------------------------------------------------
+ * 割引ルール（共通）：/api から取得
+ *  - discountRules: 画面用の配列（先頭に「割引なし」）
+ *  - discountRuleMap: id → ルール の解決
+ *  - selectedDiscountId: <select> の選択 id
+ * --------------------------------------------------------- */
 const discountRules = ref([{ id: null, name: '割引なし', amount_off: null, percent_off: null }])
 const selectedDiscountId = ref(null)
 const discountRuleMap = ref(new Map())
@@ -63,12 +100,13 @@ onMounted(async () => {
     const list = await fetchDiscountRules({ is_active: true, place: 'pay' })
     const arr = (Array.isArray(list) ? list : [])
       .filter(r => r && r.id != null && r.name)
+      .sort((a,b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)) // 並び順：任意
       .map(r => ({
         id: Number(r.id),
         name: String(r.name),
         code: r.code || null,
-        amount_off: r.amount_off ? Number(r.amount_off) : null,
-        percent_off: r.percent_off ? Number(r.percent_off) : null,
+        amount_off: r.amount_off != null ? Number(r.amount_off) : null,
+        percent_off: r.percent_off != null ? Number(r.percent_off) : null,
       }))
     arr.forEach(rule => discountRuleMap.value.set(rule.id, rule))
     discountRules.value = [{ id: null, name: '割引なし', amount_off: null, percent_off: null }, ...arr]
@@ -80,6 +118,66 @@ onMounted(async () => {
   }
 })
 
+/* ---------------------------------------------------------
+ * ドスコイ方式：Adminの金額割引（amount_off）を“ステップ”化
+ *  - stepRules: 金額割引のみ抽出（%は除外）
+ *  - dosukoiQtyMap: { ruleId: 数量 } の可変 Map
+ *  - dosukoiDiscountAmount: Σ (qty × amount_off)
+ *  - incStep/decStep: 数量変更
+ *  - 数量変更時、割引後合計へ自動追従
+ * --------------------------------------------------------- */
+const stepRules = computed(() =>
+  (discountRules.value || []).filter(r => Number(r.amount_off) > 0 && (r.percent_off == null))
+)
+
+const dosukoiQtyMap = ref({})
+
+watch(stepRules, (list) => {
+  const next = { ...dosukoiQtyMap.value }
+  for (const r of list) if (next[r.id] == null) next[r.id] = 0
+  for (const k of Object.keys(next)) if (!list.find(r => String(r.id) === String(k))) delete next[k]
+  dosukoiQtyMap.value = next
+}, { immediate: true })
+
+const dosukoiDiscountAmount = computed(() =>
+  stepRules.value.reduce((s, r) => {
+    const q = Number(dosukoiQtyMap.value[r.id] || 0)
+    const a = Number(r.amount_off || 0)
+    return s + (q * a)
+  }, 0)
+)
+
+function incStep(ruleId) {
+  dosukoiQtyMap.value[ruleId] = Math.max(0, Number(dosukoiQtyMap.value[ruleId] || 0) + 1)
+}
+function decStep(ruleId) {
+  dosukoiQtyMap.value[ruleId] = Math.max(0, Number(dosukoiQtyMap.value[ruleId] || 0) - 1)
+}
+
+watch(dosukoiQtyMap, () => {
+  if (isDosukoiMode.value) updateSettledWithDiscount()
+}, { deep: true })
+
+// ▼ ドスコイ割引用アコーディオン開閉
+const showDiscountPanel = ref(false)
+
+// 初期状態：数量が1つでも入っていれば自動で開く
+watch([stepRules, dosukoiQtyMap], () => {
+  const hasQty = stepRules.value.some(r => Number(dosukoiQtyMap.value[r.id] || 0) > 0)
+  if (hasQty) showDiscountPanel.value = true
+}, { immediate: true, deep: true })
+
+function toggleDiscountPanel() {
+  showDiscountPanel.value = !showDiscountPanel.value
+}
+
+/* ---------------------------------------------------------
+ * 割引の共通計算
+ *  - totalBeforeDiscount: 割引前の合計（sub+svc+tax）
+ *  - 店舗分岐：slug → features（dosukoi-asa: step）
+ *  - discountAmount: 店舗分岐ごとの割引額
+ *  - discountedTotal: 割引後合計
+ * --------------------------------------------------------- */
 const totalBeforeDiscount = computed(() => {
   const sub = Number(props.current?.sub || 0)
   const svc = Number(props.current?.svc || 0)
@@ -87,7 +185,25 @@ const totalBeforeDiscount = computed(() => {
   return sub + svc + tax
 })
 
+/* 店舗分岐（必要に応じて STORE_FEATURES に追加） */
+const normSlug = computed(() =>
+  String(props.storeSlug).trim().toLowerCase().replace(/_/g, '-')
+)
+const STORE_FEATURES = Object.freeze({
+  'dosukoi-asa': { discountMode: 'step' }, // ステップ方式
+})
+const features = computed(() => STORE_FEATURES[normSlug.value] || { discountMode: 'rule' })
+const isDosukoiMode = computed(() => features.value.discountMode === 'step')
+
+/* 割引額（店舗分岐） */
 const discountAmount = computed(() => {
+  // ドスコイ：ステップ合計
+  if (isDosukoiMode.value) return dosukoiDiscountAmount.value
+
+  // 通常モード：手入力があれば優先
+  if (manualDiscountAmount.value > 0) return manualDiscountAmount.value
+
+  // それ以外は（残すなら）選択ルールを適用
   if (!selectedDiscountId.value) return 0
   const rule = discountRuleMap.value.get(selectedDiscountId.value)
   if (!rule) return 0
@@ -104,27 +220,29 @@ function calculateDiscountedTotal() {
 }
 const discountedTotal = computed(() => calculateDiscountedTotal())
 
+/* 表示値（会計金額入力がある場合はそちら優先） */
 const displayTotalAfterDiscount = computed(() => {
   const st = Number(props.settledTotal || 0)
   return st > 0 ? st : discountedTotal.value
 })
 
+/* 割引変更 → 会計金額を追従（dirty/入金済なら追従しない） */
 const needsUpdate = computed(() =>
   dirtyTotal.value || Number(props.settledTotal || 0) !== discountedTotal.value
 )
-
 function updateSettledWithDiscount() {
   if (dirtyTotal.value || hasExistingPayment.value) return
   emit('update:settledTotal', calculateDiscountedTotal())
 }
 
+/* 単発<select>の値をサーバ保持と同期（外部から変えられた時も追従） */
 function onDiscountChange(e) {
+  if (isDosukoiMode.value) return
   const selectedId = e.target.value === '' ? null : Number(e.target.value)
   selectedDiscountId.value = selectedId
   updateSettledWithDiscount()
   emit('update:discountRule', selectedId)
 }
-
 watch(() => props.discountRuleId, (newId) => {
   const newIdNum = newId ? Number(newId) : null
   if (selectedDiscountId.value !== newIdNum) {
@@ -133,11 +251,71 @@ watch(() => props.discountRuleId, (newId) => {
   }
 }, { immediate: true })
 
-/* 入出力モデル */
+/* ---------------------------------------------------------
+ * 割引手入力
+ * --------------------------------------------------------- */
+function getManualDiscounts() {
+  if (isDosukoiMode.value) {
+    return stepRules.value
+      .map((r, i) => {
+        const q = Number(dosukoiQtyMap.value[r.id] || 0)
+        const amt = Number(r.amount_off || 0) * q
+        if (q <= 0 || amt <= 0) return null
+        const name = r.name || `¥${Number(r.amount_off).toLocaleString()}`
+        return { label: `${name} ×${q}`, amount: amt, sort_order: r.sort_order ?? i }
+      })
+      .filter(Boolean)
+  }
+  // 通常：手入力
+  return (manualRows.value || [])
+    .map((r, i) => {
+      const label = (r.label || '').trim()
+      const amount = num(r.amount)
+      if (!label || amount <= 0) return null
+      return { label, amount, sort_order: i }
+    })
+    .filter(Boolean)
+}
+
+/* ===== 手入力割引（通常モード用） ===== */
+const useManualGlobal = ref(false)                   // 入力欄の開閉スイッチ
+const manualRows = ref([{ label: '', amount: 0 }])  // 初期1行
+
+function addManualRow(){ manualRows.value.push({ label:'', amount:0 }) }
+function removeManualRow(i){
+  manualRows.value.splice(i,1)
+  if (!manualRows.value.length) manualRows.value.push({ label:'', amount:0 })
+}
+const num = v => {
+  const n = typeof v === 'number' ? v : Number(String(v).replace(/[^\d.-]/g,''))
+  return Number.isFinite(n) ? n : 0
+}
+const manualDiscountAmount = computed(() =>
+  manualRows.value.reduce((s, r) => s + Math.max(0, num(r.amount)), 0)
+)
+
+
+// ① 手入力（manualRows）が変わったら即追従（通常モードだけ）
+watch(manualRows, () => {
+  if (!isDosukoiMode.value) updateSettledWithDiscount()
+}, { deep: true })
+
+// ② 割引額そのもの or 前提合計が変わったら追従（ドスコイ含む）
+//   ※ dirty/既入金時は updateSettledWithDiscount 内で抑止済み
+watch([discountAmount, totalBeforeDiscount], () => {
+  updateSettledWithDiscount()
+})
+
+
+
+/* ---------------------------------------------------------
+ * 入出力モデル（v-model:風の双方向バインド）
+ * --------------------------------------------------------- */
 const toNum = (v) => {
   const n = typeof v === 'number' ? v : Number(v)
   return Number.isFinite(n) ? n : 0
 }
+
 const settled = computed({
   get: () => toNum(props.settledTotal),
   set: (v) => { dirtyTotal.value = true; emit('update:settledTotal', toNum(v)) }
@@ -151,6 +329,7 @@ const paidCardModel = computed({
   set: (v) => emit('update:paidCard', toNum(v))
 })
 
+/* ワンタップで全額現金/カードに割り当て */
 const setExactCash = () => {
   const total = Math.max(0, toNum(settled.value))
   emit('update:paidCash', total)
@@ -162,11 +341,39 @@ const setExactCard = () => {
   emit('update:paidCard', total)
 }
 
-/* メモ */
+/* ---------------------------------------------------------
+ * メモ（Expose）
+ * --------------------------------------------------------- */
 const memoLocal = ref(String(props.memo ?? ''))
 watch(() => props.memo, v => { memoLocal.value = String(v ?? '') })
 const getMemo = () => String(memoLocal.value || '')
-defineExpose({ getMemo })
+
+/* 親へ割引明細を返すエクスポート関数
+ * - ドスコイ：¥1,000×2, ¥500×1 のような内訳をラベル化
+ * - 通常   ：選択ルール名と割引額
+ */
+const getDiscountEntry = () => {
+  if (isDosukoiMode.value) {
+    const parts = stepRules.value
+      .map(r => ({ r, q: Number(dosukoiQtyMap.value[r.id] || 0) }))
+      .filter(x => x.q > 0)
+      .map(x => `¥${Number(x.r.amount_off).toLocaleString()}×${x.q}`)
+    const label = parts.length ? `手動（${parts.join(', ')}）` : '手動（なし）'
+    return { label, amount: dosukoiDiscountAmount.value }
+  }
+  if (manualDiscountAmount.value > 0) {
+    const parts = (manualRows.value || [])
+      .filter(r => num(r.amount) > 0 && (r.label || '').trim())
+      .map(r => `${r.label} ¥${num(r.amount).toLocaleString()}`)
+    const label = parts.length ? `手入力（${parts.join(', ')}）` : '手入力（なし）'
+    return { label, amount: manualDiscountAmount.value }
+  }
+  const id = selectedDiscountId.value
+  const rule = id ? discountRuleMap.value.get(id) : null
+  return { label: rule?.name || '割引なし', amount: discountAmount.value }
+}
+
+defineExpose({ getMemo, getDiscountEntry, getManualDiscounts })
 </script>
 
 <template>
@@ -206,14 +413,127 @@ defineExpose({ getMemo })
       <div v-if="!items || !items.length" class="text-muted small">履歴はありません</div>
     </div>
 
-    <!-- 割引 -->
-    <div class="coupon">
-      <label class="form-label fw-bold">割引</label>
-      <select class="form-select" :value="selectedDiscountId" @change="onDiscountChange">
-        <option v-for="rule in discountRules" :key="rule.id ?? 'none'" :value="rule.id ?? ''">
-          {{ rule.name }}
-        </option>
-      </select>
+
+    <!-- 割引（通常：手入力） -->
+    <div class="coupon" v-if="!isDosukoiMode">
+      <!-- ヘッダ：クリックで開閉 -->
+      <label
+        class="form-label fw-bold d-flex align-items-center justify-content-between w-100 bg-light p-2 rounded"
+        role="button"
+        :aria-expanded="showDiscountPanel"
+        @click="toggleDiscountPanel"
+      >
+        割引
+        <IconChevronUp :class="{'rotate-180': showDiscountPanel}" :size="20" />
+      </label>
+
+      <!-- 本体 -->
+      <div class="wrap collapse-body mt-2" v-show="showDiscountPanel">
+        <!-- 行リスト -->
+        <div class="d-flex flex-column gap-2">
+          <div
+            v-for="(row,i) in manualRows"
+            :key="i"
+            class="row g-2 align-items-center"
+          >
+            <!-- 明細 -->
+            <div class="col-8">
+              <input
+                class="form-control meisai"
+                type="text"
+                v-model="row.label"
+                placeholder="割引明細（例：クーポン／紹介）"
+              />
+            </div>
+
+            <!-- 金額 -->
+            <div class="col-4">
+              <div class="input-group d-flex align-items-center gap-1">
+                <span>¥</span>
+                <input
+                  class="form-control"
+                  type="number"
+                  min="0"
+                  step="1"
+                  v-model.number="row.amount"
+                  placeholder="金額"
+                />
+              </div>
+            </div>
+              <!-- <button
+                type="button"
+                class="btn btn-outline-danger"
+                @click="removeManualRow(i)"
+                aria-label="この割引行を削除"
+              >
+                <IconTrash :size="16" />
+              </button> -->
+          </div>
+        </div>
+
+        <!-- 追加 & 合計 -->
+        <div class="d-flex align-items-center justify-content-between mt-2">
+          <div class="wrap">
+            <button type="button" class="btn text-danger p-1" @click="removeManualRow(i)" aria-label="この割引行を削除" >
+              <IconCircleDashedX style="width: 24px;" />
+            </button>
+            <button type="button" class="btn text-success p-1" @click="addManualRow">
+              <IconCircleDashedPlus style="width: 24px;"/>
+            </button>
+          </div>
+
+          <div class="small text-end">
+            合計割引:
+            <strong>¥{{ manualDiscountAmount.toLocaleString() }}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+
+    <!-- 割引（dosukoi-asa 専用：金額 -0+） -->
+    <div class="coupon coupon--dosukoi" v-else>
+      <label
+        class="form-label fw-bold d-flex align-items-center justify-content-between w-100 bg-light p-2"
+        role="button"
+        :aria-expanded="showDiscountPanel"
+        @click="toggleDiscountPanel"
+      >
+        割引
+        <IconChevronUp :class="{'rotate-180': showDiscountPanel}" :size="24" />
+      </label>
+      <div
+        class="wrap p-2 collapse-body"
+        v-show="showDiscountPanel"
+      >
+        <!-- ステップの並び -->
+        <div class="d-flex flex-wrap gap-2">
+          <div
+            v-for="r in stepRules"
+            :key="r.id"
+            class="d-inline-flex align-items-center bg-white border rounded-pill px-2 py-1"
+            style="min-width: 140px;"
+          >
+            <button type="button" class="btn btn-link p-0 me-2" @click="decStep(r.id)">
+              <IconMinus :size="16" />
+            </button>
+            <span class="me-2">¥{{ Number(r.amount_off).toLocaleString() }}</span>
+            <span class="badge bg-secondary me-2">{{ dosukoiQtyMap[r.id] || 0 }}</span>
+            <button type="button" class="btn btn-link p-0" @click="incStep(r.id)">
+              <IconPlus :size="16" />
+            </button>
+          </div>
+          <span v-if="!stepRules.length" class="text-muted small">
+            （管理画面に「Payで表示」の金額割引がありません）
+          </span>
+        </div>
+
+        <!-- 合計 -->
+        <div class="mt-4 small text-end">
+          合計割引: <strong>¥{{ dosukoiDiscountAmount.toLocaleString() }}</strong>
+        </div>
+      </div>
     </div>
 
     <!-- サマリ -->
@@ -284,3 +604,24 @@ defineExpose({ getMemo })
   </div>
 </div>
 </template>
+
+
+
+<style scoped lang="scss">
+
+.collapse-body {
+  transition: all .5s ease;
+}
+.rotate-180 {
+  transform: rotate(180deg);
+  transition: transform .5s ease;
+}
+
+/* ▼ placeholder サイズだけ上書き */
+.form-control.meisai::placeholder { font-size: .8rem !important; }
+/* Safari/Chrome など */
+.form-control.meisai::-webkit-input-placeholder { font-size: .8rem !important; }
+/* Firefox */
+.form-control.meisai::-moz-placeholder          { font-size: .8rem !important; }
+
+</style>

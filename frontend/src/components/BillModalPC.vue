@@ -1,9 +1,8 @@
 <!-- BillModalPC.vue -->
 <script setup>
-/* ── 必要最小限のインポート ───────────────────── */
 import { reactive, ref, watch, computed, onMounted, toRef, unref } from 'vue'
 import BaseModal      from '@/components/BaseModal.vue'
-import Avatar      from '@/components/Avatar.vue'
+import Avatar         from '@/components/Avatar.vue'
 import { useCustomers } from '@/stores/useCustomers'
 import {
   api,
@@ -24,12 +23,13 @@ import dayjs from 'dayjs'
 import CustomerModal from '@/components/CustomerModal.vue'
 import BasicsPanel   from '@/components/panel/BasicsPanel.vue'
 import CustomerPanel from '@/components/CustomerPanel.vue'
-import OrderPanelSP from '@/components/spPanel/OrderPanelSP.vue'
-import PayPanel from '@/components/panel/PayPanel.vue'
-import { enqueue } from '@/utils/txQueue'
+import OrderPanelSP  from '@/components/spPanel/OrderPanelSP.vue'
+import PayPanel      from '@/components/panel/PayPanel.vue'
+import { enqueue }   from '@/utils/txQueue'
 
-
-/* ── props / emit ─────────────────────────────── */
+/* ---------------------------------------------------------
+ * props / emits
+ * --------------------------------------------------------- */
 const props = defineProps({
   modelValue  : Boolean,
   bill        : Object,
@@ -38,40 +38,118 @@ const props = defineProps({
 })
 const emit  = defineEmits(['update:modelValue','saved','updated','closed'])
 
-/* ── v‑model（開閉） ─────────────────────────── */
+/* ---------------------------------------------------------
+ * v-model 開閉
+ * --------------------------------------------------------- */
 const visible = computed({
   get : () => props.modelValue,
   set : v  => emit('update:modelValue', v)
 })
 
-// --- 共通ヘルパー
+/* 共通ユーティリティ */
 const asId = v => (typeof v === 'object' && v) ? v.id : v
+const catCode    = m => typeof m.category === 'string' ? m.category : m.category?.code
+const showInMenu = m => typeof m.category === 'object' ? m.category.show_in_menu : true
 
-// --- ① 共通ユーティリティ -----------------------------
-const catCode      = m => typeof m.category === 'string'
-                        ? m.category               // "drink"
-                        : m.category?.code         // {code:"drink",…}
-const showInMenu   = m => typeof m.category === 'object'
-                        ? m.category.show_in_menu  // true / false
-                        : true                     // 文字列なら表示OK
-
-/* ── status ─────────────── */
+/* ---------------------------------------------------------
+ * ストア／マスター／テーブル
+ * --------------------------------------------------------- */
 const casts   = ref([])
 const masters = ref([])
 const tables  = ref([])
-const bill = toRef(props, 'bill')
+const bill    = toRef(props, 'bill')
+
 const castsStore   = useCasts()
-const onDutySet  = ref(new Set())
 const mastersStore = useMasters()
 const tablesStore  = useTables()
-const castKeyword = ref('')
-const customers = useCustomers()
+const onDutySet    = ref(new Set())
 
+const castKeyword  = ref('')
+const customers    = useCustomers()
 
-/* ── 初回 ─────────────── */
+/* PayPanel 参照（割引明細・メモを取り出す） */
+const payRefPc  = ref(null)
+
+/* ---------------------------------------------------------
+ * storeSlug：LS → API で補完（PayPanel用）
+ * --------------------------------------------------------- */
+const storeSlug = ref('')
+const normalizeSlug = s => String(s || '').trim().toLowerCase().replace(/_/g, '-')
+// 毎回取り直す関数
+async function refreshStoreSlug() {
+  try {
+    // X-Store-Id が切り替わっていれば、その店舗の slug が返る
+    const { data } = await api.get('billing/stores/me/')
+    storeSlug.value = normalizeSlug(data?.slug)
+    // ローカル保存も更新（PayPanel外でも使うなら）
+    if (storeSlug.value) localStorage.setItem('store_slug', storeSlug.value)
+  } catch (e) {
+    console.warn('[storeSlug] fetch failed', e)
+    // 最低限は localStorage から拾う
+    storeSlug.value = normalizeSlug(localStorage.getItem('store_slug') || '')
+  }
+}
+
+// モーダルを開いた瞬間に取り直す
+watch(visible, v => { if (v) refreshStoreSlug() }, { immediate: true })
+
+// 伝票の store が変わったら取り直す（table.store は数値ID）
+watch(() => props.bill?.table?.store, () => {
+  if (visible.value) refreshStoreSlug()
+})
+
+onMounted(async () => {
+  // 1) localStorage 優先
+  const ls = localStorage.getItem('store_slug')
+  if (ls) {
+    storeSlug.value = normalizeSlug(ls)
+  } else {
+    // 2) API: /billing/stores/me/（X-Store-Id に紐づく現在の店舗）
+    try {
+      const { data } = await api.get('billing/stores/me/')
+      storeSlug.value = normalizeSlug(data?.slug)
+      if (storeSlug.value) localStorage.setItem('store_slug', storeSlug.value)
+    } catch (e) {
+      console.warn('[storeSlug] fetch failed', e)
+      storeSlug.value = ''
+    }
+  }
+})
+
+/* ---------------------------------------------------------
+ * 初回ロード：キャスト/マスター/テーブル & 今日の出勤
+ * --------------------------------------------------------- */
 const isNew = computed(() => !props.bill?.id)
 
-// ×ボタンのハンドラ
+onMounted(async () => {
+  try {
+    const storeId = props.bill?.table?.store ?? ''
+    await Promise.all([
+      castsStore.fetch(storeId),
+      mastersStore.fetch(storeId),
+      tablesStore.fetch(storeId),
+    ])
+    // 今日 IN のキャスト
+    const today = dayjs().format('YYYY-MM-DD')
+    const { data: todayShifts } = await api.get('billing/cast-shifts/', {
+      params: { from: today, to: today, store: storeId }
+    })
+    onDutySet.value = new Set(
+      (todayShifts || [])
+        .filter(s => s.clock_in && !s.clock_out)
+        .map(s => s.cast.id)
+    )
+    casts.value   = castsStore.list
+    masters.value = mastersStore.list
+    tables.value  = tablesStore.list
+  } catch (e) {
+    console.error('casts/masters/tables fetch failed', e)
+  }
+})
+
+/* ---------------------------------------------------------
+ * 閉じる
+ * --------------------------------------------------------- */
 function tryClose(){
   const dirty = isNew.value && (
     pending.value.length ||
@@ -86,29 +164,28 @@ function tryClose(){
   visible.value = false
 }
 
-
-const CLOSE_AFTER_SETTLE = true; // 会計確定後にモーダルを閉じるなら true（SPと同じに開いたままにするなら false）
+/* 最新化ヘルパー */
+const CLOSE_AFTER_SETTLE = true
 async function refetchAndSync(billId = props.bill?.id){
-	try{
-		const fresh = await fetchBill(billId);
-		if (fresh) Object.assign(props.bill, fresh);   // ★ローカル表示も即最新化
-		emit('saved', fresh || billId);                // 親にも通知（リスト側再取得など）
-	}catch(e){
-		console.error('refresh failed', e);
-	}
+  try{
+    const fresh = await fetchBill(billId)
+    if (fresh) Object.assign(props.bill, fresh) // ローカル表示も即最新化
+    emit('saved', fresh || billId)
+  }catch(e){
+    console.error('refresh failed', e)
+  }
 }
 
-/* ── BasicsPanel使えるように ─────────────────────────── */
+/* ---------------------------------------------------------
+ * BasicsPanel 連携
+ * --------------------------------------------------------- */
 const pendingDiscountCode = ref(null)
 const seatType = ref(
   props.bill?.table?.seat_type != null ? String(props.bill.table.seat_type) : 'main'
 )
-// 伝票のテーブルが差し替わったら追従
 watch(() => props.bill?.table?.seat_type, v => {
   if (v != null) seatType.value = String(v)
 })
-
-// 席種が変わったら卓選択をリセット（任意）
 watch(seatType, () => { form.table_id = null })
 
 function onApplySet(payload){
@@ -119,7 +196,7 @@ function onApplySet(payload){
   const byCat  = new Map((masters.value || []).map(m => [String(m?.category?.code || ''), m]))
   const byCode = new Map((masters.value || []).map(m => [String(m?.code || ''), m]))
 
-  // ① ラインを pending or 即時追加
+  // 行追加
   for (const ln of lines){
     const qty = Number(ln?.qty) || 0
     if (qty <= 0) continue
@@ -132,18 +209,14 @@ function onApplySet(payload){
       pending.value.push({ master_id: master.id, qty, cast_id: null })
     }else{
       addBillItem(props.bill.id, { item_master: master.id, qty })
-        .then(async () => {
-          await refreshTotals()
-          emit('updated', props.bill.id)
-        })
+        .then(() => emit('updated', props.bill.id))
         .catch(e => { console.error(e); alert('追加に失敗しました') })
     }
   }
 
-  // ② 割引コードの適用
+  // 割引コード
   if (discountCode) {
     if (isNew.value) {
-      // 新規は保存後に適用するため保留
       pendingDiscountCode.value = String(discountCode)
     } else {
       setBillDiscountByCode(props.bill.id, String(discountCode))
@@ -153,128 +226,25 @@ function onApplySet(payload){
   }
 }
 
-onMounted(async () => {
-  try {
-    const storeId = props.bill?.table?.store ?? ''   // ← 無ければ全店
-      await Promise.all([
-        castsStore.fetch(storeId),
-        mastersStore.fetch(storeId),
-        tablesStore.fetch(storeId),
-      ])
-      /* ─ 今日シフト IN のキャスト一覧を取るだけ ───────── */
-      const today = dayjs().format('YYYY-MM-DD')
-      const { data: todayShifts } = await api.get('billing/cast-shifts/', {
-        params: { from: today, to: today, store: storeId }
-      })
-      onDutySet.value = new Set(
-        todayShifts
-          .filter(s => s.clock_in && !s.clock_out)   // ← ここがポイント
-          .map(s => s.cast.id)
-      )
-      casts.value   = castsStore.list
-      masters.value = mastersStore.list
-      tables.value  = tablesStore.list
-  } catch (e) {
-    console.error('casts fetch failed', e)
-  }
-})
-
-/* ---------- state ---------- */
+/* ---------------------------------------------------------
+ * キャスト系状態
+ * --------------------------------------------------------- */
 const mainCastIds  = ref([])
 const freeCastIds  = ref([])
 const inhouseSet   = ref(new Set())
-const originalCustIds = ref([...(props.bill?.customers ?? [])])
-const activeCustId  = ref(null)
-const showCustModal = ref(false)
-function openCustModal (id = null) {     // ★共通オープナー
-  activeCustId.value = asId(id)          // ← 正しい変数名
-  showCustModal.value = true
-}
-
-function clearCustomer(target) {
-  const id = asId(target)
-  props.bill.customers = (props.bill.customers || []).filter(c => asId(c) !== id)
-  props.bill.customer_display_name = props.bill.customers.length ? props.bill.customer_display_name : ''
-  if (!isNew.value) {
-    const ids = (props.bill.customers||[]).map(asId).filter(Boolean)
-    enqueue('patchBill', { id: props.bill.id, payload: { customer_ids: ids }})
-    enqueue('reconcile', { id: props.bill.id })
-    originalCustIds.value = [...ids]
-  }
-}
-
-// ------------------------------------------------
-// 同伴←→本指名トグル
-// ------------------------------------------------
-const dohanSet = ref(new Set())
-
+const dohanSet     = ref(new Set())
 
 function toggleMainDohan (cid) {
   const isDohan = dohanSet.value.has(cid)
   if (isDohan) {
-    // 同伴 → 本指
     dohanSet.value.delete(cid)
     if (!mainCastIds.value.includes(cid)) mainCastIds.value.push(cid)
   } else {
-    // 本指/その他 → 同伴（本指からは外す）
     mainCastIds.value = mainCastIds.value.filter(x => x !== cid)
     dohanSet.value.add(cid)
   }
 }
 
-function handleUpdateDiscountRule(ruleId){
-  // null許可でそのままpatch（キュー経由でも直送でもOK）
-  enqueue('patchBill', { id: props.bill.id, payload: { discount_rule: ruleId }})
-  enqueue('reconcile', { id: props.bill.id })
-  // 最新化
-  refetchAndSync(props.bill.id)
-}
-
-
-// ------------------------------------------------
-// オーダーパネルをこっちに移植しようぜ
-// ------------------------------------------------
-
-// 提供者（今ついてる卓の人だけ＋未指定）
-const servedByCastId = ref(null)
-const servedByOptions = computed(() =>
-  (currentCasts.value || []).map(c => ({ id: c.id, label: c.stage_name }))
-)
-const servedByMap = computed(() =>
-  Object.fromEntries((currentCasts.value || []).map(c => [String(c.id), c.stage_name]))
-)
-
-// マスター名・価格マップ（price_regular を SP側の price に合わせる）
-const masterNameMap = computed(() =>
-  Object.fromEntries((masters.value || []).map(m => [String(m.id), m.name]))
-)
-const masterPriceMap = computed(() =>
-  Object.fromEntries((masters.value || []).map(m => [String(m.id), Number(m.price_regular) || 0]))
-)
-// PC側の orderMasters（price_regular）→ SP側期待の {price} に寄せる
-const orderMastersForPanel = computed(() =>
-  orderMasters.value.map(m => ({ ...m, price: m.price ?? m.price_regular ?? 0 }))
-)
-
-// パネルのイベントをPCの pending/save に橋渡し
-const onAddPending = (masterId, qty) => {
-  pending.value.push({
-    master_id: masterId,
-    qty: Number(qty) || 0,
-    cast_id: servedByCastId.value ?? null,
-  })
-}
-const onRemovePending = (i) => pending.value.splice(i, 1)
-const onClearPending  = () => (pending.value = [])
-const onPlaceOrder    = async () => { await save() }  // ★一連完了まで待つ
-
-
-/*
- * ▶ 場内トグル
- * ------------------------------------------------
- *  1. API へ POST
- *  2. レスポンス stay_type でローカル更新
- */
 async function toggleInhouse (cid) {
   if (isNew.value) {
     const nowIn = inhouseSet.value.has(cid)
@@ -282,7 +252,6 @@ async function toggleInhouse (cid) {
     if (!freeCastIds.value.includes(cid)) freeCastIds.value.push(cid)
     return
   }
-  // 既存のみAPI
   const nowIn = inhouseSet.value.has(cid)
   try {
     const { stay_type } = await toggleBillInhouse(props.bill.id, { cast_id: cid, inhouse: !nowIn })
@@ -296,68 +265,189 @@ async function toggleInhouse (cid) {
   } catch (e) { console.error(e); alert('場内フラグの更新に失敗しました') }
 }
 
-/* ---------- タブ ---------- */
-const rightTab = ref('bill')  // 'bill' | 'order'
+/* ---------------------------------------------------------
+ * 右ペイン：注文/会計タブ
+ * --------------------------------------------------------- */
+const rightTab   = ref('order')  // 'bill' | 'order'
 const isBillTab  = computed(() => rightTab.value === 'bill')
 const isOrderTab = computed(() => rightTab.value === 'order')
 
-/* ---------- 顧客情報を即反映 ---------- */
+/* 顧客モーダル */
+const activeCustId  = ref(null)
+const showCustModal = ref(false)
+function openCustModal (id = null) {
+  activeCustId.value = asId(id)
+  showCustModal.value = true
+}
+function clearCustomer(target) {
+  const id = asId(target)
+  props.bill.customers = (props.bill.customers || []).filter(c => asId(c) !== id)
+  props.bill.customer_display_name = props.bill.customers.length ? props.bill.customer_display_name : ''
+  if (!isNew.value) {
+    const ids = (props.bill.customers||[]).map(asId).filter(Boolean)
+    enqueue('patchBill', { id: props.bill.id, payload: { customer_ids: ids }})
+    enqueue('reconcile', { id: props.bill.id })
+  }
+}
 async function handleCustPicked (cust) {
   const ids = new Set((props.bill.customers ?? []).map(asId))
   ids.add(cust.id)
   props.bill.customers = [...ids]
   props.bill.customer_display_name = cust.alias?.trim() || cust.full_name || `#${cust.id}`
-
   if (!isNew.value) {
     const list = props.bill.customers.map(asId).filter(Boolean)
     enqueue('patchBill', { id: props.bill.id, payload: { customer_ids: list }})
     enqueue('reconcile', { id: props.bill.id })
-    originalCustIds.value = [...list]
   }
   showCustModal.value = false
 }
-
-function handleCustSaved(cust) {          // ★新規作成／編集
-   const ids = new Set(props.bill.customers ?? [])
-   ids.add(cust.id)
-   props.bill.customers = [...ids]
-   props.bill.customer_display_name =
-       cust.alias?.trim() || cust.full_name || `#${cust.id}`
+function handleCustSaved(cust) {
+  const ids = new Set(props.bill.customers ?? [])
+  ids.add(cust.id)
+  props.bill.customers = [...ids]
+  props.bill.customer_display_name = cust.alias?.trim() || cust.full_name || `#${cust.id}`
   showCustModal.value = false
 }
 
-/* ---------- オーダー ---------- */
-
+/* ---------------------------------------------------------
+ * 注文（カテゴリ/マスター）
+ * --------------------------------------------------------- */
 const catOptions = computed(() => {
-  // ① show_in_menu==true のマスターだけ → ② カテゴリ code をユニーク抽出
   const codes = [...new Set(
     masters.value
-      .filter(m => m.category?.show_in_menu)   // POS メニュー ON
-      .map(m => m.category.code)               // 'drink' など
+      .filter(m => m.category?.show_in_menu)
+      .map(m => m.category.code)
   )]
-
-  // ③ code から対応する name を引く
   return codes.map(code => {
-    const master = masters.value.find(m => m.category.code === code)
-    return {
-      value: code,
-      label: master?.category.name ?? code     // name が無ければ code
-    }
+    const m = masters.value.find(v => v.category.code === code)
+    return { value: code, label: m?.category.name ?? code }
   })
 })
-
-
 const selectedCat  = ref('drink')
+const orderMasters = computed(() => masters.value.filter(m => catCode(m) === selectedCat.value))
 
-const orderMasters = computed(() =>
-  masters.value.filter(m => catCode(m) === selectedCat.value)
+/* SP の OrderPanelSP に合わせた変換 */
+const servedByCastId = ref(null)
+const servedByOptions = computed(() =>
+  (currentCasts.value || []).map(c => ({ id: c.id, label: c.stage_name }))
+)
+const servedByMap = computed(() =>
+  Object.fromEntries((currentCasts.value || []).map(c => [String(c.id), c.stage_name]))
+)
+const masterNameMap = computed(() =>
+  Object.fromEntries((masters.value || []).map(m => [String(m.id), m.name]))
+)
+const masterPriceMap = computed(() =>
+  Object.fromEntries((masters.value || []).map(m => [String(m.id), Number(m.price_regular) || 0]))
+)
+const orderMastersForPanel = computed(() =>
+  orderMasters.value.map(m => ({ ...m, price: m.price ?? m.price_regular ?? 0 }))
 )
 
+/* 注文ペンディング */
+const pending = ref([])   // [{ master_id, qty, cast_id }]
+const onAddPending   = (masterId, qty) => pending.value.push({ master_id: masterId, qty: Number(qty)||0, cast_id: servedByCastId.value ?? null })
+const onRemovePending = (i) => pending.value.splice(i, 1)
+const onClearPending  = () => (pending.value = [])
+const onPlaceOrder    = async () => { await save() }
 
-/* ── フォーム ─────────────────────────── */
+/* ---------------------------------------------------------
+ * 場内/配席/キャスト表示
+ * --------------------------------------------------------- */
+const currentCasts = computed(() => {
+  const list = []
+  for (const id of mainCastIds.value) {
+    if (dohanSet.value.has(id)) continue
+    const c = casts.value.find(x => x.id === id)
+    if (c) list.push({ ...c, role:'main' })
+  }
+  for (const id of dohanSet.value) {
+    const c = casts.value.find(x => x.id === id)
+    if (c) list.push({ ...c, role:'dohan' })
+  }
+  const others = new Set([...freeCastIds.value, ...inhouseSet.value])
+  others.forEach(id => {
+    if (mainCastIds.value.includes(id) || dohanSet.value.has(id)) return
+    const c = casts.value.find(x => x.id === id)
+    if (c) list.push({ ...c, role:'free', inhouse: inhouseSet.value.has(id) })
+  })
+  return list
+})
+const filteredCasts = computed(() => {
+  const base = (casts.value || []).filter(c => onDutySet.value.has(c.id))
+  if (!castKeyword.value.trim()) return base
+  const kw = castKeyword.value.toLowerCase()
+  return base.filter(c => c.stage_name.toLowerCase().includes(kw))
+})
+function toggleMain(id){
+  if (mainCastIds.value.includes(id)){
+    mainCastIds.value = mainCastIds.value.filter(x => x !== id)
+  }else{
+    mainCastIds.value.push(id)
+    if (!freeCastIds.value.includes(id)) freeCastIds.value.push(id)
+  }
+}
+function removeCast(id) {
+  mainCastIds.value = mainCastIds.value.filter(c => c !== id)
+  freeCastIds.value = freeCastIds.value.filter(c => c !== id)
+  inhouseSet.value.delete(id)
+  dohanSet.value.delete(id)
+}
+
+/* 履歴タイムライン */
+const historyEvents = computed(() => {
+  if (!props.bill) return []
+  const events = []
+  ;(props.bill.stays || []).forEach(s => {
+    events.push({ key: `${s.cast.id}-in-${s.entered_at}`,  when: s.entered_at,  id: s.cast.id, name: s.cast.stage_name, avatar: s.cast.avatar_url, stayTag: s.stay_type, ioTag:'in' })
+    if (s.left_at) events.push({ key: `${s.cast.id}-out-${s.left_at}`, when: s.left_at, id: s.cast.id, name: s.cast.stage_name, avatar: s.cast.avatar_url, stayTag: s.stay_type, ioTag:'out' })
+  })
+  return events.sort((a, b) => new Date(b.when) - new Date(a.when))
+})
+
+/* ---------------------------------------------------------
+ * ヘッダー情報・時刻編集
+ * --------------------------------------------------------- */
+const headerInfo = computed(() => {
+  const b = props.bill || {}
+  const fmt = (dt) => dt ? dayjs(dt).format('HH:mm') : '-'
+  return {
+    id     : b.id,
+    table  : b.table?.number ?? '-',
+    start  : fmt(b.opened_at),
+    end    : fmt(b.expected_out),
+    sets   : b.set_rounds ?? 0,
+    extCnt : b.ext_minutes ? Math.ceil(b.ext_minutes / 30) : 0,
+  }
+})
+const editingTime = ref(false)
+async function saveTimes () {
+  const openedISO   = form.opened_at    ? dayjs(form.opened_at).toISOString()    : null
+  const expectedISO = form.expected_out ? dayjs(form.expected_out).toISOString() : null
+  if (isNew.value) { editingTime.value = false; return }
+  if (openedISO === props.bill.opened_at && expectedISO === props.bill.expected_out) {
+    editingTime.value = false; return
+  }
+  try {
+    await updateBillTimes(props.bill.id, { opened_at: openedISO, expected_out: expectedISO })
+    props.bill.opened_at = openedISO; props.bill.expected_out = expectedISO
+    editingTime.value = false
+  } catch (e) { console.error(e); alert('保存に失敗しました') }
+}
+
+/* ---------------------------------------------------------
+ * 金額・フォーム
+ * --------------------------------------------------------- */
+const current = computed(() => {
+  const b = bill.value || {}
+  const sub  = Number(b.subtotal ?? 0)
+  const svc  = Number(b.service_charge ?? 0)
+  const tax  = Number(b.tax ?? 0)
+  const total = Number(b.grand_total ?? (sub + svc + tax))
+  return { sub, svc, tax, total }
+})
 
 const form = reactive({
-  // 基本編集
   table_id: props.bill?.table?.id ?? props.bill?.table ?? null,
   opened_at: props.bill?.opened_at
     ? dayjs(props.bill.opened_at).format('YYYY-MM-DDTHH:mm')
@@ -367,51 +457,65 @@ const form = reactive({
     : '',
   nominated_casts: [],
   inhouse_casts: [],
-
-  // 支払い（←ここを統合）
   paid_cash: props.bill?.paid_cash ?? 0,
   paid_card: props.bill?.paid_card ?? 0,
   settled_total: props.bill?.settled_total ?? (props.bill?.grand_total || 0),
 })
 
-/* ── メモ（SPと同じ運用：保存時に送る） ─────────── */
 const memoRef = ref(props.bill?.memo ?? '')
 watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
 
-/* ── 会計処理 ─────────────────────────── */
-
+/* 差額等 */
 const displayGrandTotal = computed(() => bill.value?.grand_total ?? 0)
-
 const paidTotal   = computed(() => (form.paid_cash || 0) + (form.paid_card || 0))
 const targetTotal = computed(() => form.settled_total || displayGrandTotal.value)
 const diff        = computed(() => paidTotal.value - targetTotal.value)
 const overPay     = computed(() => Math.max(0, diff.value))
 const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= targetTotal.value)
-
 function fillRemainderToCard () {
   const need = Math.max(0, targetTotal.value - (form.paid_cash || 0))
   form.paid_card = need
 }
 
+/* ---------------------------------------------------------
+ * 会計確定（PayPanel の割引明細を取り込み）
+ * --------------------------------------------------------- */
 const closing = ref(false)
+function handleUpdateDiscountRule(ruleId){
+  enqueue('patchBill', { id: props.bill.id, payload: { discount_rule: ruleId }})
+  enqueue('reconcile', { id: props.bill.id })
+}
 async function confirmClose(){
   if (closing.value) return
   closing.value = true
   try{
     const billId   = props.bill.id
-    const memoStr  = String(memoRef.value || '')
+    const memoFromPanel = String(memoRef.value || '')
+    const disc = payRefPc.value?.getDiscountEntry?.() || { label: null, amount: 0 }
+    const memoStr = disc.amount > 0
+      ? `${memoFromPanel}\n割引明細: ${disc.label} / 金額: ¥${disc.amount.toLocaleString()}`
+      : memoFromPanel
     const settled  = form.settled_total || displayGrandTotal.value
     const paidCash = form.paid_cash || 0
     const paidCard = form.paid_card || 0
+    const rows = payRefPc.value?.getManualDiscounts?.() || []
 
-    // ① 楽観反映（UI即時）
+    // 楽観反映
     Object.assign(props.bill, {
       paid_cash: paidCash, paid_card: paidCard,
       settled_total: settled, memo: memoStr,
       closed_at: new Date().toISOString(),
     })
-    // ② 裏送信（順序: patch → close → reconcile）
-    enqueue('patchBill', { id: billId, payload: { paid_cash: paidCash, paid_card: paidCard, memo: memoStr }})
+
+    // 裏送信
+   enqueue('patchBill', { id: billId, payload: {
+     paid_cash: paidCash,
+     paid_card: paidCard,
+     memo: memoStr,
+     discount_rule: props.bill?.discount_rule ?? null, // ルールも維持
+     manual_discounts: rows,                            // ★ 追加：手入力割引を保存
+     settled_total: settled,                            // 差分が出ないよう合わせて送る
+   }})
     enqueue('closeBill', { id: billId, payload: { settled_total: settled }})
     enqueue('reconcile', { id: billId })
 
@@ -425,264 +529,10 @@ async function confirmClose(){
   }
 }
 
-
-async function cancelItem(idx, item){
-  if(!confirm('この注文をキャンセルしますか？')) return
-
-  try{
-    await deleteBillItem(props.bill.id, item.id)
-    enqueue('reconcile', { id: props.bill.id })
-    await refetchAndSync(props.bill.id)
-  }catch(e){
-    console.error('cancel failed', e)
-    alert('キャンセルに失敗しました')
-  }
-}
-
-/* ------- コースとか ------- */
-
-const COURSE_CATS = ['setMale','setVip','setFemale']
-
-const courseOptions = computed(() =>
-  COURSE_CATS.map(code => {
-    const m = masters.value.find(v => catCode(v) === code)
-    return m ? { id: m.id, code: m.code, label: m.name } : null
-  }).filter(Boolean)
-)
-
-
-// コース追加
-async function chooseCourse(opt, qtyOverride = null){
-	const qty = Number(qtyOverride ?? pax.value) || 0
-	if (qty <= 0) return
-	if (isNew.value) {
-		pending.value.push({ master_id: opt.id, qty, cast_id: null })
-		return
-	}
-  // 楽観行追加
-  props.bill.items = props.bill.items || []
-  props.bill.items.push({ id:`tmp-${Date.now()}`, item_master: opt.id, qty, subtotal: 0 })
-  // 卓変更が必要なら裏送信
-  const curTid = props.bill.table?.id ?? props.bill.table ?? null
-  if (form.table_id !== curTid) {
-    enqueue('updateBillTable', { id: props.bill.id, table_id: form.table_id })
-  }
-  enqueue('addBillItem', { id: props.bill.id, item: { item_master: opt.id, qty }})
-  enqueue('reconcile', { id: props.bill.id })
-}
-
-
-
-const currentCasts = computed(() => {
-  const list = []
-
-  // 本指（同伴に含まれているIDは除外：同伴優先）
-  for (const id of mainCastIds.value) {
-    if (dohanSet.value.has(id)) continue
-    const c = casts.value.find(x => x.id === id)
-    if (c) list.push({ ...c, role:'main' })
-  }
-
-  // 同伴（グレー）
-  for (const id of dohanSet.value) {
-    const c = casts.value.find(x => x.id === id)
-    if (c) list.push({ ...c, role:'dohan' })
-  }
-
-  // フリー/場内（main と dohan を除外）
-  const others = new Set([...freeCastIds.value, ...inhouseSet.value])
-  others.forEach(id => {
-    if (mainCastIds.value.includes(id) || dohanSet.value.has(id)) return
-    const c = casts.value.find(x => x.id === id)
-    if (c) list.push({ ...c, role:'free', inhouse: inhouseSet.value.has(id) })
-  })
-
-  return list
-})
-
-
-
-
-/* ------- キャスト絞り込み ------- */
-const filteredCasts = computed(() => {
-  const base = (casts.value || []).filter(c => onDutySet.value.has(c.id)) // ★出勤中だけ
-  if (!castKeyword.value.trim()) return base
-  const kw = castKeyword.value.toLowerCase()
-  return base.filter(c => c.stage_name.toLowerCase().includes(kw))
-})
-
-
-/* ---------- 本指名に変わるやつ ---------- */
-function toggleMain(id){
-  if (mainCastIds.value.includes(id)){
-    // 解除
-    mainCastIds.value = mainCastIds.value.filter(x => x !== id)
-  }else{
-    mainCastIds.value.push(id)
-    // free 側に無ければ追加（want both? ⇒今のロジックで除去されても OK）
-    if (!freeCastIds.value.includes(id))
-      freeCastIds.value.push(id)
-  }
-}
-
-/* ---------- 履歴のやつ ---------- */
-const historyEvents = computed(() => {
-  if (!props.bill) return []
-
-  const events = []
-
-  ;(props.bill.stays || []).forEach(s => {
-    // IN (= 着席)
-    events.push({
-      key     : `${s.cast.id}-in-${s.entered_at}`,
-      when    : s.entered_at,
-      id      : s.cast.id,
-      name    : s.cast.stage_name,
-      avatar  : s.cast.avatar_url,
-      stayTag : s.stay_type,           // nom / in / free
-      ioTag   : 'in',                  // この行では入店
-    })
-    // OUT (= 退席) があれば追加
-    if (s.left_at) {
-      events.push({
-        key     : `${s.cast.id}-out-${s.left_at}`,
-        when    : s.left_at,
-        id      : s.cast.id,
-        name    : s.cast.stage_name,
-        avatar  : s.cast.avatar_url,
-        stayTag : s.stay_type,
-        ioTag   : 'out',
-      })
-    }
-  })
-
-  // 時間昇順で並べ替え
-  return events.sort((a, b) => new Date(b.when) - new Date(a.when))
-})
-
-/* ---------- ヘッダーに入れる基礎情報 ---------- */
-const headerInfo = computed(() => {
-  const b = props.bill
-  if (!b) return {}
-
-  const fmt = (dt) => dt ? dayjs(dt).format('HH:mm') : '‑'
-
-  return {
-    id     : b.id,
-    table  : b.table?.number ?? '‑',
-    start  : fmt(b.opened_at),
-    end    : fmt(b.expected_out),
-    sets   : b.set_rounds ?? 0,
-    extCnt : b.ext_minutes ? Math.ceil(b.ext_minutes / 30) : 0,
-  }
-})
-
-
-/* ---------- time-edit toggle ---------- */
-const editingTime = ref(false)
-
-async function saveTimes () {
-  const openedISO   = form.opened_at    ? dayjs(form.opened_at).toISOString()    : null
-  const expectedISO = form.expected_out ? dayjs(form.expected_out).toISOString() : null
-  if (isNew.value) { editingTime.value = false; return }   // ← 新規はサーバ送らない
-  if (openedISO === props.bill.opened_at && expectedISO === props.bill.expected_out) {
-    editingTime.value = false; return
-  }
-  try {
-    await updateBillTimes(props.bill.id, { opened_at: openedISO, expected_out: expectedISO })
-    props.bill.opened_at = openedISO; props.bill.expected_out = expectedISO
-    editingTime.value = false
-  } catch (e) { console.error(e); alert('保存に失敗しました') }
-}
-
-
-
-
-/* ------- 現状（確定済み）計算 ------------------- */
-const current = computed(() => {
-  const b = bill.value || {}
-  // サーバ計算結果をそのまま表示（席種別サービス率・丸め方も一致）
-  const sub  = Number(b.subtotal ?? 0)
-  const svc  = Number(b.service_charge ?? 0)
-  const tax  = Number(b.tax ?? 0)
-  const total = Number(b.grand_total ?? (sub + svc + tax))
-  return { sub, svc, tax, total }
-})
-/* ------- draft を pending に載せる ---------- */
-const pending = ref([])   // [{ master_id, qty }]
-
-
-/* ---------- 伝票 or stays 変更時 ---------- */
-watch(
-  () => [props.bill, props.bill?.stays?.length],
-  () => {
-    const b = props.bill
-    if (!b) return
-
-    form.table_id     = b.table?.id ?? b.table_id_hint ?? null
-    form.paid_cash     = b.paid_cash ?? 0
-    form.paid_card     = b.paid_card ?? 0
-    form.settled_total = b.settled_total ?? b.grand_total ?? 0
-    if (Array.isArray(b.customers)) b.customers = b.customers.map(asId)
-    originalCustIds.value = [...(b.customers ?? [])]
-
-    const active   = (b.stays ?? []).filter(s => !s.left_at)
-    const stayNom  = active.filter(s => s.stay_type === 'nom'  ).map(s => s.cast.id)
-    const stayFree = active.filter(s => s.stay_type === 'free' ).map(s => s.cast.id)
-    const stayIn   = active.filter(s => s.stay_type === 'in'   ).map(s => s.cast.id)
-    const stayDhn  = active.filter(s => s.stay_type === 'dohan').map(s => s.cast.id)
-
-    mainCastIds.value  = stayNom
-    freeCastIds.value  = [...new Set([...stayFree, ...stayIn])]
-    inhouseSet.value   = new Set(stayIn)
-    dohanSet.value     = new Set(stayDhn)         // ★ 同伴の反映
-  },
-  { immediate: true }
-)
-
-/* ---------- 人数引き継ぎ ---------- */
-
- const maleFromItems = computed(() =>
-   (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setMale'   ? Number(it.qty||0) : 0), 0)
- )
- const femaleFromItems = computed(() =>
-   (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setFemale' ? Number(it.qty||0) : 0), 0)
- )
- const paxFromItems = computed(() => maleFromItems.value + femaleFromItems.value)
-
-/* ---------- ウォッチャー ---------- */
-/* main が変わったら free から除去 */
-watch(mainCastIds, list => {
-  const filtered = freeCastIds.value.filter(id => !list.includes(id))
-  if (filtered.length !== freeCastIds.value.length) {
-    freeCastIds.value = filtered
-  }
-})
-
-watch(freeCastIds, list => {
- const deduped = list.filter(id => !mainCastIds.value.includes(id))
-  if (deduped.length !== list.length) {
-    freeCastIds.value = deduped      // 変化がある時だけ再代入
-    return                           // ここで終われば再トリガは 1 回で済む
-  }
-})
-
-
-/* キャストをリストから外すだけの共通関数（JSのみ） */
-function removeCast(id) {
-  // 本指名だったら解除
-  mainCastIds.value = mainCastIds.value.filter(c => c !== id)
-  // フリー配列から除外
-  freeCastIds.value = freeCastIds.value.filter(c => c !== id)
-
-  // 場内セットからも除外
-  inhouseSet.value.delete(id)
-  dohanSet.value.delete(id)
-}
-
-/* ── 保存ボタン ─────────────────────────────── */
+/* ---------------------------------------------------------
+ * 注文保存フロー
+ * --------------------------------------------------------- */
 const saving = ref(false)
-
 async function save () {
   if (saving.value) return
   saving.value = true
@@ -691,7 +541,7 @@ async function save () {
   let billId = props.bill.id
 
   try {
-    // ❶ 新規POST（customersは後から）
+    // ❶ 新規POST
     if (wasNew) {
       const { data: created } = await api.post('billing/bills/', {
         table_id    : form.table_id ?? null,
@@ -703,10 +553,9 @@ async function save () {
       props.bill.id = billId
       if ((props.bill.customers?.length ?? 0) > 0) {
         await updateBillCustomers(billId, props.bill.customers)
-        originalCustIds.value = [...props.bill.customers]
       }
     } else {
-      // 既存のみ：卓/時刻のPATCH
+      // 既存：卓/時刻 PATCH
       const currentTableId = props.bill.table?.id ?? props.bill.table ?? null
       if (currentTableId === null || form.table_id !== currentTableId) {
         await updateBillTable(billId, form.table_id)
@@ -741,7 +590,7 @@ async function save () {
     }
     pending.value = []
 
-    // ❸.5 新規時に pending 割引コードがあれば適用
+    // ❹ 新規時 pending 割引コード適用
     if (pendingDiscountCode.value) {
       try {
         await setBillDiscountByCode(billId, String(pendingDiscountCode.value))
@@ -752,9 +601,9 @@ async function save () {
       }
     }
 
-    // ❹ 最新のBillを単発フェッチしてemit
-    await refetchAndSync(billId);           // ★ローカルも親も最新化
-    rightTab.value = 'bill';                // ★注文後は会計タブに切り替え（任意）
+    // ❺ 最新化
+    await refetchAndSync(billId)
+    rightTab.value = 'bill'
   } catch (e) {
     console.error(e)
     alert('保存に失敗しました')
@@ -763,11 +612,52 @@ async function save () {
   }
 }
 
-const pane = ref('base')
-watch(visible, v => { if (v) pane.value = 'base' })
+/* ---------------------------------------------------------
+ * 伝票 or stays 変更時の同期・人数引き継ぎ
+ * --------------------------------------------------------- */
+watch(
+  () => [props.bill, props.bill?.stays?.length],
+  () => {
+    const b = props.bill
+    if (!b) return
 
+    form.table_id     = b.table?.id ?? b.table_id_hint ?? null
+    form.paid_cash     = b.paid_cash ?? 0
+    form.paid_card     = b.paid_card ?? 0
+    form.settled_total = b.settled_total ?? b.grand_total ?? 0
+    if (Array.isArray(b.customers)) b.customers = b.customers.map(asId)
 
+    const active   = (b.stays ?? []).filter(s => !s.left_at)
+    const stayNom  = active.filter(s => s.stay_type === 'nom'  ).map(s => s.cast.id)
+    const stayFree = active.filter(s => s.stay_type === 'free' ).map(s => s.cast.id)
+    const stayIn   = active.filter(s => s.stay_type === 'in'   ).map(s => s.cast.id)
+    const stayDhn  = active.filter(s => s.stay_type === 'dohan').map(s => s.cast.id)
+
+    mainCastIds.value  = stayNom
+    freeCastIds.value  = [...new Set([...stayFree, ...stayIn])]
+    inhouseSet.value   = new Set(stayIn)
+    dohanSet.value     = new Set(stayDhn)
+  },
+  { immediate: true }
+)
+
+/* main が変わったら free から除去 */
+watch(mainCastIds, list => {
+  const filtered = freeCastIds.value.filter(id => !list.includes(id))
+  if (filtered.length !== freeCastIds.value.length) {
+    freeCastIds.value = filtered
+  }
+})
+watch(freeCastIds, list => {
+  const deduped = list.filter(id => !mainCastIds.value.includes(id))
+  if (deduped.length !== list.length) {
+    freeCastIds.value = deduped
+    return
+  }
+})
 </script>
+
+
 
 <template>
   <!-- 伝票がまだ無い瞬間は描画しない -->
@@ -897,31 +787,31 @@ watch(visible, v => { if (v) pane.value = 'base' })
               v-for="c in currentCasts"
               :key="c.id"
             >
-<!-- 本指名（クリックで同伴へ） -->
-<div
-  v-if="c.role==='main'"
-  class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
-  role="button"
-  @click="toggleMainDohan(c.id)"
->
-  <IconX :size="12" class="me-2" role="button" @click.stop="removeCast(c.id)" />
-  <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
-  <span>{{ c.stage_name }}</span>
-  <span class="badge bg-danger text-white ms-1 d-flex align-items-center">本指名</span>
-</div>
+        <!-- 本指名（クリックで同伴へ） -->
+        <div
+          v-if="c.role==='main'"
+          class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
+          role="button"
+          @click="toggleMainDohan(c.id)"
+        >
+          <IconX :size="12" class="me-2" role="button" @click.stop="removeCast(c.id)" />
+          <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
+          <span>{{ c.stage_name }}</span>
+          <span class="badge bg-danger text-white ms-1 d-flex align-items-center">本指名</span>
+        </div>
 
-<!-- 同伴（クリックで本指へ） -->
-<div
-  v-else-if="c.role==='dohan'"
-  class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
-  role="button"
-  @click="toggleMainDohan(c.id)"
->
-  <IconX :size="12" class="me-2" role="button" @click.stop="removeCast(c.id)" />
-  <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
-  <span>{{ c.stage_name }}</span>
-  <span class="badge bg-secondary text-white ms-1 d-flex align-items-center">同伴</span>
-</div>
+        <!-- 同伴（クリックで本指へ） -->
+        <div
+          v-else-if="c.role==='dohan'"
+          class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
+          role="button"
+          @click="toggleMainDohan(c.id)"
+        >
+          <IconX :size="12" class="me-2" role="button" @click.stop="removeCast(c.id)" />
+          <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
+          <span>{{ c.stage_name }}</span>
+          <span class="badge bg-secondary text-white ms-1 d-flex align-items-center">同伴</span>
+        </div>
 
               <!-- フリー -->
               <div
@@ -1161,6 +1051,9 @@ watch(visible, v => { if (v) pane.value = 'base' })
 
             :memo="memoRef"
             :discount-rule-id="props.bill.discount_rule"
+            :store-slug="storeSlug"
+            :dosukoi-discount-unit="1000"
+            ref="payRefPc"
 
             @update:settledTotal="v => (form.settled_total = v)"
             @update:paidCash="v => (form.paid_cash = v)"
@@ -1177,12 +1070,12 @@ watch(visible, v => { if (v) pane.value = 'base' })
         </div>
       </div>
     </div>
-  <CustomerModal
-    v-model="showCustModal"
-    :customer-id="activeCustId"
-    @picked="handleCustPicked" 
-    @saved="handleCustSaved"
-  />
+    <CustomerModal
+      v-model="showCustModal"
+      :customer-id="activeCustId"
+      @picked="handleCustPicked" 
+      @saved="handleCustSaved"
+    />
   </BaseModal>
 </template>
 

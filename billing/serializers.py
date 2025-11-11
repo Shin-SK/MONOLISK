@@ -11,6 +11,10 @@ from .services import sync_nomination_fees
 from django.templatetags.static import static
 from django.utils import timezone
 from .models_profile import get_user_avatar_url
+from django.db import transaction
+from django.db.models import Sum
+
+from .models import Bill, BillDiscountLine
 
 
 
@@ -453,25 +457,37 @@ class CustomerLogSerializer(serializers.ModelSerializer):
         model  = CustomerLog
         fields = ('id', 'action', 'user_name', 'payload', 'at')
 
+class BillDiscountLineSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = BillDiscountLine
+        fields = ('id', 'label', 'amount', 'sort_order')
+
 
 
 class BillSerializer(serializers.ModelSerializer):
-    table        = TableMiniSerializer(read_only=True)     # ネスト表示用
+    table        = TableMiniSerializer(read_only=True)
     items        = BillItemSerializer(read_only=True, many=True)
     stays        = BillCastStaySerializer(read_only=True, many=True)
-    subtotal     = serializers.SerializerMethodField()
-    service_charge = serializers.SerializerMethodField()
-    tax          = serializers.SerializerMethodField()
-    grand_total  = serializers.SerializerMethodField()
+
+    # 金額は締め済みなら保存値、未締めなら Calculator で算出（下の get_* 参照）
+    subtotal        = serializers.SerializerMethodField()
+    service_charge  = serializers.SerializerMethodField()
+    tax             = serializers.SerializerMethodField()
+    grand_total     = serializers.SerializerMethodField()
+
     inhouse_casts = CastSerializer(many=True, read_only=True)
     opened_at     = serializers.DateTimeField(required=False, allow_null=True)
     expected_out  = serializers.DateTimeField(required=False, allow_null=True)
-    set_rounds   = serializers.IntegerField(read_only=True)
-    ext_minutes  = serializers.IntegerField(read_only=True)
+    set_rounds    = serializers.IntegerField(read_only=True)
+    ext_minutes   = serializers.IntegerField(read_only=True)
+
     main_cast      = serializers.PrimaryKeyRelatedField(
         queryset=Cast.objects.all(), allow_null=True, required=False
     )
     main_cast_obj  = CastMiniSerializer(source='main_cast', read_only=True)
+
     customer_ids = serializers.PrimaryKeyRelatedField(
         source='customers', many=True,
         queryset=Customer.objects.all(),
@@ -479,40 +495,35 @@ class BillSerializer(serializers.ModelSerializer):
     )
     customers = CustomerSerializer(many=True, read_only=True)
     customer_display_name = serializers.SerializerMethodField()
-    # ---------- WRITE ----------
-    # “卓番号” を受け取る専用フィールド
+
+    # WRITE: 卓
     table_id = serializers.PrimaryKeyRelatedField(
-        source='table',                # ← Bill.table へマッピング
+        source='table',
         queryset=Table.objects.all(),
-        allow_null=True,
-        required=False,
-        write_only=True,
+        allow_null=True, required=False, write_only=True,
     )
 
+    # WRITE: 場内/フリー 他
     free_ids = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=Cast.objects.all(),
-        required=False,
-        write_only=True,
+        many=True, queryset=Cast.objects.all(),
+        required=False, write_only=True,
     )
-
-   # ★ これを“トップレベル”で宣言し直す
-    inhouse_casts_w   = serializers.PrimaryKeyRelatedField(
+    inhouse_casts_w = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Cast.objects.all(),
         required=False, write_only=True
     )
 
-    nominated_casts = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=Cast.objects.all(), required=False
-    )
     change_due  = serializers.SerializerMethodField()
     paid_total  = serializers.IntegerField(read_only=True)
+
     discount_rule = serializers.PrimaryKeyRelatedField(
-        queryset=DiscountRule.objects.all(),   # 後で store で絞る
-        required=False,
-        allow_null=True
+        queryset=DiscountRule.objects.all(),   # __init__ で store による絞り込み
+        required=False, allow_null=True
     )
 
+    # ★ 手入力割引：入出力
+    manual_discounts = BillDiscountLineSerializer(many=True, required=False)
+    manual_discount_total = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Bill
@@ -527,126 +538,152 @@ class BillSerializer(serializers.ModelSerializer):
             "nominated_casts", "settled_total",
             "inhouse_casts",        # READ
             "inhouse_casts_w",      # WRITE
-            "free_ids","set_rounds","ext_minutes", 'main_cast',      # WRITE 用 (id)
-            'main_cast_obj',  # READ 用 ({id,stage_name})
-            'customers',      # READ
-            'customer_ids',   # WRITE
-            'customer_display_name',
-            'discount_rule',  # 割引ルールID
+            "free_ids","set_rounds","ext_minutes",
+            "main_cast", "main_cast_obj",
+            "customers", "customer_ids", "customer_display_name",
+            # ---- 割引 ----
+            "discount_rule",
+            "manual_discounts", "manual_discount_total",
         )
         read_only_fields = (
             "subtotal", "service_charge", "tax", "grand_total", "total",
-            "closed_at", "settled_total","set_rounds","ext_minutes",
+            "closed_at", "set_rounds","ext_minutes",
             "paid_total","change_due",
+            "manual_discount_total",
         )
         depth = 2
-        
 
+    # ---- init：discount_rule を店舗で絞る ----
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # ② 要求店舗で絞る（無ければ全件でも可）
         req = self.context.get('request')
+        qs = DiscountRule.objects.filter(is_active=True)
         if req and getattr(req, 'store', None):
-            self.fields['discount_rule'].queryset = DiscountRule.objects.filter(
-                store=req.store, is_active=True
-            )
-        else:
-            self.fields['discount_rule'].queryset = DiscountRule.objects.filter(is_active=True)
+            qs = qs.filter(store=req.store)
+        self.fields['discount_rule'].queryset = qs
+
+    # ---- READ helper ----
+    def _is_closed(self, obj): return bool(getattr(obj, "closed_at", None))
+    def _calc(self, obj):
+        res = getattr(obj, "_calc_cache", None)
+        if res is None:
+            from .calculator import BillCalculator
+            obj._calc_cache = res = BillCalculator(obj).execute()
+        return res
+
+    def get_subtotal(self, obj):       return int(obj.subtotal)       if self._is_closed(obj) else int(self._calc(obj).subtotal)
+    def get_service_charge(self, obj): return int(obj.service_charge) if self._is_closed(obj) else int(self._calc(obj).service_fee)
+    def get_tax(self, obj):            return int(obj.tax)            if self._is_closed(obj) else int(self._calc(obj).tax)
+    def get_grand_total(self, obj):    return int(obj.total or obj.grand_total or 0) if self._is_closed(obj) else int(self._calc(obj).total)
 
     def get_change_due(self, obj):
-        # 会計金額は settled_total（手入力・確定）を優先、なければ Calculator の割引後合計で算出
         st = obj.settled_total if obj.settled_total is not None else self.get_grand_total(obj)
         st = st or 0
         return max(0, obj.paid_total - st)
 
-    # ───────── 顧客情報取得 ──────────
-    # 先頭 1 名だけバッジに出す用途
     def get_customer_display_name(self, obj):
         first = obj.customers.first()
         return first.display_name if first else ''
-    
-    
+
     def to_representation(self, obj):
         rep = super().to_representation(obj)
-        # 先頭 1 件だけ代表名を返す
         first = obj.customers.first()
         rep['customer_display_name'] = first.display_name if first else ''
         return rep
 
-    # ───────── READ helpers ──────────
-    def get_inhouse_casts(self, obj):
-        return list(
-            obj.stays.filter(stay_type="in")
-               .values_list("cast_id", flat=True)
-        )
+    def get_manual_discount_total(self, obj):
+        return obj.manual_discounts.aggregate(s=Sum('amount'))['s'] or 0
 
-    # --------------------------------------------------
-    #                 CREATE
-    # --------------------------------------------------
+    # ---- 手入力割引：全入れ替え ----
+    def _replace_manual_discounts(self, bill: Bill, rows):
+        bill.manual_discounts.all().delete()
+        to_create = []
+        for idx, r in enumerate(rows or []):
+            label = (r.get('label') or '').strip()
+            amount = int(r.get('amount') or 0)
+            if amount <= 0:
+                continue
+            sort_order = r.get('sort_order', idx)
+            to_create.append(BillDiscountLine(
+                bill=bill, label=label, amount=amount, sort_order=sort_order
+            ))
+        if to_create:
+            BillDiscountLine.objects.bulk_create(to_create)
+
+    # ---- CREATE：opened_at 補完＋手入力割引＋指名/場内同期 ----
+    @transaction.atomic
     def create(self, validated_data):
         if validated_data.get('opened_at') is None:
             validated_data['opened_at'] = timezone.now()
+
+        # まず配列系を抜く
         nominated = validated_data.pop("nominated_casts", [])
         inhouse   = validated_data.pop("inhouse_casts_w", [])
+        cust_ids  = validated_data.pop('customer_ids', None)
+        rows      = validated_data.pop('manual_discounts', None)
+
         bill = Bill.objects.create(**validated_data)
+
         if nominated:
             bill.nominated_casts.set(nominated)
+        if cust_ids is not None:
+            bill.customers.set(cust_ids)
+        if rows is not None:
+            self._replace_manual_discounts(bill, rows)
 
-        # ↑ stay 行を追加するロジックをここで呼ぶ場合は
-        #    その直後に sync_nomination_fees() を実行
+        # 指名/場内差分 → 料金行同期（既存の関数）
         sync_nomination_fees(
             bill,
-            prev_main=set(),              # before = 0
-            new_main=set(nominated),      # after  = 指名キャスト
+            prev_main=set(),
+            new_main=set(nominated),
             prev_in=set(),
             new_in=set(inhouse),
         )
         return bill
 
-    # --------------------------------------------------
-    #                 UPDATE
-    # --------------------------------------------------
-
+    # ---- UPDATE：手入力割引＋本体更新を統合 ----
+    @transaction.atomic
     def update(self, instance, validated_data):
-        # ---------- 0) 更新前スナップショット ----------
+        # 更新前スナップ
         prev_main = set(instance.nominated_casts.values_list("id", flat=True))
-        prev_in   = set(
-            instance.stays.filter(stay_type="in", left_at__isnull=True)
-                    .values_list("cast_id", flat=True)
-        )
+        prev_in   = set(instance.stays.filter(stay_type="in", left_at__isnull=True).values_list("cast_id", flat=True))
 
-        # ---------- 1) M2M/配列系は先に抜く ----------
+        # 配列を先に抜き出す
         cust_ids      = validated_data.pop('customer_ids', None)
         nominated_raw = validated_data.pop("nominated_casts", None)
         inhouse_raw   = validated_data.pop("inhouse_casts_w", None)
         free_raw      = validated_data.pop("free_ids", None)
+        rows          = validated_data.pop('manual_discounts', None)
 
-        # ---------- 1.5) discount_rule 現状維持の“保険” ----------
+        # discount_rule が来なければ現状維持
         if 'discount_rule' not in validated_data:
             validated_data['discount_rule'] = instance.discount_rule
 
-        # ---------- 2) 通常フィールドを一括更新（※ここで1回だけ） ----------
+        # 通常フィールドをまとめて更新
         instance = super().update(instance, validated_data)
 
-        # 顧客 M2M
+        # 顧客M2M
         if cust_ids is not None:
             instance.customers.set(cust_ids)
 
-        # 以降：stay／指名・場内・フリー・同伴の同期（元の実装をそのまま下に置く）
+        # 手入力割引の入れ替え
+        if rows is not None:
+            self._replace_manual_discounts(instance, rows)
+
+        # --- 以下、指名/場内/フリー/同伴の同期（元コードを維持） ---
         to_ids = lambda raw: [c.id if hasattr(c, 'id') else c for c in (raw or [])]
-        nominated_ids = set(to_ids(nominated_raw))
-        inhouse_ids   = set(to_ids(inhouse_raw))
-        free_ids_orig = set(to_ids(free_raw))
+        nominated_ids = set(to_ids(nominated_raw)) if nominated_raw is not None else prev_main
+        inhouse_ids   = set(to_ids(inhouse_raw)) if inhouse_raw is not None else prev_in
+        free_ids_orig = set(to_ids(free_raw)) if free_raw is not None else set()
 
         stay_map = {s.cast_id: s for s in instance.stays.all()}
 
-        # --- 本指名 (nom) ---
+        # 本指名
         if nominated_raw is not None:
             instance.nominated_casts.set(list(nominated_ids))
             for cid in nominated_ids:
                 st = stay_map.get(cid)
                 if not st:
-                    from .models import BillCastStay
                     BillCastStay.objects.create(
                         bill=instance, cast_id=cid,
                         entered_at=timezone.now(), stay_type="nom", is_honshimei=True
@@ -657,7 +694,6 @@ class BillSerializer(serializers.ModelSerializer):
                     if not getattr(st, 'is_honshimei', False):
                         st.is_honshimei = True
                     st.save(update_fields=["stay_type","left_at","is_honshimei"])
-
             for cid, st in stay_map.items():
                 if cid not in nominated_ids and st.stay_type == "nom":
                     st.stay_type = "in" if cid in inhouse_ids else "free"
@@ -667,9 +703,8 @@ class BillSerializer(serializers.ModelSerializer):
                     else:
                         st.save(update_fields=["stay_type"])
 
-        # --- 場内 (in) ---
+        # 場内
         if inhouse_raw is not None:
-            from .models import BillCastStay
             for cid in inhouse_ids:
                 st = stay_map.get(cid)
                 if not st:
@@ -683,14 +718,11 @@ class BillSerializer(serializers.ModelSerializer):
                         st.save(update_fields=["stay_type","left_at"])
             for cid, st in stay_map.items():
                 if cid not in inhouse_ids and st.stay_type == "in":
-                    st.stay_type = "free"
-                    st.save(update_fields=["stay_type"])
+                    st.stay_type = "free"; st.save(update_fields=["stay_type"])
 
-        # --- フリー (free) ---
+        # フリー
         if free_raw is not None:
-            from .models import BillCastStay
-            free_ids = [cid for cid in free_ids_orig
-                        if cid not in inhouse_ids and cid not in nominated_ids]
+            free_ids = [cid for cid in free_ids_orig if cid not in inhouse_ids and cid not in nominated_ids]
             for cid in free_ids:
                 st = stay_map.get(cid)
                 if not st or st.left_at:
@@ -700,17 +732,15 @@ class BillSerializer(serializers.ModelSerializer):
                     )
                 elif st.stay_type != "free":
                     st.stay_type = "free"; st.save(update_fields=["stay_type"])
-
             active_free = instance.stays.filter(stay_type="free", left_at__isnull=True)
             for st in active_free:
                 if st.cast_id not in free_ids:
                     st.left_at = timezone.now()
                     st.save(update_fields=["left_at"])
 
-        # --- 同伴 (dohan) ---
+        # 同伴（dohan）
         dohan_raw = self.context['request'].data.get('dohan_ids', None)
         if dohan_raw is not None:
-            from .models import BillCastStay
             dohan_ids = set(to_ids(dohan_raw))
             for cid in dohan_ids:
                 st = stay_map.get(cid)
@@ -724,7 +754,6 @@ class BillSerializer(serializers.ModelSerializer):
                         st.stay_type = 'dohan'; st.left_at = None
                         st.save(update_fields=['stay_type','left_at'])
                 instance.nominated_casts.remove(cid)
-
             prev_dohan = set(
                 instance.stays.filter(stay_type='dohan', left_at__isnull=True)
                         .values_list('cast_id', flat=True)
@@ -732,10 +761,9 @@ class BillSerializer(serializers.ModelSerializer):
             for cid in (prev_dohan - dohan_ids):
                 st = stay_map.get(cid)
                 if st:
-                    st.stay_type = 'free'
-                    st.save(update_fields=['stay_type'])
+                    st.stay_type = 'free'; st.save(update_fields=['stay_type'])
 
-        # ---------- 3) 料金行を差分同期 ----------
+        # 料金行を差分同期
         sync_nomination_fees(
             instance,
             prev_main, set(instance.nominated_casts.values_list('id', flat=True)),
@@ -743,45 +771,6 @@ class BillSerializer(serializers.ModelSerializer):
                                 .values_list('cast_id', flat=True)),
         )
         return instance
-
-
-    def _store_rates(self, obj):
-        """DEPRECATED: 計算は BillCalculator に統合済み。"""
-        return Decimal("0"), Decimal("0")
-
-    # ---- Calculator を1回だけ走らせてキャッシュ ----
-    def _calc(self, obj):
-        res = getattr(obj, "_calc_cache", None)
-        if res is None:
-            from .calculator import BillCalculator
-            obj._calc_cache = res = BillCalculator(obj).execute()
-        return res
-
-    # ★ 追加: 締め済みか判定
-    def _is_closed(self, obj):
-        return bool(getattr(obj, "closed_at", None))
-
-    def get_subtotal(self, obj):
-        # 締め済みは保存値、未締めはCalculator
-        return int(obj.subtotal) if self._is_closed(obj) else int(self._calc(obj).subtotal)
-
-    def get_service_charge(self, obj):
-        return int(obj.service_charge) if self._is_closed(obj) else int(self._calc(obj).service_fee)
-
-    def get_tax(self, obj):
-        return int(obj.tax) if self._is_closed(obj) else int(self._calc(obj).tax)
-
-    def get_grand_total(self, obj):
-        # 締め済みは保存された total（なければ grand_total）を優先
-        if self._is_closed(obj):
-            return int(obj.total or obj.grand_total or 0)
-        return int(self._calc(obj).total)
-
-    def get_change_due(self, obj):
-        # 会計金額は settled_total（確定額）を優先、なければ表示用合計
-        st = obj.settled_total if obj.settled_total is not None else self.get_grand_total(obj)
-        st = st or 0
-        return max(0, obj.paid_total - st)
 
 
 class CastShiftSerializer(serializers.ModelSerializer):
@@ -1281,4 +1270,3 @@ class CastPayrollSummaryRowSerializer(serializers.Serializer):
     hourly_pay  = serializers.IntegerField()
     commission  = serializers.IntegerField()
     total       = serializers.IntegerField()
-

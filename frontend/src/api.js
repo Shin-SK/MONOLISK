@@ -26,7 +26,7 @@ wireInterceptors(api)
 // ★ ここから “キャッシュ制御 & デバッグ” を追加
 api.interceptors.request.use(cfg => {
 	// 開発ログ
-	if (import.meta.env.DEV) console.log('[REQ]', cfg.baseURL, cfg.url, cfg.headers?.['X-Store-Id'])
+	// if (import.meta.env.DEV) console.log('[REQ]', cfg.baseURL, cfg.url, cfg.headers?.['X-Store-Id'])
 
 	// 非GETはキャッシュしない
 	const method = (cfg.method || 'get').toLowerCase()
@@ -53,17 +53,17 @@ api.interceptors.request.use(cfg => {
 	return cfg
 })
 
-api.interceptors.response.use(
-	res => {
-		// axios-cache-interceptor は res.cached を持つ
-		if (import.meta.env.DEV) console.log('[RES]', res.config.url, res.status, res.cached ? 'HIT' : 'MISS')
-		return res
-	},
-	err => {
-		if (import.meta.env.DEV) console.warn('[ERR]', err.config?.url, err.response?.status, err.message)
-		return Promise.reject(err)
-	}
-)
+// api.interceptors.response.use(
+// 	res => {
+// 		// axios-cache-interceptor は res.cached を持つ
+// 		if (import.meta.env.DEV) console.log('[RES]', res.config.url, res.status, res.cached ? 'HIT' : 'MISS')
+// 		return res
+// 	},
+// 	err => {
+// 		if (import.meta.env.DEV) console.warn('[ERR]', err.config?.url, err.response?.status, err.message)
+// 		return Promise.reject(err)
+// 	}
+// )
 
 // デバッグ用に叩けるよう公開
 if (import.meta.env.DEV) window.__API__ = api
@@ -427,6 +427,56 @@ export const staffCheckOut = (shiftId, at = dayjs().toISOString()) =>
 // ──────────── Bills patch 共通 ────────────
 export const patchBill = (id, payload) =>
   api.patch(`billing/bills/${id}/`, payload).then(r => r.data)
+
+
+/** 手入力割引行（manual_discounts）だけを全入れ替えで保存 */
+export const updateBillManualDiscounts = (billId, rows = []) => {
+  const normalized = (rows || [])
+    .map((r, i) => ({
+      label: String(r.label || '').trim(),
+      amount: Number(r.amount || 0),
+      sort_order: r.sort_order ?? i,
+    }))
+    .filter(r => r.label && r.amount > 0)
+  return patchBill(billId, { manual_discounts: normalized })
+}
+
+
+/**
+ * 会計関連のパッチをまとめて送るユーティリティ
+ * 例）settleBill(123, { memo, discount_rule, manual_discounts, settled_total, paid_cash, paid_card })
+ */
+export const settleBill = (billId, payload = {}) => {
+  const body = {}
+  if (payload.memo != null)            body.memo = String(payload.memo)
+  if (payload.discount_rule !== undefined)
+                                       body.discount_rule = (payload.discount_rule == null ? null : Number(payload.discount_rule))
+  if (payload.manual_discounts !== undefined) {
+    body.manual_discounts = (payload.manual_discounts || [])
+      .map((r, i) => ({
+        label: String(r.label || '').trim(),
+        amount: Number(r.amount || 0),
+        sort_order: r.sort_order ?? i,
+      }))
+      .filter(r => r.label && r.amount > 0)
+  }
+  if (payload.settled_total != null)   body.settled_total = Number(payload.settled_total)
+  if (payload.paid_cash  != null)      body.paid_cash     = Number(payload.paid_cash)
+  if (payload.paid_card  != null)      body.paid_card     = Number(payload.paid_card)
+  return patchBill(billId, body)
+}
+
+
+/**
+ * ① settleBill（PATCH）→ ② closeBill（POST） の順で会計確定
+ *   payload は settleBill と同じ形（memo/discount_rule/manual_discounts/settled_total/paid_*）
+ */
+export const patchAndCloseBill = async (billId, payload = {}) => {
+  await settleBill(billId, payload)
+  const st = payload?.settled_total != null ? Number(payload.settled_total) : undefined
+  return closeBill(billId, st != null ? { settled_total: st } : {})
+}
+
 
 // --- granular wrapper ----------------------
 export const updateBillTimes = (id, { opened_at, expected_out }) =>

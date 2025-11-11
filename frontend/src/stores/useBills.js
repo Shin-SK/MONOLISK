@@ -59,7 +59,7 @@ export const useBills = defineStore('bills', {
         this._pollCount += 1
         this.lastUpdated = new Date().toISOString()
         if (import.meta.env.DEV) {
-          console.debug('[poll]', this._pollCount, this.lastUpdated, { count: this.list.length })
+          // console.debug('[poll]', this._pollCount, this.lastUpdated, { count: this.list.length })
         }
       } finally {
         this._inflight = false

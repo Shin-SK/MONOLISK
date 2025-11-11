@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, toRef, watch, nextTick } from 'vue'
+import { computed, ref, toRef, watch, nextTick, watchEffect, onMounted } from 'vue'
 import BaseModal from '@/components/BaseModal.vue'
 import BasicsPanel from '@/components/panel/BasicsPanel.vue'
 import CastsPanelSP  from '@/components/spPanel/CastsPanelSP.vue'
@@ -19,7 +19,6 @@ import {
 const { hasRole } = useRoles()
 const canProvisional = computed(() => hasRole(['manager','owner']))
 
-
 const props = defineProps({
   modelValue: Boolean,
   bill: { type: Object, required: true },
@@ -28,11 +27,60 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue','saved','updated','closed'])
 
+
+// 店舗ごとにパネル切り替え
+// defineProps の後に追加（既存の storeSlug 定義は置き換え）
+const storeSlug = ref('')
+const normalizeSlug = s => String(s || '').trim().toLowerCase().replace(/_/g, '-')
+
+// 毎回取り直す関数
+async function refreshStoreSlug() {
+  try {
+    // X-Store-Id が切り替わっていれば、その店舗の slug が返る
+    const { data } = await api.get('billing/stores/me/')
+    storeSlug.value = normalizeSlug(data?.slug)
+    // ローカル保存も更新（PayPanel外でも使うなら）
+    if (storeSlug.value) localStorage.setItem('store_slug', storeSlug.value)
+  } catch (e) {
+    console.warn('[storeSlug] fetch failed', e)
+    // 最低限は localStorage から拾う
+    storeSlug.value = normalizeSlug(localStorage.getItem('store_slug') || '')
+  }
+}
+
+onMounted(async () => {
+  // 1) localStorage 優先
+  const ls = localStorage.getItem('store_slug')
+  if (ls) {
+    storeSlug.value = normalizeSlug(ls)
+    return
+  }
+  // 2) API: /billing/stores/me/（X-Store-Id に紐づく現在の店舗）
+  try {
+    const { data } = await api.get('billing/stores/me/')
+    storeSlug.value = normalizeSlug(data?.slug)
+    if (storeSlug.value) localStorage.setItem('store_slug', storeSlug.value)
+  } catch (e) {
+    console.warn('[storeSlug] fetch failed', e)
+    storeSlug.value = ''
+  }
+})
+
 const visible = computed({
   get: () => props.modelValue,
   set: v  => emit('update:modelValue', v)
 })
 const pane = ref('base')
+
+// モーダルを開いた瞬間に取り直す
+watch(visible, v => { if (v) refreshStoreSlug() }, { immediate: true })
+
+// 伝票の store が変わったら取り直す（table.store は数値ID）
+watch(() => props.bill?.table?.store, () => {
+  if (visible.value) refreshStoreSlug()
+})
+
+
 
 /* composable */
 const ed = useBillEditor(toRef(props,'bill'))
@@ -219,8 +267,8 @@ const targetTotal = computed(() => Number(settledTotalRef.value) || Number(displ
 const diff        = computed(() => paidTotal.value - targetTotal.value)
 const overPay     = computed(() => Math.max(0, diff.value))
 const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= targetTotal.value)
-const memoRef = ref(props.bill?.memo ?? '')
 const payRef = ref(null)
+const memoRef = ref(props.bill?.memo ?? '')
 watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
 
 watch(visible, v => {
@@ -308,10 +356,15 @@ async function confirmClose(){
   try{
     await nextTick()
     const billId   = props.bill.id
-    const memoStr  = (payRef.value?.getMemo?.() ?? '').toString()
+    const memoFromPanel = (payRef.value?.getMemo?.() ?? '').toString()
+    const disc = payRef.value?.getDiscountEntry?.() || { label: null, amount: 0 }
+    const memoStr = disc.amount > 0
+      ? `${memoFromPanel}\n割引明細: ${disc.label} / 金額: ¥${disc.amount.toLocaleString()}`
+      : memoFromPanel
     const settled  = Number(settledTotalRef.value) || Number(displayGrandTotal.value) || 0
     const paidCash = Number(paidCashRef.value) || 0
     const paidCard = Number(paidCardRef.value) || 0
+    const rows = payRef.value?.getManualDiscounts?.() || []
 
     // ① 楽観反映（UI即更新）
     props.bill.paid_cash     = paidCash
@@ -337,10 +390,13 @@ async function confirmClose(){
     // ★ 重要: patchBillを先に実行してdiscount_ruleを確実に保存してからcloseBillを実行
     const discountRuleId = props.bill?.discount_rule ? Number(props.bill.discount_rule) : null
     enqueue('patchBill', { id: billId, payload: {
-      paid_cash: paidCash, paid_card: paidCard, memo: memoStr,
-      discount_rule: discountRuleId,
+      paid_cash: paidCash,
+      paid_card: paidCard,
+      memo: memoStr,
+      discount_rule: props.bill?.discount_rule ? Number(props.bill.discount_rule) : null,
+      manual_discounts: rows,
+      settled_total: settled,
     }})
-    // closeBillはpatchBillの後に実行される（キューが順次実行されることを前提）
     enqueue('closeBill', { id: billId, payload: { settled_total: settled }})
     enqueue('reconcile', { id: billId })
 
@@ -368,6 +424,7 @@ async function handleSave(){
     saving.value = false
   }
 }
+
 </script>
 
 <template>
@@ -462,6 +519,8 @@ async function handleSave(){
       :over-pay="overPay"
       :can-close="canClose"
       :discount-rule-id="props.bill?.discount_rule ? Number(props.bill.discount_rule) : null"
+      :store-slug="storeSlug"
+      :dosukoi-discount-unit="1000"
       @update:settledTotal="setSettledTotal"
       @update:paidCash="setPaidCash"
       @update:paidCard="setPaidCard"

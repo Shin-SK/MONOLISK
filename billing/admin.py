@@ -12,7 +12,7 @@ from django import forms
 from django.utils.safestring import mark_safe
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
-from .resources import ItemCategoryRes, ItemMasterRes
+from .resources import ItemCategoryRes, ItemMasterRes, TableRes
 from django.contrib.admin.sites import NotRegistered
 
 
@@ -67,15 +67,19 @@ class StoreAdmin(admin.ModelAdmin):
     )
     
     
-@admin.register(Table)
-class TableAdmin(admin.ModelAdmin):
-	list_display  = ('store', 'code', 'seat_type')
-	list_filter   = ('store','seat_type')
-	search_fields = ('store__slug','code')
- 
-def __str__(self):
-    return self.code or f'#{self.pk}'
 
+@admin.register(Table)
+class TableAdmin(ImportExportModelAdmin):
+    resource_class = TableRes
+    list_display   = ("store", "code", "seat_type")
+    list_filter    = ("store", "seat_type")          # ← 絞り込み
+    search_fields  = ("code", "store__slug")
+    autocomplete_fields = ("store", "seat_type")     # ← 大量データ向け
+    ordering       = ("store", "code")
+    
+    def label(self, obj):
+        return f'{obj.store.slug}:{obj.code or "#"+str(obj.pk)}'
+    label.short_description = '表示名'
 
 @admin.register(SeatType)
 class SeatTypeAdmin(admin.ModelAdmin):

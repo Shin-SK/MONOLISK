@@ -1,7 +1,8 @@
 # billing/resources.py
 from import_export import resources, fields, widgets
 from import_export.widgets import ForeignKeyWidget
-from .models import ItemCategory, ItemMaster, Store
+from django.core.exceptions import ObjectDoesNotExist
+from .models import ItemCategory, ItemMaster, Store, Table, SeatType, DiscountRule
 
 class ItemCategoryRes(resources.ModelResource):
     class Meta:
@@ -23,12 +24,6 @@ class ItemCategoryRes(resources.ModelResource):
         batch_size = 1000
 
 
-
-# billing/resources.py
-from import_export import resources, fields, widgets
-from import_export.widgets import ForeignKeyWidget
-from .models import ItemCategory, ItemMaster, Store
-from django.core.exceptions import ObjectDoesNotExist
 
 class ItemMasterRes(resources.ModelResource):
     # CSV: store_slug -> Store.slug
@@ -86,9 +81,7 @@ class ItemMasterRes(resources.ModelResource):
             return None
 
 
-# billing/resources.py
-from import_export import resources, fields, widgets
-from billing.models import Store, Table, SeatType, DiscountRule
+
 
 # === Table (座席) の CSV ===
 class TableRes(resources.ModelResource):
@@ -141,3 +134,36 @@ class DiscountRuleRes(resources.ModelResource):
         export_order = ("store","code","name","amount_off","percent_off",
                         "is_active","is_basic","show_in_basics","show_in_pay",
                         "sort_order","created_at")
+
+
+
+
+class TableRes(resources.ModelResource):
+    # store 外部キーは slug で入出力
+    store = fields.Field(
+        attribute="store",
+        column_name="store_slug",
+        widget=ForeignKeyWidget(Store, "slug"),
+    )
+    # seat_type 外部キーは code で入出力
+    seat_type = fields.Field(
+        attribute="seat_type",
+        column_name="seat_type_code",
+        widget=ForeignKeyWidget(SeatType, "code"),
+    )
+    # 任意の識別子（UIで使ってれば）
+    code = fields.Field(attribute="code", column_name="code")
+    # テーブル番号を出したい場合（モデルに number があるなら）
+    # number = fields.Field(attribute="number", column_name="number", widget=widgets.IntegerWidget())
+
+    class Meta:
+        model = Table
+        # 取り込み時の一意キー（必要なら code を追加／変更）
+        import_id_fields = ("store", "code",)
+        # 出力/入力カラム順
+        fields = ("store", "code", "seat_type")
+        export_order = ("store", "code", "seat_type")
+        skip_unchanged = True
+        report_skipped = True
+        use_transactions = True
+        batch_size = 1000
