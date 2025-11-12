@@ -199,9 +199,13 @@ async function onApplySet (payload){
   } else {
     await updateBillDiscountRule(billId, null)
   }
-
   const fresh = await fetchBill(billId).catch(()=>null)
-  emit('updated', fresh || billId)
+  if (fresh) {
+    Object.assign(props.bill, fresh)   // Bill本体
+    props.bill.items = fresh.items     // リストは丸ごと
+    props.bill.stays = fresh.stays
+    emit('updated', fresh)
+  }
 }
 
 // 人数状態を引き継ぎ
@@ -378,9 +382,13 @@ async function confirmClose(){
       const bs = useBills()
       const i = bs.list.findIndex(b => Number(b.id) === Number(billId))
       if (i >= 0) {
+        const nowISO = new Date().toISOString()
         bs.list[i] = { ...bs.list[i],
           paid_cash: paidCash, paid_card: paidCard, settled_total: settled,
-          memo: memoStr, closed_at: props.bill.closed_at
+          memo: memoStr,
+          closed_at: nowISO,
+          // ★ ゴースト消し：UI用に“座ってる人”全員を即退席にする
+          stays: (bs.list[i].stays || []).map(s => s.left_at ? s : ({ ...s, left_at: nowISO })),
         }
       }
     }catch{}
@@ -403,6 +411,11 @@ async function confirmClose(){
     // ③ 親へ通知（UIはもう閉店表示。ここでモーダルも閉じる）
     emit('saved', { id: billId })
     visible.value = false
+    // visible=false の前に、モーダル内のstaysも退席に（重複ブロックは削除）
+    {
+      const nowISO = new Date().toISOString()
+      props.bill.stays = (props.bill.stays || []).map(s => s.left_at ? s : ({ ...s, left_at: nowISO }))
+    }
   }catch(e){
     console.error(e)
     alert('会計に失敗しました（オフラインでも後で確定されます）')

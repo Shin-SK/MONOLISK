@@ -98,6 +98,15 @@ function onTapTable(table) {
   else     emit('request-new', { tableId: table.id })
 }
 
+//ゴースト対策
+function activeStaysForTable(tableId) {
+  const b = getOpenBill(tableId)
+  // getOpenBill は closed を原則除外してるが、楽観反映の順序次第で
+  // 一瞬入ってくることがあるのでダブルチェック
+  if (!b || b.closed_at) return []
+  return (b.stays || []).filter(s => !s.left_at)
+}
+
 /* ポーリング（PCと同等の周期） */
 let shiftTimer = null
 async function refreshShifts() {
@@ -168,7 +177,7 @@ defineExpose({ reload })
           <!-- 在席：キャスト一覧（色/残り線も同様） -->
           <div v-else class="casts bg-white d-flex flex-wrap gap-2 p-3">
             <div
-              v-for="s in (getOpenBill(t.id)?.stays||[]).filter(x=>!x.left_at)"
+              v-for="s in activeStaysForTable(t.id)"
               :key="s.cast.id"
               class="cast-card btn text-light p-2 d-flex align-items-center"
               :class="`bg-${bgColor({ kind: s.stay_type, dohan: s.stay_type==='dohan', entered_at: s.entered_at })}`"
@@ -187,7 +196,7 @@ defineExpose({ reload })
 
         <!-- フッター（PCと同じ .sum 相当の情報帯） -->
         <div
-          v-if="getOpenBill(t.id)"
+          v-if="getOpenBill(t.id) && !getOpenBill(t.id).closed_at"
           class="sum bg-white p-2 d-flex gap-3 justify-content-between align-items-center fs-5"
         >
           <div class="table-number align-items-center gap-1 d-md-none d-flex">
