@@ -1,4 +1,4 @@
-<!-- CastsPanelSP.vue（差し替え） -->
+<!-- CastsPanel.vue（差し替え） -->
 <script setup>
 import { computed } from 'vue'
 import Avatar from '@/components/Avatar.vue'

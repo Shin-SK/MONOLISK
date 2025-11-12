@@ -1,6 +1,6 @@
 @use "@/assets/scss/global/tokens" as *;
 
-.billmodal-sp{
+.billmodal-sp, .billmodal-pc{
 	.page-title{
 		font-weight: bold;
 		@include fs(18);
@@ -18,7 +18,7 @@
 		display: flex;
 		flex:1 1 auto;
 		flex-direction: column;
-		justify-content: space-between;
+		// justify-content: space-between;
 		width: 100%;
 		.title{
 			font-weight: bold;
@@ -41,7 +41,6 @@
 		.now-cast{
 			background-color: var(--bs-body-bg);
 			padding: 8px;
-			margin-bottom: 40px;
 			.items{
 				display: flex;
 				justify-content: flex-start;
@@ -91,9 +90,6 @@
 						display: flex;
 						align-items: center;
 						gap: 4px;
-						.name{
-							@include fs(10);
-						}
 					}
 				}
 			}
@@ -184,5 +180,30 @@
 				}
 			}
 		}
-		
 	}
+
+.billmodal-pc {
+	.bench-cast{
+		.search{
+			margin-bottom: 16px;
+			position: relative;
+			input{
+				padding-left: 28px;
+				border-radius: 100px;
+			}
+			.icon{
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				left: 8px;
+				margin: auto;
+			}
+		}
+		.items{
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			overflow-y: unset !important;
+		}
+	}
+}

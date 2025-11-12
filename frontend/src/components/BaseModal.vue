@@ -1,6 +1,6 @@
 <!-- components/BaseModal.vue -->
 <script setup>
-import { Teleport, watch, onBeforeUnmount } from 'vue'
+import { Teleport, watch, onBeforeUnmount, useAttrs } from 'vue'
 defineOptions({ inheritAttrs: false })
 
 const props = defineProps({ modelValue: Boolean })
@@ -61,7 +61,7 @@ onBeforeUnmount(unlockBody)
             <!-- ヘッダー -->
             <slot name="header" />
 
-            <div class="modal-body d-flex p-3">
+            <div class="modal-body d-flex py-1 px-2">
               <slot />
             </div>
 

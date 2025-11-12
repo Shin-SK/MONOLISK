@@ -431,16 +431,18 @@ class BillCastStaySerializer(serializers.ModelSerializer):
 
     is_honshimei = serializers.BooleanField(read_only=True)
     is_dohan     = serializers.BooleanField(read_only=True)
+    is_help      = serializers.BooleanField(read_only=True)
 
     class Meta:
         model  = BillCastStay
-        fields = ("cast", "stay_type", "is_honshimei", "is_dohan", "entered_at", "left_at")
+        fields = ("cast", "stay_type", "is_honshimei", "is_dohan", "entered_at", "left_at", "is_help")
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         st = instance.stay_type
         data["is_honshimei"] = (st == "nom")
         data["is_dohan"]     = (st == "dohan")
+        data["is_help"]      = bool(getattr(instance, "is_help", False))
         return data
 
 
@@ -655,6 +657,10 @@ class BillSerializer(serializers.ModelSerializer):
         free_raw      = validated_data.pop("free_ids", None)
         rows          = validated_data.pop('manual_discounts', None)
 
+        help_raw = self.context['request'].data.get('help_ids', None)
+        to_ids = lambda raw: [c.id if hasattr(c, 'id') else c for c in (raw or [])]
+        help_ids = set(to_ids(help_raw)) if help_raw is not None else set()
+
         # discount_rule が来なければ現状維持
         if 'discount_rule' not in validated_data:
             validated_data['discount_rule'] = instance.discount_rule
@@ -686,14 +692,17 @@ class BillSerializer(serializers.ModelSerializer):
                 if not st:
                     BillCastStay.objects.create(
                         bill=instance, cast_id=cid,
-                        entered_at=timezone.now(), stay_type="nom", is_honshimei=True
+                        entered_at=timezone.now(), stay_type="nom",
+                        is_honshimei=True, is_help=False         # ← 追加（明示）
                     )
                 else:
                     if st.stay_type != "nom" or st.left_at:
                         st.stay_type = "nom"; st.left_at = None
                     if not getattr(st, 'is_honshimei', False):
                         st.is_honshimei = True
-                    st.save(update_fields=["stay_type","left_at","is_honshimei"])
+                    st.is_help = False                           # ← 追加（明示）
+                    st.save(update_fields=["stay_type","left_at","is_honshimei","is_help"])  # ← 追加
+
             for cid, st in stay_map.items():
                 if cid not in nominated_ids and st.stay_type == "nom":
                     st.stay_type = "in" if cid in inhouse_ids else "free"
@@ -710,12 +719,14 @@ class BillSerializer(serializers.ModelSerializer):
                 if not st:
                     BillCastStay.objects.create(
                         bill=instance, cast_id=cid,
-                        entered_at=timezone.now(), stay_type="in"
+                        entered_at=timezone.now(), stay_type="in",
+                        is_help=False                            # ← 追加
                     )
                 else:
                     if st.stay_type != "in" or st.left_at:
                         st.stay_type = "in"; st.left_at = None
-                        st.save(update_fields=["stay_type","left_at"])
+                    st.is_help = False                          # ← 追加
+                    st.save(update_fields=["stay_type","left_at","is_help"])  # ← 追加
             for cid, st in stay_map.items():
                 if cid not in inhouse_ids and st.stay_type == "in":
                     st.stay_type = "free"; st.save(update_fields=["stay_type"])
@@ -738,6 +749,19 @@ class BillSerializer(serializers.ModelSerializer):
                     st.left_at = timezone.now()
                     st.save(update_fields=["left_at"])
 
+        # --- free (free_raw) の処理が終わった直後に「is_help 付与/解除」を反映 ---
+        if free_raw is not None or help_raw is not None:
+            stay_map = {s.cast_id: s for s in instance.stays.all()}
+            # いまアクティブな free を抽出
+            active_free = instance.stays.filter(stay_type="free", left_at__isnull=True)
+            for s in active_free:
+                if help_raw is None:
+                    # help_ids が送られていないときは既存値を維持
+                    continue
+                # help_ids に含まれていれば is_help=True、なければ False
+                s.is_help = s.cast_id in help_ids
+                s.save(update_fields=["is_help"])
+
         # 同伴（dohan）
         dohan_raw = self.context['request'].data.get('dohan_ids', None)
         if dohan_raw is not None:
@@ -747,12 +771,14 @@ class BillSerializer(serializers.ModelSerializer):
                 if not st:
                     BillCastStay.objects.create(
                         bill=instance, cast_id=cid,
-                        entered_at=timezone.now(), stay_type='dohan'
+                        entered_at=timezone.now(), stay_type='dohan',
+                        is_help=False                            # ← 追加
                     )
                 else:
                     if st.stay_type != 'dohan' or st.left_at:
                         st.stay_type = 'dohan'; st.left_at = None
-                        st.save(update_fields=['stay_type','left_at'])
+                    st.is_help = False                          # ← 追加
+                    st.save(update_fields=['stay_type','left_at','is_help'])  # ← 追加
                 instance.nominated_casts.remove(cid)
             prev_dohan = set(
                 instance.stays.filter(stay_type='dohan', left_at__isnull=True)
@@ -762,6 +788,8 @@ class BillSerializer(serializers.ModelSerializer):
                 st = stay_map.get(cid)
                 if st:
                     st.stay_type = 'free'; st.save(update_fields=['stay_type'])
+
+
 
         # 料金行を差分同期
         sync_nomination_fees(

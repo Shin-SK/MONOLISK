@@ -1,11 +1,17 @@
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
+import Avatar from '@/components/Avatar.vue'
 import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings } from '@/api'  // ← 追加
 
 const props = defineProps({
   tables: { type: Array, default: () => [] },
   tableId: { type: [Number, null], default: null },
+
+  historyEvents: {
+    type: Array,
+    default: () => [] 
+  },
 
   // 人数（親→子参照）。実表示は男+女、同期は emit('update:pax')
   pax: { type: Number, default: 0 },
@@ -234,6 +240,9 @@ function confirmEditHeader(){
   emit('update-times', { opened_at, expected_out })
 }
 
+const miniTab = ref('customer')
+
+
 // テーブル番号 / 人数 / 延長数（PC/List の式：ext_minutes/30）
 const tableNumberLabel = computed(() => {
   const id = props.tableId
@@ -254,6 +263,15 @@ const extCountView = computed(() => {
 function applySet(){
   const m = Number(maleRef.value||0), f = Number(femaleRef.value||0)
   if (m+f <= 0) { alert('SETの人数を入力してください'); return }
+
+  // 開始時間が未設定の場合、現在時刻を設定
+  if (!startISO.value) {
+    const nowISO = dayjs().toISOString()
+    startISO.value = nowISO
+    startLocal.value = dayjs(nowISO).format('YYYY-MM-DDTHH:mm')
+    // 親に通知してサーバにも反映
+    emit('update-times', { opened_at: nowISO, expected_out: null })
+  }
 
   emit('applySet', {
     lines: [
@@ -388,6 +406,20 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
             </div>
           </div>
         </div>
+        <div class="wrap w-100 my-3">
+          <div class="btn-group flex-wrap gap-2 w-100" role="group" aria-label="特例">
+            <template v-for="r in discountRules" :key="r.code">
+              <input class="btn-check" type="radio" name="sp" :id="`sp-${r.code}`"
+                      :value="r.code" v-model="specialRef">
+              <label class="btn btn-sm"
+                      :class="specialRef===r.code ? 'btn-secondary' : 'btn-outline-secondary'"
+                      :for="`sp-${r.code}`">
+                {{ r.name }}
+              </label>
+            </template>
+          </div>
+        </div>
+
 
         <!-- 追加項目 -->
         <div class="mb-2">
@@ -399,27 +431,31 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
                 <input class="form-check-input" type="checkbox" id="night" v-model="nightRef">
               </div>
             </div>
-
-            <div class="btn-group flex-wrap gap-2" role="group" aria-label="特例">
-              <template v-for="r in discountRules" :key="r.code">
-                <input class="btn-check" type="radio" name="sp" :id="`sp-${r.code}`"
-                       :value="r.code" v-model="specialRef">
-                <label class="btn btn-sm"
-                       :class="specialRef===r.code ? 'btn-secondary' : 'btn-outline-secondary'"
-                       :for="`sp-${r.code}`">
-                  {{ r.name }}
-                </label>
-              </template>
-            </div>
           </div>
         </div>
 
-        <button class="btn btn-warning w-100 my-5" @click="applySet">伝票を作成</button>
+        <button class="btn btn-warning w-100 my-2" @click="applySet">伝票を作成</button>
         
       </div>
 
+      <!-- 顧客 / 履歴 トグル -->
+      <div class="btn-group w-100 mb-2" role="group">
+        <button type="button"
+                class="btn btn-sm"
+                :class="miniTab==='customer' ? 'btn-secondary' : 'btn-outline-secondary'"
+                @click="miniTab='customer'">
+          顧客
+        </button>
+        <button type="button"
+                class="btn btn-sm"
+                :class="miniTab==='history' ? 'btn-secondary' : 'btn-outline-secondary'"
+                @click="miniTab='history'">
+          着席履歴
+        </button>
+      </div>
+
       <!-- 顧客 -->
-      <div class="box">
+      <div class="box" v-show="miniTab==='customer'">
         <div class="title"><IconUserScan /> 顧客</div>
         <div class="form-control bg-light position-relative">
           {{ customerName || '未選択' }}
@@ -442,9 +478,35 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
         <div v-else-if="q" class="small text-muted mt-2">検索結果なし</div>
       </div>
 
-      <div class="savebutton">
-        <button class="btn btn-primary w-100 mt-4" @click="$emit('save')">保存</button>
+      <!-- 着席履歴（PCと同等のミニ版） -->
+      <div class="box" v-show="miniTab==='history'">
+        <div class="title"><IconHistoryToggle /> 着席履歴</div>
+        <template v-if="(props.historyEvents || []).length === 0">
+          <p class="text-muted mb-0">履歴はありません</p>
+        </template>
+        <ul v-else class="list-unstyled mb-0 overflow-auto" style="max-height: 160px;">
+          <li v-for="ev in props.historyEvents" :key="ev.key"
+              class="d-flex align-items-center gap-2 mb-1">
+            <small class="text-muted" style="width:40px;">
+              {{ dayjs(ev.when).format('HH:mm') }}
+            </small>
+            <Avatar :url="ev.avatar" :alt="ev.name" :size="24" class="me-1" />
+            <span class="flex-grow-1">{{ ev.name }}</span>
+            <span class="badge text-white me-1"
+                  :class="{
+                    'bg-danger': ev.stayTag==='nom',
+                    'bg-success': ev.stayTag==='in',
+                    'bg-secondary': ev.stayTag==='free' || !ev.stayTag
+                  }">
+              {{ ev.stayTag==='nom' ? '本指名' : ev.stayTag==='in' ? '場内' : 'フリー' }}
+            </span>
+            <span class="badge" :class="ev.ioTag==='in' ? 'bg-primary' : 'bg-dark'">
+              {{ (ev.ioTag || '').toUpperCase() }}
+            </span>
+          </li>
+        </ul>
       </div>
+
     </div>
   </div>
 </template>

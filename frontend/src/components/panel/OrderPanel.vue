@@ -95,7 +95,7 @@ const cartSubtotal = computed(() =>
 </script>
 
 <template>
-  <div class="panel order d-flex flex-column h-100">
+  <div class="panel order">
     <div class="wrap d-flex flex-column flex-grow-1 min-h-0 overflow-hidden">
       <!-- 横スクロールのカテゴリタブ -->
       <div class="order-tabs flex-shrink-0" tabindex="-1">

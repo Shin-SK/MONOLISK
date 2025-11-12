@@ -728,21 +728,35 @@ class BillCastStay(models.Model):
     is_inhouse = models.BooleanField(null=True, blank=True)
     is_honshimei = models.BooleanField(default=False)  # 本指名トグル（UIでON/OFF）
     is_dohan = models.BooleanField(default=False) #このトグル使うと思う
- 
+    is_help       = models.BooleanField(default=False, db_index=True)
+
     class Meta:
         ordering = ['entered_at']
-        
+
+    def clean(self):
+        # help は free のときのみ True を許可
+        if self.is_help and self.stay_type != 'free':
+            raise ValidationError('is_help=True は stay_type="free" の時のみ指定できます。')
+
     def save(self, *args, **kwargs):
-        # 併用不可：stay_type を真実としてフラグを同期
+        # stay_type に応じて相互排他フラグを整合
         if self.stay_type == 'dohan':
             self.is_dohan = True
             self.is_honshimei = False
+            self.is_help = False                 # help は無効
         elif self.stay_type == 'nom':
             self.is_honshimei = True
             self.is_dohan = False
-        else:
+            self.is_help = False
+        elif self.stay_type == 'in':
             self.is_honshimei = False
             self.is_dohan = False
+            self.is_help = False                 # 場内時は help 無効
+        else:  # 'free'
+            self.is_honshimei = False
+            self.is_dohan = False
+            # is_help はユーザー入力を尊重（clean で整合済み）
+
         super().save(*args, **kwargs)
 
 

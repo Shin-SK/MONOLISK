@@ -20,10 +20,11 @@ import { useCasts }     from '@/stores/useCasts'
 import { useMasters }   from '@/stores/useMasters'
 import { useTables }    from '@/stores/useTables'
 import dayjs from 'dayjs'
+import CastsPanel    from '@/components/panel/CastsPanel.vue'
 import CustomerModal from '@/components/CustomerModal.vue'
 import BasicsPanel   from '@/components/panel/BasicsPanel.vue'
 import CustomerPanel from '@/components/CustomerPanel.vue'
-import OrderPanelSP  from '@/components/spPanel/OrderPanelSP.vue'
+import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel      from '@/components/panel/PayPanel.vue'
 import { enqueue }   from '@/utils/txQueue'
 
@@ -225,6 +226,123 @@ function onApplySet(payload){
     }
   }
 }
+
+
+/* ---------------------------------------------------------
+ * CastsPanel
+ * --------------------------------------------------------- */
+
+const currentCastsForPanel = computed(() => {
+  const b = props.bill || {}
+  const actives = (b.stays || []).filter(s => !s.left_at)
+  const byId = new Map((casts.value || []).map(c => [Number(c.id), c]))
+  return actives.map(s => {
+    const id = Number(s.cast?.id)
+    const base = byId.get(id) || { id, stage_name: s.cast?.stage_name, avatar_url: null }
+    return {
+      id,
+      stage_name: base.stage_name,
+      avatar_url: base.avatar_url,
+      stay_type: s.stay_type,                // 'free' | 'in' | 'nom' | 'dohan'
+      inhouse : s.stay_type === 'in',
+      dohan   : s.stay_type === 'dohan',
+      is_help : !!s.is_help,
+      role    : s.stay_type === 'nom' ? 'main' : 'free'
+    }
+  })
+})
+const onDutyIds = computed(() => Array.from(onDutySet.value))
+
+// ====== CastsPanel イベント: 楽観更新 → API確定 ======
+function updateStayLocal(castId, next) {
+  const stays = props.bill?.stays || []
+  const t = stays.find(s => !s.left_at && Number(s.cast?.id) === Number(castId))
+  const nowISO = new Date().toISOString()
+  if (t) {
+    t.stay_type = next.stay_type
+    t.is_help   = !!next.is_help
+    if (next.entered_at) t.entered_at = next.entered_at
+  } else {
+    props.bill.stays = [
+      ...stays,
+      { cast:{ id:Number(castId), stage_name:`cast#${castId}` },
+        stay_type: next.stay_type, is_help: !!next.is_help,
+        entered_at: nowISO, left_at: null }
+    ]
+  }
+}
+
+function recomputeHelpIds() {
+  return Array.from(new Set(
+    (props.bill?.stays || [])
+      .filter(s => !s.left_at && s.stay_type === 'free' && s.is_help === true)
+      .map(s => Number(s.cast?.id))
+  ))
+}
+
+async function onSetFree(castId){
+  updateStayLocal(castId, { stay_type:'free', is_help:false })
+  await updateBillCasts(props.bill.id, {
+    freeIds:[...new Set([...freeCastIds.value, castId])],
+    inIds:[...inhouseSet.value],
+    nomIds:[...mainCastIds.value]
+  }).catch(()=>{})
+  enqueue('patchBill', { id: props.bill.id, payload: { help_ids: recomputeHelpIds() }})
+  enqueue('reconcile', { id: props.bill.id })
+}
+
+async function onSetInhouse(castId){
+  updateStayLocal(castId, { stay_type:'in', is_help:false })
+  inhouseSet.value.add(castId)
+  await updateBillCasts(props.bill.id, {
+    freeIds:[...new Set([...freeCastIds.value, castId])],
+    inIds:[...inhouseSet.value],
+    nomIds:[...mainCastIds.value]
+  }).catch(()=>{})
+  enqueue('patchBill', { id: props.bill.id, payload: { help_ids: recomputeHelpIds() }})
+  enqueue('reconcile', { id: props.bill.id })
+}
+
+async function onSetMain(castId){
+  updateStayLocal(castId, { stay_type:'nom', is_help:false })
+  if (!mainCastIds.value.includes(castId)) mainCastIds.value.push(castId)
+  await updateBillCasts(props.bill.id, {
+    freeIds:[...new Set([...freeCastIds.value, castId])],
+    inIds:[...inhouseSet.value],
+    nomIds:[...mainCastIds.value]
+  }).catch(()=>{})
+}
+
+async function onSetDohan(castId){
+  updateStayLocal(castId, { stay_type:'dohan', is_help:false })
+  dohanSet.value.add(castId)
+  await setBillDohan(props.bill.id, castId).catch(()=>{})
+}
+
+async function onSetHelp(castId){
+  // HELP = free + is_help=true
+  updateStayLocal(castId, { stay_type:'free', is_help:true })
+  await updateBillCasts(props.bill.id, {
+    freeIds:[...new Set([...freeCastIds.value, castId])],
+    inIds:[...inhouseSet.value],
+    nomIds:[...mainCastIds.value]
+  }).catch(()=>{})
+  enqueue('patchBill', { id: props.bill.id, payload: { help_ids: recomputeHelpIds() }})
+  enqueue('reconcile', { id: props.bill.id })
+}
+
+async function onRemoveCast(castId){
+  const t = (props.bill?.stays || []).find(s => !s.left_at && Number(s.cast?.id) === Number(castId))
+  if (t) t.left_at = new Date().toISOString()
+  await updateBillCasts(props.bill.id, {
+    freeIds: freeCastIds.value.filter(id=>id!==castId),
+    inIds  : [...inhouseSet.value].filter(id=>id!==castId),
+    nomIds : mainCastIds.value.filter(id=>id!==castId),
+  }).catch(()=>{})
+  enqueue('patchBill', { id: props.bill.id, payload: { help_ids: recomputeHelpIds() }})
+  enqueue('reconcile', { id: props.bill.id })
+}
+
 
 /* ---------------------------------------------------------
  * キャスト系状態
@@ -658,7 +776,6 @@ watch(freeCastIds, list => {
 </script>
 
 
-
 <template>
   <!-- 伝票がまだ無い瞬間は描画しない -->
   <BaseModal
@@ -670,327 +787,59 @@ watch(freeCastIds, list => {
       style="margin-left: unset; top:8px; right:8px; z-index: 999999999;"
       @click="tryClose"
     /> <!-- 閉じるボタン -->
-    <div
-      class="p-2 row flex-fill align-items-stretch"
-    >
-    <div class="sidebar-cq d-flex col-3">
-      <div class="modal-sidebar outer flex-fill">
-          <div class="menu d-md-none">
-            <div class="nav nav-pills nav-fill small gap-2">
-              <button type="button" class="nav-link" :class="{active: pane==='base'}"    @click="pane='base'">基本</button>
-              <button type="button" class="nav-link" :class="{active: pane==='customer'}" @click="pane='customer'">顧客</button>
+    <div class="p-2 row flex-fill align-items-stretch billmodal-pc h-100 overflow-hidden" >
+
+      <div class="d-flex col-4 min-h-0"><!-- 左ペイン -->
+        <div class="outer flex-fill">
+            <div class="menu d-md-none">
+              <div class="nav nav-pills nav-fill small gap-2">
+                <button type="button" class="nav-link" :class="{active: pane==='base'}"    @click="pane='base'">基本</button>
+                <button type="button" class="nav-link" :class="{active: pane==='customer'}" @click="pane='customer'">顧客</button>
+              </div>
             </div>
+            <div class="d-flex justify-content-between flex-md-column flex-row flex-fill">
+
+            <!-- ▼ パネル群（PCは常時 / SPはpaneで出し分け） -->
+            <BasicsPanel
+              :active-pane="pane"
+              :tables="tables"
+              :table-id="form.table_id"
+              :pax="paxFromItems"
+              :male="maleFromItems"
+              :female="femaleFromItems"
+              :course-options="courseOptions"
+
+              v-model:seatType="seatType"
+
+              @update:tableId="v => (form.table_id = v)"
+              @update:pax="v => (pax = v)"
+              @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"
+              @jumpToBill="rightTab = 'bill'"
+              @applySet="onApplySet"
+              @save="save"
+            />
           </div>
-          <div class="d-flex justify-content-between flex-md-column flex-row flex-fill">
-
-          <!-- ▼ パネル群（PCは常時 / SPはpaneで出し分け） -->
-          <BasicsPanel
-            :active-pane="pane"
-            :tables="tables"
-            :table-id="form.table_id"
-            :pax="paxFromItems"
-            :male="maleFromItems"
-            :female="femaleFromItems"
-            :course-options="courseOptions"
-
-            v-model:seatType="seatType"
-
-            @update:tableId="v => (form.table_id = v)"
-            @update:pax="v => (pax = v)"
-            @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"
-            @jumpToBill="rightTab = 'bill'"
-            @applySet="onApplySet"
-            @save="save"
-          />
-
-          <CustomerPanel
-            :active-pane="pane"
-            :customer-ids="props.bill.customers || []"
-            :get-label="customers.getLabel"
-            :open="openCustModal"
-            :clear="clearCustomer"
-          />
         </div>
       </div>
-    </div>
-      <div class="outer d-flex flex-column gap-4 col-5">
-        <div class="box">
-          <div class="d-flex flex-wrap gap-3 align-items-center">
-              <!-- ▼ 表示モード -->
-              <template v-if="!editingTime">
-                <div class="d-flex align-items-center gap-2 me-4">
-                  <span class="fs-1 fw-bold" style=" line-height: 100%;">
-                    {{ headerInfo.start }} – {{ headerInfo.end }}
-                  </span>
-                  <IconPencil :size="20" role="button" @click="editingTime = true" />
-                </div>
-              </template>
-              
 
-              <!-- ▼ 編集モード -->
-              <template v-else>
-                <div class="d-flex align-items-center gap-2 me-4">
-                  <input type="datetime-local"
-                        v-model="form.opened_at"
-                        class="form-control form-control-sm w-auto" />
-                  ～
-                  <input type="datetime-local"
-                        v-model="form.expected_out"
-                        class="form-control form-control-sm w-auto" />
-
-                  <button @click="saveTimes" class="text-success p-0">
-                    <IconCircleDashedCheck />
-                  </button>
-                  <button @click="editingTime = false" class="text-danger p-0">
-                    <IconCircleDashedX  />
-                  </button>
-                </div>
-              </template>
-
-              <div class="d-flex gap-3">
-                <div class="d-flex align-items-center gap-1">
-                  <IconNotes/> {{ isNew ? '未保存' : props.bill.id }}
-                </div>
-                
-                <div class="d-flex align-items-center gap-1">
-                  <IconCoinYen /> {{ current.sub.toLocaleString() }}
-                </div>
-
-                <div class="d-flex align-items-center gap-1">
-                  <IconUsers />{{ pax }}
-                </div>
-
-                <div class="d-flex align-items-center gap-1">
-                  <IconRefresh /> {{ headerInfo.extCnt }}
-                </div>
-              </div>
-          </div>
-
-        </div>
-        <!-- 現在ついているキャストエリア ------------------------------- -->
-        <div class="mb-3">
-          <!-- (D) 誰もいない時 -->
-          <div
-            v-if="!currentCasts.length"
-            class="border border‑2 rounded p‑4 text-center text-muted d-flex justify-content-center align-items-center bg-light"
-            style="min-height: 100px;"
-          >
-            キャストを選択してください
-          </div>
-
-          <!-- (A,B,C) 一覧 -->
-          <div
-            v-else
-            class="d-flex flex-wrap gap-2 bg-light px-3 py-5 rounded"
-          >
-            <template
-              v-for="c in currentCasts"
-              :key="c.id"
-            >
-        <!-- 本指名（クリックで同伴へ） -->
-        <div
-          v-if="c.role==='main'"
-          class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
-          role="button"
-          @click="toggleMainDohan(c.id)"
-        >
-          <IconX :size="12" class="me-2" role="button" @click.stop="removeCast(c.id)" />
-          <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
-          <span>{{ c.stage_name }}</span>
-          <span class="badge bg-danger text-white ms-1 d-flex align-items-center">本指名</span>
-        </div>
-
-        <!-- 同伴（クリックで本指へ） -->
-        <div
-          v-else-if="c.role==='dohan'"
-          class="btn rounded border-secondary bg-white py-3 px-3 d-flex align-items-center fw-bold"
-          role="button"
-          @click="toggleMainDohan(c.id)"
-        >
-          <IconX :size="12" class="me-2" role="button" @click.stop="removeCast(c.id)" />
-          <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="28" class="me-1" />
-          <span>{{ c.stage_name }}</span>
-          <span class="badge bg-secondary text-white ms-1 d-flex align-items-center">同伴</span>
-        </div>
-
-              <!-- フリー -->
-              <div
-                v-else
-                class="btn rounded border-secondary fw-bold bg-white py-3 px-3 d-flex align-items-center gap-1"
-                role="button"
-                @click="toggleInhouse(c.id)"
-              >
-                <!-- ✕アイコン -->
-                <IconX
-                  :size="12"
-                  class="me-2"
-                  role="button"
-                  @click.stop="removeCast(c.id)"
-                />
-                <Avatar
-                  :url="c.avatar_url"
-                  :alt="c.stage_name"
-                  :size="28"
-                  class="me-1"
-                />
-                <span>{{ c.stage_name }}</span>
-                <span
-                  class="badge"
-                  :class="c.inhouse ? 'bg-success' : 'bg-secondary'"
-                >
-                  {{ c.inhouse ? '場内' : 'フリー' }}
-                </span>
-              </div>
-            </template>
-          </div>
-        </div>
-
-
-        <!-- ▼キャスト選択　一括表示 -->
-        <div class="mb-3 cast-select">
-          <div class="input-group mb-4">
-            <span class="input-group-text border-0">
-              <IconSearch />
-            </span>
-            <input
-              v-model="castKeyword"
-              type="text"
-              class="form-control"
-              placeholder="キャスト名で絞り込み"
-            >
-            <!-- クリアボタン（×）-->
-            <button
-              v-if="castKeyword"
-              class="d-flex align-items-center p-2"
-              @click="castKeyword=''"
-            >
-              <IconX :size="12" />
-            </button>
-          </div>
-          <div class="d-flex flex-wrap gap-2">
-            <template
-              v-for="c in filteredCasts"
-              :key="c.id"
-            >
-              <!-- free 用チェックボックス -->
-              <input
-                :id="`cast-${c.id}`"
-                v-model="freeCastIds"
-                class="btn-check"
-                type="checkbox"
-                :value="c.id"
-              >
-              <label  
-                class="btn d-flex align-items-center"
-                :class="[
-                  (freeCastIds.includes(c.id) || mainCastIds.includes(c.id))
-                    ? 'bg-secondary-subtle'
-                    : 'bg-light',
-                  !onDutySet.has(c.id) // ← シフト外なら灰色
-                    ? 'text-muted opacity-50'
-                    : ''
-                ]"
-                :for="`cast-${c.id}`"
-              >
-                <!-- Avatar(共通コンポーネント) -->
-                <Avatar
-                  :url="c.avatar_url"
-                  :alt="c.stage_name"
-                  :size="28"
-                  class="me-1"
-                />
-                {{ c.stage_name }}
-                <!-- 本指名バッジ -->
-                <span
-                  class="badge ms-2"
-                  :class="mainCastIds.includes(c.id) ? 'bg-danger' : 'bg-secondary'"
-                  @click.stop="toggleMain(c.id)"
-                >
-                  本指名
-                </span>
-              </label>
-            </template>
-          </div>
-        </div>
-
-        <!--  IN / OUT タイムライン -->
-        <div class="history bg-light rounded p-3 mt-auto">
-          <h6 class="fw-bold mb-2">
-            <IconHistoryToggle class="me-1" />着席履歴
-          </h6>
-
-          <!-- 空だった場合 -->
-          <p
-            v-if="!historyEvents.length"
-            class="text-muted mb-0"
-          >
-            履歴はありません
-          </p>
-
-          <!-- タイムライン -->
-          <ul
-            v-else
-            class="list-unstyled mb-0 overflow-auto"
-            style="max-height: 160px;"
-          >
-            <li
-              v-for="ev in historyEvents"
-              :key="ev.key"
-              class="d-flex align-items-center gap-2 mb-1"
-            >
-              <!-- 時刻 -->
-              <small
-                class="text-muted"
-                style="width:40px;"
-              >
-                {{ dayjs(ev.when).format('HH:mm') }}
-              </small>
-
-              <!-- アバター -->
-              <Avatar
-                :url="ev.avatar"
-                :alt="ev.name"
-                :size="24"
-                class="me-1"
-              />
-
-              <!-- 名前 -->
-              <span class="flex-grow-1">{{ ev.name }}</span>
-
-              <!-- 区分 (nom / in / free) -->
-              <span
-                class="badge text-white me-1"
-                :class="{
-                  'bg-danger' : ev.stayTag==='nom',
-                  'bg-success' : ev.stayTag==='in',
-                  'bg-secondary': ev.stayTag==='free'
-                }"
-              >
-                {{ ev.stayTag==='nom' ? '本指名'
-                  : ev.stayTag==='in' ? '場内'
-                    : 'フリー' }}
-              </span>
-
-              <!-- IN / OUT -->
-              <span
-                class="badge"
-                :class="ev.ioTag==='in' ? 'bg-primary' : 'bg-dark'"
-              >
-                {{ ev.ioTag.toUpperCase() }}
-              </span>
-            </li>
-          </ul>
-        </div>
-
-
-
-        <button class="btn btn-primary w-100" @click="save" :disabled="saving">
-        {{ isNew ? '作成して保存' : '保存' }}
-        </button>
+      <div class="outer d-flex flex-column gap-4 col-4"><!-- 真ん中 -->
+        <CastsPanel
+          :current-casts="currentCastsForPanel"
+          :bench-casts="casts"
+          :on-duty-ids="onDutyIds"
+          :keyword="castKeyword"
+          @update:keyword="v => (castKeyword.value = v)"
+          @setFree="onSetFree"
+          @setInhouse="onSetInhouse"
+          @setDohan="onSetDohan"
+          @setMain="onSetMain"
+          @setHelp="onSetHelp"
+          @removeCast="onRemoveCast"
+          @save="save"
+        />
       </div>
 
-      <div class="outer col-4 d-flex flex-column position-relative">
-
+      <div class="outer d-flex flex-column position-relative col-4"><!-- 右ペイン -->
         <!-- タブ -->
         <div class="tab nav nav-pills g-1 mb-5 row w-50" role="tablist" aria-label="右ペイン切替">
           <button
@@ -1069,13 +918,8 @@ watch(freeCastIds, list => {
 
         </div>
       </div>
+
     </div>
-    <CustomerModal
-      v-model="showCustModal"
-      :customer-id="activeCustId"
-      @picked="handleCustPicked" 
-      @saved="handleCustSaved"
-    />
   </BaseModal>
 </template>
 

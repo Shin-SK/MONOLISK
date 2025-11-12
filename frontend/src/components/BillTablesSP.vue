@@ -74,7 +74,8 @@ setInterval(() => (tick.value = Date.now()), 60_000)
 /* PCの色分けと同等 */
 function bgColor(el){
   if (!el) return 'primary'
-  if (el.kind === 'dohan' || el.dohan === true) return 'secondary'
+  if (el?.kind === 'dohan' || el?.dohan === true) return 'secondary'
+  if (el?.kind === 'free' && el?.is_help) return 'purple'
   if (el.kind === 'free'){
     const mins = dayjs(tick.value).diff(dayjs(el.entered_at),'minute')
     return mins >=30 ? 'orange'
@@ -180,7 +181,12 @@ defineExpose({ reload })
               v-for="s in activeStaysForTable(t.id)"
               :key="s.cast.id"
               class="cast-card btn text-light p-2 d-flex align-items-center"
-              :class="`bg-${bgColor({ kind: s.stay_type, dohan: s.stay_type==='dohan', entered_at: s.entered_at })}`"
+              :class="`bg-${bgColor({
+                kind: s.stay_type,
+                is_help: s.is_help === true,   // ← これを渡す！
+                dohan: s.stay_type === 'dohan',
+                entered_at: s.entered_at
+              })}`"
               :style="afterWidth({ kind: s.stay_type, entered_at: s.entered_at }) ? {'--after-width': afterWidth({ kind: s.stay_type, entered_at: s.entered_at })} : {}"
             >
               <Avatar

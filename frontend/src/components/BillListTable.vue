@@ -383,7 +383,8 @@ function checkDuplicates () {}
               name: s.cast.stage_name,
               avatar: s.cast.avatar_url,
               kind: s.stay_type,
-              entered_at: s.entered_at
+              entered_at: s.entered_at,
+              is_help: s.is_help === true
             }))"
             @update-stay="handleUpdateStay"
             @toggle-stay="handleToggleStay"

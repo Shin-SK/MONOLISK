@@ -2,8 +2,8 @@
 import { computed, ref, toRef, watch, nextTick, watchEffect, onMounted } from 'vue'
 import BaseModal from '@/components/BaseModal.vue'
 import BasicsPanel from '@/components/panel/BasicsPanel.vue'
-import CastsPanelSP  from '@/components/spPanel/CastsPanelSP.vue'
-import OrderPanelSP  from '@/components/spPanel/OrderPanelSP.vue'
+import CastsPanel  from '@/components/panel/CastsPanel.vue'
+import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel from '@/components/panel/PayPanel.vue'
 import useBillEditor from '@/composables/useBillEditor'
 import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
@@ -79,8 +79,6 @@ watch(visible, v => { if (v) refreshStoreSlug() }, { immediate: true })
 watch(() => props.bill?.table?.store, () => {
   if (visible.value) refreshStoreSlug()
 })
-
-
 
 /* composable */
 const ed = useBillEditor(toRef(props,'bill'))
@@ -208,7 +206,7 @@ async function onApplySet (payload){
   }
 }
 
-// 人数状態を引き継ぎ
+// ===== 人数状態を引き継ぎ ======
  const maleFromItems = computed(() =>
    (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setMale'   ? Number(it.qty||0) : 0), 0)
  )
@@ -248,7 +246,7 @@ const servedByOptions = computed(() => {
 })
 const servedByMap = computed(() => { const map = {}; for (const c of servedByOptions.value || []) map[String(c.id)] = c.label; return map })
 
-/* Pay 周り（既存） */
+/* ========== Pay 周り ========== */
 const displayGrandTotal = computed(() => {
   const b = props.bill || {}
   return Number((b.total != null && b.total > 0) ? b.total : (b.grand_total ?? 0))
@@ -353,6 +351,35 @@ async function onDiscountRuleChange(ruleId) {
   }
 }
 
+/* ========== 履歴 ========== */
+const historyEvents = computed(() => {
+  const b = props.bill || {}
+  const out = []
+  for (const s of (b.stays || [])) {
+    out.push({
+      key: `in-${s.cast?.id}-${s.entered_at}`,
+      when: s.entered_at,
+      name: s.cast?.stage_name,
+      avatar: s.cast?.avatar_url,
+      stayTag: s.stay_type,   // 'free'|'in'|'nom'|'dohan'
+      ioTag: 'in',
+    })
+    if (s.left_at) {
+      out.push({
+        key: `out-${s.cast?.id}-${s.left_at}`,
+        when: s.left_at,
+        name: s.cast?.stage_name,
+        avatar: s.cast?.avatar_url,
+        stayTag: s.stay_type,
+        ioTag: 'out',
+      })
+    }
+  }
+  // 新しい順に
+  out.sort((a,b) => new Date(b.when) - new Date(a.when))
+  return out
+})
+
 const closing = ref(false)
 async function confirmClose(){
   if (closing.value || !props.bill?.id) return
@@ -404,6 +431,7 @@ async function confirmClose(){
       discount_rule: props.bill?.discount_rule ? Number(props.bill.discount_rule) : null,
       manual_discounts: rows,
       settled_total: settled,
+      help_ids: helpIdsArr.value,
     }})
     enqueue('closeBill', { id: billId, payload: { settled_total: settled }})
     enqueue('reconcile', { id: billId })
@@ -425,14 +453,148 @@ async function confirmClose(){
 }
 
 
-/* 保存（既存） */
+// ヘルプ機能追加
+
+// ヘルプID（伝票閉じたときに送る）
+const helpIdsArr = computed(() =>
+  (props.bill?.stays || [])
+    .filter(s => !s.left_at && s.stay_type === 'free' && s.is_help === true)
+    .map(s => Number(s.cast?.id))
+)
+
+// 伝票のstays→CastsPanel向け配列
+const currentCastsForPanel = computed(() => {
+  const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
+  const actives = stays.filter(s => !s.left_at)
+  const byId = new Map((ed.currentCasts?.value || []).map(c => [Number(c.id), c]))
+  return actives.map(s => {
+    const id = Number(s.cast?.id)
+    const base = byId.get(id) || { id, stage_name: s.cast?.stage_name, avatar_url: null }
+    return {
+      id,
+      stage_name: base.stage_name,
+      avatar_url: base.avatar_url,
+      stay_type: s.stay_type,
+      inhouse: s.stay_type === 'in',
+      dohan:   s.stay_type === 'dohan',
+      is_honshimei: s.stay_type === 'nom',
+      is_help: !!s.is_help,
+    }
+  })
+})
+
+
+function updateStayLocal(castId, next) {
+  const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
+  const t = stays.find(s => !s.left_at && Number(s.cast?.id) === Number(castId))
+  const nowISO = new Date().toISOString()
+  if (t) {
+    t.stay_type = next.stay_type
+    t.is_help   = !!next.is_help
+    if (next.entered_at) t.entered_at = next.entered_at
+  } else {
+    // 未乗車なら差し込み（free系だけ想定）
+    props.bill.stays = [
+      ...stays,
+      { cast:{ id:Number(castId), stage_name:`cast#${castId}` },
+        stay_type: next.stay_type, is_help: !!next.is_help,
+        entered_at: nowISO, left_at: null }
+    ]
+  }
+}
+
+// 楽観→ed.* ラッパー 3つ追加
+async function onSetMain(castId){
+  // 本指＝nom（ヘルプは必ず解除）
+  updateStayLocal(castId, { stay_type:'nom', is_help:false })
+  try { await ed.setMain(Number(castId)) } catch {}
+}
+
+async function onSetFree(castId){
+  // 青：free + is_help=false に即時反映
+  updateStayLocal(castId, { stay_type:'free', is_help:false })
+  try { await ed.setFree(Number(castId)) } catch {}
+}
+
+function recomputeHelpIds() {
+  return Array.from(
+    new Set(
+      (props.bill?.stays || [])
+        .filter(s => !s.left_at && s.stay_type === 'free' && s.is_help === true)
+        .map(s => Number(s.cast?.id))
+    )
+  )
+}
+
+async function onSetInhouse(castId){
+  // UI 楽観：緑にする（ヘルプ解除）
+  updateStayLocal(castId, { stay_type:'in', is_help:false })
+
+  try {
+    await ed.setInhouse(Number(castId))
+  } catch {}
+
+  // ★ 重要: ヘルプIDを再計算してサーバに反映（castId は含まれないはず）
+  const nowHelpIds = recomputeHelpIds()
+  enqueue('patchBill', { id: props.bill.id, payload: { help_ids: nowHelpIds } })
+  enqueue('reconcile', { id: props.bill.id })
+}
+
+async function onSetDohan(castId){
+  updateStayLocal(castId, { stay_type:'dohan', is_help:false })
+  try { await ed.setDohan(Number(castId)) } catch {}
+}
+
+async function onRemoveCast(castId){
+  const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
+  const t = stays.find(s => !s.left_at && Number(s.cast?.id) === Number(castId))
+  if (t) t.left_at = new Date().toISOString()
+  try { await ed.removeCast(Number(castId)) } catch {}
+}
+
+async function onSetHelp(castId) {
+  if (!props.bill?.id) return
+  const billId = props.bill.id
+
+  // 紫：free + is_help=true に即時反映
+  updateStayLocal(castId, { stay_type:'free', is_help:true })
+
+  // 2 PATCH：free_ids と help_ids を送って確定
+  const freeIds = Array.from(new Set(
+    (props.bill.stays || [])
+      .filter(s => !s.left_at && s.stay_type === 'free')
+      .map(s => Number(s.cast.id))
+      .concat(Number(castId))
+  ))
+
+  enqueue('patchBill', { id: billId, payload: { free_ids: freeIds, help_ids: [Number(castId)] }})
+  enqueue('reconcile', { id: billId })
+}
+
+
+function normalizeHelpBeforeSave(){
+  let changed = false
+  for (const s of (props.bill?.stays || [])) {
+    if (!s.left_at && s.is_help && s.stay_type !== 'free') {
+      s.is_help = false
+      changed = true
+    }
+  }
+  if (changed) {
+    const ids = recomputeHelpIds() // ← free+help だけのID
+    enqueue('patchBill', { id: props.bill.id, payload: { help_ids: ids } })
+    enqueue('reconcile', { id: props.bill.id })
+  }
+}
+
 const saving = ref(false)
 async function handleSave(){
   if (saving.value) return
   saving.value = true
   try{
+    normalizeHelpBeforeSave()
     const optimistic = await ed.save()
-    emit('saved', optimistic)   // 親はこのイベントでカード即時反映済み
+    emit('saved', optimistic)
   }finally{
     saving.value = false
   }
@@ -470,6 +632,7 @@ async function handleSave(){
       :pax="paxFromItems"
       :male="maleFromItems"
       :female="femaleFromItems"
+      :history-events="historyEvents"
       @update-times="onUpdateTimes"
       @update:seatType="onSeatTypeChange" 
       @update:tableId="v => (ed.tableId.value = v)"
@@ -482,22 +645,23 @@ async function handleSave(){
       @save="handleSave"
     />
 
-    <CastsPanelSP
+    <CastsPanel
       v-show="pane==='casts'"
-      :current-casts="ed.currentCasts.value"
+      :current-casts="currentCastsForPanel"
       :bench-casts="ed.benchCasts.value"
       :on-duty-ids="onDutyIds"
       :keyword="ed.castKeyword.value"
       @update:keyword="v => (ed.castKeyword.value = v)"
-      @setFree="ed.setFree"
-      @setInhouse="ed.setInhouse"
-      @setDohan="ed.setDohan"
-      @setMain="ed.setMain"
-      @removeCast="ed.removeCast"
+      @setFree="onSetFree"
+      @setInhouse="onSetInhouse"
+      @setDohan="onSetDohan"
+      @setMain="onSetMain"
+      @removeCast="onRemoveCast"
+      @setHelp="onSetHelp"
       @save="handleSave"
     />
 
-    <OrderPanelSP
+    <OrderPanel
       v-show="pane==='order'"
       :cat-options="ed.orderCatOptions.value || []"
       :selected-cat="ed.selectedOrderCat.value"

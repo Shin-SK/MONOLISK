@@ -176,8 +176,8 @@ function resetAll(){
 </script>
 
 <template>
-  <div class="card border-0 shadow-sm mt-3">
-    <div class="card-header bg-white p-3 d-flex justify-content-center align-items-center">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white p-1 d-flex justify-content-center align-items-center">
       <div class="fw-bold fs-5">仮会計（保存されません）</div>
     </div>
 
