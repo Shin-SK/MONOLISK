@@ -191,6 +191,19 @@ async function chooseCourse(opt){
     dohanIds.value = active.filter(s => s.stay_type === 'dohan').map(s => s.cast.id)
   }
 
+  // Bill ID 切替時（同一テーブル再オープン等）で前回状態をクリア
+  let _prevBillId = bill.value?.id || null
+  watch(() => bill.value?.id, (newId) => {
+    if (!newId || newId === _prevBillId) return
+    // 基本配列を stays から再構築
+    initCastsFromBill()
+    // 一時注文/提供者など編集途中状態をクリア
+    pending.value = []
+    servedByCastId.value = null
+    castKeyword.value = ''
+    _prevBillId = newId
+  })
+
   // 現在の配席一覧（UI表示用）
   // currentCasts：main → dohan → free/in の順で、重複なし
   const currentCasts = computed(() => {
@@ -263,11 +276,12 @@ async function chooseCourse(opt){
   async function syncCasts(){
     if (isNew.value) return
     // ★ サーバ待ちなし：裏送信のみ
+    const filteredFree = freeIds.value.filter(id => !mainIds.value.includes(id) && !dohanIds.value.includes(id))
     enqueue('updateBillCasts', {
       billId: bill.value.id,
       nomIds:  [...mainIds.value],
       inIds:   [...inhouseIds.value],
-      freeIds: [...freeIds.value],
+      freeIds: filteredFree,
       dohanIds:[...dohanIds.value],
     })
   }
@@ -309,7 +323,7 @@ async function chooseCourse(opt){
 
   async function setMain(id){
     if (!mainIds.value.includes(id)) mainIds.value.push(id)
-    ensureFree(id)
+    // ensureFree(id) を停止：freeIds との二重管理を避ける
     await syncCasts()
   }
   async function removeCast(id){
@@ -347,12 +361,58 @@ async function chooseCourse(opt){
 
     // stays（本指名/場内/フリー/同伴）の現在値を作る
     const stays = []
-    ;(mainIds.value || []).forEach(id => stays.push({ cast:{id}, stay_type:'nom',  entered_at: nowISO, left_at:null }))
-    ;(dohanIds.value|| []).forEach(id => stays.push({ cast:{id}, stay_type:'dohan',entered_at: nowISO, left_at:null }))
-    ;(freeIds.value || []).forEach(id => {
-      const isIn = inhouseIds.value.includes(id)
-      stays.push({ cast:{id}, stay_type: isIn ? 'in' : 'free', entered_at: nowISO, left_at:null })
+    const mainSet  = new Set(mainIds.value || [])
+    const dohanSet = new Set(dohanIds.value || [])
+
+    // --- Diagnostics (Step 1) ---
+    try {
+      console.log('[diag save:start]', {
+        billId: bill.value?.id ?? null,
+        isNewBill,
+        mainIds: [...mainIds.value],
+        dohanIds: [...dohanIds.value],
+        freeIds: [...freeIds.value],
+        inhouseIds: [...inhouseIds.value],
+        tableId: tableId.value,
+      })
+    } catch(e) { /* noop */ }
+
+    // 本指名
+    ;(mainIds.value || []).forEach(id => {
+      stays.push({
+        cast      : { id },
+        stay_type : 'nom',
+        entered_at: nowISO,
+        left_at   : null,
+      })
     })
+
+    // 同伴
+    ;(dohanIds.value || []).forEach(id => {
+      stays.push({
+        cast      : { id },
+        stay_type : 'dohan',
+        entered_at: nowISO,
+        left_at   : null,
+      })
+    })
+
+    // フリー / 場内 （本指名・同伴は除外）
+    ;(freeIds.value || []).forEach(id => {
+      if (mainSet.has(id) || dohanSet.has(id)) return
+      const isIn = inhouseIds.value.includes(id)
+      stays.push({
+        cast      : { id },
+        stay_type : isIn ? 'in' : 'free',
+        entered_at: nowISO,
+        left_at   : null,
+      })
+    })
+
+    // --- Diagnostics (Step 1 continued) ---
+    try {
+      console.log('[diag save:staysBuilt]', stays.map(s => ({ cast: s.cast.id, stay_type: s.stay_type })))
+    } catch(e){ /* noop */ }
 
     const table_id = tableId.value ?? (bill.value?.table?.id ?? bill.value?.table ?? null)
     const optimisticId = isNewBill ? -Date.now() : bill.value.id
@@ -367,6 +427,17 @@ async function chooseCourse(opt){
       subtotal: bill.value?.subtotal ?? 0,
       closed_at: null
     }
+
+    try {
+      console.log('[diag save:optimisticBill]', {
+        id: optimisticBill.id,
+        stays: optimisticBill.stays.map(s => ({ cast: s.cast.id, stay_type: s.stay_type })),
+        nominated_next: [...mainIds.value],
+        inhouse_next: [...inhouseIds.value],
+        free_next: [...freeIds.value],
+        dohan_next: [...dohanIds.value],
+      })
+    } catch(e){ /* noop */ }
 
     // UIへ即時反映（upsert）
     const i = billsStore.list.findIndex(b => Number(b.id) === Number(optimisticId))
@@ -393,9 +464,18 @@ async function chooseCourse(opt){
       billId: optimisticId,
       nomIds: [...(mainIds.value||[])],
       inIds : [...(inhouseIds.value||[])],
-      freeIds: [...(freeIds.value||[])],
+      freeIds: (freeIds.value||[]).filter(id => !mainIds.value.includes(id) && !dohanIds.value.includes(id)),
       dohanIds: [...(dohanIds.value||[])],
     })
+    try {
+      console.log('[diag save:enqueue updateBillCasts]', {
+        billId: optimisticId,
+        nomIds: [...(mainIds.value||[])],
+        inIds: [...(inhouseIds.value||[])],
+        freeIds: [...(freeIds.value||[])],
+        dohanIds: [...(dohanIds.value||[])],
+      })
+    } catch(e){ /* noop */ }
 
     for (const it of pending.value || []){
       enqueue('addBillItem', { id: optimisticId, item: { item_master: it.master_id, qty: it.qty, served_by_cast_id: it.cast_id ?? undefined } })
@@ -403,6 +483,7 @@ async function chooseCourse(opt){
     pending.value = []
 
     enqueue('reconcile', { id: optimisticId })
+    try { console.log('[diag save:enqueue reconcile]', { billId: optimisticId }) } catch(e){ /* noop */ }
 
     return optimisticBill
   }

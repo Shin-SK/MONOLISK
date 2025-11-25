@@ -34,9 +34,16 @@ onBeforeUnmount(stopPolling)
 
 /* 参照 */
 const tables = computed(() => tablesStore.list)
+// ★ 占有判定の純粋化：closed_atがnullの伝票のみを「開いている」と見なす
 const openBillMap = computed(() => {
   const m = new Map()
-  billsStore.list.forEach(b => { if (!b.closed_at) m.set(b.table?.id || b.table, b) })
+  billsStore.list.forEach(b => {
+    // closed_atが存在しない＝未クローズのみ占有扱い
+    if (!b.closed_at && b.table) {
+      const tid = typeof b.table === 'object' ? b.table.id : b.table
+      m.set(tid, b)
+    }
+  })
   return m
 })
 const getOpenBill = id => openBillMap.value.get(id) ?? null
@@ -99,11 +106,9 @@ function onTapTable(table) {
   else     emit('request-new', { tableId: table.id })
 }
 
-//ゴースト対策
+// ★ ゴースト対策強化：占有判定がclosed_at基準なので二重チェック不要だが念の為残す
 function activeStaysForTable(tableId) {
   const b = getOpenBill(tableId)
-  // getOpenBill は closed を原則除外してるが、楽観反映の順序次第で
-  // 一瞬入ってくることがあるのでダブルチェック
   if (!b || b.closed_at) return []
   return (b.stays || []).filter(s => !s.left_at)
 }

@@ -140,10 +140,12 @@ export const updateBillCasts = (
   billId,
   { nomIds = [], inIds = [], freeIds = [], dohanIds = [] } = {}
 ) => {
+  // freeIds から本指名・同伴を除外（送信ノイズ低減）
+  const filteredFree = (freeIds || []).filter(id => !nomIds.includes(id) && !dohanIds.includes(id))
   const body = {
-    nominated_casts : nomIds,   // 本指名
+    nominated_casts_w : nomIds, // 本指名（WRITE専用フィールド）
     inhouse_casts_w : inIds,    // 場内
-    free_ids        : freeIds,  // フリー
+    free_ids        : filteredFree,  // フリー（本指名/同伴除外後）
   }
   if (dohanIds && dohanIds.length) body.dohan_ids = dohanIds  // ★同伴（ある時だけ送る）
   return api.patch(`billing/bills/${billId}/`, body).then(res => res.data)

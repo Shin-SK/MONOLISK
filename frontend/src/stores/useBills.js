@@ -81,8 +81,12 @@ export const useBills = defineStore('bills', {
         }
         seen.add(nb.id)
       }
+      // ★ 楽観的tempID（負数）はポーリング削除対象から除外
       for (let i = this.list.length - 1; i >= 0; i--) {
-        if (!seen.has(this.list[i].id)) this.list.splice(i, 1) // 消えたものを削除
+        const bid = this.list[i].id
+        if (!seen.has(bid) && bid > 0) {
+          this.list.splice(i, 1) // サーバに無い正IDのみ削除
+        }
       }
     },
 
@@ -128,8 +132,17 @@ export const useBills = defineStore('bills', {
       const loading = useLoading()
       loading.start()
       try {
-        await closeBill(this.current.id)
-        await this.reload()
+        const billId = this.current.id
+        await closeBill(billId)
+        // ★ 即時ローカル更新：ポーリングを待たずにclosed_atを設定しゴースト防止
+        const localBill = this.list.find(b => b.id === billId)
+        if (localBill) {
+          localBill.closed_at = new Date().toISOString()
+        }
+        // current もクリア（編集中状態の解除）
+        this.current = null
+        // サーバ最新を再取得して全体整合性確保
+        await this.fetch(true)
       } finally { loading.end() }
     },
     async setInhouseStatus (castIds) {

@@ -72,8 +72,13 @@ const visible = computed({
 })
 const pane = ref('base')
 
-// モーダルを開いた瞬間に取り直す
-watch(visible, v => { if (v) refreshStoreSlug() }, { immediate: true })
+// モーダルを開いた瞬間にパネルを base にリセット（会計後の再開時対策）
+watch(visible, v => {
+  if (v) {
+    pane.value = 'base'
+    refreshStoreSlug()
+  }
+}, { immediate: true })
 
 // 伝票の store が変わったら取り直す（table.store は数値ID）
 watch(() => props.bill?.table?.store, () => {
@@ -439,6 +444,8 @@ async function confirmClose(){
     // ③ 親へ通知（UIはもう閉店表示。ここでモーダルも閉じる）
     emit('saved', { id: billId })
     visible.value = false
+    // ★ 会計後は次回 'base' パネルを開く（ゴースト防止の一環）
+    pane.value = 'base'
     // visible=false の前に、モーダル内のstaysも退席に（重複ブロックは削除）
     {
       const nowISO = new Date().toISOString()

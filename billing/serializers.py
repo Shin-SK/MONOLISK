@@ -490,6 +490,11 @@ class BillSerializer(serializers.ModelSerializer):
     )
     main_cast_obj  = CastMiniSerializer(source='main_cast', read_only=True)
 
+    # WRITE: 本指名（既存の read 用 nominated_casts を維持しつつ書き込み用フィールドを追加）
+    nominated_casts_w = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Cast.objects.all(), required=False, write_only=True
+    )
+
     customer_ids = serializers.PrimaryKeyRelatedField(
         source='customers', many=True,
         queryset=Customer.objects.all(),
@@ -537,7 +542,9 @@ class BillSerializer(serializers.ModelSerializer):
             "paid_cash","paid_card","paid_total","change_due",
             # ---- 関連 ----
             "items", "stays","expected_out",
-            "nominated_casts", "settled_total",
+            "nominated_casts",            # READ (depth=2)
+            "nominated_casts_w",          # WRITE
+            "settled_total",
             "inhouse_casts",        # READ
             "inhouse_casts_w",      # WRITE
             "free_ids","set_rounds","ext_minutes",
@@ -619,7 +626,7 @@ class BillSerializer(serializers.ModelSerializer):
             validated_data['opened_at'] = timezone.now()
 
         # まず配列系を抜く
-        nominated = validated_data.pop("nominated_casts", [])
+        nominated = validated_data.pop("nominated_casts_w", [])
         inhouse   = validated_data.pop("inhouse_casts_w", [])
         cust_ids  = validated_data.pop('customer_ids', None)
         rows      = validated_data.pop('manual_discounts', None)
@@ -649,10 +656,11 @@ class BillSerializer(serializers.ModelSerializer):
         # 更新前スナップ
         prev_main = set(instance.nominated_casts.values_list("id", flat=True))
         prev_in   = set(instance.stays.filter(stay_type="in", left_at__isnull=True).values_list("cast_id", flat=True))
+        prev_dohan = set(instance.stays.filter(stay_type='dohan', left_at__isnull=True).values_list('cast_id', flat=True))
 
         # 配列を先に抜き出す
         cust_ids      = validated_data.pop('customer_ids', None)
-        nominated_raw = validated_data.pop("nominated_casts", None)
+        nominated_raw = validated_data.pop("nominated_casts_w", None)
         inhouse_raw   = validated_data.pop("inhouse_casts_w", None)
         free_raw      = validated_data.pop("free_ids", None)
         rows          = validated_data.pop('manual_discounts', None)
@@ -766,28 +774,37 @@ class BillSerializer(serializers.ModelSerializer):
         dohan_raw = self.context['request'].data.get('dohan_ids', None)
         if dohan_raw is not None:
             dohan_ids = set(to_ids(dohan_raw))
+            # 変更前の同伴キャスト集合（差分用に保持）
+            prev_dohan_before = set(instance.stays.filter(stay_type='dohan', left_at__isnull=True)
+                                            .values_list('cast_id', flat=True))
+
+            # 追加 / 更新
             for cid in dohan_ids:
                 st = stay_map.get(cid)
                 if not st:
                     BillCastStay.objects.create(
                         bill=instance, cast_id=cid,
                         entered_at=timezone.now(), stay_type='dohan',
-                        is_help=False                            # ← 追加
+                        is_help=False
                     )
                 else:
                     if st.stay_type != 'dohan' or st.left_at:
                         st.stay_type = 'dohan'; st.left_at = None
-                    st.is_help = False                          # ← 追加
-                    st.save(update_fields=['stay_type','left_at','is_help'])  # ← 追加
+                    st.is_help = False
+                    st.save(update_fields=['stay_type','left_at','is_help'])
+                # 同伴指定時は本指名から外す（排他）
                 instance.nominated_casts.remove(cid)
-            prev_dohan = set(
-                instance.stays.filter(stay_type='dohan', left_at__isnull=True)
-                        .values_list('cast_id', flat=True)
-            )
-            for cid in (prev_dohan - dohan_ids):
+
+            # 削除（今回送ってこなかった同伴 → free 化）
+            for cid in (prev_dohan_before - dohan_ids):
                 st = stay_map.get(cid)
                 if st:
-                    st.stay_type = 'free'; st.save(update_fields=['stay_type'])
+                    st.stay_type = 'free'
+                    st.save(update_fields=['stay_type'])
+
+            # --- 同伴料行の差分同期（前集合 vs 今回指定集合） ---
+            from .services import sync_dohan_fees
+            sync_dohan_fees(instance, prev_dohan=prev_dohan_before, new_dohan=dohan_ids)
 
 
 

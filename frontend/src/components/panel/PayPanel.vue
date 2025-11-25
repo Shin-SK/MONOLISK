@@ -373,6 +373,40 @@ const getDiscountEntry = () => {
   return { label: rule?.name || '割引なし', amount: discountAmount.value }
 }
 
+/* ---------------------------------------------------------
+ * 伝票切替時の内部状態リセット
+ *  - コンポーネントは再利用されるため A→B 切替で前回の dirtyTotal / 手入力割引が残る
+ *  - billOpenedAt (親から渡される伝票開始時刻) の変化をトリガに初期化
+ *  - 必要なら将来 billId を props 化してそちらをキーにしても良い
+ * --------------------------------------------------------- */
+function resetStateForNewBill() {
+  dirtyTotal.value = false
+  // 手入力割引行を初期化
+  manualRows.value = [{ label: '', amount: 0 }]
+  // ステップ割引数量クリア（店舗モード差異あり）
+  dosukoiQtyMap.value = {}
+  // 割引選択を props.discountRuleId に再同期
+  selectedDiscountId.value = props.discountRuleId ? Number(props.discountRuleId) : null
+  // 自動で開かないよう閉じる（必要なら条件付き可）
+  showDiscountPanel.value = false
+  // 再計算を強制（dirtyTotal解除後）
+  nextTick(() => updateSettledWithDiscount())
+}
+
+let _prevBillOpenedAt = props.billOpenedAt || null
+watch(() => props.billOpenedAt, (now) => {
+  if (!now) return
+  if (_prevBillOpenedAt !== now) {
+    resetStateForNewBill()
+    _prevBillOpenedAt = now
+  }
+})
+
+/* 会計金額表示は割引適用後の最終確定見込み値を優先
+ * discountedTotal は常に再計算値 / settledTotal がユーザ編集済ならそちら優先
+ * 既存 small 行で discountedTotal を直接使っているため保持
+ */
+
 defineExpose({ getMemo, getDiscountEntry, getManualDiscounts })
 </script>
 

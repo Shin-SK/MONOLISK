@@ -27,7 +27,13 @@ function upsertBillInStore(b){
 function replaceTempIdInStore(tempId, realId){
   const store = useBills()
   const i = store.list.findIndex(x => Number(x.id) === Number(tempId))
-  if (i >= 0) store.list[i].id = realId
+  if (i >= 0) {
+    // ★ IDを置き換えた上で、古いtempIDエントリを削除（重複防止）
+    store.list[i].id = realId
+    // もし既にrealIdを持つ別Billがあれば古いものを優先削除
+    const j = store.list.findIndex((x, idx) => idx !== i && Number(x.id) === Number(realId))
+    if (j >= 0) store.list.splice(j, 1)
+  }
 }
 
 async function deleteBillRunner(p){ // {id}
@@ -40,14 +46,33 @@ const runners = {
     const res = await createBill({
       table_id: p.table_id, opened_at: p.opened_at, expected_out: p.expected_out, memo: p.memo
     })
+    try { console.log('[diag txQueue:createBill]', { tempId: p.tempId, realId: res.id }) } catch(e){ /* noop */ }
     return { realId: res.id }
   },
   async patchBill(p){ await patchBill(p.id, p.payload) },               // {id, payload}
   async updateBillCustomers(p){ await updateBillCustomers(p.id, p.customer_ids) },
   async updateBillCasts(p){
-    await updateBillCasts(p.billId, {
-      nomIds: p.nomIds || [], inIds: p.inIds || [], freeIds: p.freeIds || [], dohanIds: p.dohanIds || []
-    })
+    const payload = { nomIds: p.nomIds || [], inIds: p.inIds || [], freeIds: p.freeIds || [], dohanIds: p.dohanIds || [] }
+    let res = null
+    try {
+      res = await updateBillCasts(p.billId, payload)
+      console.log('[diag txQueue:updateBillCasts:ok]', {
+        billId: p.billId,
+        nomIds: payload.nomIds,
+        inIds: payload.inIds,
+        freeIds: payload.freeIds,
+        dohanIds: payload.dohanIds,
+        stays: (res?.stays||[]).filter(s=>!s.left_at).map(s => ({ cast: s.cast.id, stay_type: s.stay_type })),
+        nominated_casts: (res?.nominated_casts||[]).map(c=>c.id||c),
+      })
+      // 即時ストア反映（reconcile 待ちで上書きされる前に）
+      if (res) {
+        try { upsertBillInStore(res) } catch(e){ console.warn('[diag txQueue:updateBillCasts:upsertFail]', e?.message) }
+      }
+    } catch(err){
+      console.error('[diag txQueue:updateBillCasts:err]', { billId: p.billId, payload, error: err?.message })
+      throw err
+    }
   },
   async addBillItem(p){ await addBillItem(p.id, p.item) },              // {id, item:{ item_master, qty, served_by_cast_id? }}
   async updateBillTable(p){ await updateBillTable(p.id, p.table_id) },  // {id, table_id}
@@ -74,6 +99,7 @@ export function startTxQueue(){
         const fn = runners[task.kind]
         if (!fn) throw new Error(`unknown kind: ${task.kind}`)
         const res = await fn(task.payload)
+        try { console.log('[diag txQueue:taskDone]', { kind: task.kind, payload: task.payload, result: res }) } catch(e){ /* noop */ }
 
         // create → tempId を realId に差し替える
         if (task.kind === 'createBill' && res?.realId && task.payload?.tempId){
@@ -83,6 +109,7 @@ export function startTxQueue(){
 
         queue.splice(idx,1); save(queue)
       }catch(e){
+        try { console.warn('[diag txQueue:taskError]', { kind: task.kind, payload: task.payload, error: e?.message }) } catch(_){ /* noop */ }
         task.tries = (task.tries||0)+1
         const wait = Math.min(60000, Math.pow(2, task.tries) * 1000) // 最大60秒
         task.nextAt = Date.now() + wait

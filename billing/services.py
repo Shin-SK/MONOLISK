@@ -136,6 +136,10 @@ def _bill_store(bill):
 
 _MAIN_FEE_CODE    = "mainNom-fee"
 _INHOUSE_FEE_CODE = "houseNom-fee"
+_DOHAN_FEE_CODE   = "dohan"  # 同伴料（ItemMaster.code = 'dohan' を想定）
+
+import logging
+logger = logging.getLogger(__name__)
 
 def _sync_fee_lines(
     bill: Bill,
@@ -151,9 +155,12 @@ def _sync_fee_lines(
     try:
         master = ItemMaster.objects.get(store=store, code=item_code)
     except ItemMaster.DoesNotExist:
+        # 明示的な警告ログ（同伴料が未反映の主因となり得る）
+        logger.warning("[fee-sync] ItemMaster(code=%s, store=%s) not found. Fee lines skipped.", item_code, getattr(store, 'id', None))
         return
 
     for cid in cast_ids_added:
+        # 既存: 本指名/場内は歩合対象外(exclude_from_payout=True)。同伴は対象にしたいので False。
         BillItem.objects.get_or_create(
             bill=bill,
             item_master=master,
@@ -161,9 +168,10 @@ def _sync_fee_lines(
             defaults=dict(
                 qty=1,
                 price=master.price_regular,
-                exclude_from_payout=True,
+                exclude_from_payout=(item_code != _DOHAN_FEE_CODE),
                 is_nomination=(item_code == _MAIN_FEE_CODE),
                 is_inhouse   =(item_code == _INHOUSE_FEE_CODE),
+                is_dohan     =(item_code == _DOHAN_FEE_CODE),
             ),
         )
 
@@ -194,6 +202,27 @@ def sync_nomination_fees(
         item_code=_INHOUSE_FEE_CODE,
     )
     apply_bill_calculation(bill)
+
+
+def sync_dohan_fees(
+    bill: Bill,
+    prev_dohan: Set[int], new_dohan: Set[int],
+):
+    """同伴料行の差分同期。
+    ItemMaster.code == 'dohan' の行を cast ごとに 1 行（qty=1）追加 / 削除する。
+    prev/new の差分で _sync_fee_lines を利用し、金額再計算。
+    """
+    try:
+        _sync_fee_lines(
+            bill,
+            cast_ids_added=new_dohan - prev_dohan,
+            cast_ids_removed=prev_dohan - new_dohan,
+            item_code=_DOHAN_FEE_CODE,
+        )
+        apply_bill_calculation(bill)
+    except Exception:
+        # 失敗しても他処理を阻害しない
+        pass
 
 
 from .calculator import BillCalculator

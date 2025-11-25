@@ -59,8 +59,8 @@ async function logout () {
           </a>
 
           <!-- 伝票  -->
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-bill-table'})">
-            伝票
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-bills'})">
+            伝票一覧
           </a>
 
           <!-- PL -->

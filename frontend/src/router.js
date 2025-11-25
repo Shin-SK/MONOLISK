@@ -107,10 +107,11 @@ const routes = [
       { path: '', redirect: { name: 'mng-dashboard' } },
       { path: 'dashboard', name: 'mng-dashboard', component: () => import('@/views/manager/ManagerDashboard.vue'), meta:{ rolesAny: ['manager','superuser'], title:'DASHBOARD' } },
 
-      { path: 'bill', name:'mng-bill-table', component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'BILL-TABLE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
-      { path: '/bills/:id', name: 'BillDetail', component: () => import('@/views/BillDetailPage.vue'), props: true },
-      { path: 'bill/list', name:'mng-bill-list', component: () => import('@/views/DashboardList.vue'),  meta: { title: 'BILL-LIST', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
-      { path: 'bill/timeline', name:'mng-bill-tl', component: () => import('@/views/DashboardGantt.vue'), meta: { title: 'BILL-TIMELINE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+      { path: 'bills', name: 'mng-bills', component: () => import('@/views/BillList.vue'), meta: { title: '伝票一覧', rolesAny: ['manager','staff','superuser'], requiresAuth: true, adminOnly: true } },
+      { path: 'bills/:id', name: 'BillDetail', component: () => import('@/views/BillDetailPage.vue'), props: true, meta: { title: '伝票詳細', rolesAny: ['manager','staff','superuser'], requiresAuth: true, adminOnly: true } },
+      { path: 'bill', name:'mng-bill-table', component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'TABLE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+      { path: 'bill/list', name:'mng-bill-list', component: () => import('@/views/DashboardList.vue'),  meta: { title: 'LIST', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+      { path: 'bill/timeline', name:'mng-bill-tl', component: () => import('@/views/DashboardGantt.vue'), meta: { title: 'TIMELINE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
 
       { path: 'profile', name: 'mng-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ rolesAny:['manager'], title:'プロフィール編集' } },
       { path: 'pl/daily',  name:'mng-pl-daily',  component: () => import('@/views/BillPLDaily.vue'),   meta: { title: '売上-日次', rolesAny: ['owner','superuser'], requiresAuth:true } },

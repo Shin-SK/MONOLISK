@@ -606,6 +606,7 @@ class BillItem(models.Model):
     is_nomination = models.BooleanField(default=False, null=True)
     is_inhouse = models.BooleanField(default=False, null=True)
     exclude_from_payout = models.BooleanField(default=False, null=True)
+    is_dohan = models.BooleanField(default=False, null=True)  # 同伴料行フラグ（back_rate に 'dohan' を反映）
 
     back_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
     is_nomination = models.BooleanField(default=False)
@@ -657,7 +658,7 @@ class BillItem(models.Model):
     def _stay_type_hint(self) -> str:
         if getattr(self, 'is_nomination', False): return 'nom'
         if getattr(self, 'is_inhouse', False):    return 'in'
-        if getattr(self, 'is_dohan', False):    return 'dohan'
+        if getattr(self, 'is_dohan', False):      return 'dohan'
         return 'free'
 
     def save(self, *args, **kwargs):
@@ -680,6 +681,7 @@ class BillItem(models.Model):
     def save(self, *args, **kwargs):
         self.is_nomination = bool(self.is_nomination)
         self.is_inhouse    = bool(self.is_inhouse)
+        self.is_dohan      = bool(self.is_dohan)
         if self.item_master:
             self.name  = self.name  or self.item_master.name
             self.price = self.price or self.item_master.price_regular
