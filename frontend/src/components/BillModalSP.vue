@@ -283,6 +283,24 @@ watch(visible, v => {
   memoRef.value = props.bill?.memo ?? ''
 })
 
+// 伝票切替時（ID変化）に支払い入力・メモを初期化
+function resetPaymentFromProps() {
+  const b = props.bill || {}
+  paidCashRef.value     = Number(b.paid_cash ?? 0) || 0
+  paidCardRef.value     = Number(b.paid_card ?? 0) || 0
+  settledTotalRef.value = Number(b.settled_total ?? (b.grand_total || 0)) || 0
+  memoRef.value         = b.memo ?? ''
+}
+
+let _prevBillId = props.bill?.id ?? null
+watch(() => props.bill?.id, (nowId) => {
+  if (nowId == null) return
+  if (_prevBillId !== nowId) {
+    resetPaymentFromProps()
+    _prevBillId = nowId
+  }
+})
+
 const incItem = async (it) => {
   try{
     const newQty = (Number(it.qty)||0) + 1
