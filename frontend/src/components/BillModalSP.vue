@@ -13,7 +13,7 @@ import {
   api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts,
   fetchBill, deleteBillItem, patchBillItemQty, fetchMasters,
   createBill, patchBill,
-  setBillDiscountByCode, updateBillDiscountRule,
+  setBillDiscountByCode, updateBillDiscountRule, settleBill,
  } from '@/api'
 
 const { hasRole } = useRoles()
@@ -215,6 +215,28 @@ async function onApplySet (payload){
     props.bill.items = fresh.items     // リストは丸ごと
     props.bill.stays = fresh.stays
     emit('updated', fresh)
+  }
+}
+
+/* PayPanel からの割引保存 */
+async function onSaveDiscount(payload) {
+  try {
+    const billId = await ensureBillId()
+    const body = {}
+    if (payload && 'discount_rule' in payload) body.discount_rule = payload.discount_rule
+    if (payload && Array.isArray(payload.manual_discounts)) body.manual_discounts = payload.manual_discounts
+    await settleBill(billId, body)
+    const fresh = await fetchBill(billId).catch(()=>null)
+    if (fresh) {
+      Object.assign(props.bill, fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    }
+    alert('割引を保存しました！')
+  } catch (e) {
+    console.error('[BillModalSP] onSaveDiscount failed', e)
+    alert('割引の保存に失敗しました')
   }
 }
 
@@ -728,6 +750,7 @@ async function handleSave(){
       :over-pay="overPay"
       :can-close="canClose"
       :discount-rule-id="props.bill?.discount_rule ? Number(props.bill.discount_rule) : null"
+      :manual-discounts="props.bill?.manual_discounts || []"
       :store-slug="storeSlug"
       :dosukoi-discount-unit="1000"
       @update:settledTotal="setSettledTotal"
@@ -739,6 +762,7 @@ async function handleSave(){
       @decItem="decItem"
       @deleteItem="removeItem"
       @update:discountRule="onDiscountRuleChange"
+      @saveDiscount="onSaveDiscount"
      />
 
     <ProvisionalPanelSP
