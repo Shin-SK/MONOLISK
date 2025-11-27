@@ -233,7 +233,7 @@ async function onSaveDiscount(payload) {
       props.bill.stays = fresh.stays
       emit('updated', fresh)
     }
-    alert('割引を保存しました！')
+    // alert削除: 保存済みパネルが視覚的フィードバックを提供
   } catch (e) {
     console.error('[BillModalSP] onSaveDiscount failed', e)
     alert('割引の保存に失敗しました')

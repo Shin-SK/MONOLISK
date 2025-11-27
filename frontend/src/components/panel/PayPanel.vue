@@ -146,7 +146,9 @@ function hydrateManualDiscounts() {
  *  - 数量変更時、割引後合計へ自動追従
  * --------------------------------------------------------- */
 const stepRules = computed(() =>
-  (discountRules.value || []).filter(r => Number(r.amount_off) > 0 && (r.percent_off == null))
+  (discountRules.value || [])
+    .filter(r => Number(r.amount_off) > 0 && (r.percent_off == null))
+    .sort((a, b) => Number(a.amount_off || 0) - Number(b.amount_off || 0)) // 金額昇順
 )
 
 const dosukoiQtyMap = ref({})
