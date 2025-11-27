@@ -2,7 +2,7 @@
 import { ref, watch, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import Avatar from '@/components/Avatar.vue'
-import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings } from '@/api'  // ← 追加
+import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings, fetchMasters } from '@/api'  // ← 追加
 
 const props = defineProps({
   tables: { type: Array, default: () => [] },
@@ -140,6 +140,7 @@ const maleRef    = ref(props.male)
 const femaleRef  = ref(props.female)
 const nightRef   = ref(props.night)
 const specialRef = ref(props.special)
+const selectedSet = ref('')  // 選択したSET商品ID
 watch(() => props.male,   v => maleRef.value   = v)
 watch(() => props.female, v => femaleRef.value = v)
 
@@ -155,6 +156,25 @@ watch([maleRef, femaleRef], () => {
 const qtyOf = (k) => (k==='male' ? Number(maleRef.value)||0 : Number(femaleRef.value)||0)
 function inc(k){ if (k==='male') maleRef.value = qtyOf('male')+1; else femaleRef.value = qtyOf('female')+1 }
 function dec(k){ if (k==='male') maleRef.value = Math.max(0, qtyOf('male')-1); else femaleRef.value = Math.max(0, qtyOf('female')-1) }
+
+/* ===== SET商品マスタ（setMale/setFemale含む） ===== */
+const setMasters = ref({})
+onMounted(async () => {
+  try {
+    const list = await fetchMasters()
+    // 後方互換: legacy カテゴリ 'setMale' / 'setFemale' も拾う。show_in_menu は内部操作なので無視。
+    const sets = (list || []).filter(m => {
+      const cat = String(m?.category?.code || '')
+      if (cat.startsWith('set')) return true  // 'set','setMale','setFemale'
+      return false
+    })
+    // IDキーのマップ（選択 UI 用）。価格昇順で見やすく。
+    const sorted = sets.slice().sort((a,b) => (Number(a.price_regular)||0) - (Number(b.price_regular)||0))
+    setMasters.value = Object.fromEntries(sorted.map(m => [String(m.id), m]))
+  } catch (e) {
+    console.warn('[BasicsPanel] fetchMasters failed:', e?.message)
+  }
+})
 
 /* ===== 割引ルール（店舗×Basic用だけ出す） ===== */
 const discountRules = ref([{ code: 'none', name: '通常' }])
@@ -262,23 +282,34 @@ const extCountView = computed(() => {
 /* 追加（黄色ボタン） */
 function applySet(){
   const m = Number(maleRef.value||0), f = Number(femaleRef.value||0)
-  if (m+f <= 0) { alert('SETの人数を入力してください'); return }
+  const total = m + f
+  if (!selectedSet.value) { alert('セット商品を選択してください'); return }
+  if (total <= 0) { alert('人数を入力してください'); return }
 
   // 開始時間が未設定の場合、現在時刻を設定
   if (!startISO.value) {
     const nowISO = dayjs().toISOString()
     startISO.value = nowISO
     startLocal.value = dayjs(nowISO).format('YYYY-MM-DDTHH:mm')
-    // 親に通知してサーバにも反映
     emit('update-times', { opened_at: nowISO, expected_out: null })
   }
 
+  const selectedMaster = setMasters.value[selectedSet.value]
+  if (!selectedMaster) { alert('セット商品情報が取得できません'); return }
+
+  // 単一ラベル（選択したセット）のコードを使い、合計人数で1行追加（後段で master_id 解決）
+  const lines = [
+    { type: 'set', code: selectedMaster.code, qty: total }
+  ]
+  if (nightRef.value) {
+    lines.push({ type: 'addon', code: 'addonNight', qty: total })
+  }
+  if (specialRef.value !== 'none') {
+    // 割引は既存 DiscountRule の code を discount_code で伝える（行追加はしない）
+  }
+
   emit('applySet', {
-    lines: [
-      { type:'set',   code:'setMale',   qty:m },
-      { type:'set',   code:'setFemale', qty:f },
-      ...(nightRef.value ? [{ type:'addon', code:'addonNight', qty:(m+f) }] : []),
-    ],
+    lines,
     config: { night: !!nightRef.value },
     discount_code: (specialRef.value !== 'none') ? String(specialRef.value) : null,
   })
@@ -372,9 +403,23 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
         </select>
       </div>
 
-      <!-- SET（男・女・深夜・特例） -->
-      <div class="box">
-        <div class="title"><IconSettings2 /> セット</div>
+        <!-- SET商品選択（上のボックスと同じデザイン）※マスタがない場合は非表示 -->
+        <div class="box" v-if="Object.keys(setMasters).length > 0">
+          <div class="title"><IconSettings2 /> セット</div>
+          <div class="btn-group flex-wrap gap-2 w-100" role="group" aria-label="セット商品">
+            <template v-for="m in Object.values(setMasters)" :key="m.id">
+              <input class="btn-check" type="radio" name="set-master" :id="`set-${m.id}`"
+                     :value="String(m.id)" :checked="selectedSet===String(m.id)"
+                     @change="selectedSet = String(m.id)">
+              <label class="btn btn-sm"
+                     :class="selectedSet===String(m.id) ? 'btn-secondary' : 'btn-outline-secondary'"
+                     :for="`set-${m.id}`">
+                {{ m.name }}
+                <!-- <span class="ms-1">{{ m.price_regular }}円/人</span> -->
+              </label>
+            </template>
+          </div>
+        </div>
 
         <div class="mb-3">
           <div class="d-flex align-items-center justify-content-between gap-3">
@@ -406,7 +451,8 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
             </div>
           </div>
         </div>
-        <div class="wrap w-100 my-3">
+        <!-- ここにセットの種類がラベルとして出てくる -->
+        <!-- <div class="wrap w-100 my-3">
           <div class="btn-group flex-wrap gap-2 w-100" role="group" aria-label="特例">
             <template v-for="r in discountRules" :key="r.code">
               <input class="btn-check" type="radio" name="sp" :id="`sp-${r.code}`"
@@ -418,7 +464,7 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
               </label>
             </template>
           </div>
-        </div>
+        </div> -->
 
 
         <!-- 追加項目 -->
@@ -436,7 +482,6 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
 
         <button class="btn btn-warning w-100 my-2" @click="applySet">伝票を作成</button>
         
-      </div>
 
       <!-- 顧客 / 履歴 トグル -->
       <div class="btn-group w-100 mb-2" role="group">

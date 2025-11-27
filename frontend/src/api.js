@@ -121,7 +121,10 @@ export const addBillItem  = (id,p)  =>
  export const closeBill = (id, payload = {}) =>
    api.post(`billing/bills/${id}/close/`, payload).then(r => r.data)
  
-export const fetchMasters = () => api.get('billing/item-masters/').then(r=>r.data)
+export const fetchMasters = () => api.get('billing/item-masters/', { 
+  params: { _t: Date.now() },
+  headers: { 'Cache-Control': 'no-cache' }
+}).then(r=>r.data)
 
 export const fetchCasts   = () => api.get('billing/casts/').then(r => r.data.results ?? r.data)
 

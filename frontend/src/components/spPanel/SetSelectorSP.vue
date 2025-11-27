@@ -11,6 +11,7 @@ const male = ref(0)
 const female = ref(0)
 const minutes = ref(60)                    // 60/90/120（必要に応じてUI拡張）
 const night = ref(false)                   // 深夜 +1000/人
+const selectedSet = ref('')                // 選択したSET商品ID（setMale/setFemale含む）
 const special = ref('none')                // none | initial | agency | referral
 
 // code → master 行（id/price）辞書
@@ -18,8 +19,10 @@ const masters = ref({})
 onMounted(async () => {
   try {
     const list = await fetchMasters()      // 既存API（item-masters）を使用
+    // SETカテゴリ（setMale/setFemale含む）だけ抽出
+    const setMasters = (list || []).filter(m => m.category?.code === 'set' && m.category?.show_in_menu)
     masters.value = Object.fromEntries(
-      (list || []).map(m => [String(m.code || '').toLowerCase(), m])
+      setMasters.map(m => [String(m.id), m])
     )
   } catch (e) {
     console.warn('[SetSelectorSP] fetchMasters failed:', e?.message)
@@ -30,34 +33,42 @@ onMounted(async () => {
 function confirm() {
   const m = Number(male.value || 0)
   const f = Number(female.value || 0)
+  if (!selectedSet.value) { alert('セット商品を選択してください'); return }
   if (m + f <= 0) { alert('人数を入力してください'); return }
 
-  // “SET（男女別）／深夜／特例クーポン” を構造化して親へ返す
-  // 実際のコード→master_id 解決は parent（orここでmastersを使ってもOK）
+  // 選択したSET商品（setMale/setFemale含む）を人数分追加
+  const selectedMaster = masters.value[selectedSet.value]
+  if (!selectedMaster) { alert('セット商品情報が取得できません'); return }
+  // 男女別人数は従来通り保持
+  const lines = []
+  if (selectedMaster.code === 'setMale') {
+    if (m > 0) lines.push({ type: 'set', master_id: selectedMaster.id, qty: m, meta: { minutes: minutes.value } })
+  } else if (selectedMaster.code === 'setFemale') {
+    if (f > 0) lines.push({ type: 'set', master_id: selectedMaster.id, qty: f, meta: { minutes: minutes.value } })
+  } else {
+    // 汎用SET（例: set_3000）は男性人数分追加（女性は割引等で別途処理）
+    if (m > 0) lines.push({ type: 'set', master_id: selectedMaster.id, qty: m, meta: { minutes: minutes.value } })
+  }
+  // 深夜 +1000/人（任意・qtyは総人数）
+  if (night.value) lines.push({ type: 'addon', code: 'addonNight', qty: (m + f), price_hint: 1000 })
+  // 特例（SET専用割引）… 相互排他：noneなら無し
+  if (special.value !== 'none') {
+    lines.push({
+      type: 'coupon',
+      code: `coupon_${special.value}`,
+      qty: 1,
+      meta: { scope: 'SET', per_person: true }
+    })
+  }
   const payload = {
     billId: props.billId,
     config: {
       minutes: Number(minutes.value),
-      night: !!night.value,                // 深夜トグル
-      special: String(special.value),      // none|initial|agency|referral
+      night: !!night.value,
+      special: String(special.value),
     },
-    lines: [
-      // SET（男女別）… qty=人数
-      { type: 'set', code: 'setMale',   qty: m, meta: { minutes: minutes.value } },
-      { type: 'set', code: 'setFemale', qty: f, meta: { minutes: minutes.value } },
-      // 深夜 +1000/人（任意・qtyは総人数）
-      ...(night.value ? [{ type: 'addon', code: 'addonNight', qty: (m + f), price_hint: 1000 }] : []),
-      // 特例（SET専用割引）… 相互排他：noneなら無し
-      ...(special.value !== 'none' ? [{
-        type: 'coupon',
-        code: `coupon_${special.value}`,   // coupon_initial など（親でcode→id解決）
-        qty: 1,
-        // クーポン詳細は店ごとに異なるため、ここでは “SET割引” であることだけ伝える
-        meta: { scope: 'SET', per_person: true }
-      }] : []),
-    ]
+    lines
   }
-
   emit('apply', payload)
 }
 </script>
@@ -65,6 +76,21 @@ function confirm() {
 <template>
   <div class="card border-0 shadow-sm">
     <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label fw-bold">セット商品選択</label>
+        <div class="d-flex gap-2 flex-wrap">
+          <template v-for="m in Object.values(masters)" :key="m.id">
+            <button
+              class="btn btn-outline-primary"
+              :class="{active: selectedSet.value === String(m.id)}"
+              @click="selectedSet.value = String(m.id)"
+            >
+              {{ m.name }}<br>
+              <span class="text-muted">{{ m.price_regular }}円/人</span>
+            </button>
+          </template>
+        </div>
+      </div>
       <div class="mb-3">
         <label class="form-label fw-bold">SET人数</label>
         <div class="d-flex gap-3">

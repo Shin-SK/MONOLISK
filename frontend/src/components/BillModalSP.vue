@@ -179,11 +179,18 @@ async function onApplySet (payload){
   // SET（男女：setMale / setFemale）
   for (const ln of payload.lines.filter(l => l.type==='set')) {
     if (!ln.qty) continue
-    const mid = getMasterId(
-      ln.code,
-      ln.code === 'setMale' ? 'setmale'   : 'setfemale',
-      ln.code === 'setMale' ? 'set-male'  : 'set-female'
-    )
+    let mid
+    if (ln.code === 'setMale' || ln.code === 'setFemale') {
+      // 旧パターン（男女別マスタ名の表記ゆれ対策）
+      mid = getMasterId(
+        ln.code,
+        ln.code === 'setMale' ? 'setmale'   : 'setfemale',
+        ln.code === 'setMale' ? 'set-male'  : 'set-female'
+      )
+    } else {
+      // 新パターン：任意コード（例: DSK_A_set3000）をそのまま解決
+      mid = getMasterId(ln.code)
+    }
     if (!mid) { console.warn('master not found:', ln.code); continue }
     await addBillItem(billId, { item_master: mid, qty: ln.qty })
   }
