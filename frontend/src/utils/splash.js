@@ -31,7 +31,8 @@ export function showUpdatingOverlay() {
     <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
       <div class="spinner-border" role="status"></div>
       <div class="fw-bold">アップデート反映中…</div>
-      <div class="small text-muted">数秒お待ちください</div>
+      <div class="small text-muted">少々お待ちください</div>
+      <div class="small text-muted" style="font-size:0.75rem;">（最大1分ほどかかる場合があります）</div>
     </div>
   `);
 }
