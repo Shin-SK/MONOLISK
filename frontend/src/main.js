@@ -52,3 +52,11 @@ app.component('Avatar', Avatar)
   // スプラッシュ終了（通常は500msの余白）
   scheduleFinishSplash(500)
 })()
+
+// BFCache (Back/Forward Cache) 対策: 戻るボタンでキャッシュから復元された時もバージョンチェック
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    console.log('[BFCache] キャッシュから復元を検知、バージョンチェック実行')
+    setupUpdateWatcher()
+  }
+})

@@ -41,16 +41,9 @@ export async function setupUpdateWatcher() {
     return () => {};
   }
   
-  console.log('[update-watcher] バージョンは最新です、ポーリングを開始します');
+  console.log('[update-watcher] バージョンは最新です');
   
-  // 滞在中ポーリング（10分）
-  const stop = startVersionWatcher({
-    intervalMs: 10 * 60 * 1000,
-    onNew: () => {
-      console.log('[update-watcher] ポーリングで新バージョンを検知');
-      showUpdatingOverlay();
-      setTimeout(() => hardReload(), 300);
-    },
-  });
-  return stop;
+  // ポーリングは削除（途中でいきなりリロードされるのを防ぐ）
+  // 次回起動時に必ず最新版がチェックされるので実用上問題なし
+  return () => {};
 }

@@ -36,15 +36,15 @@ export default defineConfig(({ mode }) => {
 
       Icons({ autoInstall: true }),
 
-      // ← 手動登録に一本化（injectRegister を無効化）
+      // ← 手動登録に一本化（自動更新を無効化して update-watcher.js に制御を任せる）
       VitePWA({
-        registerType: 'autoUpdate',
-        injectRegister: null,
+        registerType: 'prompt',
+        injectRegister: 'auto',
         devOptions: { enabled: mode === 'development', type: 'module' },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         workbox: {
-          skipWaiting: true,
-          clientsClaim: true,
+          skipWaiting: false,
+          clientsClaim: false,
           cleanupOutdatedCaches: true,
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/api\//, /^\/manuals\//],
