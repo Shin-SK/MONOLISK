@@ -676,6 +676,7 @@ async function handleSave(){
       :seat-type-options="seatTypeOptions"
       :seat-type="seatType"
       :show-customer="true"
+      :customer="ed.selectedCustomer.value"
       :customer-name="ed.customerName.value"
       :customer-results="ed.custResults.value"
       :customer-searching="ed.custLoading.value"

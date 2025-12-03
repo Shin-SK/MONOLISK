@@ -84,6 +84,12 @@ export default function useBillEditor(billObjRef){
   const custQuery    = ref('')
   const custResults  = ref([])
   const custLoading  = ref(false)
+  const selectedCustomer = computed(() => {
+    const ids = bill.value?.customers || []
+    if (!ids.length) return null
+    const firstId = typeof ids[0] === 'object' ? ids[0].id : ids[0]
+    return custResults.value.find(c => c.id === firstId) || null
+  })
 
   async function searchCustomers(q){
     custQuery.value = q ?? ''
@@ -511,6 +517,7 @@ async function chooseCourse(opt){
 
     // SP: 顧客インライン検索
     custQuery, custResults, custLoading, searchCustomers, resetCustomerSearch, pickCustomerInline,
+    selectedCustomer,
 
     save,
   }

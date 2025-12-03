@@ -2,6 +2,8 @@
 import { ref, watch, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import Avatar from '@/components/Avatar.vue'
+import Multiselect from 'vue-multiselect'
+import 'vue-multiselect/dist/vue-multiselect.css'
 import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings, fetchMasters } from '@/api'  // ← 追加
 
 const props = defineProps({
@@ -20,6 +22,7 @@ const props = defineProps({
   customerName: { type: String, default: '' },
   customerResults: { type: Array, default: () => [] },
   customerSearching: { type: Boolean, default: false },
+  customer: { type: Object, default: null },  // 選択中の顧客情報
 
   seatTypeOptions: {
     type: Array,
@@ -44,12 +47,15 @@ const props = defineProps({
   // PC/List と一致：延長分（分）・セット回数
   extMinutes:  { type: Number, default: 0 },   // bill.ext_minutes
   setRounds:   { type: Number, default: 0 },   // bill.set_rounds
+
+  // 小計
+  subtotal: { type: Number, default: 0 },   // bill.subtotal
 })
 
 const emit = defineEmits([
   'update:seatType','update:tableId','update:pax',
   'chooseCourse','clearCustomer','searchCustomer','pickCustomer',
-  'applySet','save'
+  'applySet','save','switchPanel','update-times'
 ])
 
 /* ===== 席種・テーブル ===== */
@@ -141,6 +147,7 @@ const femaleRef  = ref(props.female)
 const nightRef   = ref(props.night)
 const specialRef = ref(props.special)
 const selectedSet = ref('')  // 選択したSET商品ID
+const setQtyMap = ref({})    // セット商品ごとの数量 { masterId: qty }
 watch(() => props.male,   v => maleRef.value   = v)
 watch(() => props.female, v => femaleRef.value = v)
 
@@ -154,8 +161,20 @@ watch([maleRef, femaleRef], () => {
 }, { immediate: true })
 
 const qtyOf = (k) => (k==='male' ? Number(maleRef.value)||0 : Number(femaleRef.value)||0)
-function inc(k){ if (k==='male') maleRef.value = qtyOf('male')+1; else femaleRef.value = qtyOf('female')+1 }
-function dec(k){ if (k==='male') maleRef.value = Math.max(0, qtyOf('male')-1); else femaleRef.value = Math.max(0, qtyOf('female')-1) }
+function inc(k, id){ 
+  if (k==='male') maleRef.value = qtyOf('male')+1
+  else if (k==='female') femaleRef.value = qtyOf('female')+1
+  else if (k==='set') {
+    setQtyMap.value[id] = (Number(setQtyMap.value[id])||0) + 1
+  }
+}
+function dec(k, id){ 
+  if (k==='male') maleRef.value = Math.max(0, qtyOf('male')-1)
+  else if (k==='female') femaleRef.value = Math.max(0, qtyOf('female')-1)
+  else if (k==='set') {
+    setQtyMap.value[id] = Math.max(0, (Number(setQtyMap.value[id])||0) - 1)
+  }
+}
 
 /* ===== SET商品マスタ（setMale/setFemale含む） ===== */
 const setMasters = ref({})
@@ -262,6 +281,102 @@ function confirmEditHeader(){
 
 const miniTab = ref('customer')
 
+// ナビゲーションタブの状態管理
+// 既存伝票（openedAt有り）の場合はinfoタブ、新規の場合はfirstタブ
+const activeTab = ref('first')  // 'first', 'info', 'customer'
+
+// 伝票が既に立ち上がっている場合はinfoタブをデフォルト表示
+watch(() => props.openedAt, (val) => {
+  if (val && activeTab.value === 'first') {
+    activeTab.value = 'info'
+  }
+}, { immediate: true })
+
+// タブ切り替え（表示/非表示）
+function switchTab(tabId) {
+  activeTab.value = tabId
+}
+
+// info パネル編集状態管理
+const editingStart = ref(false)
+const editingEnd = ref(false)
+const editingTable = ref(false)
+const editingPax = ref(false)
+const editingCustomer = ref(false)
+
+// 編集用ローカル値
+const editStartLocal = ref('')
+const editEndLocal = ref('')
+const editTableLocal = ref(null)
+const editPaxLocal = ref(0)
+const customerQuery = ref('')
+
+// 開始時刻編集
+function beginEditStart() {
+  editStartLocal.value = startISO.value ? dayjs(startISO.value).format('YYYY-MM-DDTHH:mm') : ''
+  editingStart.value = true
+}
+function saveEditStart() {
+  const opened_at = editStartLocal.value ? dayjs(editStartLocal.value).toISOString() : null
+  startISO.value = opened_at || ''
+  emit('update-times', { opened_at, expected_out: endISO.value || null })
+  editingStart.value = false
+}
+
+// 終了時刻編集
+function beginEditEnd() {
+  editEndLocal.value = endISO.value ? dayjs(endISO.value).format('YYYY-MM-DDTHH:mm') : ''
+  editingEnd.value = true
+}
+function saveEditEnd() {
+  const expected_out = editEndLocal.value ? dayjs(editEndLocal.value).toISOString() : null
+  endISO.value = expected_out || ''
+  emit('update-times', { opened_at: startISO.value || null, expected_out })
+  editingEnd.value = false
+}
+
+// テーブル編集
+function beginEditTable() {
+  editTableLocal.value = props.tableId
+  editingTable.value = true
+}
+function saveEditTable() {
+  emit('update:tableId', editTableLocal.value)
+  editingTable.value = false
+}
+
+// 人数編集
+function beginEditPax() {
+  editPaxLocal.value = paxLabel.value
+  editingPax.value = true
+}
+function saveEditPax() {
+  emit('update:pax', Number(editPaxLocal.value) || 0)
+  editingPax.value = false
+}
+
+// 延長→会計パネルへ
+function goToPayPanel() {
+  emit('switchPanel', 'pay')
+}
+
+// 顧客編集（Multipul検索）
+function beginEditCustomer() {
+  switchTab('customer')
+}
+function searchCustomerInline() {
+  if (customerQuery.value.trim()) {
+    emit('searchCustomer', customerQuery.value.trim())
+  }
+}
+function selectCustomerInline(c) {
+  emit('pickCustomer', c)
+  editingCustomer.value = false
+}
+function goToCustomerTab() {
+  switchTab('customer')
+  editingCustomer.value = false
+}
 
 // テーブル番号 / 人数 / 延長数（PC/List の式：ext_minutes/30）
 const tableNumberLabel = computed(() => {
@@ -279,23 +394,84 @@ const extCountView = computed(() => {
   return m ? Math.floor(m / 30) : 0
 })
 
+// 小計フォーマット表示（¥12,345形式）
+const subtotalFormatted = computed(() => {
+  const amount = Number(props.subtotal) || 0
+  return '¥' + amount.toLocaleString('ja-JP')
+})
+
+// 顧客情報表示用
+const customerDisplayName = computed(() => {
+  if (selectedCustomer.value) return selectedCustomer.value.alias || selectedCustomer.value.full_name || `#${selectedCustomer.value.id}`
+  if (!props.customer) return 'ご新規様'
+  return props.customer.alias || props.customer.full_name || `#${props.customer.id}`
+})
+
+const customerFullName = computed(() => {
+  if (selectedCustomer.value) return selectedCustomer.value.full_name || '-'
+  if (!props.customer) return '-'
+  return props.customer.full_name || '-'
+})
+
+const customerBirthday = computed(() => {
+  const c = selectedCustomer.value || props.customer
+  if (!c?.birthday) return '-'
+  return dayjs(c.birthday).format('YYYY年MM月DD日')
+})
+
+const customerLastOrder = computed(() => {
+  const c = selectedCustomer.value || props.customer
+  if (!c?.last_order) return '-'
+  return c.last_order
+})
+
+const customerLastVisit = computed(() => {
+  const c = selectedCustomer.value || props.customer
+  if (!c?.last_visit_at) return '-'
+  return dayjs(c.last_visit_at).format('YYYY/MM/DD HH:mm')
+})
+
+const customerLastCast = computed(() => {
+  const c = selectedCustomer.value || props.customer
+  if (!c?.last_cast_name) return '-'
+  return c.last_cast_name
+})
+
+const customerMemo = computed(() => {
+  const c = selectedCustomer.value || props.customer
+  if (!c?.memo) return 'メモなし'
+  return c.memo
+})
+
 /* 追加（黄色ボタン） */
 function applySet(){
   const m = Number(maleRef.value||0), f = Number(femaleRef.value||0)
   const total = m + f
-  if (!selectedSet.value) { alert('セット商品を選択してください'); return }
   if (total <= 0) { alert('人数を入力してください'); return }
-
-  // 開始時間が未設定の場合、現在時刻を設定
-  if (!startISO.value) {
-    const nowISO = dayjs().toISOString()
-    startISO.value = nowISO
-    startLocal.value = dayjs(nowISO).format('YYYY-MM-DDTHH:mm')
-    emit('update-times', { opened_at: nowISO, expected_out: null })
-  }
-
-  const selectedMaster = setMasters.value[selectedSet.value]
+  
+  // setQtyMap から数量が1以上のセット商品を取得
+  const selectedSets = Object.entries(setQtyMap.value)
+    .filter(([id, qty]) => Number(qty) > 0)
+    .map(([id, qty]) => ({ id: String(id), qty: Number(qty) }))
+  
+  if (selectedSets.length === 0) { alert('セット商品を選択してください'); return }
+  
+  // 最初のセット商品を使用（複数選択の場合は最初のもの）
+  const firstSet = selectedSets[0]
+  const selectedMaster = setMasters.value[firstSet.id]
   if (!selectedMaster) { alert('セット商品情報が取得できません'); return }
+
+  // 開始時間と終了時間を設定
+  const nowISO = dayjs().toISOString()
+  const duration = Number(selectedMaster.duration_min || 60) // セット商品の時間（デフォルト60分）
+  const expectedOutISO = dayjs(nowISO).add(duration, 'minute').toISOString()
+  
+  startISO.value = nowISO
+  startLocal.value = dayjs(nowISO).format('YYYY-MM-DDTHH:mm')
+  endISO.value = expectedOutISO
+  endLocal.value = dayjs(expectedOutISO).format('YYYY-MM-DDTHH:mm')
+  
+  emit('update-times', { opened_at: nowISO, expected_out: expectedOutISO })
 
   // 単一ラベル（選択したセット）のコードを使い、合計人数で1行追加（後段で master_id 解決）
   const lines = [
@@ -313,121 +489,99 @@ function applySet(){
     config: { night: !!nightRef.value },
     discount_code: (specialRef.value !== 'none') ? String(specialRef.value) : null,
   })
+  
   alert('SETを追加しました！')
+  // 伝票作成後はinfoタブに遷移
+  switchTab('info')
 }
 
 const q = ref('')
 const doSearch = () => emit('searchCustomer', q.value.trim())
+
+// Multiselect 用の顧客検索
+const selectedCustomer = ref(null)
+
+// props.customer が変更されたら selectedCustomer に反映
+watch(() => props.customer, (newCustomer) => {
+  if (newCustomer && !selectedCustomer.value) {
+    selectedCustomer.value = newCustomer
+  }
+}, { immediate: true })
+
+function onCustomerSearch(query) {
+  if (query && query.length > 0) {
+    emit('searchCustomer', query)
+  }
+}
+function onCustomerSelect(customer) {
+  if (customer) {
+    selectedCustomer.value = customer
+  }
+}
+function saveSelectedCustomer() {
+  if (selectedCustomer.value) {
+    emit('pickCustomer', selectedCustomer.value)
+    switchTab('info')
+  }
+}
+function customLabel(customer) {
+  if (!customer) return ''
+  return customer.alias || customer.full_name || `#${customer.id}`
+}
 </script>
 
 <template>
+
   <div class="panel base">
-    <div class="wrap d-flex flex-column gap-3 w-100">
 
-      <!-- 情報パネル（PC/List準拠：出っぱなし） -->
-      <div v-if="infoShown" class="box border border-secondary rounded p-3">
-        <div class="d-flex flex-column gap-2 align-items-center justify-content-between">
-          <!-- 表示モード -->
-          <template v-if="!editingHeader">
-            <div class="d-flex align-items-center gap-2">
-              <span class="fs-1 fw-bold">
-                {{ startDisplay }} – {{ endDisplay }}
-              </span>
-              <button type="button" class="btn btn-link p-0" @click="beginEditHeader" title="編集">
-                <IconPencil :size="20" />
-              </button>
-            </div>
-          </template>
-
-          <!-- 編集モード（双方向バインドで編集可能） -->
-          <template v-else>
-            <div class="df-center flex-column gap-3 w-100">
-              <div class="d-flex flex-column gap-3 align-items-center w-100">
-                <div class="wrap w-100">
-                  <span>開始時間</span>
-                  <input type="datetime-local" class="form-control form-control-sm w-100" v-model="startLocal" />
-                </div>
-                <div class="wrap w-100">
-                  <span>終了時間</span>
-                  <input type="datetime-local" class="form-control form-control-sm w-100" v-model="endLocal" />
-                </div>
-              </div>
-              <div class="wrap d-flex align-items-center gap-3 w-100">
-                <button class="btn btn-success py-1 px-2 df-center gap-1 w-100" @click="confirmEditHeader" title="完了">
-                  <IconCircleDashedCheck /><span>修正</span>
-                </button>
-                <button class="btn btn-danger py-1 px-2 df-center gap-1 w-100" @click="cancelEditHeader" title="取り消し">
-                  <IconCircleDashedX /><span>取消</span>
-                </button>
-              </div>
-
-            </div>
-          </template>
-
-          <div class="d-flex gap-3 align-items-end fs-5 fw-bold">
-            <div class="d-flex align-items-center gap-1">
-              <IconPinned/> {{ tableNumberLabel }}
-            </div>
-            <div class="d-flex align-items-center gap-1">
-              <IconUsers /> {{ paxLabel }}
-            </div>
-            <div class="d-flex align-items-center gap-2">
-              <IconRefresh />
-              <span>{{ extCountView }}</span>
-            </div>
-          </div>
-        </div>
+    <nav class="row border-bottom g-1">
+      <div
+      class="col-4"
+      :class="{ 'border-bottom border-3 border-secondary': activeTab === 'first' }">
+        <button 
+          class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+          @click="switchTab('first')">
+          初期入力
+        </button>
       </div>
-
-      <!-- 席種 -->
-      <div class="box">
-        <div class="title"><IconCategory2 /> 席種</div>
-        <div class="btn-group w-100">
-          <template v-for="opt in seatTypeOptionsAuto" :key="opt.code">
-            <input type="radio" class="btn-check" :id="`st-${opt.code}`"
-                   :value="opt.code" :checked="opt.code===seatTypeRef"
-                   @change="onSeatTypeInput" />
-            <label class="btn btn-outline-secondary btn-sm" :for="`st-${opt.code}`">{{ opt.label }}</label>
-          </template>
-        </div>
+      <div
+      class="col-4"
+      :class="{ 'border-bottom border-3 border-secondary': activeTab === 'info' }"  >
+        <button 
+          class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+          @click="switchTab('info')">
+          基本情報
+        </button>
       </div>
-
-      <!-- テーブル -->
-      <div class="box">
-        <div class="title"><IconPinned /> テーブル</div>
-        <select class="form-select"
-                :value="tableId"
-                @change="e => $emit('update:tableId', e.target.value ? Number(e.target.value) : null)">
-          <option :value="null">-</option>
-          <option v-for="t in filteredTables" :key="t.id" :value="t.id">{{ t.number }}</option>
-        </select>
+      <div
+      class="col-4"
+      :class="{ 'border-bottom border-3 border-secondary': activeTab === 'customer' }">
+        <button
+          class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+          @click="switchTab('customer')">
+          顧客
+        </button>
       </div>
+    </nav>
 
-        <!-- SET商品選択（上のボックスと同じデザイン）※マスタがない場合は非表示 -->
-        <div class="box" v-if="Object.keys(setMasters).length > 0">
-          <div class="title"><IconSettings2 /> セット</div>
-          <div class="btn-group flex-wrap gap-2 w-100" role="group" aria-label="セット商品">
-            <template v-for="m in Object.values(setMasters)" :key="m.id">
-              <input class="btn-check" type="radio" name="set-master" :id="`set-${m.id}`"
-                     :value="String(m.id)" :checked="selectedSet===String(m.id)"
-                     @change="selectedSet = String(m.id)">
-              <label class="btn btn-sm"
-                     :class="selectedSet===String(m.id) ? 'btn-secondary' : 'btn-outline-secondary'"
-                     :for="`set-${m.id}`">
-                {{ m.name }}
-                <!-- <span class="ms-1">{{ m.price_regular }}円/人</span> -->
-              </label>
-            </template>
-          </div>
-        </div>
+    <div
+    v-show="activeTab === 'first'"
+    class="wrap"
+    style="height: calc( 100vh - 80px);"
+    id="first">
+      <h2 class="text-center my-3 fs-5"> 
+        初期入力をして<br>
+        伝票を作成してください</h2>
 
-        <div class="mb-3">
-          <div class="d-flex align-items-center justify-content-between gap-3">
-            <!-- 男性 -->
+      <div class="area mb-4">
+        <h3 class="fs-5 fw-bold"><IconUsers />人数</h3>
+        <div class="row g-3">
+          <!-- 男性 -->
+            <div class="col-6">
             <div class="d-flex align-items-center">
               <IconGenderMale class="text-info" stroke-width="1.5"/>
-              <div class="cartbutton d-flex align-items-center">
-                <div class="d-flex align-items-center gap-3 bg-light h-auto p-2 m-2" style="border-radius:100px;">
+              <div class="cartbutton d-flex align-items-center w-100">
+                <div class="d-flex align-items-center justify-content-around bg-light h-auto p-2 m-2 w-100 fs-5" style="border-radius:100px;">
                   <button type="button" @click="dec('male')" :class="{ invisible: qtyOf('male')===0 }">
                     <IconMinus :size="16" />
                   </button>
@@ -436,11 +590,13 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
                 </div>
               </div>
             </div>
-            <!-- 女性 -->
+          </div>
+          <!-- 女性 -->
+          <div class="col-6">
             <div class="d-flex align-items-center">
               <IconGenderFemale class="text-danger" stroke-width="1.5"/>
-              <div class="cartbutton d-flex align-items-center">
-                <div class="d-flex align-items-center gap-3 bg-light h-auto p-2 m-2" style="border-radius:100px;">
+              <div class="cartbutton d-flex align-items-center w-100">
+                <div class="d-flex align-items-center justify-content-around bg-light h-auto p-2 m-2 w-100 fs-5" style="border-radius:100px;">
                   <button type="button" @click="dec('female')" :class="{ invisible: qtyOf('female')===0 }">
                     <IconMinus :size="16" />
                   </button>
@@ -451,107 +607,336 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
             </div>
           </div>
         </div>
-        <!-- ここにセットの種類がラベルとして出てくる -->
-        <!-- <div class="wrap w-100 my-3">
-          <div class="btn-group flex-wrap gap-2 w-100" role="group" aria-label="特例">
-            <template v-for="r in discountRules" :key="r.code">
-              <input class="btn-check" type="radio" name="sp" :id="`sp-${r.code}`"
-                      :value="r.code" v-model="specialRef">
-              <label class="btn btn-sm"
-                      :class="specialRef===r.code ? 'btn-secondary' : 'btn-outline-secondary'"
-                      :for="`sp-${r.code}`">
-                {{ r.name }}
-              </label>
+      </div>
+
+      <div class="area mb-4">
+        <h3 class="fs-5 fw-bold"><IconPinned />テーブル番号</h3>
+        <div class="row g-1">
+          <div
+            v-for="t in filteredTables"
+            :key="t.id"
+            class="col-4">
+            <button
+              class="btn w-100"
+              :class="tableId === t.id ? 'btn-secondary' : 'btn-outline-secondary'"
+              @click="$emit('update:tableId', t.id)">
+              {{ t.number }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+
+      <div class="area mb-4">
+        <div class="box" v-if="Object.keys(setMasters).length > 0">
+          <h3 class="fs-5 fw-bold"><IconSettings2 />セット</h3>
+          <div class="d-flex flex-column gap-2 w-100" role="group" aria-label="セット商品">
+            <template v-for="m in Object.values(setMasters)" :key="m.id">
+              <div class="row align-items-center g-0">
+                <div class="col-10">
+                  <div class="border p-2 d-flex text-secondary align-items-center justify-content-around w-100">
+                    <button type="button" @click="dec('set', m.id)">
+                      <IconMinus :size="16" />
+                    </button>
+                    <span>{{ m.name }}</span>
+                    <button type="button" @click="inc('set', m.id)">
+                      <IconPlus :size="16" />
+                    </button>
+                  </div>
+                </div>
+                <div class="col-2 h-100">
+                  <div class="d-flex align-items-center justify-content-center h-100">
+                    <span class="fs-4">{{ setQtyMap[m.id] || 0 }}</span>
+                  </div>
+                </div>
+              </div>
             </template>
           </div>
-        </div> -->
+        </div>
+      </div>
+
+      <div class="area mt-auto">
+        <button class="btn btn-warning w-100 my-2" @click="applySet">伝票を作成</button>
+      </div>
+    </div>
 
 
-        <!-- 追加項目 -->
-        <div class="mb-2">
-          <div class="title">追加項目</div>
-          <div class="d-flex flex-column gap-3">
-            <div class="wrap d-flex align-items-center gap-2">
-              <label class="form-check-label btn btn-sm btn-outline-secondary me-2" for="night">深夜料金(+1,000/人)</label>
-              <div class="form-check form-switch d-flex align-items-center gap-3">
-                <input class="form-check-input" type="checkbox" id="night" v-model="nightRef">
-              </div>
-            </div>
+    <div v-show="activeTab === 'info'" class="wrap" id="info">
+
+      <div class="area mb-3 mt-4 d-flex flex-column gap-4">
+        <!-- 開始時刻 -->
+        <div class="row align-items-center border-bottom pb-3">
+          <div class="col-3">
+            <h3 class="m-0"><IconStopwatch />開始時刻</h3>
+          </div>
+          <div class="col-6">
+            <input v-if="editingStart" type="datetime-local" class="form-control" v-model="editStartLocal" />
+            <span v-else class="fs-1 fw-bold">{{ startDisplay }}</span>
+          </div>
+          <div class="col-3">
+            <button v-if="editingStart" class="btn btn-success btn-sm df-center gap-1 w-100" @click="saveEditStart">
+              <IconDeviceFloppy />保存
+            </button>
+            <button v-else class="btn btn-outline-danger btn-sm df-center gap-1 w-100" @click="beginEditStart">
+              <IconPencil />編集
+            </button>
           </div>
         </div>
 
-        <button class="btn btn-warning w-100 my-2" @click="applySet">伝票を作成</button>
+        <!-- 終了時刻 -->
+        <div class="row align-items-center border-bottom pb-3">
+          <div class="col-3">
+            <h3 class="m-0"><IconBellPause />終了時刻</h3>
+          </div>
+          <div class="col-6">
+            <input v-if="editingEnd" type="datetime-local" class="form-control" v-model="editEndLocal" />
+            <span v-else class="fs-1 fw-bold">{{ endDisplay }}</span>
+          </div>
+          <div class="col-3">
+            <button v-if="editingEnd" class="btn btn-success btn-sm df-center gap-1 w-100" @click="saveEditEnd">
+              <IconDeviceFloppy />保存
+            </button>
+            <button v-else class="btn btn-outline-danger btn-sm df-center gap-1 w-100" @click="beginEditEnd">
+              <IconPencil />編集
+            </button>
+          </div>
+        </div>
+
+        <!-- テーブル -->
+        <div class="row align-items-center border-bottom pb-3">
+          <div class="col-3">
+            <h3 class="m-0"><IconPinned/>テーブル</h3>
+          </div>
+          <div class="col-6">
+            <select v-if="editingTable" class="form-select" v-model="editTableLocal">
+              <option :value="null">-</option>
+              <option v-for="t in filteredTables" :key="t.id" :value="t.id">{{ t.number }}</option>
+            </select>
+            <span v-else class="fs-1 fw-bold">{{ tableNumberLabel }}</span>
+          </div>
+          <div class="col-3">
+            <button v-if="editingTable" class="btn btn-success btn-sm df-center gap-1 w-100" @click="saveEditTable">
+              <IconDeviceFloppy />保存
+            </button>
+            <button v-else class="btn btn-outline-danger btn-sm df-center gap-1 w-100" @click="beginEditTable">
+              <IconPencil />編集
+            </button>
+          </div>
+        </div>
+
+        <!-- 人数 -->
+        <div class="row align-items-center border-bottom pb-3">
+          <div class="col-3">
+            <h3 class="m-0"><IconUsers />人数</h3>
+          </div>
+          <div class="col-6">
+            <input v-if="editingPax" type="number" class="form-control" v-model="editPaxLocal" min="0" />
+            <span v-else class="fs-1 fw-bold">{{ paxLabel }}</span>
+          </div>
+          <div class="col-3">
+            <button v-if="editingPax" class="btn btn-success btn-sm df-center gap-1 w-100" @click="saveEditPax">
+              <IconDeviceFloppy />保存
+            </button>
+            <button v-else class="btn btn-outline-danger btn-sm df-center gap-1 w-100" @click="beginEditPax">
+              <IconPencil />編集
+            </button>
+          </div>
+        </div>
+
+        <!-- 延長 -->
+        <div class="row align-items-center border-bottom pb-3">
+          <div class="col-3">
+            <h3 class="m-0"><IconRefresh />延長</h3>
+          </div>
+          <div class="col-6">
+            <span class="fs-1 fw-bold">{{ extCountView }}</span>
+          </div>
+          <div class="col-3">
+            <button class="btn btn-outline-danger btn-sm df-center gap-1 w-100" @click="goToPayPanel">
+              <IconReceiptYen />確認
+            </button>
+          </div>
+        </div>
+
+        <!-- 顧客 -->
+        <div class="row align-items-center">
+          <div class="col-3">
+            <h3 class="m-0"><IconUser />顧客</h3>
+          </div>
+          <div class="col-6">
+            <span class="fs-4 fw-bold">{{ customerName || '未選択' }}</span>
+          </div>
+          <div class="col-3">
+            <button class="btn btn-outline-danger btn-sm df-center gap-1 w-100" @click="beginEditCustomer">
+              <IconPencil />編集
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-light py-3 mt-5">
+        <div class="df-center fs-5 gap-1"><IconReceiptYen />現在の小計</div>
+        <div class="df-center fs-1 fw-bold">
+          <span>{{ subtotalFormatted }}</span>
+        </div>
+      </div>
+
+
+    </div>
+
+
+    <div v-show="activeTab === 'customer'" class="wrap p-3" id="customer">
+
+      <!-- 選択中の顧客情報 -->
+      <div class="bg-light rounded p-2">
+        <div class="text-center fs-5 fw-bold pt-2 mb-3 pb-3 border-bottom">
+          <IconUserScan /> 選択中の顧客
+        </div>
+        <dl class="row g-2 mb-0">
+          <dt class="col-4 text-end">名前</dt>
+          <dd class="col-8 fw-bold">{{ customerDisplayName }}</dd>
+          
+          <dt class="col-4 text-end">フルネーム</dt>
+          <dd class="col-8">{{ customerFullName }}</dd>
+          
+          <dt class="col-4 text-end">誕生日</dt>
+          <dd class="col-8">{{ customerBirthday }}</dd>
+          
+          <dt class="col-4 text-end">前回の<br>ご注文</dt>
+          <dd class="col-8">{{ customerLastOrder }}</dd>
+          
+          <dt class="col-4 text-end">前回の<br>来店日時</dt>
+          <dd class="col-8">{{ customerLastVisit }}</dd>
+          
+          <dt class="col-4 text-end">前回の<br>キャスト</dt>
+          <dd class="col-8">{{ customerLastCast }}</dd>
+          
+          <dd class="col-12">
+            <p class="mx-2 mb-0 bg-white rounded p-3"  style="min-height: 80px; white-space: pre-wrap;">
+              {{ customerMemo }}
+            </p>
+          </dd>
+        </dl>
+      </div>
+
+      <!-- 顧客検索 UI (Vue Multiselect) -->
+      <div class="mt-4">
+        <div class="text-center fs-5 fw-bold mb-3">
+          <IconUserScan />顧客を検索＆選択し直す
+        </div>
+        <Multiselect
+          v-model="selectedCustomer"
+          :options="customerResults"
+          :custom-label="customLabel"
+          placeholder="名前・TEL・あだ名で検索"
+          label="alias"
+          track-by="id"
+          :searchable="true"
+          :internal-search="false"
+          :loading="customerSearching"
+          :clear-on-select="false"
+          :close-on-select="true"
+          :options-limit="20"
+          :show-no-results="true"
+          select-label=""
+          deselect-label=""
+          @search-change="onCustomerSearch"
+          @select="onCustomerSelect"
+        >
+          <template #noResult>検索結果がありません</template>
+          <template #noOptions>...</template>
+        </Multiselect>
         
-
-      <!-- 顧客 / 履歴 トグル -->
-      <div class="btn-group w-100 mb-2" role="group">
-        <button type="button"
-                class="btn btn-sm"
-                :class="miniTab==='customer' ? 'btn-secondary' : 'btn-outline-secondary'"
-                @click="miniTab='customer'">
-          顧客
+        <button 
+          v-if="selectedCustomer"
+          class="btn btn-primary w-100 mt-3"
+          @click="saveSelectedCustomer">
+          <IconDeviceFloppy /> この顧客を保存
         </button>
-        <button type="button"
-                class="btn btn-sm"
-                :class="miniTab==='history' ? 'btn-secondary' : 'btn-outline-secondary'"
-                @click="miniTab='history'">
-          着席履歴
-        </button>
-      </div>
-
-      <!-- 顧客 -->
-      <div class="box" v-show="miniTab==='customer'">
-        <div class="title"><IconUserScan /> 顧客</div>
-        <div class="form-control bg-light position-relative">
-          {{ customerName || '未選択' }}
-          <button class="position-absolute top-0 bottom-0 end-0" :disabled="!customerName" @click="$emit('clearCustomer')"><IconX :size="16"/></button>
-        </div>
-        <div class="mt-2 position-relative">
-          <input class="form-control" type="text" v-model="q" placeholder="名前／TEL などで検索" @keyup.enter="doSearch">
-          <button class="position-absolute top-0 bottom-0 end-0" @click="doSearch"><IconSearch :size="16" /></button>
-        </div>
-        <div v-if="customerSearching" class="small text-muted mt-2">検索中…</div>
-        <ul v-if="customerResults && customerResults.length" class="mt-2 ps-0" style="list-style:none;">
-          <li v-for="(c,i) in customerResults" :key="c?.id ?? i" class="d-flex align-items-center gap-2 py-2 border-top">
-            <div class="flex-grow-1">
-              <div class="fw-bold">{{ c.alias || c.full_name || ('#'+c.id) }}</div>
-              <div class="small text-muted">{{ c.phone || c.email || '' }}</div>
-            </div>
-            <button class="btn btn-sm btn-primary" @click="$emit('pickCustomer', c)">選択</button>
-          </li>
-        </ul>
-        <div v-else-if="q" class="small text-muted mt-2">検索結果なし</div>
-      </div>
-
-      <!-- 着席履歴（PCと同等のミニ版） -->
-      <div class="box" v-show="miniTab==='history'">
-        <div class="title"><IconHistoryToggle /> 着席履歴</div>
-        <template v-if="(props.historyEvents || []).length === 0">
-          <p class="text-muted mb-0">履歴はありません</p>
-        </template>
-        <ul v-else class="list-unstyled mb-0 overflow-auto" style="max-height: 160px;">
-          <li v-for="ev in props.historyEvents" :key="ev.key"
-              class="d-flex align-items-center gap-2 mb-1">
-            <small class="text-muted" style="width:40px;">
-              {{ dayjs(ev.when).format('HH:mm') }}
-            </small>
-            <Avatar :url="ev.avatar" :alt="ev.name" :size="24" class="me-1" />
-            <span class="flex-grow-1">{{ ev.name }}</span>
-            <span class="badge text-white me-1"
-                  :class="{
-                    'bg-danger': ev.stayTag==='nom',
-                    'bg-success': ev.stayTag==='in',
-                    'bg-secondary': ev.stayTag==='free' || !ev.stayTag
-                  }">
-              {{ ev.stayTag==='nom' ? '本指名' : ev.stayTag==='in' ? '場内' : 'フリー' }}
-            </span>
-            <span class="badge" :class="ev.ioTag==='in' ? 'bg-primary' : 'bg-dark'">
-              {{ (ev.ioTag || '').toUpperCase() }}
-            </span>
-          </li>
-        </ul>
       </div>
 
     </div>
+
+
   </div>
+
 </template>
+
+
+<style lang="scss">
+  #first{
+    &.wrap{
+      h3{
+        font-size: 1rem;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-bottom: 1rem;
+      }
+    }
+  }
+
+
+  #info{
+    &.wrap{
+      h3{
+        font-size: 0.8rem;
+        font-weight: normal;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-bottom: 1rem;
+      }
+    }
+  }
+
+  #customer{
+    &.wrap{
+      h3{
+        font-size: 1.2rem;
+        font-weight: normal;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      dl{
+        dt{
+          font-weight: bold;
+        }
+      }
+      .multiselect{
+        &__single{
+          font-size: 1rem;
+        }
+        &__tags{
+          border-color: #333;
+        }
+        &__option--highlight{
+          background: #333;
+          &:after{
+            background: #333;
+          }
+        }
+        &__option--selected{
+          background: #f3f3f3;
+          color: #333;
+          &:after{
+            background: #333;
+          }
+        }
+        &__tag{
+          background: #333;
+        }
+        &__tag-icon{
+          &:after{
+            color: #333;
+          }
+          &:hover{
+            background: #222;
+          }
+        }
+      }
+    }
+  }
+</style>
