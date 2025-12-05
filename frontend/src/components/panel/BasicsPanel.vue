@@ -10,6 +10,8 @@ const props = defineProps({
   tables: { type: Array, default: () => [] },
   tableId: { type: [Number, null], default: null },
 
+  currentCasts: { type: Array, default: () => [] },  // 現在着席中のキャスト
+
   historyEvents: {
     type: Array,
     default: () => [] 
@@ -279,6 +281,11 @@ function confirmEditHeader(){
   emit('update-times', { opened_at, expected_out })
 }
 
+// 現在着席中のキャスト
+const safeCurrent = computed(() =>
+  Array.isArray(props.currentCasts) ? props.currentCasts.filter(c => c && c.id != null) : []
+)
+
 const miniTab = ref('customer')
 
 // ナビゲーションタブの状態管理
@@ -534,7 +541,7 @@ function customLabel(customer) {
 
   <div class="panel base">
 
-    <nav class="row border-bottom g-1">
+    <nav class="row border-bottom g-1 mb-3">
       <div
       class="col-4"
       :class="{ 'border-bottom border-3 border-secondary': activeTab === 'first' }">
@@ -564,8 +571,7 @@ function customLabel(customer) {
       </div>
     </nav>
 
-    <div
-    v-show="activeTab === 'first'"
+    <div v-show="activeTab === 'first'"
     class="wrap"
     style="height: calc( 100vh - 80px);"
     id="first">
@@ -662,10 +668,33 @@ function customLabel(customer) {
 
 
     <div v-show="activeTab === 'info'" class="wrap" id="info">
+      <!-- 最新の現在着席中キャスト -->
+      <div class="now-casts">
+        <div class="d-flex p-2 justify-content-between align-items-center">
+          <span class="fw-bold">稼働中キャスト</span>
+          <div class="d-flex justify-content-end align-items-center gap-1">
+            <div class="badge bg-blue df-center">フリー</div><div class="badge bg-success df-center">場内</div><div class="badge bg-purple df-center">ヘルプ</div>
+          </div>
 
-      <div class="area mb-3 mt-4 d-flex flex-column gap-4">
+        </div>
+        <div class="wrap p-3 mb-3 bg-light df-center gap-3">
+          <div v-for="c in safeCurrent" :key="c?.id" class="df-center">
+            <div 
+              class="box df-center rounded py-1 px-2 gap-2 text-white"
+              :class="{
+                      'bg-danger': c.stay_type==='nom',
+                      'bg-success': c.stay_type==='in',
+                      'bg-blue': c.stay_type==='free' || !c.stay_type
+                    }">
+                <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="24" />
+                <span class="">{{ c.stage_name }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="area my-2 d-flex flex-column gap-3">
         <!-- 開始時刻 -->
-        <div class="row align-items-center border-bottom pb-3">
+        <div class="row align-items-center border-bottom pb-2">
           <div class="col-3">
             <h3 class="m-0"><IconStopwatch />開始時刻</h3>
           </div>
@@ -684,7 +713,7 @@ function customLabel(customer) {
         </div>
 
         <!-- 終了時刻 -->
-        <div class="row align-items-center border-bottom pb-3">
+        <div class="row align-items-center border-bottom pb-2">
           <div class="col-3">
             <h3 class="m-0"><IconBellPause />終了時刻</h3>
           </div>
@@ -703,7 +732,7 @@ function customLabel(customer) {
         </div>
 
         <!-- テーブル -->
-        <div class="row align-items-center border-bottom pb-3">
+        <div class="row align-items-center border-bottom pb-2">
           <div class="col-3">
             <h3 class="m-0"><IconPinned/>テーブル</h3>
           </div>
@@ -725,7 +754,7 @@ function customLabel(customer) {
         </div>
 
         <!-- 人数 -->
-        <div class="row align-items-center border-bottom pb-3">
+        <div class="row align-items-center border-bottom pb-2">
           <div class="col-3">
             <h3 class="m-0"><IconUsers />人数</h3>
           </div>
@@ -744,7 +773,7 @@ function customLabel(customer) {
         </div>
 
         <!-- 延長 -->
-        <div class="row align-items-center border-bottom pb-3">
+        <div class="row align-items-center border-bottom pb-2">
           <div class="col-3">
             <h3 class="m-0"><IconRefresh />延長</h3>
           </div>
@@ -774,7 +803,7 @@ function customLabel(customer) {
         </div>
       </div>
 
-      <div class="bg-light py-3 mt-5">
+      <div class="bg-light py-3 mt-3">
         <div class="df-center fs-5 gap-1"><IconReceiptYen />現在の小計</div>
         <div class="df-center fs-1 fw-bold">
           <span>{{ subtotalFormatted }}</span>

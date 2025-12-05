@@ -73,68 +73,69 @@ async function logout () {
 </script>
 
 <template>
-  <div class="base managers d-block d-md-flex min-vh-100">
+  <div class="base managers d-block d-md-flex min-vh-100"
+    style="z-index: 99;">
     <!-- ────────── footer ────────── -->
-    <div class="sidebar d-flex align-items-center justify-content-md-start justify-content-between gap-3 gap-md-5">
-
-      <!-- Manager サイドバー（idは #managerSidebar と一致） -->
-      <button class="nav-link text-dark fs-md-2 fs-4" @click="openSidebar" aria-controls="managerSidebar" aria-label="メニューを開く">
-        <Avatar :url="avatarURL" :size="40" class="rounded-circle" />
+    <div class="position-fixed bottom-0 w-100 d-flex align-items-center justify-content-between gap-3 bg-white p-2"
+    style="z-index: 99;">
+      <!-- <button>
+         <Avatar :url="avatarURL" :size="40" class="rounded-circle" />
+      </button> -->
+      <button 
+        class="df-center flex-column"
+        :class="isActiveName('mng-dashboard') ? 'text-dark' : 'text-secondary'"
+        @click="$router.push({ name:'mng-dashboard' })">
+        <span class="fs-4">
+          <IconHomeFilled v-if="isActiveName('mng-dashboard')" />
+          <IconHome v-else />
+        </span>
+        <span class="small fw-bold">
+          ホーム
+        </span>
+      </button>
+      <button 
+        class="df-center flex-column"
+        :class="isActiveName('mng-bill-table') ? 'text-dark' : 'text-secondary'"
+        @click="$router.push({ name:'mng-bill-table' })">
+        <span class="fs-4">
+          <IconPinnedFilled v-if="isActiveName('mng-bill-table')" />
+          <IconPinned v-else />
+        </span>
+        <span class="small fw-bold">
+          卓伝票
+        </span>
+      </button>
+      <button 
+        class="df-center flex-column"
+        :class="isActiveName('mng-bill-list') ? 'text-dark' : 'text-secondary'"
+        @click="$router.push({ name:'mng-bill-list' })">
+        <span class="fs-4">
+          <IconLayoutListFilled v-if="isActiveName('mng-bill-list')" />
+          <IconLayoutList v-else />
+        </span>
+        <span class="small fw-bold">
+          伝票一覧
+        </span>
+      </button>
+      <button class="df-center flex-column text-secondary" @click="openSidebar" aria-controls="managerSidebar">
+        <span class="fs-4">
+          <IconList />
+        </span>
+        <span class="small fw-bold">
+          設定
+        </span>
       </button>
 
-      <RouterLink :to="{ name:'mng-bill-table' }" v-slot="{ href, navigate, isExactActive }">
-        <a
-          :href="href"
-          @click="navigate"
-          class="nav-link"
-          :class="isExactActive ? 'bg-dark text-white' : 'bg-white text-dark'"
-        >
-          <IconPinned :size="24" />
-        </a>
-      </RouterLink>
-
-      <RouterLink :to="{ name:'mng-bill-list' }" v-slot="{ href, navigate, isExactActive }">
-        <a
-          :href="href"
-          @click="navigate"
-          class="nav-link"
-          :class="isExactActive ? 'bg-dark text-white' : 'bg-white text-dark'"
-        >
-          <IconList :size="24" />
-        </a>
-      </RouterLink>
-
-      <RouterLink :to="{ name:'mng-bill-tl' }" v-slot="{ href, navigate, isExactActive }">
-        <a
-          :href="href"
-          @click="navigate"
-          class="nav-link"
-          :class="isExactActive ? 'bg-dark text-white' : 'bg-white text-dark'"
-        >
-          <IconMenu3 :size="24" />
-        </a>
-      </RouterLink>
-
-      <!-- ★ ダッシュボタン：色固定（反転なし） -->
-      <button
-        class="nav-link bg-white text-dark"
-        @click="onClickRefresh"
-        aria-label="ページを再読み込み"
-      >
-        <IconRefresh :size="24" :class="{ spin: refreshing }" />
-      </button>
-
-      <ManagerSidebar />
+       <ManagerSidebar />
     </div>
+
 
     <!-- ────────── MAIN ────────── -->
     <main class="main flex-fill container-fluid py-4">
       <div class="wrapper h-100 d-flex flex-column">
         <header class="header d-flex justify-content-between mb-1">
-          <div class="area d-flex align-items-center gap-4">
             <h2>{{ pageTitle }}</h2>
             <span class="today text-muted">{{ today }}</span>
-          </div>
         </header>
         <div class="position-relative flex-fill">
           <router-view v-slot="{ Component }">

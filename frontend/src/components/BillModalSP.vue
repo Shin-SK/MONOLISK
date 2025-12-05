@@ -427,8 +427,16 @@ const historyEvents = computed(() => {
       })
     }
   }
-  // 新しい順に
+  // 新しい順に（最新が最後）
   out.sort((a,b) => new Date(b.when) - new Date(a.when))
+  
+  // デバッグ出力
+  if (import.meta.env.DEV) {
+    window.__historyEvents = out
+    console.log('[historyEvents] stays:', b.stays)
+    console.log('[historyEvents] events:', out)
+  }
+  
   return out
 })
 
@@ -672,6 +680,7 @@ async function handleSave(){
       v-show="pane==='base'"
       :tables="ed.tables.value || []"
       :table-id="ed.tableId.value"
+      :current-casts="currentCastsForPanel"
       :course-options="ed.courseOptions.value || []"
       :seat-type-options="seatTypeOptions"
       :seat-type="seatType"
@@ -706,6 +715,7 @@ async function handleSave(){
       :bench-casts="ed.benchCasts.value"
       :on-duty-ids="onDutyIds"
       :keyword="ed.castKeyword.value"
+      :history-events="historyEvents"
       @update:keyword="v => (ed.castKeyword.value = v)"
       @setFree="onSetFree"
       @setInhouse="onSetInhouse"

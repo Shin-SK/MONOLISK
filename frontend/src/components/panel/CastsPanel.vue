@@ -1,6 +1,7 @@
 <!-- CastsPanel.vue（差し替え） -->
 <script setup>
 import { ref, computed } from 'vue'
+import dayjs from 'dayjs'
 import Avatar from '@/components/Avatar.vue'
 
 const props = defineProps({
@@ -8,6 +9,7 @@ const props = defineProps({
   benchCasts:   { type: Array,  default: () => [] },
   onDutyIds:    { type: Array,  default: () => [] },
   keyword:      { type: String, default: '' },
+  historyEvents: { type: Array, default: () => [] },
 })
 // 同伴イベントを追加
 const emit = defineEmits(['update:keyword','setFree','setInhouse','setMain','setDohan','setHelp','removeCast','save'])
@@ -92,10 +94,12 @@ if (import.meta.env.DEV) {
 </script>
 
 <template>
-  <div class="panel casts">
+  <div
+    class="panel casts"
+    style="overflow-x: hidden;">
 
 
-     <nav class="row border-bottom g-1">
+     <nav class="row border-bottom g-1 mb-3">
       <div
       class="col-6"
       :class="{ 'border-bottom border-3 border-secondary': activeTab === 'cast' }">
@@ -117,7 +121,7 @@ if (import.meta.env.DEV) {
     </nav>
 
 
-    <div class="wrap mt-3 position-relative" v-show="activeTab === 'cast'" style="padding-bottom: 80px;">
+    <div class="wrap position-relative" v-show="activeTab === 'cast'" style="padding-bottom: 80px;">
       <div class="d-flex p-2 justify-content-between align-items-center">
         <span class="fw-bold">稼働中キャスト</span>
         <div class="d-flex justify-content-end align-items-center gap-1">
@@ -185,33 +189,68 @@ if (import.meta.env.DEV) {
 
     </div>
 
-      <div class="box" v-show="activeTab === 'history'">
-        <div class="title"><IconHistoryToggle /> 着席履歴</div>
-        <template v-if="(props.historyEvents || []).length === 0">
-          <p class="text-muted mb-0">履歴はありません</p>
-        </template>
-        <ul v-else class="list-unstyled mb-0 overflow-auto" style="max-height: 160px;">
-          <li v-for="ev in props.historyEvents" :key="ev.key"
-              class="d-flex align-items-center gap-2 mb-1">
-            <small class="text-muted" style="width:40px;">
-              {{ dayjs(ev.when).format('HH:mm') }}
-            </small>
-            <Avatar :url="ev.avatar" :alt="ev.name" :size="24" class="me-1" />
-            <span class="flex-grow-1">{{ ev.name }}</span>
-            <span class="badge text-white me-1"
-                  :class="{
-                    'bg-danger': ev.stayTag==='nom',
-                    'bg-success': ev.stayTag==='in',
-                    'bg-secondary': ev.stayTag==='free' || !ev.stayTag
-                  }">
-              {{ ev.stayTag==='nom' ? '本指名' : ev.stayTag==='in' ? '場内' : 'フリー' }}
-            </span>
-            <span class="badge" :class="ev.ioTag==='in' ? 'bg-primary' : 'bg-dark'">
-              {{ (ev.ioTag || '').toUpperCase() }}
-            </span>
-          </li>
-        </ul>
+    <div class="wrap pb-5" v-show="activeTab === 'history'">
+
+      <template v-if="(props.historyEvents || []).length === 0">
+        <p class="text-muted mb-0">履歴はありません</p>
+      </template>
+      
+      <div v-else>
+        <!-- 最新の現在着席中キャスト -->
+        <div class="now-casts mb-4">
+          <div class="d-flex p-2 justify-content-between align-items-center">
+            <span class="fw-bold">稼働中キャスト</span>
+            <div class="d-flex justify-content-end align-items-center gap-1">
+              <div class="badge bg-blue df-center">フリー</div><div class="badge bg-success df-center">場内</div><div class="badge bg-purple df-center">ヘルプ</div>
+            </div>
+          </div>
+          <div class="wrap p-3 mb-3 bg-light df-center gap-3">
+            <div v-for="c in safeCurrent" :key="c?.id" class="df-center">
+              <div 
+                class="box df-center rounded py-1 px-2 gap-2 text-white"
+                :class="{
+                        'bg-danger': c.stay_type==='nom',
+                        'bg-success': c.stay_type==='in',
+                        'bg-blue': c.stay_type==='free' || !c.stay_type
+                      }">
+                  <Avatar :url="c.avatar_url" :alt="c.stage_name" :size="24" />
+                  <span class="">{{ c.stage_name }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- 履歴 -->
+        <div v-for="ev in props.historyEvents" :key="ev.key" class="row g-4 mb-3 pb-3 border-bottom">
+          <div class="col-2 df-center">
+            <span class="text-muted">{{ dayjs(ev.when).format('HH:mm') }}</span>
+          </div>
+          <div class="col-6 d-flex align-items-center gap-1">
+            <div class="box df-center">
+               <Avatar :url="ev.avatar" :alt="ev.name" :size="24" class="me-1" />
+               <span class="fw-bold fs-5">{{ ev.name }}</span>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="area d-flex justify-content-between align-items-center pe-2">
+              <span class="badge text-white me-1"
+                    :class="{
+                      'bg-danger': ev.stayTag==='nom',
+                      'bg-success': ev.stayTag==='in',
+                      'bg-blue': ev.stayTag==='free' || !ev.stayTag
+                    }">
+                {{ ev.stayTag==='nom' ? '本指名' : ev.stayTag==='in' ? '場内' : 'フリー' }}
+              </span>
+              <span class="badge" :class="ev.ioTag==='in' ? 'bg-warning text-dark' : 'bg-secondary'">
+                {{ (ev.ioTag || '').toUpperCase() }}
+              </span>
+            </div>
+          </div>
+
+        </div>
       </div>
+    </div>
 
   </div>
 

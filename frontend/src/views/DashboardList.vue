@@ -139,6 +139,19 @@ function isSameDay(d1, d2){
   return dayjs(d1).isSame(d2, 'day')
 }
 
+/* 人数計算：items から male/female を集計 */
+function calcPax(b) {
+  if (!b) return 0
+  const items = b.items || []
+  let male = 0, female = 0
+  for (const it of items) {
+    const code = it.master?.code || it.code || ''
+    if (code.includes('Male')) male += (it.qty || 0)
+    else if (code.includes('Female')) female += (it.qty || 0)
+  }
+  const total = male + female
+  return total > 0 ? total : (b.pax || 0)
+}
 
 function liveCasts (b) {
   const map = new Map();        // castId → { stay , present , entered }
@@ -181,7 +194,6 @@ function liveCasts (b) {
     <div class="outer flex-fill position-relative" style="min-width: 0;">
       <header class="d-flex flex-column">
         <div class="d-flex gap-1 mb-2">
-          <!-- リストだけリアルタイムってかリストって感じで -->
           <div class="item badge text-white bg-danger">
             本指名
           </div>
@@ -191,206 +203,118 @@ function liveCasts (b) {
           <div class="item badge text-white bg-blue">
             フリー
           </div>
-          <!-- <div class="item badge text-white bg-warning">
-            フリー(~20分)
-          </div>
-          <div class="item badge text-white bg-orange">
-            フリー(~30分)
-          </div> -->
         </div>
-          <!-- ▼ セグメント & アクティブ -->
         <div class="d-flex flex-wrap gap-2 align-items-center my-3">
-          <!-- セグメント -->
-          <div class="btn-group btn-group-sm" role="group">
-            <button class="btn btn-outline-secondary" :class="{active:seg==='today'}"     @click="seg='today'">今日</button>
-            <button class="btn btn-outline-secondary" :class="{active:seg==='yesterday'}" @click="seg='yesterday'">昨日</button>
-            <button class="btn btn-outline-secondary" :class="{active:seg==='last7'}"     @click="seg='last7'">7日</button>
-            <button class="btn btn-outline-secondary" :class="{active:seg==='last30'}"    @click="seg='last30'">30日</button>
-            <button class="btn btn-outline-secondary" :class="{active:seg==='thisMonth'}" @click="seg='thisMonth'">今月</button>
-            <button class="btn btn-outline-secondary" :class="{active:seg==='all'}"       @click="seg='all'">全期間</button>
-            <button class="btn btn-outline-secondary" :class="{active:seg==='range'}"     @click="seg='range'">期間</button>
-          </div>
-          <!-- 期間指定 -->
-          <div v-if="seg==='range'" class="d-flex align-items-center gap-1">
-            <input type="date" class="form-control form-control-sm" v-model="dateFrom" />
-            <span>〜</span>
-            <input type="date" class="form-control form-control-sm" v-model="dateTo" />
-          </div>
           <!-- アクティブのみ -->
           <div class="form-check form-switch m-0">
             <input class="form-check-input" type="checkbox" id="onlyActive" v-model="activeOnly">
-            <label class="form-check-label small" for="onlyActive">アクティブのみ</label>
+            <label class="form-check-label small" for="onlyActive">アクティブのみ</label><!-- ★最初アクティブがいい -->
           </div>
         </div>
       </header>
-    <div class="table-responsive-md">
-      <table
-        class="bill-table table table-hover align-middle"
-        style="table-layout: fixed;"
-      >
-        <colgroup>
-          <col style="width:  40px">  <!-- チェック -->
-          <col style="width:  40px">  <!-- ID -->
-          <col style="width:  40px">  <!-- 卓 -->
-          <col style="width:  40px">  <!-- SET -->
-          <col style="width:  80px">  <!-- in -->
-          <col style="width:  40px">  <!-- 延長 -->
-          <col style="width:  80px">  <!-- out -->
-          <col style="width: 300px">   <!-- ★ キャスト：残り全部 -->
-          <col style="width: 160px">  <!-- 小計 -->
-          <col style="width: 160px">  <!-- 合計 -->
-          <col style="width: 40px">  <!-- 合計 -->
-        </colgroup>
-        <thead>
-          <tr>
-            <th />
-            <th class="text-center">
-              ID
-            </th>
-            <th class="text-center">
-              卓
-            </th>
-            <th class="text-center">
-              SET
-            </th>
-            <th class="text-center">
-              in
-            </th>
-            <th class="text-center">
-              延長
-            </th>
-            <th class="text-center">
-              out
-            </th>
-            <th class="text-center">
-              キャスト
-            </th>
-            <th class="text-end">
-              小計
-            </th>
-            <th class="text-end">
-              合計
-            </th>
-            <th>
-              メモ
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <template
-            v-for="(b, idx) in sorted"
-            :key="b.id"
-          >
-            <!-- ★ 見出し行：前の伝票と日付が違えば出力 -->
-            <tr
-              v-if="idx === 0 || !isSameDay(sorted[idx-1].opened_at, b.opened_at)"
-              class="bg-light"
-            >
-              <td
-                :colspan="11"
-                class="text-start fw-bold"
-              >
-                {{ b.opened_at ? dayjs(b.opened_at).format('YYYY/MM/DD(ddd)') : '日付未定' }}
-              </td>
-            </tr>
-            <tr
-              class="main"
-              :class="b.closed_at ? 'table-close text-muted' : ''"
-              @click="open(b.id)"
-            >
-              <td class="text-center">
-                <input
-                  type="checkbox"
-                  :value="b.id"
-                  :checked="selectedIds.has(b.id)"
-                  @click.stop="toggle(b.id)"
-                >
-              </td>
-              <td class="text-center">
-                {{ b.id }}
-              </td>
-              <td class="text-center">
-                {{ b.table?.number ?? '‑' }}
-              </td>
-              <td class="text-center">
-                {{ b.set_rounds || '‑' }}
-              </td>
-              <td class="text-center">
-                <span class="fs-3 fw-bold">
-                  {{ b.opened_at ? dayjs(b.opened_at).format('HH:mm') : '‑' }}
-                </span>
-              </td>
-              <td class="text-center">
-                <span>{{ b.ext_minutes ? Math.floor(b.ext_minutes/30) : '‑' }}</span>
-              </td>
-              <td class="text-center">
-                <span class="fs-3 fw-bold">{{ b.expected_out ? dayjs(b.expected_out).format('HH:mm') : '‑' }}</span>
-              </td>
-          
-              <td>
-                <!-- ── 今ついているキャスト ─────────────────── -->
-                <div class="d-flex flex-wrap gap-2 mb-1 align-items-start" style="min-width:0">
-                  <div
-                    v-for="p in liveCasts(b).filter(p => p.present)"
-                    :key="p.id"
-                    class="d-flex align-items-center btn text-light p-2"
-                    :class="`bg-${p.color}`"
-                  >
-                    <Avatar
-                      :url="p.avatar"
-                      :alt="p.name"
-                      :size="16"
-                      class="me-1"
-                    />
-                    <span class="fw-bold">{{ p.name }}</span>
-                  </div>
-                </div>
 
-                <!-- ── 過去に付いたキャスト ────────────────── -->
-                <div class="d-flex flex-wrap gap-1 past">
-                  <span
-                    v-for="p in liveCasts(b).filter(p => !p.present)"
-                    :key="p.id"
-                    class="badge bg-secondary-subtle text-dark small"
-                  >
-                    {{ p.name }}
-                  </span>
-                </div>
-              </td>
-              <td class="text-end">
-                {{ b.subtotal.toLocaleString() }}
-              </td>
-              <td class="text-end">
-                {{ (b.settled_total ?? (b.closed_at ? b.total : b.grand_total)).toLocaleString() }}
-              </td>
-              <td class="memo">
-                <button
-                  v-if="hasMemo(b)"
-                  type="button"
-                  class=""
-                  @click.stop="toggleMemo(b.id)"
-                  aria-expanded="openMemoId===b.id"
-                >
-                  <IconNote :size="32"/>
-                </button>
-                <div class="area" v-if="openMemoId===b.id">
-                  <div class="memo-text">{{ b.memo }}</div>
-                  <button class="close-btn" @click.stop="openMemoId=null"><IconX /></button>
-                </div>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-    </div>
-      <!-- ★ 削除ボタン -->
-      <button
-        class="btn btn-danger mt-4"
-        :disabled="!selectedIds.size"
-        @click="bulkDelete"
+    <div class="cards-container">
+      <template
+        v-for="(b, idx) in sorted"
+        :key="b.id"
       >
-        <IconTrash /> 削除
-      </button>
+        <!-- ★ 見出し行：前の伝票と日付が違えば出力 -->
+        <div
+          v-if="idx === 0 || !isSameDay(sorted[idx-1].opened_at, b.opened_at)"
+          class="date-header"
+        >
+          {{ b.opened_at ? dayjs(b.opened_at).format('YYYY/MM/DD(ddd)') : '日付未定' }}
+        </div>
+
+        <!-- カード -->
+        <div
+          class="card bill-card"
+          :class="{ 'closed': b.closed_at }"
+          @click="open(b.id)"
+        >
+          <div class="card-header">
+            <div class="row g-2">
+              <div class="col">
+                <div class="label">卓番号</div>
+                <div class="value">{{ b.table?.number ?? '-' }}</div>
+              </div>
+              <div class="col">
+                <div class="label">開始</div>
+                <div class="value">{{ b.opened_at ? dayjs(b.opened_at).format('HH:mm') : '-' }}</div>
+              </div>
+              <div class="col">
+                <div class="label">終了</div>
+                <div class="value">{{ b.closed_at ? dayjs(b.closed_at).format('HH:mm') : (b.expected_out ? dayjs(b.expected_out).format('HH:mm') : '-') }}</div>
+              </div>
+              <div class="col">
+                <div class="label">延長</div>
+                <div class="value">{{ b.ext_minutes ? Math.floor(b.ext_minutes / 30) : '-' }}</div>
+              </div>
+              <div class="col">
+                <div class="label">人数</div>
+                <div class="value">{{ calcPax(b) || '-' }}</div>
+              </div>
+              <div class="col">
+                <div class="label">SET数</div>
+                <div class="value">{{ b.set_rounds || '-' }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- キャスト表示 -->
+            <div class="casts-section">
+              <!-- 今ついているキャスト -->
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <div
+                  v-for="p in liveCasts(b).filter(p => p.present)"
+                  :key="p.id"
+                  class="d-flex align-items-center badge text-light p-2"
+                  :class="`bg-${p.color}`"
+                >
+                  <Avatar
+                    :url="p.avatar"
+                    :alt="p.name"
+                    :size="16"
+                    class="me-1"
+                  />
+                  <span class="fw-bold">{{ p.name }}</span>
+                </div>
+              </div>
+
+              <!-- 過去に付いたキャスト -->
+              <div class="d-flex flex-wrap gap-1">
+                <span
+                  v-for="p in liveCasts(b).filter(p => !p.present)"
+                  :key="p.id"
+                  class="badge bg-secondary-subtle text-dark small"
+                >
+                  {{ p.name }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <div class="row g-2">
+              <div class="col-6">
+                <div class="label">小計</div>
+                <div class="value">¥{{ b.subtotal?.toLocaleString() || '-' }}</div>
+              </div>
+              <div class="col-6">
+                <div class="label">合計</div>
+                <div class="value">¥{{ (b.settled_total ?? (b.closed_at ? b.total : b.grand_total))?.toLocaleString() || '-' }}</div>
+              </div>
+              <div class="col-12">
+                <div class="label">メモ</div>
+                <div v-if="hasMemo(b)" class="memo-content">{{ b.memo }}</div>
+                <div v-else class="text-muted small">メモなし</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
 
       <div class="add-button position-fixed">
         <button
@@ -412,55 +336,91 @@ function liveCasts (b) {
 
 <style scoped lang="scss">
 
-tr.main td{
-  padding:16px 4px;
-  .past{
-    margin-top: 1rem;
-  }
+.cards-container {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 4rem;
 }
 
-.table-close, .table-close td{
-  padding:8px !important;
-  .fs-3{
-    font-size: 14px !important;
-  }
-  .fw-bold{
-    font-weight: normal !important;
-  }
-  .past{
-    margin: auto !important;
-  }
+.date-header {
+  font-weight: bold;
+  font-size: 1rem;
+  padding: 1rem 0 0.5rem 0;
+  color: #666;
+  border-bottom: 1px solid #ccc;
 }
 
-.memo{
-  position: relative;
-  .area{
-    position: absolute;
-    right: calc(100% + 8px);  /* ← セルの左側へ 8px ずらして展開 */
-    top: 50%;
-    transform: translateY(-50%);  /* 中央揃え */
-    z-index: 10;
+  .bill-card {
+.bill-card {
+    position: relative;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 
-    display: inline-block;
-    width: max-content;            /* 内容に合わせて伸びる */
-    max-width: min(60vw, 480px);   /* ただし上限は縛る */
-    padding: 16px;
-    background: #fff;
-    border: 1px solid #ced4da;
-    border-radius: 8px;
-    box-shadow: 0 8px 18px rgba(0,0,0,.08);
-    min-height: 100px;
-
-    /* テキスト折返し設定（これだけでOK） */
-    white-space: pre-wrap;       /* 改行を保持しつつ折返し可 */
-    overflow-wrap: anywhere;     /* 長い単語も折る */
-    .close-btn{
+    &.closed::after {
+      content: '';
       position: absolute;
       top: 0;
+      left: 0;
       right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.3);
+      pointer-events: none;
+      border-radius: inherit;
     }
   }
+
+  .card-header {
+    background-color: white;
+    .col{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+  }
+
+  .card-body {
+  }
+
+  .card-footer {
+    border-top: 1px solid #e9ecef;
+    background-color: white;
+  }
+
+  .card-checkbox {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    input[type="checkbox"] {
+      cursor: pointer;
+    }
+  }
+
+  .label {
+    font-size: 0.75rem;
+    color: #666;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+  }
+
+  .value {
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: #333;
+  }
+
+  .casts-section {
+  }
+
+  .memo-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+    padding: 0.5rem;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    font-size: 0.875rem;
+  }
 }
-
-
 </style>

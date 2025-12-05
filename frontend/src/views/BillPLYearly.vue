@@ -1,6 +1,6 @@
 <!-- src/views/BillPLYearly.vue -->
 <script setup>
-import { ref, watchEffect } from 'vue'
+import { ref, onMounted } from 'vue'
 import { getBillYearlyPL }  from '@/api'
 
 /* -------- state -------- */
@@ -20,7 +20,7 @@ const blankTotals = {
 }
 
 /* -------- fetch -------- */
-watchEffect(async () => {
+async function fetchData(){
   loading.value = true
   try {
     pl.value = await getBillYearlyPL(year.value)
@@ -36,14 +36,21 @@ watchEffect(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(fetchData)
 </script>
 
 <template>
-  <div class="pl pl-yearly container-fluid py-4">
+  <div class="pl pl-yearly py-2">
     <!-- フィルタ -->
-    <div class="d-flex gap-2 mb-3">
-      <input v-model="year" type="number" class="form-control w-auto" min="2000" max="2100">
+    <div class="row g-3 align-items-center mb-3">
+      <div class="col-8">
+        <input id="yearInput" v-model="year" type="number" class="form-control bg-white w-100" min="2000" max="2100">
+      </div>
+      <div class="col-4">
+        <button class="btn btn-primary w-100" @click="fetchData">表示する</button>
+      </div>
     </div>
 
     <div v-if="loading">読み込み中…</div>

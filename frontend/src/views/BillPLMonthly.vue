@@ -1,6 +1,6 @@
 <!-- src/views/BillPLMonthly.vue -->
 <script setup>
-import { ref, watchEffect } from 'vue'
+import { ref, onMounted } from 'vue'
 import { getBillMonthlyPL }   from '@/api'
 
 /* ---------- state ---------- */
@@ -11,27 +11,30 @@ const loading     = ref(false) // ローディングフラグ
 const yen         = n => `¥${(+n || 0).toLocaleString()}`      // undefined → 0
 
 /* ---------- fetch ---------- */
-watchEffect(async () => {
+async function fetchData() {
   loading.value = true
   const { days, monthly_total } = await getBillMonthlyPL(yearMonth.value)
   rows.value   = days
   total.value  = monthly_total
   loading.value = false
-})
+}
+
+onMounted(fetchData)
 </script>
 
 <template>
-  <div class="pl pl-monthly container-fluid py-4">
+  <div class="pl pl-monthly py-2">
     <!-- ── フィルタ ─────────────────────────────── -->
-    <div class="d-flex gap-3 mb-3 align-items-end">
-      <div>
-        <label class="form-label small mb-1">対象月</label>
+    <div class="row g-3 align-items-center mb-3">
+      <div class="col-8">
         <input
           v-model="yearMonth"
           type="month"
-          class="form-control"
-          style="max-width:180px"
+          class="form-control w-100 bg-white"
         >
+      </div>
+      <div class="col-4">
+        <button class="btn btn-primary" @click="fetchData">表示する</button>
       </div>
     </div>
 
@@ -150,8 +153,12 @@ watchEffect(async () => {
   padding: 1.5rem;
 }
 
+th{
+  white-space: nowrap;
+}
+
 td{
-  text-wrap: nowrap;
+  white-space: nowrap;
 }
 
 </style>

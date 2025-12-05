@@ -53,29 +53,24 @@ async function logout () {
       <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
         <!-- -------- ナビ ---------- -->
         <nav class="nav flex-column">
-          <!-- ダッシュボード -->
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-dashboard'})">
-            ダッシュボード
-          </a>
 
-          <!-- 伝票  -->
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-bills'})">
-            伝票一覧
-          </a>
+          <div class="d-flex flex-column mb-4 pb-4 border-bottom gap-3">
+            <!-- ダッシュボード -->
+            <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-dashboard'})">
+              <IconHome /><span class="lh-1">ホーム</span>
+            </a>
+            <!-- 伝票  -->
+            <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-bills'})">
+              <IconReceiptYen /><span class="lh-1">伝票一覧</span>
+            </a>
+            <!-- PL -->
+            <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-pl'})">
+              <IconChartHistogram /><span class="lh-1">収支分析</span>
+            </a>
+          </div>
 
-          <!-- PL -->
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-daily'})">
-            PL/日次
-          </a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-monthly'})">
-            PL/月次
-          </a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-pl-yearly'})">
-            PL/年次
-          </a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'Payroll'})">
-            給与計算
-          </a>
+
+
           <!-- キャスト関連 -->
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-cast-shift'})">
             キャストシフト
@@ -92,6 +87,11 @@ async function logout () {
             顧客情報
           </a>
 
+<!-- 
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'Payroll'})">
+            給与計算
+          </a> -->
+
           <!-- 設定（ManagerLayout配下の /settings） -->
           <a class="nav-link mt-2 bg-white" href="#" @click.prevent="nav({name:'settings'})">
             設定
@@ -99,46 +99,46 @@ async function logout () {
 
 
             <!-- Manual アコーディオン jsとcomponentsから吐き出す -->
-  <div class="accordion accordion-flush my-2" id="accordionManual">
-    <div class="accordion-item">
-      <h2 class="accordion-header" id="headingManual">
-        <button
-          class="accordion-button collapsed px-2 text-muted bg-white"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#collapseManual"
-          aria-expanded="false"
-          aria-controls="collapseManual">
-          マニュアル
-        </button>
-      </h2>
-      <div
-        id="collapseManual"
-        class="accordion-collapse collapse"
-        aria-labelledby="headingManual"
-        data-bs-parent="#accordionManual">
-        <div class="accordion-body py-2 bg-white">
-          <div class="d-flex flex-column">
-            <!-- ★ 一覧をループ -->
-            <a
-              v-for="m in MANUALS"
-              :key="m.path"
-              class="nav-link ps-3 ms-1 bg-white"
-              :href="m.path"
-              target="_blank" rel="noopener"
-              @click.prevent="openManualLink(m.path)"
-            >
-              {{ m.title }}
-            </a>
+          <div class="accordion accordion-flush my-2 d-none" id="accordionManual">
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="headingManual">
+                <button
+                  class="accordion-button collapsed px-2 text-muted bg-white"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#collapseManual"
+                  aria-expanded="false"
+                  aria-controls="collapseManual">
+                  マニュアル
+                </button>
+              </h2>
+              <div
+                id="collapseManual"
+                class="accordion-collapse collapse"
+                aria-labelledby="headingManual"
+                data-bs-parent="#accordionManual">
+                <div class="accordion-body py-2 bg-white">
+                  <div class="d-flex flex-column">
+                    <!-- ★ 一覧をループ -->
+                    <a
+                      v-for="m in MANUALS"
+                      :key="m.path"
+                      class="nav-link ps-3 ms-1 bg-white"
+                      :href="m.path"
+                      target="_blank" rel="noopener"
+                      @click.prevent="openManualLink(m.path)"
+                    >
+                      {{ m.title }}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
-  </div>
 
 
           <!-- ステーション（KDS） -->
-          <div class="accordion accordion-flush my-2" id="accordionStations">
+          <div class="accordion accordion-flush my-2 d-none" id="accordionStations">
             <div class="accordion-item">
               <h2 class="accordion-header" id="headingStations">
                 <button
@@ -174,9 +174,12 @@ async function logout () {
               </div>
             </div>
           </div>
+        </nav>
 
+        <!-- -------- フッタ ---------- -->
+        <div class="footer d-flex flex-column gap-2">
           <!-- 広告 -->
-          <div class="mt-auto">
+          <div class="">
             <a href="https://studio-color.jp/" class="d-flex text-black justify-content-between align-items-center" target="_blank" rel="noopener">
               <div class="wrap d-flex flex-column">
                 <span style="font-size: 12px;">キャスト撮影やコンテンツ制作なら</span>
@@ -184,10 +187,6 @@ async function logout () {
               </div>
             </a>
           </div>
-        </nav>
-
-        <!-- -------- フッタ ---------- -->
-        <div class="footer d-flex flex-column gap-2">
           <div class="d-flex justify-content-between align-items-center mb-3">
             <div class="d-flex align-items-center gap-2">
               <Avatar :url="avatarURL" :size="40" class="rounded-circle"/> 

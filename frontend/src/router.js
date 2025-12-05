@@ -105,28 +105,29 @@ const routes = [
     meta: { rolesAny: ['manager','superuser'], title: 'MANAGER' },
     children: [
       { path: '', redirect: { name: 'mng-dashboard' } },
-      { path: 'dashboard', name: 'mng-dashboard', component: () => import('@/views/manager/ManagerDashboard.vue'), meta:{ rolesAny: ['manager','superuser'], title:'DASHBOARD' } },
+      { path: 'dashboard', name: 'mng-dashboard', component: () => import('@/views/manager/ManagerDashboard.vue'), meta:{ rolesAny: ['manager','superuser'], title:'ホーム' } },
 
       { path: 'bills', name: 'mng-bills', component: () => import('@/views/BillList.vue'), meta: { title: '伝票一覧', rolesAny: ['manager','staff','superuser'], requiresAuth: true, adminOnly: true } },
       { path: 'bills/:id', name: 'BillDetail', component: () => import('@/views/BillDetailPage.vue'), props: true, meta: { title: '伝票詳細', rolesAny: ['manager','staff','superuser'], requiresAuth: true, adminOnly: true } },
-      { path: 'bill', name:'mng-bill-table', component: () => import('@/views/DashboardAdmin.vue'), meta: { title: 'TABLE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
-      { path: 'bill/list', name:'mng-bill-list', component: () => import('@/views/DashboardList.vue'),  meta: { title: 'LIST', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+      { path: 'bill', name:'mng-bill-table', component: () => import('@/views/DashboardAdmin.vue'), meta: { title: '卓伝票', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
+      { path: 'bill/list', name:'mng-bill-list', component: () => import('@/views/DashboardList.vue'),  meta: { title: '伝票一覧', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
       { path: 'bill/timeline', name:'mng-bill-tl', component: () => import('@/views/DashboardGantt.vue'), meta: { title: 'TIMELINE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
 
       { path: 'profile', name: 'mng-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ rolesAny:['manager'], title:'プロフィール編集' } },
       { path: 'pl/daily',  name:'mng-pl-daily',  component: () => import('@/views/BillPLDaily.vue'),   meta: { title: '売上-日次', rolesAny: ['owner','superuser'], requiresAuth:true } },
       { path: 'pl/Monthly', name:'mng-pl-monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次', rolesAny: ['owner','superuser'], requiresAuth:true } },
       { path: 'pl/yearly', name:'mng-pl-yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次', rolesAny: ['owner','superuser'], requiresAuth:true } },
-      
+      { path: 'pl', name:'mng-pl',  component: () => import('@/views/PLPage.vue'), meta: { title: '収支分析', rolesAny: ['manager','owner','superuser'], requiresAuth:true } },
+
       { path: 'cast-sales', name:'mng-cast-sales', component: () => import('@/views/CastSalesList.vue'),   meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
       { path: 'cast-sales/:id',    component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail', meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
       { path: 'cast-shift', name:'mng-cast-shift' ,component: () => import('@/views/CastShiftList.vue'),   props: true, meta: { title: 'シフト管理' } },
       { path: 'cast-shift/:id(\\d+)/shifts', name:'mng-cast-shift-detail', component: () => import('@/views/CastShiftPage.vue'), props: true , meta: { title: 'シフト管理' } },
 
       { path: 'ranking', name:'mng-ranking',  component: () => import('@/views/CastRanking.vue'),        props: true, meta: { title: 'ランキング',    requiresAuth: true, adminOnly: true } },
-      { path: 'table', name:'mng-tables', component: () => import('@/components/BillListTable.vue'), props: true, meta: { title: 'テーブルビュー', requiresAuth: true, adminOnly: true }},
+      { path: 'table', name:'mng-tables', component: () => import('@/components/BillListTable.vue'), props: true, meta: { title: '卓伝票', requiresAuth: true, adminOnly: true }},
       { path: 'customers', name:'mng-customers', component: () => import('@/views/CustomerPage.vue'),       props: true, meta: { title: '顧客情報',      requiresAuth: true, adminOnly: true }},
-      { path: 'profile', name: 'mng-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ title:'プロフィール編集' } },
+      { path: 'profile', name: 'mng-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ title:'  ' } },
       {
         path: 'customers/:id(\\d+)',
         name: 'customer-detail',

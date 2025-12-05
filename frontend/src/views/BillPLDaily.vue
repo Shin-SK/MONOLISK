@@ -42,11 +42,15 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="pl pl-daily">
+  <div class="pl pl-daily py-2">
     <template v-if="pl">
-      <div class="d-flex align-items-center gap-2 mb-3">
-        <input v-model="dateStr" type="date" class="form-control w-auto">
-        <button class="btn btn-primary" @click="fetchData">読み込み</button>
+      <div class="row g-3 align-items-center mb-3">
+        <div class="col-8">
+          <input v-model="dateStr" type="date" class="form-control w-100 bg-white">
+        </div>
+        <div class="col-4">
+          <button class="btn btn-primary" @click="fetchData">表示する</button>
+        </div>
       </div>
 
       <div class="summary-area row g-3">

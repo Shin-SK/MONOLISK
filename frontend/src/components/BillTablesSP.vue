@@ -55,6 +55,22 @@ function calcRemainMin(bill) {
   const limit   = bill.round_min || 60
   return Math.max(limit - elapsed, 0)
 }
+
+function calcPax(bill) {
+  if (!bill) return 0
+  // items から male/female を集計
+  const items = bill.items || []
+  let male = 0, female = 0
+  for (const it of items) {
+    const code = it.master?.code || it.code || ''
+    if (code.includes('Male')) male += (it.qty || 0)
+    else if (code.includes('Female')) female += (it.qty || 0)
+  }
+  const total = male + female
+  // 0の場合は bill.pax をフォールバック
+  return total > 0 ? total : (bill.pax || 0)
+}
+
 const unassigned = computed(() => {
   const stayIds = new Set(
     billsStore.list.flatMap(b => (b.stays||[])
@@ -139,9 +155,8 @@ defineExpose({ reload })
 </script>
 
 <template>
-  <!-- ★ あなたのSCSSに合わせる：この配下の構造/クラスはPCと同じ -->
+
   <section class="tables">
-    <!-- ベンチ（表示のみ） -->
     <div class="bench-cast d-flex justify-content-center bg-white flex-wrap w-100">
       <div class="table-box w-100">
         <div class="casts d-flex flex-wrap gap-2">
@@ -157,7 +172,7 @@ defineExpose({ reload })
       </div>
     </div>
 
-    <!-- テーブル（PCと同じブロック構造/装飾、DnDだけ無し） -->
+    <!-- テーブル -->
     <div class="tables-main d-grid gap-4 mt-4">
       <div
         v-for="t in tables"
@@ -166,17 +181,59 @@ defineExpose({ reload })
         @click="onTapTable(t)"
       >
 
+        <!-- ヘッダー -->
+        <div
+          v-if="getOpenBill(t.id) && !getOpenBill(t.id).closed_at"
+          class="sum bg-white p-2 d-flex gap-3 justify-content-between align-items-center fs-5"
+        >
+          <div class="df-center flex-column gap-1">
+            <span class="badge bg-light text-dark m-0 df-center gap-1">
+              <IconPinned/>卓番
+            </span>
+            <span class="fs-4 fw-bold">
+              {{ t.number }}</span>
+          </div>
+
+          <div class="df-center flex-column gap-1">
+            <span class="badge bg-light text-dark m-0 df-center gap-1">
+              <IconUsers />客数
+            </span>
+            <span class="fs-4 fw-bold">
+              {{ calcPax(getOpenBill(t.id)) }}</span>
+          </div>
+
+          <div class="df-center flex-column gap-1">
+            <span class="badge bg-light text-dark m-0 df-center gap-1">
+              <IconHistoryToggle :size="20"/>残り
+            </span>
+            <span class="fs-4 fw-bold">
+              {{ calcRemainMin(getOpenBill(t.id)) }}分</span>
+          </div>
+
+          <div class="df-center flex-column gap-1">
+            <span class="badge bg-light text-dark m-0 df-center gap-1">
+              <IconCurrencyYen :size="20"/>小計
+            </span>
+            <span class="fs-4 fw-bold">
+              {{ (getOpenBill(t.id)?.subtotal||0).toLocaleString() }}
+            </span>
+          </div>
+        </div>
+
         <!-- 本体（PCと同じ：空席はラベル、在席時はキャスト一覧） -->
         <div class="table-box h-100 d-flex flex-column bg-white">
           <!-- 空席 -->
           <div
             v-if="!getOpenBill(t.id)"
-            class="vacant-label flex-grow-1 d-flex justify-content-center align-items-center fs-3 bg-secondary text-light"
+            class="vacant-label flex-grow-1 df-center flex-column bg-secondary text-light"
             style="min-height: 100px;"
           >
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-1">
               <IconPinned :size="22" />
-              <span class="fw-bold">{{ t.number }}</span>
+              <span class="fw-bold fs-3">{{ t.number }}</span>
+            </div>
+            <div class="df-center">
+              <span class="badge bg-light text-secondary">伝票を作る</span>
             </div>
           </div>
 
@@ -188,7 +245,7 @@ defineExpose({ reload })
               class="cast-card btn text-light p-2 d-flex align-items-center"
               :class="`bg-${bgColor({
                 kind: s.stay_type,
-                is_help: s.is_help === true,   // ← これを渡す！
+                is_help: s.is_help === true,
                 dohan: s.stay_type === 'dohan',
                 entered_at: s.entered_at
               })}`"
@@ -205,36 +262,7 @@ defineExpose({ reload })
           </div>
         </div>
 
-        <!-- フッター（PCと同じ .sum 相当の情報帯） -->
-        <div
-          v-if="getOpenBill(t.id) && !getOpenBill(t.id).closed_at"
-          class="sum bg-white p-2 d-flex gap-3 justify-content-between align-items-center fs-5"
-        >
-          <div class="table-number align-items-center gap-1 d-md-none d-flex">
-            <IconPinned :size="20"/>
-            <span>{{ t.number }}</span>
-          </div>
 
-          <div v-if="getOpenBill(t.id)?.id != null" class="item d-flex gap-1 align-items-center d-md-none d-flex">
-            <IconNotes :size="20"/>
-            <span>{{ getOpenBill(t.id)?.id }}</span>
-          </div>
-
-          <div v-if="getOpenBill(t.id)?.pax != null" class="item d-md-none d-flex">
-            <IconUsers />{{ getOpenBill(t.id)?.pax }}
-          </div>
-
-          <div v-if="calcRemainMin(getOpenBill(t.id)) !== null" class="item d-flex gap-2 align-items-center">
-            <IconHistoryToggle :size="20"/><span>{{ calcRemainMin(getOpenBill(t.id)) }}分</span>
-          </div>
-
-          <div v-if="getOpenBill(t.id)?.subtotal != null" class="item d-flex gap-0 align-items-center">
-            <IconCurrencyYen :size="20"/>
-            <span class="d-flex align-items-center">
-              {{ (getOpenBill(t.id)?.subtotal||0).toLocaleString() }}
-            </span>
-          </div>
-        </div>
       </div>
     </div>
   </section>

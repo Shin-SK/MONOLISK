@@ -9,11 +9,26 @@ import {
   fetchStaffShifts,
 } from '@/api'
 import MiniTip from '@/components/MiniTip.vue'
+import Avatar from '@/components/Avatar.vue'
+import { useUser } from '@/stores/useUser'
+import { useProfile } from '@/composables/useProfile'
 
+const user = useUser()
+const { avatarURL } = useProfile()
+
+const userName = computed(() => {
+  return user.me?.username || user.me?.email || 'ユーザー'
+})
 
 const showOpenTip = ref(false)
 const showDutyTip = ref(false)
 
+/* ----------------- タブ管理 ----------------- */
+const activeTab = ref('sales') // 'sales', 'bills', 'download'
+
+function switchTab(tabId) {
+  activeTab.value = tabId
+}
 
 /* ----------------- 日付（単日） ----------------- */
 const date = ref(dayjs().format('YYYY-MM-DD'))
@@ -213,17 +228,66 @@ const kpiDutyLabel = computed(() =>
 
 <template>
   <div class="manager-dashboard">
-    <!-- 日付コントロール -->
-    <div class="mb-3" style="width: fit-content;">
-      <input type="date" v-model="date" class="form-control bg-white" />
+
+    <div class="header d-flex justify-content-between align-items-center mb-4">
+      <div class="user-info d-flex align-items-center gap-2">
+        <Avatar :url="avatarURL" :size="60" class="rounded-circle" />
+        <div class="name fs-5 fw-bold">{{ userName }}</div>
+      </div>
+      <div class="df-center gap-3 fs-4">
+
+        <RouterLink :to="{ name:'mng-bills' }">
+          <IconReceiptYen />
+        </RouterLink>
+        <RouterLink :to="{ name:'mng-pl' }">
+          <IconChartHistogram />
+        </RouterLink>
+      </div>
+    <!-- <div class="search">
+      <span>日付を変更する</span>
+      <div class="mb-3" style="width: fit-content;">
+        <input type="date" v-model="date" class="form-control bg-white" />
+      </div>
+    </div> -->
     </div>
+
+
+    <nav class="row border-bottom g-1 mb-4">
+      <div
+        class="col-4"
+        :class="{ 'border-bottom border-3 border-secondary': activeTab === 'sales' }">
+        <button 
+          class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+          @click="switchTab('sales')">
+          売上
+        </button>
+      </div>
+      <div
+        class="col-4"
+        :class="{ 'border-bottom border-3 border-secondary': activeTab === 'bills' }">
+        <button 
+          class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+          @click="switchTab('bills')">
+          伝票
+        </button>
+      </div>
+      <div
+        class="col-4"
+        :class="{ 'border-bottom border-3 border-secondary': activeTab === 'download' }">
+        <button
+          class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+          @click="switchTab('download')">
+          ダウンロード
+        </button>
+      </div>
+    </nav>
 
     <!-- ロード／エラー -->
     <div v-if="loading">読み込み中…</div>
     <div v-else-if="errorMsg">{{ errorMsg }}</div>
 
     <!-- KPIカード -->
-    <div v-else>
+    <div v-show="activeTab === 'sales'" v-else>
       <div class="area card-area row g-3">
         <!-- 置き換え：今日の売上カード内 -->
         <div class="col-12 col-md-3 d-flex">
@@ -283,52 +347,53 @@ const kpiDutyLabel = computed(() =>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- 伝票一覧（ミニ） -->
-      <div class="area my-4">
-        <div class="h4 fw-bold text-center">今日の伝票</div>
-        <div class="text-center my-5" v-if="!billsToday.length">まだありません</div>
-        <div v-else>
-          <div v-for="b in billsToday" :key="b.id" class="mb-3">
-            <div class="card p-3">
-              <div class="wrap d-flex align-items-center gap-2">
-                <div>#{{ b.id }}</div>
-                <div><IconPinned class="me-1"/>{{ b.table?.number ?? '-' }}</div>
-                <div v-if="b.customer_display_name">
-                  <IconUserScan />{{ b.customer_display_name }}
-                </div>
+    <!-- 伝票一覧（ミニ） -->
+    <div v-show="activeTab === 'bills'" class="area my-4">
+      <div class="h4 fw-bold text-center">今日の伝票</div>
+      <div class="text-center my-5" v-if="!billsToday.length">まだありません</div>
+      <div v-else>
+        <div v-for="b in billsToday" :key="b.id" class="mb-3">
+          <div class="card p-3">
+            <div class="wrap d-flex align-items-center gap-2">
+              <div>#{{ b.id }}</div>
+              <div><IconPinned class="me-1"/>{{ b.table?.number ?? '-' }}</div>
+              <div v-if="b.customer_display_name">
+                <IconUserScan />{{ b.customer_display_name }}
               </div>
-              <div class="wrap my-2">
-                <div class="fs-5 mb-1">
-                  <IconClock />{{ fmtTime(b.opened_at) }}-{{ fmtTime(b.closed_at || b.expected_out) }}
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                  <span class="badge bg-secondary">合計</span>
-                  <span class="fs-4 fw-bold">{{ fmtYen(b.settled_total ?? (b.closed_at ? b.total : b.grand_total)) }}</span>
-                </div>
+            </div>
+            <div class="wrap my-2">
+              <div class="fs-5 mb-1">
+                <IconClock />{{ fmtTime(b.opened_at) }}-{{ fmtTime(b.closed_at || b.expected_out) }}
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-secondary">合計</span>
+                <span class="fs-4 fw-bold">{{ fmtYen(b.settled_total ?? (b.closed_at ? b.total : b.grand_total)) }}</span>
+              </div>
 
-              </div>
-              <div v-if="b.memo">
-                メモ: {{ b.memo }}
-              </div>
+            </div>
+            <div v-if="b.memo">
+              メモ: {{ b.memo }}
             </div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- CSV -->
-      <div class="area my-4">
-        <div class="h4 fw-bold text-center">CSVダウンロード</div>
-        <div class="row g-3">
-			<div class="col-6">
-				<button class="btn btn-secondary w-100" type="button" @click="downloadBillsCsv">伝票CSV</button>
-			</div>
-			<div class="col-6">
-				<button class="btn btn-secondary w-100" type="button" @click="downloadItemsCsv">明細CSV</button>
-			</div>
-        </div>
+    <!-- CSV -->
+    <div v-show="activeTab === 'download'" class="area my-4">
+      <div class="h4 fw-bold text-center">CSVダウンロード</div>
+      <div class="row g-3">
+    <div class="col-6">
+      <button class="btn btn-secondary w-100" type="button" @click="downloadBillsCsv">伝票CSV</button>
+    </div>
+    <div class="col-6">
+      <button class="btn btn-secondary w-100" type="button" @click="downloadItemsCsv">明細CSV</button>
+    </div>
       </div>
     </div>
+
   </div>
 </template>
 
