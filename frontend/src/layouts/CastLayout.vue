@@ -22,6 +22,10 @@ function openSidebar(){
   openOffcanvas('#castSidebar')
 }
 
+/* ---------- タブ ---------- */
+const activeTab = ref(null)
+const setTab = k => (activeTab.value = k)
+
 const candidates = ref([])      // 本指名で「自卓」注文できる Bill 候補
 const singleBillId = computed(() => candidates.value.length === 1 ? candidates.value[0].id : null)
 const hasSelfOrder = computed(() => candidates.value.length > 0)
@@ -97,9 +101,46 @@ watch(() => route.fullPath, (p) => {
 
 <template>
   <div class="cast-layout min-vh-100 d-flex">
+
+    <footer class="position-fixed bottom-0 left-0 w-100 bg-white py-4">
+    <!-- タブ -->
+      <nav class="d-flex justify-content-around bg-white">
+        <button
+          class="df-center flex-column"
+          :class="{ active: activeTab === 'apply' }"
+          @click="setTab('apply')"
+        >
+          <IconCalendarPlus :size="40" class="fs-4"/>
+          <span class="text-muted">シフト</span>   
+        </button>
+        <button
+          class="df-center flex-column"
+          :class="{ active: activeTab === 'goals' }"
+          @click="setTab('goals')"
+        >
+          <IconTargetArrow :size="40" class="fs-4"/><span class="text-muted">目標</span>
+        </button>
+        <button
+          class="df-center flex-column"
+          :class="{ active: activeTab === 'sales' }"
+          @click="setTab('sales')"
+        >
+          <IconRosetteDiscountCheck :size="40" class="fs-4"/><span class="text-muted">売上</span>
+        </button>
+        <button
+          class="df-center flex-column"
+          :class="{ active: activeTab === 'customers' }"
+          @click="setTab('customers')"
+        >
+          <IconFaceId :size="40" class="fs-4"/><span class="text-muted">顧客</span>
+        </button>
+      </nav>
+
+    </footer>
+
     <!-- ▼ キャスト共通フッター（伝票画面では右からスライド表示に切替） -->
     <div
-      class="cast-footer d-flex"
+      class="cast-footer d-flex d-none"
      :class="{
        'is-orderpage': isOrderPage,
        'is-open': isOrderPage && showCastFooter
