@@ -18,6 +18,7 @@ venv*/
 /staticfiles/
 # local settings / secrets
 .env
+.env.local
 *.env
 
 # --- Frontend (Vue / Vite) ------------------------------------------
