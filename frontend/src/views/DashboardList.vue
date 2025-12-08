@@ -5,7 +5,7 @@ import { ref, onMounted, computed } from 'vue'
 import dayjs              from 'dayjs'          // ← 忘れずに
 import { useBills }       from '@/stores/useBills'
 import BillModal          from '@/components/BillModal.vue'
-import Avatar        from '@/components/Avatar.vue'
+import BillListCard       from '@/components/BillListCard.vue'
 import { createBill, deleteBill } from '@/api'
 
 /* ───── reactive state ───── */
@@ -227,92 +227,11 @@ function liveCasts (b) {
         </div>
 
         <!-- カード -->
-        <div
-          class="card bill-card"
-          :class="{ 'closed': b.closed_at }"
-          @click="open(b.id)"
-        >
-          <div class="card-header">
-            <div class="row g-2">
-              <div class="col">
-                <div class="label">卓番号</div>
-                <div class="value">{{ b.table?.number ?? '-' }}</div>
-              </div>
-              <div class="col">
-                <div class="label">開始</div>
-                <div class="value">{{ b.opened_at ? dayjs(b.opened_at).format('HH:mm') : '-' }}</div>
-              </div>
-              <div class="col">
-                <div class="label">終了</div>
-                <div class="value">{{ b.closed_at ? dayjs(b.closed_at).format('HH:mm') : (b.expected_out ? dayjs(b.expected_out).format('HH:mm') : '-') }}</div>
-              </div>
-              <div class="col">
-                <div class="label">延長</div>
-                <div class="value">{{ b.ext_minutes ? Math.floor(b.ext_minutes / 30) : '-' }}</div>
-              </div>
-              <div class="col">
-                <div class="label">人数</div>
-                <div class="value">{{ calcPax(b) || '-' }}</div>
-              </div>
-              <div class="col">
-                <div class="label">SET数</div>
-                <div class="value">{{ b.set_rounds || '-' }}</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card-body">
-            <!-- キャスト表示 -->
-            <div class="casts-section">
-              <!-- 今ついているキャスト -->
-              <div class="d-flex flex-wrap gap-2 mb-2">
-                <div
-                  v-for="p in liveCasts(b).filter(p => p.present)"
-                  :key="p.id"
-                  class="d-flex align-items-center badge text-light p-2"
-                  :class="`bg-${p.color}`"
-                >
-                  <Avatar
-                    :url="p.avatar"
-                    :alt="p.name"
-                    :size="16"
-                    class="me-1"
-                  />
-                  <span class="fw-bold">{{ p.name }}</span>
-                </div>
-              </div>
-
-              <!-- 過去に付いたキャスト -->
-              <div class="d-flex flex-wrap gap-1">
-                <span
-                  v-for="p in liveCasts(b).filter(p => !p.present)"
-                  :key="p.id"
-                  class="badge bg-secondary-subtle text-dark small"
-                >
-                  {{ p.name }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div class="card-footer">
-            <div class="row g-2">
-              <div class="col-6">
-                <div class="label">小計</div>
-                <div class="value">¥{{ b.subtotal?.toLocaleString() || '-' }}</div>
-              </div>
-              <div class="col-6">
-                <div class="label">合計</div>
-                <div class="value">¥{{ (b.settled_total ?? (b.closed_at ? b.total : b.grand_total))?.toLocaleString() || '-' }}</div>
-              </div>
-              <div class="col-12">
-                <div class="label">メモ</div>
-                <div v-if="hasMemo(b)" class="memo-content">{{ b.memo }}</div>
-                <div v-else class="text-muted small">メモなし</div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <BillListCard
+          :bill="b"
+          :isSelectable="false"
+          @edit="open"
+        />
       </template>
     </div>
 

@@ -403,13 +403,13 @@ class Bill(models.Model):
     @property
     def set_rounds(self):
         """SET 行の行数（ラウンド数）"""
-        return self.items.filter(item_master__code__startswith='set').count()
+        return self.items.filter(item_master__code__icontains='set').count()
 
     @property
     def ext_minutes(self):
         qs = self.items.filter(
-            Q(item_master__code__startswith='extension') |
-            Q(item_master__code__startswith='ext')
+            Q(item_master__code__icontains='extension') |
+            Q(item_master__code__icontains='ext')
         )
         return sum(
             (it.duration_min or 30) * it.qty

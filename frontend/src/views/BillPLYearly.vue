@@ -49,7 +49,8 @@ onMounted(fetchData)
         <input id="yearInput" v-model="year" type="number" class="form-control bg-white w-100" min="2000" max="2100">
       </div>
       <div class="col-4">
-        <button class="btn btn-primary w-100" @click="fetchData">表示する</button>
+        <button style="white-space: nowrap;"
+          class="btn btn-sm btn-primary h-100 w-100" @click="fetchData">表示する</button>
       </div>
     </div>
 

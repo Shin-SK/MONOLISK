@@ -44,12 +44,14 @@ onMounted(async () => {
 <template>
   <div class="pl pl-daily py-2">
     <template v-if="pl">
-      <div class="row g-3 align-items-center mb-3">
+      <div class="row g-2 align-items-center mb-3">
         <div class="col-8">
           <input v-model="dateStr" type="date" class="form-control w-100 bg-white">
         </div>
-        <div class="col-4">
-          <button class="btn btn-primary" @click="fetchData">表示する</button>
+        <div class="col-4 h-100">
+          <button
+          style="white-space: nowrap;"
+          class="btn btn-sm btn-primary h-100 w-100" @click="fetchData">表示する</button>
         </div>
       </div>
 

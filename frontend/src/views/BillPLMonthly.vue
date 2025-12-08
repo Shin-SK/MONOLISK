@@ -34,7 +34,8 @@ onMounted(fetchData)
         >
       </div>
       <div class="col-4">
-        <button class="btn btn-primary" @click="fetchData">表示する</button>
+          <button style="white-space: nowrap;"
+          class="btn btn-sm btn-primary h-100 w-100"@click="fetchData">表示する</button>
       </div>
     </div>
 

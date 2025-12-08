@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { api } from '@/api'
 import Avatar from '@/components/Avatar.vue'
+import BillListCard from '@/components/BillListCard.vue'
+import { deleteBill } from '@/api'
 
 const router = useRouter()
 const bills = ref([])
@@ -13,6 +15,9 @@ const pageSize = 30
 const searchQuery = ref('')
 const dateFilter = ref('today')
 const selectedDate = ref(dayjs().format('YYYY-MM-DD'))
+const isSelectionMode = ref(false)
+const selectedIds = ref(new Set())
+const showDateInput = ref(false)
 
 const yen = n => `¥${(Number(n || 0)).toLocaleString()}`
 const formatDate = s => s ? dayjs(s).format('M/D') : '-'
@@ -23,15 +28,19 @@ const filteredBills = computed(() => {
   let result = bills.value
 
   // 日付フィルタ
-  if (dateFilter.value === 'today' || dateFilter.value === 'date') {
-    const targetDate = dateFilter.value === 'today' 
-      ? dayjs().format('YYYY-MM-DD')
-      : selectedDate.value
+  if (dateFilter.value === 'today') {
+    const targetDate = dayjs().format('YYYY-MM-DD')
     result = result.filter(bill => {
       if (!bill.closed_at) return false
       return dayjs(bill.closed_at).format('YYYY-MM-DD') === targetDate
     })
+  } else if (dateFilter.value === 'date') {
+    result = result.filter(bill => {
+      if (!bill.closed_at) return false
+      return dayjs(bill.closed_at).format('YYYY-MM-DD') === selectedDate.value
+    })
   }
+  // dateFilter.value === 'all' の場合はフィルタなし
 
   // 検索クエリ
   if (searchQuery.value.trim()) {
@@ -89,6 +98,13 @@ async function loadBills() {
       }
     })
     bills.value = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
+    // デバッグ：最初のbillをログに出力
+    if (bills.value.length > 0) {
+      console.log('First bill data:', bills.value[0])
+      console.log('set_rounds:', bills.value[0].set_rounds)
+      console.log('ext_minutes:', bills.value[0].ext_minutes)
+      console.log('items:', bills.value[0].items)
+    }
   } catch (e) {
     console.error(e)
     alert('伝票の取得に失敗しました')
@@ -169,6 +185,51 @@ function hasMemo(b) {
   return !!(b?.memo && String(b.memo).trim())
 }
 
+function toggleSelectMode() {
+  isSelectionMode.value = !isSelectionMode.value
+  if (!isSelectionMode.value) {
+    selectedIds.value.clear()
+  }
+}
+
+function handleSelect(billId) {
+  if (selectedIds.value.has(billId)) {
+    selectedIds.value.delete(billId)
+  } else {
+    selectedIds.value.add(billId)
+  }
+}
+
+function handleEdit(billId) {
+  router.push({ name: 'BillDetail', params: { id: billId } })
+}
+
+async function bulkDelete() {
+  if (!selectedIds.value.size) return
+  if (!window.confirm(`${selectedIds.value.size} 件を削除しますか？`)) return
+
+  try {
+    const ids = [...selectedIds.value]
+    await Promise.all(ids.map(id => deleteBill(id)))
+    selectedIds.value.clear()
+    isSelectionMode.value = false
+    await loadBills()
+  } catch (e) {
+    console.error(e)
+    alert('削除に失敗しました')
+  }
+}
+
+function applyDateFilter() {
+  dateFilter.value = 'date'
+  showDateInput.value = false
+}
+
+function applyAllPeriods() {
+  dateFilter.value = 'all'
+  showDateInput.value = false
+}
+
 onMounted(loadBills)
 </script>
 
@@ -176,45 +237,8 @@ onMounted(loadBills)
   <div class="py-3 py-md-4">
 
     <!-- フィルタ・検索エリア -->
-    <div class="row mb-3 mb-md-4">
-      <div class="col-12 col-md-6 mb-3 mb-md-0">
-        <!-- 日付セグメント -->
-        <div class="d-flex flex-column gap-2">
-          <div class="btn-group" role="group">
-            <button 
-              type="button" 
-              class="btn"
-              :class="dateFilter === 'today' ? 'btn-primary' : 'btn-outline-primary'"
-              @click="dateFilter = 'today'"
-            >
-              今日
-            </button>
-            <button 
-              type="button" 
-              class="btn"
-              :class="dateFilter === 'date' ? 'btn-primary' : 'btn-outline-primary'"
-              @click="dateFilter = 'date'"
-            >
-              日付指定
-            </button>
-            <button 
-              type="button" 
-              class="btn"
-              :class="dateFilter === 'all' ? 'btn-primary' : 'btn-outline-primary'"
-              @click="dateFilter = 'all'"
-            >
-              全期間
-            </button>
-          </div>
-          <input 
-            v-if="dateFilter === 'date'"
-            v-model="selectedDate"
-            type="date" 
-            class="form-control"
-          />
-        </div>
-      </div>
-      <div class="col-12 col-md-6">
+    <div class="row g-2">
+      <div class="col-12">
         <!-- 検索ボックス -->
         <input 
           v-model="searchQuery"
@@ -223,18 +247,64 @@ onMounted(loadBills)
           placeholder="テーブル名、キャスト名で検索..."
         >
       </div>
+      <div class="col-6">
+      <!-- 日付入力 -->
+        <input 
+          v-show="dateFilter === 'date'"
+          v-model="selectedDate"
+          type="date" 
+          class="form-control bg-white"
+        />
+      </div>
+      <div class="col-3">
+        <button
+          class="btn btn-sm btn-secondary w-100 h-100"
+          @click="applyDateFilter"
+        >
+          検索
+        </button>
+      </div>
+      <div class="col-3">
+        <button
+          class="btn btn-sm btn-secondary w-100 h-100"
+          @click="applyAllPeriods"
+        >
+          全期間
+        </button>
+      </div>
     </div>
 
     <!-- 件数表示 -->
-    <div class="text-muted small mb-3">
-      {{ filteredBills.length }}件
+    <div class="text-muted small my-3">
+      検索結果 : {{ filteredBills.length }}件
     </div>
-    <div class="color d-flex gap-2 mb-3 align-items-center">
-        <div class="badge bg-danger text-white">本指名</div>
-        <div class="badge bg-success text-white">場内</div>
-        <div class="badge bg-blue text-white">フリー</div>
+    <div class="wrap d-flex align-items-end justify-content-between">
+
+      <div class="color d-flex gap-2 mb-3 align-items-center">
+          <div class="badge bg-danger text-white">本指名</div>
+          <div class="badge bg-success text-white">場内</div>
+          <div class="badge bg-blue text-white">フリー</div>
+      </div>
+      
+      <div class="wrap d-flex gap-2 mb-3">
+        <button
+          class="btn btn-sm align-items-center gap-1"
+          :class="isSelectionMode ? 'btn-danger' : 'btn-secondary'"
+          @click="toggleSelectMode"
+        >
+          <IconTrash />{{ isSelectionMode ? 'キャンセル' : '削除' }}
+        </button>
+        <button
+          v-if="isSelectionMode && selectedIds.size > 0"
+          class="btn btn-sm btn-danger align-items-center gap-1"
+          @click="bulkDelete"
+        >
+          <IconTrash />{{ selectedIds.size }}件削除
+        </button>
+      </div>
+
     </div>
-    
+
     <div v-if="loading" class="text-center py-5">
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">読み込み中...</span>
@@ -260,91 +330,13 @@ onMounted(loadBills)
           </div>
 
           <!-- カード -->
-          <div
-            class="card bill-card"
-            @click="viewDetail(b.id)"
-          >
-            <div class="card-header">
-              <div class="row g-2">
-                <div class="col">
-                  <div class="label">卓番号</div>
-                  <div class="value">{{ b.table?.number ?? '-' }}</div>
-                </div>
-                <div class="col">
-                  <div class="label">開始</div>
-                  <div class="value">{{ b.opened_at ? dayjs(b.opened_at).format('HH:mm') : '-' }}</div>
-                </div>
-                <div class="col">
-                  <div class="label">終了</div>
-                  <div class="value">{{ b.closed_at ? dayjs(b.closed_at).format('HH:mm') : (b.expected_out ? dayjs(b.expected_out).format('HH:mm') : '-') }}</div>
-                </div>
-                <div class="col">
-                  <div class="label">延長</div>
-                  <div class="value">{{ b.ext_minutes ? Math.floor(b.ext_minutes / 30) : '-' }}</div>
-                </div>
-                <div class="col">
-                  <div class="label">人数</div>
-                  <div class="value">{{ calcPax(b) || '-' }}</div>
-                </div>
-                <div class="col">
-                  <div class="label">SET数</div>
-                  <div class="value">{{ b.set_rounds || '-' }}</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card-body">
-              <!-- キャスト表示 -->
-              <div class="casts-section">
-                <!-- 今ついているキャスト -->
-                <div class="d-flex flex-wrap gap-2 mb-2">
-                  <div
-                    v-for="p in liveCasts(b).filter(p => p.present)"
-                    :key="p.id"
-                    class="d-flex align-items-center badge text-light p-2"
-                    :class="`bg-${p.color}`"
-                  >
-                    <Avatar
-                      :url="p.avatar"
-                      :alt="p.name"
-                      :size="16"
-                      class="me-1"
-                    />
-                    <span class="fw-bold">{{ p.name }}</span>
-                  </div>
-                </div>
-
-                <!-- 過去に付いたキャスト -->
-                <div class="d-flex flex-wrap gap-1">
-                  <span
-                    v-for="p in liveCasts(b).filter(p => !p.present)"
-                    :key="p.id"
-                    class="badge bg-secondary-subtle text-dark small"
-                  >
-                    {{ p.name }}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div class="card-footer">
-              <div class="row g-2">
-                <div class="col-6">
-                  <div class="label">小計</div>
-                  <div class="value">¥{{ b.subtotal?.toLocaleString() || '-' }}</div>
-                </div>
-                <div class="col-6">
-                  <div class="label">合計</div>
-                  <div class="value">¥{{ (b.settled_total ?? (b.closed_at ? b.total : b.grand_total))?.toLocaleString() || '-' }}</div>
-                </div>
-                <div class="col-12">
-                  <div class="label">メモ</div>
-                  <div v-if="hasMemo(b)" class="memo-content">{{ b.memo }}</div>
-                  <div v-else class="text-muted small">メモなし</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <BillListCard
+            :bill="b"
+            :isSelectable="isSelectionMode"
+            :isSelected="selectedIds.has(b.id)"
+            @select="handleSelect"
+            @edit="handleEdit"
+          />
         </template>
       </div>
 
@@ -384,62 +376,5 @@ onMounted(loadBills)
   padding: 1rem 0 0.5rem 0;
   color: #666;
   border-bottom: 1px solid #ccc;
-}
-
-.bill-card {
-  position: relative;
-  cursor: pointer;
-  border: 1px solid #ddd;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-
-  &.closed::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.3);
-    pointer-events: none;
-    border-radius: inherit;
-  }
-}
-
-.card-header {
-  background-color: white;
-  .col {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-  }
-}
-
-.card-footer {
-  border-top: 1px solid #e9ecef;
-  background-color: white;
-}
-
-.label {
-  font-size: 0.75rem;
-  color: #666;
-  font-weight: 600;
-  text-transform: uppercase;
-  margin-bottom: 0.25rem;
-}
-
-.value {
-  font-size: 1.25rem;
-  font-weight: bold;
-  color: #333;
-}
-
-.memo-content {
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 0.5rem;
-  background-color: #f9f9f9;
-  border-radius: 4px;
-  font-size: 0.875rem;
 }
 </style>

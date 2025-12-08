@@ -81,7 +81,7 @@ export default defineConfig(({ mode }) => {
 
     server: {
       host: '0.0.0.0',
-      proxy: { '/api': { target: 'http://api:8000', changeOrigin: true } },
+      proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } },
       allowedHosts: true,
       hmr: useTunnel ? { host: HMR_HOST, protocol: 'wss', clientPort: 443 } : undefined,
     },
