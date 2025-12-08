@@ -10,7 +10,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ── env ─────────────────────────────────────────────────────────────
 env = environ.Env()
-env.read_env(BASE_DIR / ".env")
+
+env_file = BASE_DIR / (".env.local" if os.getenv("USE_LOCAL_ENV") == "1" else ".env")
+env.read_env(env_file)
 
 DEBUG = env.bool("DJANGO_DEBUG", default=True)
 SECRET_KEY = env("SECRET_KEY", default=None) or env("DJANGO_SECRET_KEY", default="django-insecure-dev-key")
@@ -24,10 +26,23 @@ cloudinary.config(
 )
 
 # ── Hosts / CORS / CSRF ─────────────────────────────────────────────
-if env.bool("FORCE_OPEN_HOSTS", default=False):
-    ALLOWED_HOSTS = ["*"]
-else:
-    ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=(["*"] if DEBUG else []))
+# ローカル開発 & Heroku/Netlify 兼用のデフォルト
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "api",
+    "monolisk-98ae20a1c14b.herokuapp.com",
+    "monolisk.netlify.app",
+]
+
+# 必要なら本番だけ env で上書き
+if not DEBUG:
+    from django.core.exceptions import ImproperlyConfigured
+
+    hosts = env.list("ALLOWED_HOSTS", default=[])
+    if hosts:
+        ALLOWED_HOSTS = hosts
 
 # クロスサイト Cookie（Netlify↔Heroku）前提で secure/samesite をENVで調整可
 CROSS_SITE = env.bool("CROSS_SITE_COOKIES", default=not DEBUG)
