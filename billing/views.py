@@ -226,19 +226,31 @@ class TableViewSet(CacheListMixin, StoreScopedModelViewSet):
 # ────────────────────────────────────────────────────────────────────
 class BillViewSet(viewsets.ModelViewSet):
     serializer_class = BillSerializer
+    queryset = Bill.objects.all()
+    # DjangoFilterBackend はもう使わないので外してもOK
+    # filter_backends = [DjangoFilterBackend]
 
     def _sid(self):
+        # StoreScopedModelViewSet.require_store をそのまま利用
         return StoreScopedModelViewSet.require_store(self, self.request)
-    
+
     def get_queryset(self):
         sid = self._sid()
-        return (
+
+        qs = (
             Bill.objects
             .select_related("table__store")
             .prefetch_related("items", "stays", "nominated_casts")
             .filter(table__store_id=sid)
             .order_by("-opened_at")
         )
+
+        # ▼ ここで「?cast=◯◯」を stays 経由で絞る（＝担当キャストのみ）
+        cast_id = self.request.query_params.get("cast")
+        if cast_id:
+            qs = qs.filter(stays__cast_id=cast_id).distinct()
+
+        return qs
 
     def perform_create(self, serializer):
         sid = self._sid()
@@ -252,14 +264,14 @@ class BillViewSet(viewsets.ModelViewSet):
         table = serializer.validated_data.get("table", getattr(serializer.instance, "table", None))
         if table and table.store_id != sid:
             raise ValidationError({"table": "他店舗の卓は指定できません。"})
-        
+
         # discount_ruleが更新された場合、再計算を実行
         bill = serializer.instance
         discount_rule_updated = 'discount_rule' in serializer.validated_data
         old_discount_rule_id = bill.discount_rule_id if hasattr(bill, 'discount_rule_id') else None
-        
+
         serializer.save()
-        
+
         # discount_ruleが変更された場合、金額を再計算
         if discount_rule_updated:
             from .models import _recalc_bill_after_items_change

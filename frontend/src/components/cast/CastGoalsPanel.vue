@@ -255,79 +255,138 @@ function goalView(g){
 </script>
 
 <template>
-  <div>
-    <!-- 作成フォーム -->
-    <div class="form-area">
-      <!-- トグルボタン -->
-      <button
-        type="button"
-        class="btn btn-warning w-100 my-4"
-        @click="showForm = !showForm"
-        :aria-expanded="showForm ? 'true' : 'false'"
-        aria-controls="goal-create-panel"
-      >
-        {{ showForm ? '閉じる' : '新たに目標を追加' }}
-      </button>
+  <div class="pb-5">
 
-      <!-- ★ ここがアコーディオン部（v-show で開閉） -->
-      <div id="goal-create-panel" v-show="showForm" class="card border-0 shadow-sm">
-        <div class="card-body">
-          <!-- 指標 & 目標値 -->
-          <div class="row g-3 align-items-end">
-            <div class="col-12 col-md-4">
-              <label class="form-label">指標</label>
-              <select v-model="form.metric" class="form-select">
-                <option v-for="opt in metricOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </option>
-              </select>
-            </div>
-            <div class="col-12 col-md-8">
-              <label class="form-label">目標値</label>
-              <input
-                type="number"
-                min="0"
-                v-model.number="form.target_value"
-                class="form-control"
-                placeholder="例）50000"
-              />
-            </div>
-          </div>
-
-          <!-- 期間 -->
-          <div class="row g-3 align-items-end mt-1">
-            <div class="col-12 col-md-8">
-              <label class="form-label">期間</label>
-              <div class="input-group">
-                <input type="date" class="form-control" v-model="form.period_from" />
-                <span class="input-group-text">〜</span>
-                <input type="date" class="form-control" v-model="form.period_to" />
+    <div class="wrap position-relative mb-5">
+      <div class="position-absolute top-0 end-0">
+        <button
+          type="button"
+          class="btn btn-sm"
+          @click="refresh"
+        >
+          <IconRefresh />
+        </button>
+      </div>
+      <h2 class="fs-5 df-center gap-1"><IconTargetArrow />目標一覧</h2>
+      <div v-if="loading">読み込み中…</div>
+      <div v-else-if="!goals.length">目標はまだありません</div>
+      <ul v-else class="list-unstyled">
+      
+        <li v-for="g in goals" :key="g.id" :id="`goal-${g.id}`" class="mb-3">
+          <div class="card shadow-sm border-0">
+            <div class="card-header">
+              <div class="d-flex align-items-center gap-2 justify-content-between">
+                <div class="wrap d-flex align-items-center">
+                  <IconCalendar class="me-1"/>
+                  <div class="span">
+                    <span class="">{{ goalView(g).from }}</span>
+                    <span> 〜 </span>
+                    <span class="">{{ goalView(g).to }}</span>
+                  </div>
+                </div>
+                <button type="button" class="text-danger" @click="removeGoal(g)">
+                  <IconX class="" />
+                </button>
               </div>
             </div>
-          </div>
-
-          <!-- アクション -->
-          <div class="row g-3 mt-3">
-            <div class="col-6">
-              <button
-                type="button"
-                class="btn btn-primary w-100"
-                :disabled="saving || !isValid"
-                @click="addGoal"
-                title="追加"
-              >
-                <IconPlus class="me-1" /> 追加
-              </button>
+            <div class="card-body position-relative">
+              <!-- 期間・目標・現在値 -->
+              <div class="d-flex gap-3 align-items-center mt-2">
+                <div class="badge bg-dark text-light">
+                  {{ goalView(g).label }}
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                  <span class="fs-3 fw-bold lh-1">{{ goalView(g).currentPretty }}</span>
+                  <span class="lh-1">/</span>
+                  <span class="small text-muted lh-1">{{ goalView(g).targetPretty }}</span>
+                </div>
+              </div>
+              <!-- 進捗バー -->
+              <div class="progress mt-2" style="height:10px;">
+                <div
+                  class="progress-bar"
+                  role="progressbar"
+                  :style="{ width: goalView(g).percent + '%' }"
+                  :aria-valuenow="goalView(g).percent" aria-valuemin="0" aria-valuemax="100">
+                </div>
+              </div>
+              <div class="mt-1 small text-end text-muted">
+                {{ goalView(g).percent }}%
+              </div>
+              <!-- マイルストーン -->
+              <!-- <div class="d-flex gap-2 mt-2">
+                <span class="badge" :class="goalView(g).hits[50]  ? 'bg-success' : 'bg-light text-muted'">50%</span>
+                <span class="badge" :class="goalView(g).hits[80]  ? 'bg-success' : 'bg-light text-muted'">80%</span>
+                <span class="badge" :class="goalView(g).hits[90]  ? 'bg-success' : 'bg-light text-muted'">90%</span>
+                <span class="badge" :class="goalView(g).hits[100] ? 'bg-success' : 'bg-light text-muted'">100%</span>
+              </div> -->
             </div>
-            <div class="col-6">
-              <button
-                type="button"
-                class="btn btn-outline-secondary w-100"
-                @click="resetForm"
-                title="クリア"
-              >
-                クリア
-              </button>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="wrap">
+      <h3 class="fw-bold df-center gap-1 fs-5 mb-2"><IconTargetArrow />目標を設定</h3>
+      <small class="df-center">目標をクリアできるようサポートします！</small>
+      <!-- 作成フォーム -->
+      <div class="form-area mt-3">
+        <div class="card border-0 shadow-sm mb-5">
+          <div class="card-body">
+            <!-- 指標 & 目標値 -->
+            <div class="row g-3 align-items-center">
+              <div class="col-2">
+                <label class="form-label">指標</label>
+              </div>
+              <div class="col-10">
+                <select v-model="form.metric" class="form-select">
+                  <option v-for="opt in metricOptions" :key="opt.value" :value="opt.value">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="col-2">
+                <label class="form-label">目標</label>
+              </div>
+              <div class="col-10">
+                <input
+                  type="number"
+                  min="0"
+                  v-model.number="form.target_value"
+                  class="form-control"
+                  placeholder="例）50000"
+                />
+              </div>
+              <div class="col-2 d-flex">
+                <div class="form-label">期間</div>
+              </div>
+              <div class="col-10">
+                <d class="wrap">
+                  <input type="date" class="form-control mb-3" placeholder="いつから" v-model="form.period_from" />
+                  <input type="date" class="form-control" placeholder="いつまで" v-model="form.period_to" />
+                </d iv>
+              </div>
+              <div class="col-6">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary w-100 df-center"
+                  :disabled="saving || !isValid"
+                  @click="addGoal"
+                  title="追加"
+                >
+                  <IconPlus class="me-1" /> 追加
+                </button>
+              </div>
+              <div class="col-6">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary w-100"
+                  @click="resetForm"
+                  title="クリア"
+                >
+                  クリア
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -335,79 +394,5 @@ function goalView(g){
     </div>
 
 
-
-    <hr />
-
-    <!-- 一覧＆進捗 -->
-    <div v-if="loading">読み込み中…</div>
-    <div v-else-if="!goals.length">目標はまだありません</div>
-    <ul v-else class="list-unstyled">
-      <li v-for="g in goals" :key="g.id" :id="`goal-${g.id}`" class="mb-3">
-        <div class="card shadow-sm border-0">
-          <div class="card-body position-relative">
-            <div class="position-absolute end-0 top-0">
-              <button type="button" class="btn btn-sm text-danger" @click="removeGoal(g)">
-                <IconTrash class="" />
-              </button>
-            </div>
-
-            <!-- 見出し：アイコン + ラベル + 削除 -->
-            <div class="d-flex align-items-center gap-2">
-              <div class="d-flex align-items-center gap-2">
-                <span class="fw-bold fs-5">{{ goalView(g).label }}</span>
-              </div>
-              <div class="wrap d-flex align-items-center small text-muted">
-                <IconCalendar class="me-1"/>
-                <div class="span">
-                  <span class="">{{ goalView(g).from }}</span>
-                  <span> 〜 </span>
-                  <span class="">{{ goalView(g).to }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- 期間・目標・現在値 -->
-            <div class="d-flex gap-1 align-items-center mt-2">
-                <IconTargetArrow class="me-1" />
-                <div class="d-flex align-items-center gap-1">
-                  <span class="text-body">{{ goalView(g).targetPretty }}</span>/<span class="fs-4 fw-bold">{{ goalView(g).currentPretty }}</span>
-                </div>
-
-            </div>
-
-            <!-- 進捗バー -->
-            <div class="progress mt-2" style="height:10px;">
-              <div
-                class="progress-bar"
-                role="progressbar"
-                :style="{ width: goalView(g).percent + '%' }"
-                :aria-valuenow="goalView(g).percent" aria-valuemin="0" aria-valuemax="100">
-              </div>
-            </div>
-            <div class="mt-1 small text-end text-muted">
-              {{ goalView(g).percent }}%
-            </div>
-
-            <!-- マイルストーン -->
-            <!-- <div class="d-flex gap-2 mt-2">
-              <span class="badge" :class="goalView(g).hits[50]  ? 'bg-success' : 'bg-light text-muted'">50%</span>
-              <span class="badge" :class="goalView(g).hits[80]  ? 'bg-success' : 'bg-light text-muted'">80%</span>
-              <span class="badge" :class="goalView(g).hits[90]  ? 'bg-success' : 'bg-light text-muted'">90%</span>
-              <span class="badge" :class="goalView(g).hits[100] ? 'bg-success' : 'bg-light text-muted'">100%</span>
-            </div> -->
-          </div>
-        </div>
-      </li>
-    </ul>
-
-    <div class="d-flex justify-content-end">
-      <button
-        type="button"
-        class="btn btn-sm btn-outline-secondary"
-        @click="refresh"
-      >
-        <IconRefresh />
-      </button>
-    </div>
   </div>
 </template>

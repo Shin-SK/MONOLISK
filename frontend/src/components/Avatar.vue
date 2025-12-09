@@ -11,11 +11,20 @@ const props = defineProps({
 
 const sizePx   = computed(() => `${props.size}px`)
 const dpr      = Math.min(Math.round(window.devicePixelRatio || 1), 3)
+
+// URL がない、または デフォルト画像である場合は表示しない
+const hasValidUrl = computed(() => {
+	if (!props.url) return false
+	// デフォルト画像パターンをチェック
+	if (props.url.includes('user-default') || props.url.includes('default')) return false
+	return true
+})
+
 const optimizedUrl = computed(() =>
-	props.url ? avatarUrl(props.url, props.size * dpr, props.size * dpr) : ''
+	hasValidUrl.value ? avatarUrl(props.url, props.size * dpr, props.size * dpr) : ''
 )
 const srcset   = computed(() =>
-	props.url ? avatarSrcset(props.url, props.size) : ''
+	hasValidUrl.value ? avatarSrcset(props.url, props.size) : ''
 )
 // ★ 表示サイズに合わせて動的に
 const sizesAttr = computed(() => `(max-width: 600px) ${props.size}px, ${props.size}px`)
