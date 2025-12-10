@@ -158,8 +158,7 @@ watch(() => route.fullPath, (p) => {
       <IconChevronCompactLeft :size="18" />
     </button>
 
-    <!-- オフキャンバス（サイドバー） -->
-    <CastSidebar />
+
 
     <!-- 本体 -->
     <main class="flex-fill container d-flex flex-column">

@@ -21,6 +21,8 @@ import { yen } from '@/utils/money'
 import { useAuth } from '@/stores/useAuth'
 import { useProfile } from '@/composables/useProfile'
 import Avatar from '@/components/Avatar.vue'
+import CastSidebar from '@/components/sidebar/CastSidebar.vue'
+import { openOffcanvas } from '@/utils/bsOffcanvas'
 
 /* ---------- 自分中心：route.id が無ければ me.cast_id を使う ---------- */
 const route = useRoute()
@@ -57,6 +59,11 @@ async function resolveCastId() {
   // 3) それでも無ければキャスト権限が無いアカウント
   alert('このアカウントはキャストとして登録されていません。')
   throw new Error('no cast_id')
+}
+
+/* ---------- サイドバー ---------- */
+function openSidebar(){
+  openOffcanvas('#castSidebar')
 }
 
 /* ---------- 日付 ---------- */
@@ -279,7 +286,7 @@ const nextShiftStart = computed(() =>
   nextShift.value ? dayjs(nextShift.value.plan_start).format('HH:mm') : null
 )
 const nextShiftEnd   = computed(() =>
-  nextShift.value ? dayjs(nextShift.value.plan_start).format('HH:mm') : null
+  nextShift.value ? dayjs(nextShift.value.plan_end).format('HH:mm') : null
 )
 
 /* ---------- フィルタされたシフト ---------- */
@@ -396,43 +403,90 @@ const latestGoalView = computed(() => {
     <div class="cast-mypage mt-4">
     <!-- ===== ヘッダ ===== -->
     <div class="header mb-5">
-      <div class="upper mb-4 d-flex align-items-center justify-content-between">
+      <div class="upper mb-2 d-flex align-items-center justify-content-between">
         <h2 class="fs-1 fw-bold ">マイページ</h2>
         <div class="wrap text-muted">{{ dayjs().format('YYYY/MM/DD(ddd)') }}</div>
       </div>
         
-      <div class="user-meta d-flex align-items-center justify-content-between">
-        <div class="avatars d-flex align-items-center mb-4 gap-4">
-          <Avatar :url="avatarUrl" :size="60" class="rounded-circle"/>
-          <div class="fs-3 fw-bold m-0">
+      <div class="user-meta d-flex align-items-center justify-content-between mb-2">
+        <div class="avatars d-flex align-items-center gap-2">
+          <Avatar :url="avatarUrl" :size="40" class="rounded-circle"/>
+          <div class="fs-4 fw-bold m-0">
             {{ castInfo?.stage_name || 'キャスト名' }}
           </div>
         </div>
-        <div class="icons">
-          <!-- アイコンとかなんか入れるならここに入れてこう -->
+        <div class="icons d-flex align-items-center gap-2">
+          <button @click="openSidebar"><IconMenuDeep /></button><!-- サイドバー開く -->
         </div>
       </div>
-      <div class="bg-white p-4">
-        <div v-if="myRank"
-          class="mb-0 fs-5 d-flex align-items-center gap-2">
-          <IconTrendingUp class="fs-1"/><span class="fs-3">{{ myRank }} 位</span>
-        </div>
-        <div v-else class="mb-0 fs-5 text-muted">
-          これから一緒にがんばりましょう！
-        </div>
-        <div v-if="todaySales !== null"
-          class="wrap d-flex align-items-center gap-2 mt-1">
-          <div class="badge bg-secondary text-white">
-            今日の売上
+
+      <div class="row g-2 mb-3">
+        <div class="col-12">
+          <div class="card p-2">
+            <div v-if="latestGoalView" class="d-flex align-items-center justify-content-between">
+              <div class="head">
+                <div class="d-flex align-items-center gap-1 small fw-bold"><IconTargetArrow />{{ latestGoalView.label }}</div>
+              </div>
+              <div class="wrap">
+                <div class="date">
+                  
+                  <small class="text-muted d-flex gap-0 mb-1">
+                    <IconCalendar />
+                    <span>{{ latestGoalView.from }} 〜</span>
+                    <span>{{ latestGoalView.to }}</span>
+                  </small>
+                </div>
+                <div class="d-flex align-items-center gap-1 justify-content-end">
+                  <span class="fs-3 fw-bold lh-1 d-block">{{ latestGoalView.currentPretty }}</span>
+                  <span class="lh-1">/</span><small class="text-muted lh-1">{{ latestGoalView.targetPretty }}</small>
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-muted small">
+              目標未設定
+            </div>
           </div>
-          <span 
-            style="font-size: 2.5rem;"
-            class="mb-0 d-flex align-items-center gap-1 fw-bold lh-1">
-            {{ yen(todaySales)}}
-          </span>
         </div>
-        <div v-else class="wrap d-flex align-items-center gap-2 mt-1 text-muted">
-          今日もがんばりましょう！
+
+        <div class="col-12">
+          <div class="card p-2">
+            <div class="d-flex align-items-center justify-content-between">
+              <div class="head d-flex align-items-center gap-1 small fw-bold"><IconCalendarPlus />次のシフト</div>
+              <div class="inner">
+                <div v-if="nextShift" class="d-flex flex-column">
+                  <span class="fw-bold">{{ nextShiftDate }}</span>
+                  <span class="text-muted">{{ nextShiftStart }} 〜 {{ nextShiftEnd }}</span>
+                </div>
+                <div v-else class="text-muted small">
+                  シフト予定なし
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="card p-2">
+            <div class="d-flex align-items-center justify-content-between">
+              <div v-if="myRank"
+                class="d-flex align-items-center gap-2">
+                <IconTrendingUp class="fs-5"/><span class="fs-2 fw-bold">No.{{ myRank }}</span>
+              </div>
+              <div v-if="todaySales !== null"
+                class="wrap df-center gap-2 mt-1">
+                <div class="badge bg-secondary text-white">
+                  今日の売上
+                </div>
+                <span
+                  class="fs-1 mb-0 d-flex align-items-center gap-1 fw-bold lh-1">
+                  {{ yen(todaySales)}}
+                </span>
+              </div>
+              <div v-else class="wrap d-flex align-items-center gap-2 mt-1 text-muted">
+                今日もがんばりましょう！
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -892,6 +946,11 @@ const latestGoalView = computed(() => {
       </nav>
     </footer>
   </div>
+
+
+    <!-- オフキャンバス（サイドバー） -->
+    <CastSidebar />
+
 </template>
 
 <style>

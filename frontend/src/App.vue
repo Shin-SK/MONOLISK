@@ -9,3 +9,11 @@
     MONOLISK
   </div>
 </template>
+
+<style>
+
+html, body {
+  touch-action: manipulation;
+}
+
+</style>

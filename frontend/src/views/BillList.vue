@@ -275,35 +275,33 @@ onMounted(loadBills)
     </div>
 
     <!-- 件数表示 -->
-    <div class="text-muted small my-3">
-      検索結果 : {{ filteredBills.length }}件
-    </div>
-    <div class="wrap d-flex align-items-end justify-content-between">
-
-      <div class="color d-flex gap-2 mb-3 align-items-center">
+    <div class="d-flex align-items-center justify-content-between my-3">
+      <div class="color d-flex gap-2 align-items-center">
           <div class="badge bg-danger text-white">本指名</div>
           <div class="badge bg-success text-white">場内</div>
           <div class="badge bg-blue text-white">フリー</div>
       </div>
-      
-      <div class="wrap d-flex gap-2 mb-3">
-        <button
-          class="btn btn-sm align-items-center gap-1"
-          :class="isSelectionMode ? 'btn-danger' : 'btn-secondary'"
-          @click="toggleSelectMode"
-        >
-          <IconTrash />{{ isSelectionMode ? 'キャンセル' : '削除' }}
-        </button>
-        <button
-          v-if="isSelectionMode && selectedIds.size > 0"
-          class="btn btn-sm btn-danger align-items-center gap-1"
-          @click="bulkDelete"
-        >
-          <IconTrash />{{ selectedIds.size }}件削除
-        </button>
+      <div class="text-muted small">
+        検索結果 : {{ filteredBills.length }}件
       </div>
-
     </div>
+    <div class="wrap d-flex align-items-center justify-content-end gap-2">
+      <button
+        class="btn btn-sm d-flex align-items-center gap-1"
+        :class="isSelectionMode ? 'btn-danger' : 'btn-secondary'"
+        @click="toggleSelectMode"
+      >
+        <IconTrash />{{ isSelectionMode ? 'キャンセル' : '削除' }}
+      </button>
+      <button
+        v-if="isSelectionMode && selectedIds.size > 0"
+        class="btn btn-sm btn-danger d-flex align-items-center gap-1"
+        @click="bulkDelete"
+      >
+        <IconTrash />{{ selectedIds.size }}件削除
+      </button>
+    </div>
+
 
     <div v-if="loading" class="text-center py-5">
       <div class="spinner-border text-primary" role="status">

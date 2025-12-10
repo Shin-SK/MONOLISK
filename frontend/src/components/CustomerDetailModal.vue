@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, computed } from 'vue'
 import dayjs from 'dayjs'
-import { fetchBill, fetchCustomer, fetchBillItemsByBillId } from '@/api'
+import { fetchBill, fetchCustomer, fetchBillItemsByBillId, updateCustomer } from '@/api'
 
 const props = defineProps({
   billId: { type: Number, default: null },
@@ -15,6 +15,13 @@ const customer  = ref(null)
 const billItems = ref([])
 const errorMsg  = ref('')
 const activeTab = ref('customer') // 'customer' | 'bill'
+const isEditing = ref(false)
+const editForm  = ref({
+  display_name: '',
+  phone: '',
+  memo: ''
+})
+const saving = ref(false)
 
 // 日付等の表示
 const openedAt = computed(() =>
@@ -76,9 +83,80 @@ async function loadDetail () {
 
 watch(() => props.billId, () => { if (props.show) loadDetail() })
 watch(() => props.show,   (v) => { if (v && props.billId) loadDetail() })
+watch(() => isEditing.value, (editing) => {
+  if (editing) {
+    const name = customer.value?.full_name 
+      || customer.value?.display_name 
+      || bill.value?.customer_display_name 
+      || ''
+    const phone = customer.value?.phone || ''
+    const memo = customer.value?.memo || ''
+    
+    editForm.value = {
+      display_name: name,
+      phone: phone,
+      memo: memo
+    }
+    console.log('Edit form initialized:', editForm.value)
+  }
+})
 
-function close () { emit('close') }
+function close () { 
+  isEditing.value = false
+  emit('close') 
+}
 function setTab(t){ activeTab.value = t }
+
+function startEdit() {
+  console.log('startEdit called', customer.value)
+  if (!customer.value) return
+  editForm.value = {
+    display_name: customer.value.display_name || '',
+    phone: customer.value.phone || '',
+    memo: customer.value.memo || ''
+  }
+  isEditing.value = true
+  console.log('isEditing set to', isEditing.value)
+}
+
+function cancelEdit() {
+  isEditing.value = false
+}
+
+async function saveEdit() {
+  console.log('saveEdit called', { customer: customer.value, bill: bill.value })
+  
+  const customerId = customer.value?.id 
+    || bill.value?.customer_id 
+    || bill.value?.customer?.id
+    || (bill.value?.customers && bill.value.customers[0]?.id)
+  
+  console.log('Customer ID:', customerId)
+  
+  if (!customerId) {
+    console.log('No customer ID found')
+    errorMsg.value = '顧客IDが取得できませんでした'
+    return
+  }
+  console.log('Starting save...', editForm.value)
+  saving.value = true
+  errorMsg.value = ''
+  try {
+    const updated = await updateCustomer(customerId, {
+      full_name: editForm.value.display_name,
+      phone: editForm.value.phone,
+      memo: editForm.value.memo
+    })
+    console.log('Updated:', updated)
+    customer.value = updated
+    isEditing.value = false
+  } catch (e) {
+    console.error('Save error:', e)
+    errorMsg.value = '保存に失敗しました'
+  } finally {
+    saving.value = false
+  }
+}
 </script>
 
 <template>
@@ -120,33 +198,57 @@ function setTab(t){ activeTab.value = t }
             </ul>
 
             <!-- 顧客情報タブ -->
-            <div v-show="activeTab==='customer'">
-              <dl class="row mb-0">
-                <dt class="col-4">来店日時</dt>
-                <dd class="col-8">{{ openedAt }}</dd>
+            <div v-if="activeTab==='customer'">
+              <div v-if="!isEditing">
+                <dl class="row mb-0">
+                  <dt class="col-4">来店日時</dt>
+                  <dd class="col-8">{{ openedAt }}</dd>
 
-                <dt class="col-4">顧客名</dt>
-                <dd class="col-8">{{ customer?.display_name || bill?.customer_display_name || '—' }}</dd>
+                  <dt class="col-4">顧客名</dt>
+                  <dd class="col-8">{{ customer?.full_name || customer?.display_name || bill?.customer_display_name || '—' }}</dd>
 
-                <dt class="col-4">電話</dt>
-                <dd class="col-8">{{ customer?.phone || '—' }}</dd>
+                  <dt class="col-4">電話</dt>
+                  <dd class="col-8">{{ customer?.phone || '—' }}</dd>
 
-                <dt class="col-4">メモ</dt>
-                <dd class="col-8">
-                  <pre class="mb-0" style="white-space:pre-wrap">{{ customer?.memo || '—' }}</pre>
-                </dd>
+                  <dt class="col-4">メモ</dt>
+                  <dd class="col-8">
+                    <pre class="mb-0" style="white-space:pre-wrap">{{ customer?.memo || '—' }}</pre>
+                  </dd>
 
-                <dt class="col-4">来店回数</dt>
-                <dd class="col-8">{{ customer?.visit_count ?? '—' }}</dd>
+                  <dt class="col-4">来店回数</dt>
+                  <dd class="col-8">{{ customer?.visit_count ?? '—' }}</dd>
 
-                <dt class="col-4">直近来店</dt>
-                <dd class="col-8">
-                  <span v-if="customer?.last_visit_at">
-                    {{ dayjs(customer.last_visit_at).format('YYYY/MM/DD') }}
-                  </span>
-                  <span v-else>—</span>
-                </dd>
-              </dl>
+                  <dt class="col-4">直近来店</dt>
+                  <dd class="col-8">
+                    <span v-if="customer?.last_visit_at">
+                      {{ dayjs(customer.last_visit_at).format('YYYY/MM/DD') }}
+                    </span>
+                    <span v-else>—</span>
+                  </dd>
+                </dl>
+                <button type="button" class="btn btn-primary btn-sm" @click="isEditing = true">編集</button>
+              </div>
+
+              <div v-else>
+                <div class="mb-3">
+                  <label class="form-label">顧客名</label>
+                  <input type="text" class="form-control" v-model="editForm.display_name">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">電話</label>
+                  <input type="text" class="form-control" v-model="editForm.phone">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">メモ</label>
+                  <textarea class="form-control" rows="4" v-model="editForm.memo"></textarea>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-primary" @click="saveEdit" :disabled="saving">
+                    {{ saving ? '保存中...' : '保存' }}
+                  </button>
+                  <button type="button" class="btn btn-secondary" @click="cancelEdit" :disabled="saving">キャンセル</button>
+                </div>
+              </div>
             </div>
 
             <!-- このときの伝票タブ -->

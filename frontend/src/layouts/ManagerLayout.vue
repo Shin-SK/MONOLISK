@@ -85,45 +85,37 @@ async function logout () {
         class="df-center flex-column"
         :class="isActiveName('mng-dashboard') ? 'text-dark' : 'text-secondary'"
         @click="$router.push({ name:'mng-dashboard' })">
-        <span class="fs-4">
+        <span>
           <IconHomeFilled v-if="isActiveName('mng-dashboard')" />
           <IconHome v-else />
         </span>
-        <span class="small fw-bold">
-          ホーム
-        </span>
+        <small>ホーム</small>
       </button>
       <button 
         class="df-center flex-column"
         :class="isActiveName('mng-bill-table') ? 'text-dark' : 'text-secondary'"
         @click="$router.push({ name:'mng-bill-table' })">
-        <span class="fs-4">
+        <span>
           <IconPinnedFilled v-if="isActiveName('mng-bill-table')" />
           <IconPinned v-else />
         </span>
-        <span class="small fw-bold">
-          卓伝票
-        </span>
+        <small>卓伝票</small>
       </button>
       <button 
         class="df-center flex-column"
         :class="isActiveName('mng-bill-list') ? 'text-dark' : 'text-secondary'"
         @click="$router.push({ name:'mng-bill-list' })">
-        <span class="fs-4">
+        <span>
           <IconLayoutListFilled v-if="isActiveName('mng-bill-list')" />
           <IconLayoutList v-else />
         </span>
-        <span class="small fw-bold">
-          伝票一覧
-        </span>
+        <small>伝票一覧</small>
       </button>
       <button class="df-center flex-column text-secondary" @click="openSidebar" aria-controls="managerSidebar">
-        <span class="fs-4">
+        <span>
           <IconList />
         </span>
-        <span class="small fw-bold">
-          設定
-        </span>
+        <small>設定</small>
       </button>
 
        <ManagerSidebar />
