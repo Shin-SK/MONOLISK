@@ -302,7 +302,7 @@ defineExpose({ reload })
           </div>
         </div>
 
-        <div class="finish-alert px-2 my-2">
+        <div class="finish-alert px-2">
           <span 
             v-if="getAlertState(getOpenBill(t.id))"
             class="alert alert-danger w-100 p-2 df-center m-0 small"

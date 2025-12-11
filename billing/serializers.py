@@ -682,6 +682,9 @@ class BillSerializer(serializers.ModelSerializer):
     # ---- UPDATE：手入力割引＋本体更新を統合 ----
     @transaction.atomic
     def update(self, instance, validated_data):
+        # ★ opened_at をバリデーションから除外（セット追加時にリセットされない）
+        validated_data.pop('opened_at', None)
+
         # 更新前スナップ
         prev_main = set(instance.nominated_casts.values_list("id", flat=True))
         prev_in   = set(instance.stays.filter(stay_type="in", left_at__isnull=True).values_list("cast_id", flat=True))

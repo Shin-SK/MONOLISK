@@ -342,18 +342,31 @@ const incItem = async (it) => {
 }
 const decItem = async (it) => {
   try{
+    console.log('[decItem] called with:', it)
     const newQty = (Number(it.qty)||0) - 1
+    console.log('[decItem] newQty:', newQty)
     if (newQty <= 0) {
+      // ★ qty が 0 になったら削除確認を表示
       if (!confirm('削除しますか？')) return
+      console.log('[decItem] deleting item:', it.id)
       await deleteBillItem(props.bill.id, it.id)
+      console.log('[decItem] delete success')
     } else {
+      console.log('[decItem] updating qty to:', newQty)
       await patchBillItemQty(props.bill.id, it.id, newQty)
       it.qty = newQty
       it.subtotal = (masterPriceMap.value[String(it.item_master)] || 0) * newQty
     }
     const fresh = await fetchBill(props.bill.id).catch(()=>null)
-    emit('updated', fresh || props.bill.id)
-  }catch(e){ console.error(e); alert('数量を減らせませんでした') }
+    if (fresh) {
+      Object.assign(props.bill, fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    } else {
+      emit('updated', props.bill.id)
+    }
+  }catch(e){ console.error('[decItem] error:', e); alert('数量を減らせませんでした') }
 }
 const removeItem = async (it) => {
   try{

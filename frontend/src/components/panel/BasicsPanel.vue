@@ -468,17 +468,9 @@ function applySet(){
   const selectedMaster = setMasters.value[firstSet.id]
   if (!selectedMaster) { alert('セット商品情報が取得できません'); return }
 
-  // 開始時間と終了時間を設定
-  const nowISO = dayjs().toISOString()
-  const duration = Number(selectedMaster.duration_min || 60) // セット商品の時間（デフォルト60分）
-  const expectedOutISO = dayjs(nowISO).add(duration, 'minute').toISOString()
-  
-  startISO.value = nowISO
-  startLocal.value = dayjs(nowISO).format('YYYY-MM-DDTHH:mm')
-  endISO.value = expectedOutISO
-  endLocal.value = dayjs(expectedOutISO).format('YYYY-MM-DDTHH:mm')
-  
-  emit('update-times', { opened_at: nowISO, expected_out: expectedOutISO })
+  // ★ セット追加時は opened_at（伝票の開始時刻）をリセットしない
+  // ★ 時間の基準点は bill.opened_at で固定、セット追加は合計分数を延ばすだけ
+  // ★ emit('update-times') を削除し、opened_at をサーバ側の既存値に任せる
 
   // 単一ラベル（選択したセット）のコードを使い、合計人数で1行追加（後段で master_id 解決）
   const lines = [
