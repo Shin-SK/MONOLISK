@@ -23,6 +23,7 @@ async function fetchList () {
       phone: c.phone ?? '',
       birthday: c.birthday ?? null,
       memo: c.memo ?? '',
+      tags: Array.isArray(c.tags) ? c.tags : [],
     }))
   } finally {
     loading.value = false
@@ -66,6 +67,7 @@ async function addCustomer () {
             <th>ID</th>
             <th>名前</th>
             <th>あだ名</th>
+            <th>タグ</th>
             <th>電話</th>
             <th>誕生日</th>
             <th class="memo">メモ</th>
@@ -77,6 +79,12 @@ async function addCustomer () {
             <td>{{ c.id }}</td>
             <td>{{ (c.alias?.trim() || c.full_name?.trim()) || '-' }}</td>
             <td>{{ c.alias || '-' }}</td>
+            <td>
+              <div v-if="c.tags?.length" class="d-flex flex-wrap gap-1">
+                <span v-for="tag in c.tags" :key="tag.id" class="badge bg-secondary">{{ tag.name }}</span>
+              </div>
+              <span v-else class="text-muted">-</span>
+            </td>
             <td>{{ c.phone || '-' }}</td>
             <td>{{ fmtBirthday(c.birthday) }}</td>
             <td class="memo">{{ c.memo || '-' }}</td>
