@@ -1,6 +1,7 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useCustomers } from '@/stores/useCustomers'
+import { fetchCustomerTags, createCustomerTag } from '@/api'
 
 const props = defineProps({
   /** 選択中の顧客 ID。null なら未選択 */
@@ -17,10 +18,13 @@ const emit = defineEmits([
 const kw       = ref('')        // 検索キーワード
 const results  = ref([])        // 検索結果
 const selected = ref(null)      // 選択中オブジェクト
+const tags     = ref([])        // タグ候補
+const selectedTagIds = ref([])  // 選択中タグID
+const newTagName = ref('')      // 新規タグ名
 
 // 編集用フォーム（一部だけ編集しても v‑model で保持）
 const form = ref({
-  id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '',
+  id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '', tag_ids: [],
 })
 
 const custStore = useCustomers()
@@ -38,10 +42,54 @@ watch(
     if (!obj) obj = await custStore.fetchOne(id)
     custStore.cache.set(id, obj)
     selected.value = obj
-    form.value = { ...obj }
+    selectedTagIds.value = Array.isArray(obj?.tags) ? obj.tags.map(t => t.id) : []
+    form.value = { ...obj, tag_ids: [...selectedTagIds.value] }
   },
   { immediate: true }
 )
+
+onMounted(async () => {
+  try {
+    tags.value = await fetchCustomerTags()
+  } catch (e) {
+    console.error('failed to fetch tags', e)
+    tags.value = []
+  }
+})
+
+function toggleTag(id) {
+  const idx = selectedTagIds.value.indexOf(id)
+  if (idx >= 0) selectedTagIds.value.splice(idx, 1)
+  else selectedTagIds.value.push(id)
+  form.value.tag_ids = [...selectedTagIds.value]
+}
+
+function slugify(str) {
+  const base = String(str || '').trim().toLowerCase()
+  const slug = base
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+  const suffix = Math.random().toString(36).slice(2, 6)
+  return slug || `tag-${suffix}`
+}
+
+async function addNewTag() {
+  const name = newTagName.value.trim()
+  if (!name) return
+  try {
+    const tag = await createCustomerTag({ code: slugify(name), name, color: '#6c757d' })
+    tags.value = [...tags.value, tag]
+    if (tag.id != null) {
+      selectedTagIds.value.push(tag.id)
+      form.value.tag_ids = [...selectedTagIds.value]
+    }
+    newTagName.value = ''
+  } catch (e) {
+    console.error('failed to create tag', e)
+    alert('タグの作成に失敗しました')
+  }
+}
 
 /* ───────── handlers ───────── */
 async function search () {
@@ -55,7 +103,8 @@ function choose (id) {
   if (!obj) return
   custStore.cache.set(id, obj)
   selected.value = obj
-  form.value = { ...obj }
+  selectedTagIds.value = Array.isArray(obj?.tags) ? obj.tags.map(t => t.id) : []
+  form.value = { ...obj, tag_ids: [...selectedTagIds.value] }
   emit('update:modelValue', id)
   emit('picked', obj)
   kw.value = ''
@@ -64,10 +113,12 @@ function choose (id) {
 
 function newCustomer () {
   selected.value = null
-  form.value = { id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '' }
+  selectedTagIds.value = []
+  form.value = { id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '', tag_ids: [] }
 }
 
 async function save () {
+  form.value.tag_ids = [...selectedTagIds.value]
   const saved = await custStore.save(form.value)
   custStore.cache.set(saved.id, saved)
   selected.value = saved
@@ -124,6 +175,31 @@ async function save () {
       <div class="mb-2">
         <label class="form-label">電話番号</label>
         <input v-model="form.phone" class="form-control" />
+      </div>
+      <div class="mb-2">
+        <label class="form-label">属性タグ</label>
+        <div class="d-flex flex-wrap gap-2">
+          <button
+            v-for="tag in tags"
+            :key="tag.id"
+            type="button"
+            class="badge rounded-pill"
+            :class="selectedTagIds.includes(tag.id)
+              ? 'bg-secondary text-white'
+              : 'bg-white text-secondary border border-secondary'"
+            @click="toggleTag(tag.id)"
+          >
+            {{ tag.name }}
+          </button>
+        </div>
+        <div class="input-group mt-2">
+          <input
+            v-model="newTagName"
+            class="form-control"
+            placeholder="新しいタグ名を追加"
+          />
+          <button class="btn btn-outline-secondary" type="button" @click="addNewTag">追加</button>
+        </div>
       </div>
       <div class="mb-2">
         <label class="form-label">誕生日</label>

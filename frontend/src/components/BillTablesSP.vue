@@ -6,6 +6,7 @@ import Avatar from '@/components/Avatar.vue'
 import { useBills }    from '@/stores/useBills'
 import { useTables }   from '@/stores/useTables'
 import { fetchCastShifts, getBillingCasts } from '@/api'
+import { useTableAlerts } from '@/composables/useTableAlerts'
 
 const emit = defineEmits(['bill-click','request-new'])
 
@@ -17,6 +18,14 @@ const shiftsToday = ref([])
 const tick        = ref(Date.now())
 const todayISO    = dayjs().format('YYYY-MM-DD')
 
+// 初期ロードが完了するまで全体を隠す
+const initialLoading = ref(true)
+
+// テーブルアラート検知
+const { getAlertState, calcRemainMin: calcRemainMinFromAlert, cleanup: cleanupAlerts } = useTableAlerts(
+  computed(() => billsStore.list)
+)
+
 /* 初期ロード */
 async function loadCastsAndShifts () {
   const [casts, shifts] = await Promise.all([
@@ -27,10 +36,19 @@ async function loadCastsAndShifts () {
   shiftsToday.value = Array.isArray(shifts) ? shifts : []
 }
 onMounted(async () => {
-  await Promise.all([ billsStore.loadAll(), tablesStore.fetch(), loadCastsAndShifts() ])
-  startPolling()
+  initialLoading.value = true
+  try {
+    await Promise.all([ billsStore.loadAll(), tablesStore.fetch(), loadCastsAndShifts() ])
+  } finally {
+    initialLoading.value = false
+    startPolling()
+  }
 })
-onBeforeUnmount(stopPolling)
+onBeforeUnmount(() => {
+  stopPolling()
+  cleanupAlerts()
+  document.removeEventListener('visibilitychange', onVis)
+})
 
 /* 参照 */
 const tables = computed(() => tablesStore.list)
@@ -48,7 +66,6 @@ const openBillMap = computed(() => {
 })
 const getOpenBill = id => openBillMap.value.get(id) ?? null
 
-/* 表示ロジック（PCと同じ） */
 function calcRemainMin(bill) {
   if (!bill) return null
   const elapsed = dayjs().diff(dayjs(bill.opened_at), 'minute')
@@ -147,7 +164,10 @@ function onVis() {
   else { billsStore.loadAll(); refreshShifts(); startPolling() }
 }
 document.addEventListener('visibilitychange', onVis)
-onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVis))
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVis)
+  cleanupAlerts()
+})
 
 /* 親からの再読込 */
 function reload(){ billsStore.loadAll(); refreshShifts() }
@@ -156,7 +176,20 @@ defineExpose({ reload })
 
 <template>
 
-  <section class="tables">
+  <section
+    v-if="initialLoading"
+    class="tables-loading d-flex justify-content-center align-items-center"
+    style="min-height: 60vh;"
+  >
+    <div class="text-center">
+      <div class="spinner-border text-secondary mb-3" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      <div>読み込み中です…</div>
+    </div>
+  </section>
+
+  <section v-else class="tables">
     <div class="bench-cast d-flex justify-content-center bg-white flex-wrap w-100">
       <div class="table-box w-100">
         <div class="casts d-flex flex-wrap gap-2">
@@ -172,18 +205,25 @@ defineExpose({ reload })
       </div>
     </div>
 
+    <div class="d-flex gap-1 mt-4" style="font-size: 14px;">
+      <small class="badge bg-danger">本指名</small>
+      <small class="badge bg-success">場内</small>
+      <small class="badge bg-blue">フリー(~10分)</small>
+      <small class="badge bg-warning">フリー(~20分)</small>
+      <small class="badge bg-orange">フリー(~30分)</small>
+    </div>
     <!-- テーブル -->
-    <div class="tables-main d-grid gap-4 mt-4">
+    <div class="tables-main d-grid gap-4 mt-2">
       <div
         v-for="t in tables"
         :key="t.id"
-        class="table-wrap"
+        class="table-wrap card"
+        :class="{ 'border border-danger': getAlertState(getOpenBill(t.id)) }"
         @click="onTapTable(t)"
       >
 
         <!-- ヘッダー -->
-        <div
-          v-if="getOpenBill(t.id) && !getOpenBill(t.id).closed_at"
+        <div v-if="getOpenBill(t.id) && !getOpenBill(t.id).closed_at"
           class="sum bg-white p-2 d-flex gap-3 justify-content-between align-items-center fs-5"
         >
           <div class="df-center flex-column gap-1">
@@ -220,7 +260,7 @@ defineExpose({ reload })
           </div>
         </div>
 
-        <!-- 本体（PCと同じ：空席はラベル、在席時はキャスト一覧） -->
+        <!-- 本体 -->
         <div class="table-box h-100 d-flex flex-column bg-white">
           <!-- 空席 -->
           <div
@@ -262,6 +302,14 @@ defineExpose({ reload })
           </div>
         </div>
 
+        <div class="finish-alert px-2 my-2">
+          <span 
+            v-if="getAlertState(getOpenBill(t.id))"
+            class="alert alert-danger w-100 p-2 df-center m-0 small"
+          >
+            {{ getAlertState(getOpenBill(t.id)).message }}
+          </span>
+        </div>  
 
       </div>
     </div>

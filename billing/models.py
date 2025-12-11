@@ -317,6 +317,28 @@ class ItemStock(models.Model):
 
 
 
+class CustomerTag(models.Model):
+    """顧客属性タグマスター"""
+    code = models.SlugField(unique=True, max_length=40, 
+                            help_text="内部コード（例: vip / regular / newcomer）")
+    name = models.CharField(max_length=50, 
+                            help_text="表示名（例: VIP / 常連 / 新規）")
+    description = models.TextField(blank=True, 
+                                   help_text="説明・使用ガイドライン")
+    color = models.CharField(max_length=7, blank=True, default='#808080',
+                             help_text="UI表示用カラーコード（例: #FF5733）")
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '顧客タグ'
+        verbose_name_plural = verbose_name
+        ordering = ['code']
+
+    def __str__(self):
+        return self.name
+
+
 class Customer(models.Model):
     full_name  = models.CharField(max_length=100, blank=True)  # 名前
     alias      = models.CharField(max_length=100, blank=True)  # あだ名
@@ -324,6 +346,14 @@ class Customer(models.Model):
     birthday   = models.DateField(null=True, blank=True)
     photo      = models.ImageField(upload_to='cust/', null=True, blank=True)
     memo       = models.TextField(blank=True)
+    
+    # ★ タグ（複数可）
+    tags = models.ManyToManyField(
+        'billing.CustomerTag',
+        blank=True,
+        related_name='customers',
+        verbose_name='属性タグ'
+    )
 
     # 自動で書き戻すフィールド
     last_drink = models.CharField(max_length=100, blank=True)
@@ -550,32 +580,6 @@ class Bill(models.Model):
         # 1.00(=100%) と 0.25(=25%) の両方を許容
         return (sr / 100) if sr >= 1 else sr
 
-    # 既存の再計算（BillCalculator未移行の旧処理）を席別率で計算するように微修正
-    def recalc(self, save: bool = False):  # noqa: D401
-        """DEPRECATED: BillCalculator へ移行中"""
-        import warnings
-        warnings.warn("Bill.recalc() は BillCalculator に置換予定", DeprecationWarning, stacklevel=2)
-
-        sub = sum(it.subtotal for it in self.items.all())
-
-        # ★ 変更: 席別の実効サービス率・税率を使う
-        sr = self._effective_service_rate()
-        store = self.table.store if self.table_id else None
-        tr = Decimal(store.tax_rate) if store else Decimal('0')
-        tr = (tr / 100) if tr >= 1 else tr
-
-        svc = int((Decimal(sub) * sr).quantize(Decimal('1')))
-        tax = int((Decimal(sub + svc) * tr).quantize(Decimal('1')))
-
-        self.subtotal = sub
-        self.service_charge = svc
-        self.tax = tax
-        self.grand_total = sub + svc + tax
-        if save:
-            self.save(update_fields=['subtotal', 'service_charge', 'tax', 'grand_total'])
-
-
-
 
     class Meta:
         verbose_name = '伝票'
@@ -628,33 +632,6 @@ class BillItem(models.Model):
     def subtotal(self):
         return (self.price or 0) * (self.qty or 0)
 
-    @property
-    def back_rate(self):
-        """
-        admin.list_display 用。ItemCategory から既定率を引き、キャスト個別上書きを考慮
-        """
-        if self.served_by_cast is None:
-            return Decimal('0.00')
-
-        if not self.item_master:
-            return Decimal('0.00')
-
-        try:
-            cat = ItemCategory.objects.get(code=self.item_master.category.code)
-        except ItemCategory.DoesNotExist:
-            return Decimal('0.00')
-
-        if self.is_nomination:
-            return (self.served_by_cast.back_rate_nomination_override
-                    or cat.back_rate_nomination)
-        elif self.is_inhouse:
-            return (self.served_by_cast.back_rate_inhouse_override
-                    or cat.back_rate_inhouse)
-        else:
-            return (self.served_by_cast.back_rate_free_override
-                    or cat.back_rate_free)
-
-
     def _stay_type_hint(self) -> str:
         if getattr(self, 'is_nomination', False): return 'nom'
         if getattr(self, 'is_inhouse', False):    return 'in'
@@ -662,6 +639,16 @@ class BillItem(models.Model):
         return 'free'
 
     def save(self, *args, **kwargs):
+        self.is_nomination = bool(self.is_nomination)
+        self.is_inhouse    = bool(self.is_inhouse)
+        self.is_dohan      = bool(self.is_dohan)
+        if self.item_master:
+            self.name  = self.name  or self.item_master.name
+            self.price = self.price or self.item_master.price_regular
+            if self.item_master.exclude_from_payout:
+                self.exclude_from_payout = True
+
+        # back_rate は保存前に解決して持たせる（失敗しても継続）
         try:
             from billing.services.backrate import resolve_back_rate
             bill   = getattr(self, 'bill', None)
@@ -673,20 +660,7 @@ class BillItem(models.Model):
             if store:
                 self.back_rate = resolve_back_rate(store=store, category=cat, cast=cast, stay_type=stay)
         except Exception:
-            # 失敗しても保存は続行（0.00のまま）
             pass
-        return super().save(*args, **kwargs)
-
-    # --------------- save / delete ---------------
-    def save(self, *args, **kwargs):
-        self.is_nomination = bool(self.is_nomination)
-        self.is_inhouse    = bool(self.is_inhouse)
-        self.is_dohan      = bool(self.is_dohan)
-        if self.item_master:
-            self.name  = self.name  or self.item_master.name
-            self.price = self.price or self.item_master.price_regular
-            if self.item_master.exclude_from_payout:
-                self.exclude_from_payout = True
 
         super().save(*args, **kwargs)
 

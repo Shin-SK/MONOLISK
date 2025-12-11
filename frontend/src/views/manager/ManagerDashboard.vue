@@ -62,11 +62,11 @@ async function loadAll(){
   try{
     const d = date.value
 
-    // 1) PL（売上）
-    const pl = await getBillDailyPL(d)
+    // 1) PL（売上）- キャッシュ無効化
+    const pl = await getBillDailyPL(d, { cache: false })
 
-    // 2) 伝票（クライアントで当日抽出）
-    const allBills = await fetchBills({ ordering: '-opened_at' }).catch(()=>[])
+    // 2) 伝票（クライアントで当日抽出）- キャッシュ無効化
+    const allBills = await fetchBills({ ordering: '-opened_at' }, { cache: false }).catch(()=>[])
     const onlyToday = (Array.isArray(allBills?.results) ? allBills.results : allBills || [])
       .filter(b => b.opened_at && dayjs(b.opened_at).isSame(d, 'day'))
     billsToday.value = onlyToday
@@ -86,10 +86,10 @@ async function loadAll(){
       return b.closed_at && pt < st
     }).length
 
-// 3) 出勤状況（キャスト／スタッフ）
+// 3) 出勤状況（キャスト／スタッフ）- キャッシュ無効化
 const [castShiftsRaw, staffShiftsRaw] = await Promise.all([
-  fetchCastShifts({ from: d, to: d }).catch(() => []),
-  fetchStaffShifts({ time_min: `${d}T00:00:00`, time_max: `${d}T23:59:59` }).catch(() => []),
+  fetchCastShifts({ from: d, to: d }, { cache: false }).catch(() => []),
+  fetchStaffShifts({ time_min: `${d}T00:00:00`, time_max: `${d}T23:59:59` }, { cache: false }).catch(() => []),
 ])
 
 const dayStart = dayjs(`${d}T00:00:00`)

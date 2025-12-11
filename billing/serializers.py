@@ -1,6 +1,6 @@
 # billing/serializer.py
 from rest_framework import serializers
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule, CastGoal, User
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule, CastGoal, User, CustomerTag
 from dj_rest_auth.serializers import UserDetailsSerializer
 from cloudinary.utils import cloudinary_url
 from decimal import Decimal, ROUND_HALF_UP
@@ -446,11 +446,40 @@ class BillCastStaySerializer(serializers.ModelSerializer):
         return data
 
 
+class CustomerTagSerializer(serializers.ModelSerializer):
+    """顧客タグ"""
+    class Meta:
+        model = CustomerTag
+        fields = ('id', 'code', 'name', 'color', 'is_active')
+
+
 class CustomerSerializer(serializers.ModelSerializer):
+    # タグを読み取り・書き込み両対応
+    tags = CustomerTagSerializer(many=True, read_only=True)
+    tag_ids = serializers.PrimaryKeyRelatedField(
+        source='tags',
+        many=True,
+        queryset=CustomerTag.objects.all(),
+        required=False,
+        write_only=True
+    )
+    
+    # 派生：タグ名を comma-separated で返す（リスト表示で便利）
+    tag_names = serializers.SerializerMethodField()
+    
     class Meta:
         model  = Customer
-        fields = '__all__'       # 気になるなら explicit に並べる
+        fields = (
+            'id', 'full_name', 'alias', 'phone', 'birthday', 'photo', 'memo',
+            'tags', 'tag_ids', 'tag_names',
+            'last_drink', 'last_cast', 'created_at', 'updated_at'
+        )
         read_only_fields = ('last_drink', 'last_cast', 'created_at', 'updated_at')
+    
+    def get_tag_names(self, obj):
+        """タグ名をカンマ区切りで返す（検索・フィルタ用）"""
+        return ', '.join(obj.tags.values_list('name', flat=True))
+
 
 class CustomerLogSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source='user.username', read_only=True)
@@ -1283,14 +1312,6 @@ class CastPayoutBillItemMiniSerializer(serializers.ModelSerializer):
     class Meta:
         model  = BillItem
         fields = ("id", "name", "price", "qty", "is_inhouse")
-
-class CastPayoutDetailSerializer(serializers.ModelSerializer):
-    bill      = CastPayoutBillMiniSerializer(read_only=True)
-    bill_item = CastPayoutBillItemMiniSerializer(read_only=True)
-
-    class Meta:
-        model  = CastPayout
-        fields = ("id", "amount", "bill", "bill_item")
 
 class CastPayoutListSerializer(serializers.ModelSerializer):
     cast      = CastMiniSerializer(read_only=True)                 # ★ 一覧にも cast を

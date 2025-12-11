@@ -9,7 +9,7 @@ import csv
 from io import StringIO
 from django.http import HttpResponse
 
-from rest_framework import viewsets, status, mixins, generics, permissions, filters
+from rest_framework import viewsets, status, mixins, generics, permissions, filters, serializers
 from rest_framework.decorators import action
 from rest_framework.generics import ListAPIView
 from rest_framework.pagination import LimitOffsetPagination
@@ -26,9 +26,10 @@ from rest_framework.filters import SearchFilter
 from .permissions import RequireCap, CastHonshimeiForBill, CanOrderBillItem
 
 from .models import (
-    Store, Table, Bill, ItemMaster, BillItem, BillCastStay,
+    Store, Table, Bill, BillCustomer, ItemMaster, BillItem, BillCastStay,
     Cast, CastPayout, ItemCategory, CastShift, CastDailySummary,
-    Staff, StaffShift, Customer, CustomerLog, StoreNotice, StoreSeatSetting, DiscountRule
+    Staff, StaffShift, Customer, CustomerLog, CustomerTag,
+    StoreNotice, StoreSeatSetting, DiscountRule
 )
 from .serializers import (
     StoreSerializer, TableSerializer, BillSerializer,
@@ -39,7 +40,7 @@ from .serializers import (
     StaffSerializer, StaffShiftSerializer,
     BillCastStayMiniSerializer, CustomerSerializer, CustomerLogSerializer,
     StoreNoticeSerializer, ItemCategorySerializer, StoreSeatSettingSerializer, DiscountRuleSerializer,
-    CastPayoutListSerializer,
+    CastPayoutListSerializer, CustomerTagSerializer,
 )
 from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales, sync_nomination_fees
@@ -707,6 +708,12 @@ class CustomerViewSet(viewsets.ModelViewSet):
                 Q(alias__icontains=q) |
                 Q(phone__icontains=q)
             )
+        
+        # タグフィルタ（tag_code=vip&tag_code=regular のような複数指定対応）
+        tag_codes = self.request.query_params.getlist("tag_code")
+        if tag_codes:
+            qs = qs.filter(tags__code__in=tag_codes).distinct()
+        
         return qs
 
     @action(detail=True, methods=["get"])
@@ -736,6 +743,121 @@ class CustomerViewSet(viewsets.ModelViewSet):
 class NewsPagination(LimitOffsetPagination):
     default_limit = 20
     max_limit = 100
+
+
+# ────────────────────────────────────────────────────────────────────
+# 顧客タグ管理 & 集計
+# ────────────────────────────────────────────────────────────────────
+class CustomerTagViewSet(viewsets.ModelViewSet):
+    """
+    顧客タグマスター
+    - GET  /api/customer-tags/         一覧（customer_count付き）
+    - GET  /api/customer-tags/<id>/    詳細（customer_count付き）
+    - POST /api/customer-tags/         作成
+    - PUT/PATCH/DELETE も可
+    """
+    queryset = CustomerTag.objects.all().order_by('code')
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        # create/update は共通の CustomerTagSerializer を使用
+        if self.action in ('create', 'update', 'partial_update'):
+            return CustomerTagSerializer
+
+        # list/retrieve は customer_count を返す派生シリアライザ
+        class CustomerTagWithCountSerializer(CustomerTagSerializer):
+            customer_count = serializers.SerializerMethodField()
+
+            class Meta(CustomerTagSerializer.Meta):
+                fields = CustomerTagSerializer.Meta.fields + ('description', 'customer_count', 'created_at')
+
+            def get_customer_count(self, obj):
+                return obj.customers.count()
+
+        return CustomerTagWithCountSerializer
+
+
+
+class CustomerTagAnalyticsView(APIView):
+    """
+    顧客属性別の詳細分析API
+    GET /api/customer-analytics/by-tag/?tag_code=vip
+    
+    レスポンス:
+    {
+      "tag": {...},
+      "customers": [{id, alias, full_name, visit_count, total_spent, ...}, ...],
+      "summary": {
+        "total_customers": 42,
+        "total_visits": 215,
+        "total_revenue": 8500000,
+        "avg_revenue_per_customer": 202380,
+      }
+    }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import CustomerTag, BillCustomer
+        from django.db.models import Count, Sum
+        
+        tag_code = request.query_params.get("tag_code")
+        if not tag_code:
+            return Response(
+                {"error": "tag_code parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        tag = get_object_or_404(CustomerTag, code=tag_code, is_active=True)
+        customers = tag.customers.all()
+        
+        # 顧客ごとの集計
+        customer_stats = []
+        total_visits = 0
+        total_revenue = 0
+        
+        for cust in customers:
+            visits = BillCustomer.objects.filter(customer=cust).count()
+            revenue = sum(
+                bill.grand_total for bill in cust.bills.all()
+            )
+            
+            total_visits += visits
+            total_revenue += revenue
+            
+            customer_stats.append({
+                'id': cust.id,
+                'alias': cust.alias or cust.full_name,
+                'full_name': cust.full_name,
+                'phone': cust.phone,
+                'visit_count': visits,
+                'total_spent': revenue,
+                'last_visited': (
+                    cust.bills.order_by('-closed_at')
+                    .values_list('closed_at', flat=True)
+                    .first()
+                    .date().isoformat() if cust.bills.exists() else None
+                ),
+            })
+        
+        return Response({
+            'tag': {
+                'id': tag.id,
+                'code': tag.code,
+                'name': tag.name,
+                'color': tag.color,
+            },
+            'customers': customer_stats,
+            'summary': {
+                'total_customers': customers.count(),
+                'total_visits': total_visits,
+                'total_revenue': total_revenue,
+                'avg_revenue_per_customer': (
+                    int(total_revenue / customers.count())
+                    if customers.count() > 0 else 0
+                ),
+            },
+        })
 
 
 class IsStaffOrReadOnly(permissions.BasePermission):

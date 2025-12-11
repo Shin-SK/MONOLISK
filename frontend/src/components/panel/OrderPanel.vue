@@ -96,6 +96,7 @@ const cartSubtotal = computed(() =>
 
 <template>
   <div class="panel order">
+
     <div class="wrap d-flex flex-column flex-grow-1 min-h-0 overflow-hidden">
       <!-- 横スクロールのカテゴリタブ -->
       <div class="order-tabs flex-shrink-0" tabindex="-1">
@@ -217,6 +218,9 @@ const cartSubtotal = computed(() =>
         <!-- 仮会計では注文ボタンを隠す -->
         <button v-if="!props.readonly" class="btn btn-warning w-100" @click="$emit('placeOrder')">注文</button>
         <button type="button" class="clear btn btn-sm mt-2" @click="emit('clearPending')">クリア</button>
+        <small class="mt-5 text-muted df-center">
+          修正は会計パネルから行ってください。
+        </small>
       </div>
     </div>
     <!-- カートへ移動ボタン（フェード IN/OUT） -->

@@ -512,6 +512,13 @@ export const fetchCustomer = id =>
 export const fetchCustomers = (params = {}) =>
   api.get('billing/customers/', { params }).then(r => r.data)
 
+// 顧客タグ
+export const fetchCustomerTags = () =>
+  api.get('billing/customer-tags/').then(r => r.data?.results ?? r.data ?? [])
+
+export const createCustomerTag = (payload = {}) =>
+  api.post('billing/customer-tags/', payload).then(r => r.data)
+
 // 検索（名前・電話）
 export const searchCustomers = (q = '') =>
   api.get('billing/customers/', {

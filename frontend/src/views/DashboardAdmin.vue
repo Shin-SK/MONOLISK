@@ -1,6 +1,7 @@
 <!-- frontend/src/views/DashboardAdmin.vue -->
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import BillModal       from '@/components/BillModal.vue'
 import BillListTable   from '@/components/BillListTable.vue'   // PC用（現行DnD）
@@ -9,6 +10,9 @@ import { api, fetchBill } from '@/api'
 import { buildBillDraft } from '@/utils/draftbills.js'
 import { startTxQueue } from '@/utils/txQueue'
 startTxQueue()
+
+const route = useRoute()
+const router = useRouter()
 
 /* ── SP/PC 判定 ── */
 const isSP = ref(false)
@@ -54,6 +58,22 @@ function handleSaved(){
   pcRef.value?.reload?.()
   spRef.value?.reload?.()
 }
+
+async function tryOpenBillFromRoute(){
+  const billId = route.query.billId
+  if(!billId) return
+
+  await openBillEditor({ billId })
+
+  const { billId: _removed, ...rest } = route.query
+  router.replace({ query: rest })
+}
+
+watch(
+  () => route.query.billId,
+  () => { void tryOpenBillFromRoute() },
+  { immediate: true }
+)
 
 </script>
 

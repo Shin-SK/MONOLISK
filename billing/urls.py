@@ -2,14 +2,15 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    StoreViewSet, TableViewSet, ItemMasterViewSet,
-    BillViewSet, BillItemViewSet, BillStayViewSet,
-    CastViewSet, CastSalesView, CastSalesSummaryView,
-    CastPayoutListView, CastItemDetailView,
-    ItemCategoryViewSet, CastShiftViewSet,
-    CastDailySummaryViewSet, CastRankingView,
-    StaffViewSet, StaffShiftViewSet,
-    CustomerViewSet, StoreNoticeViewSet, StoreSeatSettingViewSet, DiscountRuleViewSet, CastPayrollSummaryView, CastPayrollDetailView, CastPayrollDetailCSVView
+     StoreViewSet, TableViewSet, ItemMasterViewSet,
+     BillViewSet, BillItemViewSet, BillStayViewSet,
+     CastViewSet, CastSalesView, CastSalesSummaryView,
+     CastPayoutListView, CastItemDetailView,
+     ItemCategoryViewSet, CastShiftViewSet,
+     CastDailySummaryViewSet, CastRankingView,
+     StaffViewSet, StaffShiftViewSet,
+     CustomerViewSet, StoreNoticeViewSet, StoreSeatSettingViewSet, DiscountRuleViewSet, CastPayrollSummaryView, CastPayrollDetailView, CastPayrollDetailCSVView,
+     CustomerTagViewSet,
 )
 
 from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
@@ -31,6 +32,7 @@ router.register(r"customers",            CustomerViewSet,        basename="custo
 router.register(r"store-notices",        StoreNoticeViewSet,     basename="store-notices")
 router.register(r'store-seat-settings', StoreSeatSettingViewSet, basename='store-seat-settings')
 router.register(r'discount-rules', DiscountRuleViewSet, basename='discount-rule')
+router.register(r"customer-tags",       CustomerTagViewSet,     basename="customer-tags")
 
 
 urlpatterns = [

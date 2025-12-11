@@ -443,6 +443,8 @@ const historyEvents = computed(() => {
 const closing = ref(false)
 async function confirmClose(){
   if (closing.value || !props.bill?.id) return
+  const ok = window.confirm('本当に会計しますか？')
+  if (!ok) return
   closing.value = true
   try{
     await nextTick()
@@ -506,6 +508,7 @@ async function confirmClose(){
       const nowISO = new Date().toISOString()
       props.bill.stays = (props.bill.stays || []).map(s => s.left_at ? s : ({ ...s, left_at: nowISO }))
     }
+    alert('会計が完了しました')
   }catch(e){
     console.error(e)
     alert('会計に失敗しました（オフラインでも後で確定されます）')

@@ -3,6 +3,9 @@ import { useLoading } from '@/stores/useLoading'
 import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
 
+// スピナーは独自表示にするのでNProgressのスピナーは無効化
+NProgress.configure({ showSpinner: false })
+
 const TOKEN_KEY = 'token'
 const STORE_KEY = 'store_id'
 const getToken   = () => localStorage.getItem(TOKEN_KEY)
