@@ -14,7 +14,8 @@ import { useRoles } from '@/composables/useRoles'
 
 
 const routes = [
-
+  // エラーページ
+  { path: '/error', name: 'error', component: () => import('@/views/ErrorPage.vue') },
 
   {
     path: '/settings',
@@ -290,7 +291,7 @@ router.beforeEach(async (to, from, next) => {
 
   const required = to.matched.map(r => r.meta?.rolesAny).find(a => Array.isArray(a))
   if (required && !hasRoleOrSuper(required)) {
-    const dest = homePath() || '/'
+    const dest = homePath() || '/error'
     // console.log('[guard] role mismatch →', dest, 'required=', required)
     if (dest === to.fullPath || dest === from.fullPath) return next()
     return next({ path: dest, replace: true })

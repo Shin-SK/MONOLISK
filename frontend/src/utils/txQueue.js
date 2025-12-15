@@ -49,7 +49,15 @@ const runners = {
     try { console.log('[diag txQueue:createBill]', { tempId: p.tempId, realId: res.id }) } catch(e){ /* noop */ }
     return { realId: res.id }
   },
-  async patchBill(p){ await patchBill(p.id, p.payload) },               // {id, payload}
+  async patchBill(p){
+    // opened_at/expected_out を送らない PATCH で現在時刻にリセットされるのを防ぐ
+    const store = useBills()
+    const b = store.list.find(x => Number(x.id) === Number(p.id)) || {}
+    const payload = { ...p.payload }
+    if (payload.opened_at === undefined)    payload.opened_at = b.opened_at ?? null
+    if (payload.expected_out === undefined) payload.expected_out = b.expected_out ?? null
+    await patchBill(p.id, payload)
+  },               // {id, payload}
   async updateBillCustomers(p){ await updateBillCustomers(p.id, p.customer_ids) },
   async updateBillCasts(p){
     const payload = { nomIds: p.nomIds || [], inIds: p.inIds || [], freeIds: p.freeIds || [], dohanIds: p.dohanIds || [] }

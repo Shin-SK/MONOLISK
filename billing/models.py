@@ -64,8 +64,48 @@ class Store(models.Model):
     business_day_cutoff_hour = models.PositiveSmallIntegerField(
         default=6,
         validators=[MinValueValidator(0), MaxValueValidator(12)],
-        help_text="営業日の切替時刻（例: 6 = 朝6時締め。20:00-26:00 の場合は 6 推奨）",
+        help_text="営業日の切替時刻（例: 6 = 朝6時締め。営業日外の処理に使用）",
     )
+
+    # ─────────────── 営業時間 ───────────────────
+    business_open_hour = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("20.0"),
+        validators=[MinValueValidator(0), MaxValueValidator(27)],
+        help_text="営業開始時刻（営業日内の相対時刻。例: 20.0 = 20:00）"
+    )
+    business_close_hour = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("27.0"),
+        validators=[MinValueValidator(0), MaxValueValidator(27)],
+        help_text="営業終了時刻（営業日内の相対時刻。例: 27.0 = 朝3:00）"
+    )
+
+    @property
+    def business_hours_display(self) -> str:
+        """営業時間を表示用フォーマット（例: 20:00-27:00）"""
+        def hour_to_str(h: Decimal) -> str:
+            h_float = float(h)
+            h_int = int(h_float)
+            m_int = int((h_float - h_int) * 60)
+            if h_int >= 24:
+                return f"翌{h_int-24:02d}:{m_int:02d}"
+            return f"{h_int:02d}:{m_int:02d}"
+        
+        return f"{hour_to_str(self.business_open_hour)}-{hour_to_str(self.business_close_hour)}"
+    
+    def is_open_at(self, dt: timezone.datetime = None) -> bool:
+        """
+        指定時刻（営業日ベース）が営業時間内かチェック
+        dt: チェック対象日時（省略時は現在時刻）
+        """
+        if dt is None:
+            dt = timezone.now()
+        
+        # 営業日時刻に変換（cutoff_hour未満なら前日の時刻扱い）
+        hour = Decimal(str(dt.hour + dt.minute / 60.0))
+        if dt.hour < self.business_day_cutoff_hour:
+            hour += 24  # 朝6時未満なら前日の時刻扱い
+        
+        return self.business_open_hour <= hour <= self.business_close_hour
 
     def __str__(self): return self.name
 
@@ -354,6 +394,24 @@ class Customer(models.Model):
         related_name='customers',
         verbose_name='属性タグ'
     )
+    
+    # ─────────── マイボトル管理 ───────────────
+    has_bottle = models.BooleanField(
+        default=False,
+        verbose_name='マイボトル有無',
+        help_text='マイボトルを預けているか'
+    )
+    bottle_shelf = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name='棚番号',
+        help_text='ボトルの保管場所（例: A-12, B-5）'
+    )
+    bottle_memo = models.TextField(
+        blank=True,
+        verbose_name='ボトルメモ',
+        help_text='銘柄や残量など（例: ジャックダニエル 3/4残）'
+    )
 
     # 自動で書き戻すフィールド
     last_drink = models.CharField(max_length=100, blank=True)
@@ -550,6 +608,76 @@ class Bill(models.Model):
                 )
                 setattr(rec, col, (getattr(rec, col) or 0) + amt)
                 rec.save(update_fields=[col])
+            
+            # ⑦ 時間別サマリを更新（リアルタイム集計）
+            self._update_hourly_summary(store_id, stay_map, sales_map)
+
+    def _update_hourly_summary(self, store_id: int, stay_map: dict, sales_map: dict):
+        """時間別サマリ（HourlySalesSummary + HourlyCastSales）を更新"""
+        from .models import HourlySalesSummary, HourlyCastSales, ItemCategory
+        
+        if not self.closed_at:
+            return
+        
+        date = self.closed_at.date()
+        hour = self.closed_at.hour
+        
+        # HourlySalesSummary を取得または作成
+        summary, _ = HourlySalesSummary.objects.get_or_create(
+            store_id=store_id,
+            date=date,
+            hour=hour,
+            defaults={}
+        )
+        
+        # 全体集計を加算
+        summary.sales_total += self.grand_total or 0
+        summary.bill_count += 1
+        summary.customer_count += self.customers.count()
+        
+        # カテゴリ別売上を集計
+        category_sales = defaultdict(int)
+        for item in self.items.select_related('item_master__category'):
+            if item.item_master and item.item_master.category:
+                cat_code = item.item_master.category.code
+                category_sales[cat_code] += item.subtotal
+        
+        summary.sales_set += category_sales.get('set', 0)
+        summary.sales_drink += category_sales.get('drink', 0)
+        summary.sales_food += category_sales.get('food', 0)
+        summary.sales_champagne += category_sales.get('champagne', 0) + category_sales.get('original-champagne', 0)
+        summary.save()
+        
+        # キャスト別内訳を更新
+        for cast_id, total_sales in sales_map.items():
+            cast_sales, _ = HourlyCastSales.objects.get_or_create(
+                hourly_summary=summary,
+                cast_id=cast_id,
+                defaults={}
+            )
+            
+            cast_sales.sales_total += total_sales
+            cast_sales.bill_count += 1
+            
+            # stay_type に応じて分類
+            stay_type = stay_map.get(cast_id, 'free')
+            if stay_type == 'nom':
+                cast_sales.sales_nom += total_sales
+            elif stay_type == 'in':
+                cast_sales.sales_in += total_sales
+            else:
+                cast_sales.sales_free += total_sales
+            
+            # シャンパン売上（このキャスト担当分）
+            champ_sales = sum(
+                item.subtotal for item in self.items.select_related('item_master__category')
+                if item.served_by_cast_id == cast_id
+                and item.item_master
+                and item.item_master.category
+                and item.item_master.category.code in ('champagne', 'original-champagne')
+            )
+            cast_sales.sales_champagne += champ_sales
+            cast_sales.save()
 
     # 席別の実効サービス率（% or 小数両対応）を返すヘルパ
     def _effective_service_rate(self) -> Decimal:
@@ -584,6 +712,16 @@ class Bill(models.Model):
     class Meta:
         verbose_name = '伝票'
         verbose_name_plural = verbose_name
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(paid_cash__gte=0) & models.Q(paid_cash__lte=100000000),
+                name='bill_paid_cash_range',
+            ),
+            models.CheckConstraint(
+                check=models.Q(paid_card__gte=0) & models.Q(paid_card__lte=100000000),
+                name='bill_paid_card_range',
+            ),
+        ]
 
 
 
@@ -618,6 +756,16 @@ class BillItem(models.Model):
 
     class Meta:
         ordering = ['id']
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(qty__gte=1) & models.Q(qty__lte=99),
+                name='billitem_qty_range',
+            ),
+            models.CheckConstraint(
+                check=models.Q(price__gte=0) & models.Q(price__lte=2000000),
+                name='billitem_price_range',
+            ),
+        ]
 
     # ---------------- プロパティ -----------------
     @property
@@ -1297,3 +1445,94 @@ class BillDiscountLine(models.Model):
 
     def __str__(self):
         return f'{self.label}: -¥{self.amount:,}'
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 時間別売上サマリ（リアルタイム集計）
+# ═══════════════════════════════════════════════════════════════════
+class HourlySalesSummary(models.Model):
+    """
+    時間別売上サマリ（1店舗 x 1日 x 1時間）
+    Bill.close() 時に Bill.closed_at の時刻で自動更新
+    """
+    store = models.ForeignKey('billing.Store', on_delete=models.CASCADE, related_name='hourly_summaries')
+    date = models.DateField(db_index=True, help_text='集計日（YYYY-MM-DD）')
+    hour = models.IntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(23)],
+        help_text='時刻（0-23）'
+    )
+    
+    # 全体集計
+    sales_total = models.PositiveIntegerField(default=0, help_text='売上合計')
+    bill_count = models.PositiveIntegerField(default=0, help_text='伝票数')
+    customer_count = models.PositiveIntegerField(default=0, help_text='来客数')
+    
+    # カテゴリ別内訳
+    sales_set = models.PositiveIntegerField(default=0, help_text='セット売上')
+    sales_drink = models.PositiveIntegerField(default=0, help_text='ドリンク売上')
+    sales_food = models.PositiveIntegerField(default=0, help_text='フード売上')
+    sales_champagne = models.PositiveIntegerField(default=0, help_text='シャンパン売上')
+    
+    # メタ
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('store', 'date', 'hour')
+        indexes = [
+            models.Index(fields=['store', 'date', 'hour']),
+            models.Index(fields=['date', 'hour']),
+        ]
+    
+    def __str__(self):
+        return f"{self.store.name} {self.date} {self.hour:02d}:00"
+    
+    @property
+    def is_within_business_hours(self) -> bool:
+        """この時間帯が営業時間内かチェック（営業日ベース）"""
+        # 営業日時刻に変換（日中の時刻 → cutoff前なら +24）
+        hour_relative = Decimal(str(self.hour))
+        if self.hour < self.store.business_day_cutoff_hour:
+            hour_relative += 24
+        
+        return self.store.business_open_hour <= hour_relative <= self.store.business_close_hour
+
+        verbose_name = '時間別売上サマリ'
+        verbose_name_plural = verbose_name
+        ordering = ['date', 'hour']
+    
+    def __str__(self):
+        return f'{self.store.name} {self.date} {self.hour:02d}:00 - ¥{self.sales_total:,}'
+
+
+class HourlyCastSales(models.Model):
+    """
+    時間別キャスト売上（1店舗 x 1日 x 1時間 x 1キャスト）
+    HourlySalesSummary の内訳として、キャスト別の売上を記録
+    """
+    hourly_summary = models.ForeignKey(
+        'billing.HourlySalesSummary',
+        on_delete=models.CASCADE,
+        related_name='cast_breakdown'
+    )
+    cast = models.ForeignKey('billing.Cast', on_delete=models.CASCADE, related_name='hourly_sales')
+    
+    # キャスト別集計
+    sales_total = models.PositiveIntegerField(default=0, help_text='このキャストの売上合計')
+    sales_nom = models.PositiveIntegerField(default=0, help_text='本指名売上')
+    sales_in = models.PositiveIntegerField(default=0, help_text='場内指名売上')
+    sales_free = models.PositiveIntegerField(default=0, help_text='フリー売上')
+    sales_champagne = models.PositiveIntegerField(default=0, help_text='シャンパン売上')
+    
+    bill_count = models.PositiveIntegerField(default=0, help_text='担当伝票数')
+    
+    class Meta:
+        unique_together = ('hourly_summary', 'cast')
+        indexes = [
+            models.Index(fields=['cast', 'hourly_summary']),
+        ]
+        verbose_name = '時間別キャスト売上'
+        verbose_name_plural = verbose_name
+        ordering = ['-sales_total']
+    
+    def __str__(self):
+        return f'{self.cast.stage_name} {self.hourly_summary.date} {self.hourly_summary.hour:02d}:00 - ¥{self.sales_total:,}'

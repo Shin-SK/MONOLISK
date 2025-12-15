@@ -10,7 +10,7 @@ from .views import (
      CastDailySummaryViewSet, CastRankingView,
      StaffViewSet, StaffShiftViewSet,
      CustomerViewSet, StoreNoticeViewSet, StoreSeatSettingViewSet, DiscountRuleViewSet, CastPayrollSummaryView, CastPayrollDetailView, CastPayrollDetailCSVView,
-     CustomerTagViewSet,
+     CustomerTagViewSet, HourlySalesView,
 )
 
 from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
@@ -59,6 +59,7 @@ urlpatterns = [
     path("cast-payouts/",         CastPayoutListView.as_view(),     name="cast-payouts"),
     path("cast-item-details/",    CastItemDetailView.as_view(),     name="cast-item-details"),
     path("cast-ranking/",         CastRankingView.as_view(),        name="cast-ranking"),
+    path("sales/hourly/",         HourlySalesView.as_view(),        name="sales-hourly"),
     
     # ★ 追加: P/L（Daily / Monthly / Yearly）
     path("pl/daily/",   DailyPLAPIView.as_view(),   name="pl-daily"),

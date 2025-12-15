@@ -178,7 +178,7 @@ export const fetchTables  = () => api.get('billing/tables/').then(r=>r.data)
 export const deleteBillItem = (billId, itemId) =>
   api.delete(`billing/bills/${billId}/items/${itemId}/`)
 
-export const getStore  = id => api.get(`billing/stores/${id}/`).then(r => r.data)
+export const getStore  = id => api.get(`billing/stores/${id}/`, { cache: false }).then(r => r.data)
 
 
 //PL
@@ -188,6 +188,10 @@ export async function getBillDailyPL(date) {
 	return { sales_cash:0, sales_card:0, sales_total:0, cast_labor:0, driver_labor:0, custom_expense:0, gross_profit:0, ...data }
 }
 
+export async function getHourlySales(date, storeId) {
+	const { data } = await api.get('billing/sales/hourly/', { params: { date, store_id: storeId } })
+	return Array.isArray(data) ? data : []
+}
 
 export const getBillMonthlyPL = (monthStr) => {
   const [year, month] = monthStr.split('-').map(Number)

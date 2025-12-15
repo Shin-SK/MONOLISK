@@ -39,6 +39,9 @@ class StoreForm(forms.ModelForm):
             "back_rate_nomination_default": forms.NumberInput(attrs={"step":"0.01"}),
             "back_rate_inhouse_default": forms.NumberInput(attrs={"step":"0.01"}),
             "back_rate_dohan_default": forms.NumberInput(attrs={"step":"0.01"}),
+            "business_open_hour": forms.NumberInput(attrs={"step": "0.5", "placeholder": "20.0 (20:00)"}),
+            "business_close_hour": forms.NumberInput(attrs={"step": "0.5", "placeholder": "27.0 (翌3:00)"}),
+            "business_day_cutoff_hour": forms.NumberInput(attrs={"min": "0", "max": "12"}),
         }
 
 @admin.register(Store)
@@ -49,6 +52,7 @@ class StoreAdmin(admin.ModelAdmin):
 
     list_display  = (
         "name",
+        "business_hours_display",
         "service_rate", "tax_rate", "nom_pool_rate",
         "back_rate_free_default","back_rate_nomination_default","back_rate_inhouse_default","back_rate_dohan_default",
         "business_day_cutoff_hour",
@@ -58,7 +62,14 @@ class StoreAdmin(admin.ModelAdmin):
         "back_rate_free_default","back_rate_nomination_default","back_rate_inhouse_default","back_rate_dohan_default",
     )
     fieldsets = (
-        ("営業日設定", {"fields": ("business_day_cutoff_hour",)}),
+        ("営業時間設定", {
+            "description": "営業時間は営業日内の相対時刻で指定（例: 20.0=20:00, 27.0=翌3:00）",
+            "fields": (
+                "business_open_hour",
+                "business_close_hour",
+                "business_day_cutoff_hour",
+            )
+        }),
         (None, {"fields": ("name", "slug")}),
         ("各種レート", {"fields": (
             "service_rate","tax_rate","nom_pool_rate",
@@ -259,8 +270,29 @@ class CastPayoutAdmin(admin.ModelAdmin):
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ('id', 'display_name', 'phone', 'updated_at')
-    search_fields = ('full_name', 'alias', 'phone')
+    list_display = ('id', 'display_name', 'phone', 'has_bottle', 'bottle_shelf', 'updated_at')
+    search_fields = ('full_name', 'alias', 'phone', 'bottle_shelf')
+    list_filter = ('has_bottle',)
+    filter_horizontal = ('tags',)
+    
+    fieldsets = (
+        ('基本情報', {
+            'fields': ('full_name', 'alias', 'phone', 'birthday', 'photo', 'memo')
+        }),
+        ('マイボトル管理', {
+            'fields': ('has_bottle', 'bottle_shelf', 'bottle_memo'),
+            'description': 'マイボトルを預けている場合はチェックを入れ、棚番号と詳細を記入'
+        }),
+        ('タグ', {
+            'fields': ('tags',),
+            'classes': ('collapse',)
+        }),
+        ('自動記録', {
+            'fields': ('last_drink', 'last_cast', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    readonly_fields = ('created_at', 'updated_at')
     
 
 

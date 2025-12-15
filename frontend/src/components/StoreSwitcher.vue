@@ -38,7 +38,7 @@ const canApply = computed(() =>
 
 const buttonLabel = computed(() => {
   if (applying.value) return '更新中…'
-  return String(selectedSid.value) === String(currentSid.value) ? '適用済み' : '更新'
+  return String(selectedSid.value) === String(currentSid.value) ? '適用済' : '更新'
 })
 
 onMounted(async () => {
@@ -100,10 +100,10 @@ async function apply () {
 </script>
 
 <template>
-  <div v-if="visible" class="row g-2 align-items-center mt-1 mb-2">
-    <div class="col-9">
+  <div v-if="visible" class="row g-2 align-items-center">
+    <div class="col-8">
       <select
-        class="form-select w-100"
+        class="form-select form-select-sm w-100"
         v-model="selectedSid"
         @change="onSelectChange"
         :disabled="loadingList || applying"
@@ -114,10 +114,10 @@ async function apply () {
       </select>
     </div>
 
-	<div class="col-3 d-flex align-items-center">
+	<div class="col-4 d-flex align-items-center">
 		<button
 		type="button"
-		class="btn btn-sm w-100"
+		class="btn btn-sm w-100 h-100"
 		:class="['btn-outline-secondary', { 'disabled': !canApply, 'pe-none': !canApply }]"
 		:aria-disabled="!canApply ? 'true' : 'false'"
 		@click="apply"

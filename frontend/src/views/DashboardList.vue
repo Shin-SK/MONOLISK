@@ -208,7 +208,7 @@ function liveCasts (b) {
           <!-- アクティブのみ -->
           <div class="form-check form-switch m-0">
             <input class="form-check-input" type="checkbox" id="onlyActive" v-model="activeOnly">
-            <label class="form-check-label small" for="onlyActive">アクティブのみ</label><!-- ★最初アクティブがいい -->
+            <label class="form-check-label small" for="onlyActive">アクティブのみ</label>
           </div>
         </div>
       </header>
@@ -299,8 +299,6 @@ function liveCasts (b) {
     }
   }
 
-  .card-body {
-  }
 
   .card-footer {
     border-top: 1px solid #e9ecef;
@@ -328,9 +326,6 @@ function liveCasts (b) {
     font-size: 1.25rem;
     font-weight: bold;
     color: #333;
-  }
-
-  .casts-section {
   }
 
   .memo-content {

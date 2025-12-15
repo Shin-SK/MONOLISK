@@ -28,7 +28,7 @@ export function useRoles() {
       case 'owner':   return '/owner/dashboard'
       case 'staff':   return '/staff/mypage'
       case 'manager': return '/manager/dashboard'
-      default:        return '/dashboard'
+      default:        return '/error'
     }
   }
 

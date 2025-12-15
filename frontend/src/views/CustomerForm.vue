@@ -25,15 +25,12 @@ function handleSaved(saved) {
 
 <template>
   <div class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h1 class="h4 mb-0">顧客編集 #{{ pickedId ?? '-' }}</h1>
-      <button class="btn btn-outline-secondary" @click="$router.back()">戻る</button>
-    </div>
-
     <!-- CustomerPicker をそのまま編集フォームとして使う -->
     <CustomerPicker
       v-model="pickedId"
       @saved="handleSaved"
     />
+
+    <button class="mt-3 btn btn-sm btn-outline-secondary" @click="$router.back()">戻る</button>
   </div>
 </template>

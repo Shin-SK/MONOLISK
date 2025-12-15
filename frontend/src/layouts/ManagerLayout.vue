@@ -287,7 +287,7 @@ async function logout () {
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, #f8f9fa 0%, #fff 100%);
-  border-radius: 16px 16px 0 0;
+  border-radius:0 0 16px 16px;
   max-height: 50vh;
   overflow-y: auto;
   box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.1);

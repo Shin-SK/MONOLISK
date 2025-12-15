@@ -93,7 +93,7 @@ async function logout () {
           </a> -->
 
           <!-- 設定（ManagerLayout配下の /settings） -->
-          <a class="nav-link mt-2 bg-white" href="#" @click.prevent="nav({name:'settings'})">
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'settings'})">
             設定
           </a>
 
@@ -179,7 +179,7 @@ async function logout () {
         <!-- -------- フッタ ---------- -->
         <div class="footer d-flex flex-column gap-2">
           <!-- 広告 -->
-          <div class="">
+          <div class="advertisement">
             <a href="https://studio-color.jp/" class="d-flex text-black justify-content-between align-items-center" target="_blank" rel="noopener">
               <div class="wrap d-flex flex-column">
                 <span style="font-size: 12px;">キャスト撮影やコンテンツ制作なら</span>
@@ -199,11 +199,11 @@ async function logout () {
             </RouterLink>
           </div>
 
-          <button class="btn btn-outline-danger w-100" @click="logout">
+          <button class="btn btn-sm btn-outline-danger w-100" @click="logout">
             ログアウト
           </button>
-          <StoreSwitcher class="mt-5" />
-          <DevRoleSwitcher class="mt-1 mb-2"/>
+          <StoreSwitcher />
+          <DevRoleSwitcher />
           <div class="version text-muted small text-center w-100">
             v{{ APP_VERSION }}
           </div>

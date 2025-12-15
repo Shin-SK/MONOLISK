@@ -15,10 +15,18 @@ from django.db import transaction
 from django.db.models import Sum
 
 from .models import Bill, BillDiscountLine
+from billing.constants import (
+    BILLITEM_QTY_MIN, BILLITEM_QTY_MAX,
+    BILLITEM_PRICE_MIN, BILLITEM_PRICE_MAX,
+    BILL_PAYMENT_MIN, BILL_PAYMENT_MAX, BILL_OVERPAY_TOLERANCE,
+    ERROR_MESSAGES
+)
 
 
 
 class StoreSerializer(serializers.ModelSerializer):
+    business_hours_display = serializers.CharField(read_only=True)
+    
     class Meta:
         model    = Store
         fields    = '__all__'
@@ -298,6 +306,44 @@ class BillItemSerializer(serializers.ModelSerializer):
 
     def get_subtotal(self, obj):
         return obj.subtotal
+    
+    # ───────── バリデーション（締め済みでも修正OK前提で極端値を防ぐ） ─────────
+    def validate_qty(self, value):
+        """数量: 1〜99の範囲"""
+        if value is None:
+            raise serializers.ValidationError(ERROR_MESSAGES['qty_zero'])
+        if value < BILLITEM_QTY_MIN:
+            raise serializers.ValidationError(ERROR_MESSAGES['qty_zero'])
+        if value > BILLITEM_QTY_MAX:
+            raise serializers.ValidationError(ERROR_MESSAGES['qty_range'])
+        return value
+    
+    def validate_price(self, value):
+        """単価: 0〜2,000,000の範囲"""
+        if value is None:
+            return value  # null許容の場合
+        if value < BILLITEM_PRICE_MIN:
+            raise serializers.ValidationError(ERROR_MESSAGES['price_negative'])
+        if value > BILLITEM_PRICE_MAX:
+            raise serializers.ValidationError(ERROR_MESSAGES['price_range'])
+        return value
+    
+    def validate(self, attrs):
+        """全体整合性チェック + Store-Locked確認"""
+        # item_master の Store-Locked チェック
+        item_master = attrs.get('item_master')
+        if item_master:
+            request = self.context.get('request')
+            if request:
+                # X-Store-Id ヘッダーから店舗IDを取得
+                store_id = request.META.get('HTTP_X_STORE_ID') or request.META.get('HTTP_X_STORE_Id')
+                if store_id and hasattr(item_master, 'store_id'):
+                    if str(item_master.store_id) != str(store_id):
+                        raise serializers.ValidationError({
+                            'item_master': ERROR_MESSAGES['item_master_wrong_store']
+                        })
+        
+        return attrs
 
 
 class CastCategoryRateSerializer(serializers.ModelSerializer):
@@ -467,18 +513,33 @@ class CustomerSerializer(serializers.ModelSerializer):
     # 派生：タグ名を comma-separated で返す（リスト表示で便利）
     tag_names = serializers.SerializerMethodField()
     
+    # ★ 最終来店日時（直近伝票から算出）
+    last_visit_at = serializers.SerializerMethodField()
+    
+    # ★ 最終担当キャスト（ミニ形式）
+    last_cast_obj = CastMiniSerializer(source='last_cast', read_only=True)
+    
     class Meta:
         model  = Customer
         fields = (
             'id', 'full_name', 'alias', 'phone', 'birthday', 'photo', 'memo',
             'tags', 'tag_ids', 'tag_names',
-            'last_drink', 'last_cast', 'created_at', 'updated_at'
+            'has_bottle', 'bottle_shelf', 'bottle_memo',
+            'last_drink', 'last_cast', 'last_visit_at', 'last_cast_obj',
+            'created_at', 'updated_at'
         )
-        read_only_fields = ('last_drink', 'last_cast', 'created_at', 'updated_at')
+        read_only_fields = ('last_drink', 'last_cast', 'last_visit_at', 'last_cast_obj', 'created_at', 'updated_at')
     
     def get_tag_names(self, obj):
         """タグ名をカンマ区切りで返す（検索・フィルタ用）"""
         return ', '.join(obj.tags.values_list('name', flat=True))
+    
+    def get_last_visit_at(self, obj):
+        """直近伝票から最終来店日時を算出（closed_at優先、無ければopened_at）"""
+        latest = obj.bills.order_by('-closed_at', '-opened_at').values('closed_at', 'opened_at').first()
+        if latest:
+            return latest.get('closed_at') or latest.get('opened_at')
+        return None
 
 
 class CustomerLogSerializer(serializers.ModelSerializer):
@@ -599,6 +660,64 @@ class BillSerializer(serializers.ModelSerializer):
         if req and getattr(req, 'store', None):
             qs = qs.filter(store=req.store)
         self.fields['discount_rule'].queryset = qs
+
+    # ---- バリデーション ----
+    def validate_paid_cash(self, value):
+        """
+        支払額（現金）のバリデーション：0円以上、上限以下をチェック。
+        """
+        if value is None:
+            return value
+        if value < BILL_PAYMENT_MIN:
+            raise serializers.ValidationError(ERROR_MESSAGES['bill_payment_negative'])
+        if value > BILL_PAYMENT_MAX:
+            raise serializers.ValidationError(ERROR_MESSAGES['bill_payment_too_large'])
+        return value
+
+    def validate_paid_card(self, value):
+        """
+        支払額（カード）のバリデーション：0円以上、上限以下をチェック。
+        """
+        if value is None:
+            return value
+        if value < BILL_PAYMENT_MIN:
+            raise serializers.ValidationError(ERROR_MESSAGES['bill_payment_negative'])
+        if value > BILL_PAYMENT_MAX:
+            raise serializers.ValidationError(ERROR_MESSAGES['bill_payment_too_large'])
+        return value
+
+    def validate(self, data):
+        """
+        伝票全体のバリデーション：支払額合計が grand_total を過剰に超えないかチェック。
+        締め済み伝票でも修正可能だが、極端な値や不整合を防ぐ。
+        """
+        # paid_cash/paid_card が両方 None の場合はスキップ（未設定 or 更新なし）
+        paid_cash = data.get('paid_cash')
+        paid_card = data.get('paid_card')
+        if paid_cash is None and paid_card is None:
+            return data
+
+        # 既存インスタンス（更新時）または新規作成時の値を取得
+        if self.instance:
+            paid_cash = paid_cash if paid_cash is not None else (self.instance.paid_cash or 0)
+            paid_card = paid_card if paid_card is not None else (self.instance.paid_card or 0)
+        else:
+            paid_cash = paid_cash or 0
+            paid_card = paid_card or 0
+
+        paid_total = paid_cash + paid_card
+
+        # grand_total を計算（更新時は既存値を使用、新規作成時は 0）
+        if self.instance:
+            grand_total = self.get_grand_total(self.instance)
+        else:
+            grand_total = 0  # 新規作成時は BillItem がないため 0
+
+        # 支払額が grand_total を BILL_OVERPAY_TOLERANCE 以上超えないかチェック
+        if paid_total > grand_total + BILL_OVERPAY_TOLERANCE:
+            raise serializers.ValidationError(ERROR_MESSAGES['bill_overpaid'])
+
+        return data
 
     # ---- READ helper ----
     def _is_closed(self, obj): return bool(getattr(obj, "closed_at", None))
@@ -1339,3 +1458,44 @@ class CastPayrollSummaryRowSerializer(serializers.Serializer):
     hourly_pay  = serializers.IntegerField()
     commission  = serializers.IntegerField()
     total       = serializers.IntegerField()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 時間別売上サマリ用シリアライザ
+# ═══════════════════════════════════════════════════════════════════
+from .models import HourlySalesSummary, HourlyCastSales
+
+class HourlyCastSalesSerializer(serializers.ModelSerializer):
+    """時間別キャスト売上（内訳）"""
+    cast = CastMiniSerializer(read_only=True)
+    
+    class Meta:
+        model = HourlyCastSales
+        fields = (
+            'cast', 'sales_total', 'sales_nom', 'sales_in', 'sales_free',
+            'sales_champagne', 'bill_count'
+        )
+
+
+class HourlySalesSummarySerializer(serializers.ModelSerializer):
+    """時間別売上サマリ（キャスト内訳付き）"""
+    cast_breakdown = HourlyCastSalesSerializer(many=True, read_only=True)
+    store_name = serializers.CharField(source='store.name', read_only=True)
+    business_hours_display = serializers.CharField(source='store.business_hours_display', read_only=True)
+    is_within_business_hours = serializers.BooleanField(read_only=True)
+    time_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = HourlySalesSummary
+        fields = (
+            'id', 'store', 'store_name', 'date', 'hour', 'time_display',
+            'sales_total', 'bill_count', 'customer_count',
+            'sales_set', 'sales_drink', 'sales_food', 'sales_champagne',
+            'cast_breakdown', 'is_within_business_hours', 'business_hours_display',
+            'updated_at'
+        )
+    
+    def get_time_display(self, obj):
+        """時刻を HH:00 フォーマットで返す"""
+        return f"{obj.hour:02d}:00"
+

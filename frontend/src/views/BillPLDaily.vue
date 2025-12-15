@@ -1,10 +1,15 @@
 <!-- BillPLDaily.vue -->
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getBillDailyPL, getStores } from '@/api'
+import { getBillDailyPL, getStores, getHourlySales, getStore } from '@/api'
+import HourlyChart from '@/components/HourlyChart.vue'
 
 const dateStr = ref(new Date().toISOString().slice(0, 10))
 const pl      = ref(null)
+const hourlyData = ref([])
+const store   = ref(null)
+const openingHour = ref(9)
+const closingHour = ref(23)
 
 // ★ 追加: 未定義だった変数を定義
 const stores  = ref([])
@@ -15,8 +20,17 @@ const storeId = ref(localStorage.getItem('store_id')
 const yen = n => `¥${(+n || 0).toLocaleString()}`
 
 async function fetchData () {
-  // storeId を渡す（Interceptor があるので null でもOK）
+  // PL情報を取得
   pl.value = await getBillDailyPL(dateStr.value, storeId.value)
+  
+  // ★ バックエンドから時間別売上データを取得
+  try {
+    const data = await getHourlySales(dateStr.value, storeId.value)
+    hourlyData.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    console.warn('[BillPLDaily] Failed to fetch hourly sales:', e)
+    hourlyData.value = []
+  }
 }
 
 async function loadStores () {
@@ -35,8 +49,42 @@ async function loadStores () {
   }
 }
 
+// ★ 追加: Store 詳細情報を取得（営業時間を含む）
+async function loadStoreDetail () {
+  if (!storeId.value) return
+  try {
+    // キャッシュを使わないようにタイムスタンプを追加
+    store.value = await getStore(storeId.value)
+    console.log('[BillPLDaily] Store loaded:', store.value)
+    
+    // ★ business_hours_display から営業時間を抽出
+    if (store.value?.business_hours_display) {
+      // 例: "20:00-翌03:00" → opening: 20, closing: 27 (3+24)
+      // 例: "09:00-23:00" → opening: 9, closing: 23
+      const match = store.value.business_hours_display.match(/(\d{2}):(\d{2})-(?:翌)?(\d{2}):(\d{2})/)
+      if (match) {
+        const openH = parseInt(match[1], 10)
+        let closeH = parseInt(match[3], 10)
+        
+        // 「翌」が含まれていれば、翌日扱い（24時間加算）
+        if (store.value.business_hours_display.includes('翌')) {
+          closeH += 24
+        }
+        
+        openingHour.value = openH
+        closingHour.value = closeH
+        console.log('[BillPLDaily] Parsed hours - opening:', openH, 'closing:', closeH)
+      }
+    }
+  } catch (e) {
+    console.warn('[BillPLDaily] Failed to fetch store detail:', e)
+    store.value = null
+  }
+}
+
 onMounted(async () => {
   await loadStores()
+  await loadStoreDetail()
   await fetchData()
 })
 </script>
@@ -74,6 +122,16 @@ onMounted(async () => {
             <div class="number">{{ yen(pl.operating_profit) }}</div>
           </div>
         </div>
+      </div>
+
+      <div class="graph">
+        <!-- 時間帯別売上グラフ（バックエンドから取得） -->
+        <HourlyChart 
+          :hourly-data="hourlyData"
+          :opening-hour="openingHour"
+          :closing-hour="closingHour"
+          :business-hours-display="store?.business_hours_display"
+        />
       </div>
 
       <table class="table no-vert my-5">

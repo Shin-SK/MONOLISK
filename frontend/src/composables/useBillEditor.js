@@ -428,7 +428,7 @@ async function chooseCourse(opt){
       customers: bill.value?.customers || [],
       stays,
       opened_at: bill.value?.opened_at || nowISO,
-      expected_out: null,
+      expected_out: bill.value?.expected_out || null,
       pax: pax.value ?? bill.value?.pax ?? null,
       subtotal: bill.value?.subtotal ?? 0,
       closed_at: null
@@ -453,13 +453,18 @@ async function chooseCourse(opt){
     // キュー投入（裏で確定）
     const memoStr = ''  // 必要ならモーダル側から受け取って渡す
 
+    const commonTimePayload = { opened_at: optimisticBill.opened_at, expected_out: optimisticBill.expected_out }
+
     if (isNewBill){
-      enqueue('createBill', { tempId: optimisticId, table_id, opened_at: optimisticBill.opened_at, expected_out: null, memo: memoStr })
+      enqueue('createBill', { tempId: optimisticId, table_id, ...commonTimePayload, memo: memoStr })
       enqueue('updateBillTable', { id: optimisticId, table_id })
+      // create 時に opened_at/expected_out が無視されるケースへの保険
+      enqueue('patchBill', { id: optimisticId, payload: commonTimePayload })
     }else{
       const currentTableId = bill.value.table?.id ?? bill.value.table ?? null
       if (table_id !== currentTableId) enqueue('updateBillTable', { id: optimisticId, table_id })
-      enqueue('patchBill', { id: optimisticId, payload: { memo: memoStr } })
+      // 既存伝票でも保存時に開始/終了を必ず送る（他パネル保存で現在時刻に戻るのを防ぐ）
+      enqueue('patchBill', { id: optimisticId, payload: { ...commonTimePayload, memo: memoStr } })
     }
 
     if ((bill.value?.customers?.length ?? 0) > 0){

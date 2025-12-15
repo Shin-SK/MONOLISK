@@ -166,7 +166,15 @@ async function ensureBillId () {
   if (props.bill?.id) return props.bill.id
   const tableId = props.bill?.table?.id ?? props.bill?.table_id_hint ?? ed.tableId.value ?? null
   if (!tableId) { alert('テーブルが未選択です'); throw new Error('no table') }
-  const b = await createBill({ table: tableId })
+  // 開始/終了が編集済みなら一緒に送る（サーバで now に戻されるのを防ぐ）
+  const b = await createBill({
+    table: tableId,
+    opened_at: props.bill?.opened_at ?? null,
+    expected_out: props.bill?.expected_out ?? null,
+  })
+  // 戻り値で補正された場合はローカルにも反映
+  if (b?.opened_at) props.bill.opened_at = b.opened_at
+  if (b?.expected_out) props.bill.expected_out = b.expected_out
   props.bill.id = b.id
   return b.id
 }
@@ -385,15 +393,16 @@ function fillRemainderToCard(){
 }
 
 // ★ BasicsPanel からの時間更新を受けて patch（即時反映＋裏送信）
-function onUpdateTimes({ opened_at, expected_out }){
-  if (!props.bill?.id) return
-  const id = props.bill.id
-  // 楽観更新
+function onUpdateTimes({ opened_at, expected_out}){
+  // ★ 新規伝票でもローカルに保持して後続 save 時に渡す
   if (opened_at !== undefined)  props.bill.opened_at  = opened_at
   if (expected_out !== undefined) props.bill.expected_out = expected_out
-  // 送信キューで確定
-  enqueue('patchBill', { id, payload: { opened_at, expected_out }})
-  enqueue('reconcile', { id })
+
+  // 既存伝票は即時 patch
+  if (props.bill?.id) {
+    enqueue('patchBill', { id: props.bill.id, payload: { opened_at, expected_out }})
+    enqueue('reconcile', { id: props.bill.id })
+  }
 }
 
 // ★ PayPanelSP からの割引ルール変更を受けて patch

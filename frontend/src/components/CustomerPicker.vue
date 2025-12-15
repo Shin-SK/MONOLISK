@@ -25,6 +25,7 @@ const newTagName = ref('')      // 新規タグ名
 // 編集用フォーム（一部だけ編集しても v‑model で保持）
 const form = ref({
   id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '', tag_ids: [],
+  has_bottle: false, bottle_shelf: '', bottle_memo: '',
 })
 
 const custStore = useCustomers()
@@ -43,7 +44,13 @@ watch(
     custStore.cache.set(id, obj)
     selected.value = obj
     selectedTagIds.value = Array.isArray(obj?.tags) ? obj.tags.map(t => t.id) : []
-    form.value = { ...obj, tag_ids: [...selectedTagIds.value] }
+    form.value = {
+      ...obj,
+      tag_ids: [...selectedTagIds.value],
+      has_bottle: obj.has_bottle ?? false,
+      bottle_shelf: obj.bottle_shelf ?? '',
+      bottle_memo: obj.bottle_memo ?? '',
+    }
   },
   { immediate: true }
 )
@@ -104,7 +111,13 @@ function choose (id) {
   custStore.cache.set(id, obj)
   selected.value = obj
   selectedTagIds.value = Array.isArray(obj?.tags) ? obj.tags.map(t => t.id) : []
-  form.value = { ...obj, tag_ids: [...selectedTagIds.value] }
+  form.value = {
+    ...obj,
+    tag_ids: [...selectedTagIds.value],
+    has_bottle: obj.has_bottle ?? false,
+    bottle_shelf: obj.bottle_shelf ?? '',
+    bottle_memo: obj.bottle_memo ?? '',
+  }
   emit('update:modelValue', id)
   emit('picked', obj)
   kw.value = ''
@@ -114,7 +127,10 @@ function choose (id) {
 function newCustomer () {
   selected.value = null
   selectedTagIds.value = []
-  form.value = { id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '', tag_ids: [] }
+  form.value = {
+    id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '', tag_ids: [],
+    has_bottle: false, bottle_shelf: '', bottle_memo: '',
+  }
 }
 
 async function save () {
@@ -124,6 +140,7 @@ async function save () {
   selected.value = saved
   emit('update:modelValue', saved.id)
   emit('saved', saved)
+  alert('保存しました')
 }
 </script>
 
@@ -164,20 +181,20 @@ async function save () {
 
     <!-- 詳細フォーム -->
     <div class="card p-3">
-      <div class="mb-2">
-        <label class="form-label">氏名</label>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">氏名</label>
         <input v-model="form.full_name" class="form-control" />
       </div>
-      <div class="mb-2">
-        <label class="form-label">あだ名</label>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">あだ名</label>
         <input v-model="form.alias" class="form-control" />
       </div>
-      <div class="mb-2">
-        <label class="form-label">電話番号</label>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">電話番号</label>
         <input v-model="form.phone" class="form-control" />
       </div>
-      <div class="mb-2">
-        <label class="form-label">属性タグ</label>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">属性タグ</label>
         <div class="d-flex flex-wrap gap-2">
           <button
             v-for="tag in tags"
@@ -192,25 +209,55 @@ async function save () {
             {{ tag.name }}
           </button>
         </div>
-        <div class="input-group mt-2">
-          <input
-            v-model="newTagName"
-            class="form-control"
-            placeholder="新しいタグ名を追加"
-          />
-          <button class="btn btn-outline-secondary" type="button" @click="addNewTag">追加</button>
+        <div class="mt-3 row">
+          <div class="col-8">
+            <input
+              v-model="newTagName"
+              class="form-control w-100"
+              placeholder="新しいタグ名を追加"
+            />
+          </div>
+          <div class="col-4">
+            <button class="btn btn-sm btn-outline-secondary w-100 h-100" type="button" @click="addNewTag">追加</button>
+          </div>
         </div>
       </div>
-      <div class="mb-2">
-        <label class="form-label">誕生日</label>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">誕生日</label>
         <input v-model="form.birthday" type="date" class="form-control" />
       </div>
-      <div class="mb-2">
-        <label class="form-label">メモ</label>
+      <div class="mb-3">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <label class="form-label fw-bold small mb-0">マイボトル</label>
+          <div class="form-check form-switch">
+            <input
+              v-model="form.has_bottle"
+              class="form-check-input"
+              type="checkbox"
+              id="hasBottleSwitch"
+            />
+            <label class="form-check-label small" for="hasBottleSwitch">
+              {{ form.has_bottle ? 'あり' : 'なし' }}
+            </label>
+          </div>
+        </div>
+        <div v-if="form.has_bottle" class="ms-3">
+          <div class="mb-2">
+            <label class="form-label small">棚番号</label>
+            <input v-model="form.bottle_shelf" class="form-control" placeholder="A-12" />
+          </div>
+          <div>
+            <label class="form-label small">識別メモ</label>
+            <textarea v-model="form.bottle_memo" rows="2" class="form-control" placeholder="シャトー・マルゴー 2015"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">メモ</label>
         <textarea v-model="form.memo" rows="3" class="form-control"></textarea>
       </div>
       <div class="text-end">
-        <button class="btn btn-primary" @click="save">保存</button>
+        <button class="btn btn-sm btn-primary w-100" @click="save">保存</button>
       </div>
     </div>
   </div>

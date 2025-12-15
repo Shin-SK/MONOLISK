@@ -692,7 +692,9 @@ class BillStayViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin,
 # ────────────────────────────────────────────────────────────────────
 class CustomerViewSet(viewsets.ModelViewSet):
     """
-    /api/customers/?q= 検索（氏名・あだ名・電話）
+    /api/customers/?q= 検索（氏名・あだ名・電話・棚番号）
+    /api/customers/?has_bottle=true マイボトル有り顧客のみ
+    /api/customers/?bottle_shelf=A-12 特定の棚番号で検索
     ※ 現状グローバル。将来は store FK 追加を検討。
     """
     queryset = Customer.objects.all().order_by("-updated_at")
@@ -706,13 +708,24 @@ class CustomerViewSet(viewsets.ModelViewSet):
             qs = qs.filter(
                 Q(full_name__icontains=q) |
                 Q(alias__icontains=q) |
-                Q(phone__icontains=q)
+                Q(phone__icontains=q) |
+                Q(bottle_shelf__icontains=q)
             )
         
         # タグフィルタ（tag_code=vip&tag_code=regular のような複数指定対応）
         tag_codes = self.request.query_params.getlist("tag_code")
         if tag_codes:
             qs = qs.filter(tags__code__in=tag_codes).distinct()
+        
+        # マイボトルフィルタ
+        has_bottle = self.request.query_params.get("has_bottle")
+        if has_bottle is not None:
+            qs = qs.filter(has_bottle=(has_bottle.lower() == 'true'))
+        
+        # 棚番号フィルタ
+        bottle_shelf = self.request.query_params.get("bottle_shelf")
+        if bottle_shelf:
+            qs = qs.filter(bottle_shelf__icontains=bottle_shelf)
         
         return qs
 
@@ -1195,4 +1208,118 @@ class CastPayrollDetailCSVView(APIView):
         filename = f"payroll_{cast_name}_{df}_to_{dt}.csv"
         resp["Content-Disposition"] = f'attachment; filename="{filename}"'
         return resp
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 時間別売上サマリ API
+# ═══════════════════════════════════════════════════════════════════
+from .models import HourlySalesSummary, Store
+from .serializers import HourlySalesSummarySerializer
+from decimal import Decimal
+
+class HourlySalesView(ListAPIView):
+    """
+    時間別売上サマリ取得API
+    
+    クエリパラメータ:
+    - store_id: 店舗ID (必須, X-Store-Idヘッダーからも取得可)
+    - date: 日付 (YYYY-MM-DD形式, 省略時は当日)
+    - business_hours_only: true の場合は営業時間内のみ（0埋めしない）
+    
+    レスポンス: 0時～23時の24件のデータ配列（データがない時間帯も含む）
+    各時間帯にキャスト別内訳(cast_breakdown)を含む
+    is_within_business_hours: 営業時間内かどうか
+    """
+    serializer_class = HourlySalesSummarySerializer
+    pagination_class = None  # 24件固定なのでページネーション不要
+
+    def get_queryset(self):
+        # store_idの取得（クエリパラメータ or ヘッダー）
+        store_id = self.request.query_params.get('store_id')
+        if not store_id:
+            store_id = self.request.META.get('HTTP_X_STORE_ID') or self.request.META.get('HTTP_X_STORE_Id')
+        
+        if not store_id:
+            raise ValidationError({'store_id': '店舗IDが必要です（クエリパラメータまたはX-Store-Idヘッダー）'})
+        
+        # 日付の取得（省略時は当日）
+        date_str = self.request.query_params.get('date')
+        if date_str:
+            try:
+                target_date = date.fromisoformat(date_str)
+            except ValueError:
+                raise ValidationError({'date': '日付はYYYY-MM-DD形式で指定してください'})
+        else:
+            target_date = timezone.now().date()
+
+        # 時間別サマリを取得（0-23時の全時間帯、存在しない時間は空データ）
+        qs = HourlySalesSummary.objects.filter(
+            store_id=store_id,
+            date=target_date
+        ).prefetch_related(
+            'cast_breakdown__cast'
+        ).order_by('hour')
+
+        return qs
+    
+    def list(self, request, *args, **kwargs):
+        """0-23時の全時間帯を保証するカスタムlist"""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        # 既存データを時間別に格納
+        data_by_hour = {item['hour']: item for item in serializer.data}
+        
+        # 0-23時の全時間帯を保証（データがない時間帯はゼロ埋め）
+        store_id = request.query_params.get('store_id')
+        if not store_id:
+            store_id = request.META.get('HTTP_X_STORE_ID') or request.META.get('HTTP_X_STORE_Id')
+        
+        date_str = request.query_params.get('date')
+        if date_str:
+            target_date = date.fromisoformat(date_str)
+        else:
+            target_date = timezone.now().date()
+        
+        business_hours_only = request.query_params.get('business_hours_only', 'false').lower() == 'true'
+        store = Store.objects.get(id=int(store_id))
+        
+        result = []
+        for h in range(24):
+            # 営業時間かどうか判定（営業日ベース）
+            hour_relative = Decimal(str(h))
+            if h < store.business_day_cutoff_hour:
+                hour_relative += 24
+            is_within_hours = store.business_open_hour <= hour_relative <= store.business_close_hour
+            
+            # business_hours_only=true の場合は営業時間外はスキップ
+            if business_hours_only and not is_within_hours:
+                continue
+            
+            if h in data_by_hour:
+                result.append(data_by_hour[h])
+            else:
+                # データがない時間帯はゼロ埋め
+                result.append({
+                    'id': None,
+                    'store': int(store_id),
+                    'store_name': store.name,
+                    'date': target_date.isoformat(),
+                    'hour': h,
+                    'time_display': f'{h:02d}:00',
+                    'sales_total': 0,
+                    'bill_count': 0,
+                    'customer_count': 0,
+                    'sales_set': 0,
+                    'sales_drink': 0,
+                    'sales_food': 0,
+                    'sales_champagne': 0,
+                    'cast_breakdown': [],
+                    'is_within_business_hours': is_within_hours,
+                    'business_hours_display': store.business_hours_display,
+                    'updated_at': None
+                })
+        
+        return Response(result)
+
 
