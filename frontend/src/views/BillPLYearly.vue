@@ -1,7 +1,11 @@
 <!-- src/views/BillPLYearly.vue -->
 <script setup>
-import { ref, onMounted } from 'vue'
-import { getBillYearlyPL }  from '@/api'
+import { ref, onMounted, watch } from 'vue'
+import { getBillYearlyPL, getBillYearlyPLForStore } from '@/api'
+
+const props = defineProps({
+  storeIds: { type: Array, default: () => [] }
+})
 
 /* -------- state -------- */
 const year     = ref(new Date().getFullYear())
@@ -22,23 +26,73 @@ const blankTotals = {
 /* -------- fetch -------- */
 async function fetchData(){
   loading.value = true
+  const ids = (props.storeIds && props.storeIds.length) ? props.storeIds : []
+  const storeId = localStorage.getItem('store_id')
+  const finalIds = ids.length ? ids : (storeId ? [Number(storeId)] : [])
+
   try {
-    pl.value = await getBillYearlyPL(year.value)
-
-    /* months (必ず 12 行) */
-    months.value = (pl.value.months ?? []).map(m => ({
-      month : m.month,
-      totals: { ...blankTotals, ...(m.totals ?? {}) }
-    }))
-
-    /* 年間 totals も欠損補完 */
-    pl.value.totals = { ...blankTotals, ...(pl.value.totals ?? {}) }
+    if (finalIds.length > 1) {
+      // 複数店舗：並列取得→合算
+      const list = await Promise.all(
+        finalIds.map(sid => getBillYearlyPLForStore(year.value, sid, { cache:false }).catch(()=>({ totals:{}, months:[] })))
+      )
+      
+      // 月別を月でマージ
+      const monthMap = new Map()
+      for (const pl of list) {
+        for (const m of (pl.months || [])) {
+          if (!monthMap.has(m.month)) {
+            monthMap.set(m.month, { month: m.month, totals: { ...blankTotals } })
+          }
+          const agg = monthMap.get(m.month).totals
+          const src = m.totals || {}
+          agg.sales_cash       += (Number(src.sales_cash) || 0)
+          agg.sales_card       += (Number(src.sales_card) || 0)
+          agg.sales_total      += (Number(src.sales_total) || 0)
+          agg.guest_count      += (Number(src.guest_count) || 0)
+          agg.labor_cost       += (Number(src.labor_cost) || 0)
+          agg.operating_profit += (Number(src.operating_profit) || 0)
+        }
+      }
+      months.value = Array.from(monthMap.values()).sort((a,b) => a.month.localeCompare(b.month))
+      
+      // 年間totals合算
+      const sum = (key) => list.reduce((a,b)=> a + (Number(b.totals?.[key])||0), 0)
+      const totalGuests = sum('guest_count')
+      const totalSales = sum('sales_total')
+      pl.value = {
+        year: year.value,
+        totals: {
+          sales_cash       : sum('sales_cash'),
+          sales_card       : sum('sales_card'),
+          sales_total      : totalSales,
+          guest_count      : totalGuests,
+          avg_spend        : totalGuests ? totalSales / totalGuests : 0,
+          labor_cost       : sum('labor_cost'),
+          operating_profit : sum('operating_profit'),
+        }
+      }
+      // 月別の平均客単価も計算
+      months.value.forEach(m => {
+        const gc = m.totals.guest_count
+        m.totals.avg_spend = gc ? m.totals.sales_total / gc : 0
+      })
+    } else {
+      // 単店舗（既存）
+      pl.value = await getBillYearlyPL(year.value)
+      months.value = (pl.value.months ?? []).map(m => ({
+        month : m.month,
+        totals: { ...blankTotals, ...(m.totals ?? {}) }
+      }))
+      pl.value.totals = { ...blankTotals, ...(pl.value.totals ?? {}) }
+    }
   } finally {
     loading.value = false
   }
 }
 
 onMounted(fetchData)
+watch(() => props.storeIds, fetchData, { deep: true })
 </script>
 
 <template>

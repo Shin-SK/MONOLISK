@@ -1,8 +1,12 @@
 <!-- BillPLDaily.vue -->
 <script setup>
-import { ref, onMounted } from 'vue'
-import { getBillDailyPL, getStores, getHourlySales, getStore } from '@/api'
+import { ref, onMounted, watch } from 'vue'
+import { getBillDailyPL, getBillDailyPLForStore, getStores, getHourlySales, getStore } from '@/api'
 import HourlyChart from '@/components/HourlyChart.vue'
+
+const props = defineProps({
+  storeIds: { type: Array, default: () => [] }
+})
 
 const dateStr = ref(new Date().toISOString().slice(0, 10))
 const pl      = ref(null)
@@ -20,16 +24,42 @@ const storeId = ref(localStorage.getItem('store_id')
 const yen = n => `¥${(+n || 0).toLocaleString()}`
 
 async function fetchData () {
-  // PL情報を取得
-  pl.value = await getBillDailyPL(dateStr.value, storeId.value)
+  // PL情報を取得（複数店舗の場合は合算）
+  const ids = (props.storeIds && props.storeIds.length) ? props.storeIds : (storeId.value ? [storeId.value] : [])
   
-  // ★ バックエンドから時間別売上データを取得
-  try {
-    const data = await getHourlySales(dateStr.value, storeId.value)
-    hourlyData.value = Array.isArray(data) ? data : []
-  } catch (e) {
-    console.warn('[BillPLDaily] Failed to fetch hourly sales:', e)
-    hourlyData.value = []
+  if (ids.length > 1) {
+    // 複数店舗：並列取得→合算
+    const list = await Promise.all(
+      ids.map(sid => getBillDailyPLForStore(dateStr.value, sid, { cache:false }).catch(()=>({})))
+    )
+    const sum = (key) => list.reduce((a,b)=> a + (Number(b?.[key])||0), 0)
+    pl.value = {
+      sales_total      : sum('sales_total'),
+      sales_cash       : sum('sales_cash'),
+      sales_card       : sum('sales_card'),
+      guest_count      : sum('guest_count'),
+      avg_spend        : sum('sales_total') / (sum('guest_count') || 1),
+      labor_cost       : sum('labor_cost'),
+      operating_profit : sum('operating_profit'),
+      drink_sales      : sum('drink_sales'),
+      drink_qty        : sum('drink_qty'),
+      drink_unit_price : sum('drink_sales') / (sum('drink_qty') || 1),
+      extension_qty    : sum('extension_qty'),
+      vip_ratio        : list.length ? list.reduce((a,b)=> a + (Number(b?.vip_ratio)||0), 0) / list.length : 0,
+    }
+    hourlyData.value = [] // 複数店舗時は時間別グラフ非表示
+  } else {
+    // 単店舗（既存）
+    const sid = ids[0] || storeId.value
+    pl.value = await getBillDailyPL(dateStr.value, sid)
+    // 時間別売上データを取得
+    try {
+      const data = await getHourlySales(dateStr.value, sid)
+      hourlyData.value = Array.isArray(data) ? data : []
+    } catch (e) {
+      console.warn('[BillPLDaily] Failed to fetch hourly sales:', e)
+      hourlyData.value = []
+    }
   }
 }
 
@@ -87,6 +117,8 @@ onMounted(async () => {
   await loadStoreDetail()
   await fetchData()
 })
+
+watch(() => props.storeIds, fetchData, { deep: true })
 </script>
 
 <template>

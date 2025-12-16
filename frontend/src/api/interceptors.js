@@ -24,6 +24,7 @@ const DEFAULT_SKIP_AUTH = [
 // Store 非依存（X-Store-Id を付けない）
 const STORE_INDEPENDENT_PREFIXES = [
   'me',
+  'accounts/me',
   'dj-rest-auth/login',
   'dj-rest-auth/logout',
   'dj-rest-auth/registration',
@@ -88,11 +89,12 @@ export function wireInterceptors(api) {
     const p = pathFrom(cfg, api.defaults.baseURL)
     if (!isStoreIndependentPath(p)) {
       const sid = getStoreId()
-      if (sid) {
-        cfg.headers ||= {}
+      cfg.headers ||= {}
+      const hasOverride = !!(cfg.headers['X-Store-Id'] || cfg.headers['X-Store-ID'])
+      if (!hasOverride && sid) {
         cfg.headers['X-Store-Id'] = String(sid)
         cfg.headers['X-Store-ID'] = String(sid) // 大小どちらも見る実装対策
-      } else {
+      } else if (!hasOverride && !sid) {
         console.warn('[api] X-Store-Id missing for Store-Locked API:', p)
       }
     }

@@ -1,6 +1,6 @@
 <!-- Mypage.vue -->
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import RankingBlock from '@/components/RankingBlock.vue'
 import CastGoalsPanel from '@/components/cast/CastGoalsPanel.vue'
@@ -12,17 +12,15 @@ import {
   fetchCastShiftHistory,
   fetchCastDailySummaries,
   fetchCastRankings,
-  fetchCastMypage,
   fetchStoreNotices,
-  listCastGoals
+  listCastGoals,
+  fetchCustomerMatch,
+  fetchCustomerAffinity
 } from '@/api'
 import { useUser } from '@/stores/useUser'
 import { yen } from '@/utils/money'
 import { useAuth } from '@/stores/useAuth'
 import { useProfile } from '@/composables/useProfile'
-import Avatar from '@/components/Avatar.vue'
-import CastSidebar from '@/components/sidebar/CastSidebar.vue'
-import { openOffcanvas } from '@/utils/bsOffcanvas'
 
 /* ---------- 自分中心：route.id が無ければ me.cast_id を使う ---------- */
 const route = useRoute()
@@ -31,16 +29,6 @@ const castId = ref(null)
 
 const auth = useAuth()
 const me = computed(() => auth.me)  // ストアが保持する現在ログインユーザー
-const { avatarURL } = useProfile()
-
-onMounted(async () => {
-  // 二重取得を避けたいなら、未取得時だけ叩く
-  if (!me.value) {
-    // ストアのメソッド名に合わせてどちらか
-    if (typeof auth.fetchMe === 'function') await auth.fetchMe()
-    else if (typeof auth.loadMe === 'function') await auth.loadMe()
-  }
-})
 
 async function resolveCastId() {
   // 1) URLに :id があればそれを優先
@@ -61,21 +49,14 @@ async function resolveCastId() {
   throw new Error('no cast_id')
 }
 
-/* ---------- サイドバー ---------- */
-function openSidebar(){
-  openOffcanvas('#castSidebar')
-}
-
 /* ---------- 日付 ---------- */
 const dateFrom = ref(dayjs().startOf('month').format('YYYY-MM-DD'))
 const dateTo   = ref(dayjs().format('YYYY-MM-DD'))
 const todayStr = dayjs().format('YYYY-MM-DD')
 
 /* ---------- 状態 ---------- */
-const castInfo    = ref(null)
 const shifts      = ref([])
 const summary     = ref(null)
-const todaySum    = ref(null)
 const rankings    = ref([])
 const notices     = ref([])
 const draftShifts = ref([])
@@ -83,6 +64,23 @@ const customerBills = ref([])
 const allCustomerBills = ref([])  // 全顧客用
 const latestGoal = ref(null)  // 最新の目標
 const goalProgressMap = ref({})  // 目標の進捗
+
+// 相性ランキング
+const matchLoading = ref(false)
+const matchError = ref('')
+const matchData = ref(null) // APIのレスポンス全体
+const matchRows = computed(() => {
+  const results = Array.isArray(matchData.value?.results) ? matchData.value.results : []
+  // 名前なし顧客を除外（バックエンド修正が入るまでの保険）
+  return results.filter(r => {
+    const name = (r.customer?.alias || r.customer?.full_name || r.customer?.display_name || '').trim()
+    return name.length > 0
+  })
+})
+
+// 相性ランキングのフィルタ
+const matchSort = ref('spent_30d')
+const matchLimit = ref(5)             // 固定5人（MVP）
 
 /* ---------- シフト月フィルタ ---------- */
 const selectedMonth = ref(dayjs().format('YYYY-MM'))
@@ -95,14 +93,16 @@ const setTab    = k => (activeTab.value = k)
 const activeCustomerTab = ref('visit-dates')
 const setCustomerTab = k => (activeCustomerTab.value = k)
 
+// 顧客情報一覧の絞り込み
+const customerSearch = ref('')
+const customerMinVisit = ref(0)
+const customerSort = ref('latest') // latest / visits
+
 /* ---------- util ---------- */
 const fmt = d => d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '–'
 const h   = m => m ? (m/60).toFixed(2) : '0.00'
 
 /* ---------- データ取得（castId.value を参照） ---------- */
-async function loadCast () {
-  castInfo.value = await fetchCastMypage(castId.value)
-}
 async function loadShifts () {
   shifts.value = await fetchCastShiftHistory(castId.value, {
     from: dateFrom.value,
@@ -116,14 +116,6 @@ async function loadSummary () {
     to   : dateTo.value,
   })
   summary.value = list[0] ?? null
-}
-async function loadToday () {
-  const list = await fetchCastDailySummaries({
-    cast : castId.value,
-    from : todayStr,
-    to   : todayStr,
-  })
-  todaySum.value = list[0] ?? null
 }
 async function loadRankings () {
   rankings.value = await fetchCastRankings({
@@ -166,29 +158,29 @@ async function loadLatestGoal () {
     latestGoal.value = null
   }
 }
+async function loadMatchCustomers() {
+  if (!castId.value) return
+  matchLoading.value = true
+  matchError.value = ''
+  try {
+    matchData.value = await fetchCustomerMatch({
+      cast_id: castId.value,
+      sort: matchSort.value,
+      limit: matchLimit.value,
+    })
+  } catch (e) {
+    console.error('loadMatchCustomers failed:', e)
+    matchError.value = '相性ランキングの取得に失敗しました'
+    matchData.value = null
+  } finally {
+    matchLoading.value = false
+  }
+}
 async function loadAll () {
-  await Promise.all([ loadCast(), loadShifts(), loadSummary(), loadToday(), loadRankings(), loadNotices(), loadCustomerBills(), loadAllCustomerBills(), loadLatestGoal() ])
+  await Promise.all([ loadShifts(), loadSummary(), loadRankings(), loadNotices(), loadCustomerBills(), loadAllCustomerBills(), loadLatestGoal() ])
 }
 
-/* ---------- アバター ---------- */
-const avatarUrl = computed(() =>
-  castInfo.value?.avatar_url || avatarURL.value || ''
-)
-
 /* ---------- 計算 ---------- */
-const myRank = computed(() => {
-  const idx = rankings.value.findIndex(r => r.cast_id === castId.value)
-  return idx === -1 ? null : idx + 1
-})
-const nextShift = computed(() => {
-  const now = dayjs()
-  return shifts.value
-    .filter(s => s.plan_start && dayjs(s.plan_start).isAfter(now))
-    .sort((a,b) => dayjs(a.plan_start) - dayjs(b.plan_start))[0] || null
-})
-const todaySales = computed(() =>
-  todaySum.value ? todaySum.value.total + todaySum.value.payroll : null
-)
 const salesBreakdown = computed(() => summary.value ? {
   champ: summary.value.sales_champ || 0,
   nom  : summary.value.sales_nom   || 0,
@@ -197,6 +189,39 @@ const salesBreakdown = computed(() => summary.value ? {
   total: summary.value.total       || 0,
   payroll: summary.value.payroll   || 0,
 } : null)
+
+/* ---------- 売上カード用：期間内の最新伝票と区分 ---------- */
+const latestBillInRange = computed(() => {
+  const list = Array.isArray(customerBills.value) ? [...customerBills.value] : []
+  if (!list.length) return null
+  const from = dayjs(dateFrom.value).startOf('day')
+  const to   = dayjs(dateTo.value).endOf('day')
+  const filtered = list.filter(b => {
+    const t = dayjs(b.opened_at)
+    return t.isValid() && t.isSameOrAfter(from) && t.isSameOrBefore(to)
+  })
+  const target = (filtered.length ? filtered : list)
+    .slice()
+    .sort((a,b) => dayjs(b.opened_at).valueOf() - dayjs(a.opened_at).valueOf())[0]
+  return target || null
+})
+
+const latestBillPosition = computed(() => {
+  const b = latestBillInRange.value
+  if (!b) return null
+  const sid = castId.value
+  const stay = (b.stays || []).find(s => (s?.cast?.id === sid) || (s?.cast_id === sid))
+  const type = stay?.stay_type
+  const label = type === 'nom' ? '本指名'
+               : type === 'in' ? '場内'
+               : type === 'dohan' ? '同伴'
+               : 'フリー'
+  const klass = type === 'nom' ? 'badge bg-danger text-white'
+               : type === 'in' ? 'badge bg-success text-white'
+               : type === 'dohan' ? 'badge bg-secondary text-white'
+               : 'badge bg-primary text-white'
+  return { label, class: klass }
+})
 
 /* ---------- 申請 ---------- */
 const form = reactive({ start:'', end:'' })  // 'YYYY-MM-DDTHH:mm'（datetime-local）
@@ -256,9 +281,55 @@ async function submitAll () {
 // モーダル制御
 const showCustomerModal = ref(false)
 const selectedBillId    = ref(null)
+const selectedCustomerStats = ref(null)
+
+function findLatestBillIdByDisplayName(name) {
+  const all = Array.isArray(allCustomerBills.value) ? allCustomerBills.value : []
+  const filtered = all.filter(b => (b.customer_display_name || '') === name)
+  if (!filtered.length) return null
+  const latest = filtered
+    .slice()
+    .sort((a,b) => dayjs(b.opened_at).valueOf() - dayjs(a.opened_at).valueOf())[0]
+  return latest?.id ?? null
+}
+
+function openCustomerByName(name) {
+  // 名前が空の場合は何もしない（安全策）
+  const trimmedName = (name || '').trim()
+  if (!trimmedName) {
+    console.warn('openCustomerByName: 名前が空です')
+    return
+  }
+  
+  const billId = findLatestBillIdByDisplayName(trimmedName)
+  if (!billId) {
+    alert('該当する伝票が見つかりませんでした（表示名が一致しない可能性）')
+    return
+  }
+  openCustomer(billId)
+}
 
 function openCustomer(id) {
   selectedBillId.value = id
+  // 顧客統計（来店回数・直近来店）を算出してモーダルに渡す
+  try {
+    const findBill = (arr) => (Array.isArray(arr) ? arr.find(b => b.id === id) : null)
+    const billObj = findBill(customerBills.value) || findBill(allCustomerBills.value)
+    if (billObj) {
+      const name = billObj.customer_display_name || ''
+      const all = Array.isArray(allCustomerBills.value) ? allCustomerBills.value : []
+      const sameCustomerBills = all.filter(b => (b.customer_display_name || '') === name)
+      const visitCount = sameCustomerBills.length
+      const latestVisit = sameCustomerBills.length
+        ? sameCustomerBills
+            .map(b => b.opened_at)
+            .sort((a,b) => dayjs(b).valueOf() - dayjs(a).valueOf())[0]
+        : null
+      selectedCustomerStats.value = { name, visit_count: visitCount, last_visit_at: latestVisit }
+    } else {
+      selectedCustomerStats.value = null
+    }
+  } catch { selectedCustomerStats.value = null }
   showCustomerModal.value = true
 }
 function closeCustomerModal(){
@@ -268,26 +339,28 @@ function closeCustomerModal(){
 
 /* ---------- 監視 ---------- */
 watch([dateFrom,dateTo], () => { if (castId.value) { loadShifts(); loadSummary(); loadRankings() } })
+watch(matchSort, () => { loadMatchCustomers() })
 
 /* ---------- 起動 ---------- */
 onMounted(async () => {
   await resolveCastId()   // ← まず自分の cast_id を決める
   await loadAll()
+  await loadMatchCustomers()
+  
+  // CastLayoutからのタブ切り替えイベントを受け取る
+  window.addEventListener('cast:tab:change', (e) => {
+    if (e.detail?.tab) {
+      activeTab.value = e.detail.tab
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('cast:tab:change', () => {})
 })
 
 /* ───────── 追加①: 月間ランキングの配列ガード ───────── */
 const monthlyRows = computed(() => Array.isArray(rankings.value) ? rankings.value : [])
-
-/* ───────── 追加②: 次シフトの表示用フォーマット ───────── */
-const nextShiftDate  = computed(() =>
-  nextShift.value ? dayjs(nextShift.value.plan_start).format('YYYY/MM/DD') : null
-)
-const nextShiftStart = computed(() =>
-  nextShift.value ? dayjs(nextShift.value.plan_start).format('HH:mm') : null
-)
-const nextShiftEnd   = computed(() =>
-  nextShift.value ? dayjs(nextShift.value.plan_end).format('HH:mm') : null
-)
 
 /* ---------- フィルタされたシフト ---------- */
 const filteredShifts = computed(() => {
@@ -362,6 +435,28 @@ const allCustomersList = computed(() => {
   }).sort((a, b) => dayjs(b.latestVisit).valueOf() - dayjs(a.latestVisit).valueOf())
 })
 
+/* ---------- 全顧客の最新来店情報（フィルタ付き） ---------- */
+const filteredAllCustomersList = computed(() => {
+  const q = (customerSearch.value || '').trim().toLowerCase()
+  const minV = Number(customerMinVisit.value || 0)
+
+  let list = Array.isArray(allCustomersList.value) ? allCustomersList.value : []
+
+  if (q) {
+    list = list.filter(c => (c.name || '').toLowerCase().includes(q))
+  }
+  if (minV > 0) {
+    list = list.filter(c => (c.visitCount || 0) >= minV)
+  }
+
+  if (customerSort.value === 'visits') {
+    list = list.slice().sort((a,b) => (b.visitCount||0) - (a.visitCount||0))
+  } else {
+    list = list.slice().sort((a,b) => dayjs(b.latestVisit).valueOf() - dayjs(a.latestVisit).valueOf())
+  }
+  return list
+})
+
 /* ---------- 最新の目標情報を見やすくフォーマット ---------- */
 const latestGoalView = computed(() => {
   if (!latestGoal.value) return null
@@ -387,8 +482,8 @@ const latestGoalView = computed(() => {
   
   return {
     label: meta.name,
-    from: dayjs(s).format('YYYY/M/D'),
-    to: dayjs(e).format('YYYY/M/D'),
+    from: dayjs(s).format('MM/DD'),
+    to: dayjs(e).format('MM/DD'),
     targetPretty: fmtTarget,
     currentPretty: fmtCurrent,
     percent: pct,
@@ -400,104 +495,123 @@ const latestGoalView = computed(() => {
 
 <template>
   <div class="cast-mypage-page">
-    <div class="cast-mypage mt-4">
-    <!-- ===== ヘッダ ===== -->
-    <div class="header mb-5">
-      <div class="upper mb-2 d-flex align-items-center justify-content-between">
-        <h2 class="fs-1 fw-bold ">マイページ</h2>
-        <div class="wrap text-muted">{{ dayjs().format('YYYY/MM/DD(ddd)') }}</div>
-      </div>
-        
-      <div class="user-meta d-flex align-items-center justify-content-between mb-2">
-        <div class="avatars d-flex align-items-center gap-2">
-          <Avatar :url="avatarUrl" :size="40" class="rounded-circle"/>
-          <div class="fs-4 fw-bold m-0">
-            {{ castInfo?.stage_name || 'キャスト名' }}
-          </div>
-        </div>
-        <div class="icons d-flex align-items-center gap-2">
-          <button @click="openSidebar"><IconMenuDeep /></button><!-- サイドバー開く -->
-        </div>
-      </div>
-
-      <div class="row g-2 mb-3">
-        <div class="col-12">
-          <div class="card p-2">
-            <div v-if="latestGoalView" class="d-flex align-items-center justify-content-between">
-              <div class="head">
-                <div class="d-flex align-items-center gap-1 small fw-bold"><IconTargetArrow />{{ latestGoalView.label }}</div>
-              </div>
-              <div class="wrap">
-                <div class="date">
-                  
-                  <small class="text-muted d-flex gap-0 mb-1">
-                    <IconCalendar />
-                    <span>{{ latestGoalView.from }} 〜</span>
-                    <span>{{ latestGoalView.to }}</span>
-                  </small>
-                </div>
-                <div class="d-flex align-items-center gap-1 justify-content-end">
-                  <span class="fs-3 fw-bold lh-1 d-block">{{ latestGoalView.currentPretty }}</span>
-                  <span class="lh-1">/</span><small class="text-muted lh-1">{{ latestGoalView.targetPretty }}</small>
-                </div>
-              </div>
-            </div>
-            <div v-else class="text-muted small">
-              目標未設定
-            </div>
-          </div>
-        </div>
-
-        <div class="col-12">
-          <div class="card p-2">
-            <div class="d-flex align-items-center justify-content-between">
-              <div class="head d-flex align-items-center gap-1 small fw-bold"><IconCalendarPlus />次のシフト</div>
-              <div class="inner">
-                <div v-if="nextShift" class="d-flex flex-column">
-                  <span class="fw-bold">{{ nextShiftDate }}</span>
-                  <span class="text-muted">{{ nextShiftStart }} 〜 {{ nextShiftEnd }}</span>
-                </div>
-                <div v-else class="text-muted small">
-                  シフト予定なし
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-12">
-          <div class="card p-2">
-            <div class="d-flex align-items-center justify-content-between">
-              <div v-if="myRank"
-                class="d-flex align-items-center gap-2">
-                <IconTrendingUp class="fs-5"/><span class="fs-2 fw-bold">No.{{ myRank }}</span>
-              </div>
-              <div v-if="todaySales !== null"
-                class="wrap df-center gap-2 mt-1">
-                <div class="badge bg-secondary text-white">
-                  今日の売上
-                </div>
-                <span
-                  class="fs-1 mb-0 d-flex align-items-center gap-1 fw-bold lh-1">
-                  {{ yen(todaySales)}}
-                </span>
-              </div>
-              <div v-else class="wrap d-flex align-items-center gap-2 mt-1 text-muted">
-                今日もがんばりましょう！
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-
+    <div class="cast-mypage mt-3">
 
     <div v-if="activeTab === 'home'"
       class="wrap">
-      <div class="home-goal">
-        <h2 class="fs-5 fw-bold df-center gap-1 mb-2">
-          <IconTargetArrow />目標
+
+      <div class="customer-match-section mt-3 mb-5">
+        <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-3">
+          <IconFaceId />相性チェック顧客</h2>
+        <div class="wrap">
+        
+          <!-- フィルタ（ピル型ボタン） -->
+          <div class="row mb-4 g-2">
+            <div class="col-6">
+              <button
+                class="df-center gap-1 w-100 p-1 small"
+                @click="matchSort = 'spent_30d'"
+                :class="matchSort === 'spent_30d' ? 'badge bg-dark text-white' : 'badge bg-white text-secondary'"
+                style="cursor: pointer; border: none;">
+                <IconCashBanknoteHeart />直近30日売上
+              </button>
+            </div>
+            <div class="col-6">
+              <button
+                class="df-center gap-1 w-100 small"
+                @click="matchSort = 'spent_total'"
+                :class="matchSort === 'spent_total' ? 'badge bg-dark text-white' : 'badge bg-white text-secondary'"
+                style="cursor: pointer; border: none;">
+                <IconChartBarPopular />総売上
+              </button>
+            </div>
+            <div class="col-4">
+              <button
+                class="df-center gap-1 small w-100"
+                @click="matchSort = 'served_item_count'"
+                :class="matchSort === 'served_item_count' ? 'badge bg-dark text-white' : 'badge bg-white text-secondary'"
+                style="cursor: pointer; border: none;">
+                <IconUserCheck /> 担当頻度
+              </button>
+            </div>
+            <div class="col-4">
+              <button
+                class="df-center gap-1 small w-100"
+                @click="matchSort = 'in_count'"
+                :class="matchSort === 'in_count' ? 'badge bg-dark text-white' : 'badge bg-white text-secondary'"
+                style="cursor: pointer; border: none;">
+                <IconTransferIn />場内回数
+              </button>
+            </div>
+            <div class="col-4">
+              <button
+                class="df-center gap-1 small w-100"
+                @click="matchSort = 'nom_count'"
+                :class="matchSort === 'nom_count' ? 'badge bg-dark text-white' : 'badge bg-white text-secondary'"
+                style="cursor: pointer; border: none;">
+                <IconHandFingerRight />指名回数
+              </button>
+            </div>
+          </div>
+          <div v-if="matchLoading" class="text-center text-muted py-3">読み込み中…</div>
+          <div v-else-if="matchError" class="alert alert-danger">{{ matchError }}</div>
+          <div v-else-if="matchRows.length">
+            <div
+              v-for="(r, idx) in matchRows"
+              :key="r.customer?.id"
+              class="card shadow-sm mb-3"
+              @click="openCustomerByName(r.customer?.alias || r.customer?.full_name || r.customer?.display_name || '')"
+            >
+              <div class="card-header d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-2">
+                  <span v-if="idx === 0" class="badge bg-warning text-dark df-center gap-1"><IconFlameFilled style="color:red;" />No.1</span>
+                  <span v-else-if="idx === 1" class="badge bg-secondary">No.2</span>
+                  <span v-else-if="idx === 2" class="badge bg-secondary">No.3</span>
+                  <span class="fw-bold">
+                    {{ r.customer?.alias || r.customer?.full_name || r.customer?.display_name || '（名前なし）' }}様
+                  </span>
+                </div>
+                <!-- <span class="badge bg-dark">
+                  30日 {{ yen(r.affinity?.spent_with_cast_30d || 0) }}
+                </span> -->
+              </div>
+              <div class="card-body">
+                <div class="row g-2 small">
+                  <div class="col-6">
+                    <div class="text-muted">通算（あなた経由）</div>
+                    <div class="fw-bold">{{ yen(r.affinity?.spent_with_cast_total || 0) }}</div>
+                  </div>
+                  <div class="col-6">
+                    <div class="text-muted">担当頻度</div>
+                    <div class="fw-bold">{{ r.affinity?.served_item_count || 0 }}回</div>
+                  </div>
+                  <div class="col-4">
+                    <div class="text-muted">場内</div>
+                    <div class="fw-bold">{{ r.affinity?.in_count || 0 }}回</div>
+                  </div>
+                  <div class="col-4">
+                    <div class="text-muted">指名</div>
+                    <div class="fw-bold">{{ r.affinity?.nom_count || 0 }}回</div>
+                  </div>
+                  <div class="col-4">
+                    <div class="text-muted">最終対応</div>
+                    <div class="fw-bold">
+                      {{ r.affinity?.last_served_at ? dayjs(r.affinity.last_served_at).format('MM/DD') : '—' }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height:120px;">
+            相性の良いお客様はこれから見つかります。
+          </p>
+        </div>
+      </div>
+
+      <div class="home-goal mb-5">
+        <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+          <IconTargetArrow />{{ latestGoalView?.label || '目標' }}
         </h2>
         <div v-if="latestGoalView" class="card shadow-sm border-0 mb-4">
           <div class="card-header">
@@ -539,15 +653,17 @@ const latestGoalView = computed(() => {
         <p v-else class="text-muted">目標はまだ設定されていません</p>
       </div>
       <!-- ランキング -->
-      <div class="rank mt-4">
-        <div class="fs-5 fw-bold d-flex align-items-center justify-content-center gap-1 mb-1">
+      <div class="rank mb-5">
+        <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
           <IconCrown />ランキング
-        </div>
+        </h2>
         <RankingBlock :rows="monthlyRows" />
       </div>
       <!-- ▼ お店からのお知らせ -->
       <div class="notice mt-5">
-        <div class="fs-5 fw-bold d-flex align-items-center justify-content-center gap-1 mb-1"><IconInfoCircle />お知らせ</div>
+        <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+          <IconInfoCircle />お知らせ
+        </h2>
 
         <div v-if="notices.length" class="mb-4 bg-white">
           <div
@@ -582,7 +698,7 @@ const latestGoalView = computed(() => {
       class="mb-5"
     >
       <div class="mb-5">
-        <h2 class="fs-5 fw-bold df-center gap-1 mb-2">
+        <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
           <IconCalendarPlus />シフト申請
         </h2>
         <div class="bg-white p-3">
@@ -658,9 +774,9 @@ const latestGoalView = computed(() => {
     </div>
 
       <div class="wrap">
-        <h3 class="fs-5 fw-bold df-center gap-1">
+        <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
           <IconListTree />シフト一覧
-        </h3>
+        </h2>
         <div class="search mb-3">
           <input 
             v-model="selectedMonth" 
@@ -718,7 +834,8 @@ const latestGoalView = computed(() => {
 
     <!-- ▼ 売上 -->
     <div v-if="activeTab === 'sales'">
-      <h2 class="fs-5 df-center gap-1 fw-bold mb-2"><IconRosetteDiscountCheck />売り上げ一覧</h2>
+      <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+        <IconRosetteDiscountCheck />売り上げ一覧</h2>
       <!-- ▼ 売上タブ用：期間フィルタ（スマホ向けにコンパクト） -->
       <div class="row g-2 mb-4 align-items-center">
         <div class="col-5">
@@ -744,59 +861,49 @@ const latestGoalView = computed(() => {
         </button>
       </div>
 
-      <!-- <h4 class="mt-5 mb-3">売上 ({{ dateFrom }} 〜 {{ dateTo }})</h4> -->
-
       <div v-if="salesBreakdown"
-        class="table-responsive"
-      >
-        <table class="table table-sm text-nowrap align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>シャンパン</th>
-              <th>本指名</th>
-              <th>場内</th>
-              <th>フリー</th>
-              <th class="text-end">
-                歩合小計
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>{{ yen(salesBreakdown.champ) }}</td>
-              <td>{{ yen(salesBreakdown.nom) }}</td>
-              <td>{{ yen(salesBreakdown.in) }}</td>
-              <td>{{ yen(salesBreakdown.free) }}</td>
-              <td class="text-end fw-bold">
-                {{ yen(salesBreakdown.total) }}
-              </td>
-            </tr>
-          </tbody>
-          <tfoot class="table-light fw-bold">
-            <tr>
-              <td
-                colspan="4"
-                class="text-end"
-              >
-                時給小計
-              </td>
-              <td class="text-end">
-                {{ yen(salesBreakdown.payroll) }}
-              </td>
-            </tr>
-            <tr>
-              <td
-                colspan="4"
-                class="text-end"
-              >
-                支給見込 (歩合+時給)
-              </td>
-              <td class="text-end">
-                {{ yen(salesBreakdown.total + salesBreakdown.payroll) }}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+        class="card mb-4 shadow-sm border-0">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div>
+            <template v-if="latestBillInRange">
+              {{ dayjs(latestBillInRange.opened_at).format('MM/DD HH:mm') }}
+              〜
+              {{ latestBillInRange.closed_at
+                ? dayjs(latestBillInRange.closed_at).format('MM/DD HH:mm')
+                : (latestBillInRange.expected_out
+                    ? dayjs(latestBillInRange.expected_out).format('MM/DD HH:mm')
+                    : '-')
+              }}
+            </template>
+            <template v-else>-</template>
+          </div>
+          <div class="price df-center gap-1">
+            <span class="badge bg-light text-dark">小計</span>
+            <span class="fs-4 fw-bold">{{ yen(salesBreakdown.total) }}</span>
+          </div>
+        </div>
+        <div class="card-body d-flex align-items-start justify-content-between">
+          <div class="tables df-center flex-column gap-1">
+            <span class="badge bg-light text-dark">卓番号</span>
+            <span>{{ latestBillInRange?.table?.number ?? '-' }}</span>
+          </div>
+          <div class="count df-center flex-column gap-1">
+            <span class="badge bg-light text-dark">人数</span>
+            <span>{{ latestBillInRange?.guest_count ?? latestBillInRange?.guests ?? '-' }}</span>
+          </div>
+          <div class="count df-center flex-column gap-1">
+            <span class="badge bg-light text-dark">セット数</span>
+            <span>{{ latestBillInRange?.set_rounds ?? latestBillInRange?.set_count ?? '-' }}</span>
+          </div>
+        </div>
+        <div class="card-footer d-flex align-items-center justify-content-between border-top">
+          <div class="position">
+            <span v-if="latestBillPosition" :class="latestBillPosition.class">
+              {{ latestBillPosition.label }}
+            </span>
+          </div>
+          <div class="name">{{ latestBillInRange?.customer_display_name || '–' }}</div>
+        </div>
       </div>
       <p
         v-else
@@ -809,9 +916,10 @@ const latestGoalView = computed(() => {
 
     <!-- ▼ 顧客情報 -->
     <div v-if="activeTab === 'customers'">
+    
       
-      <h2 class="df-center gap1 fs-5"><IconFaceId />顧客情報</h2>
-      <small class=" df-center mb-4">タップして詳細を表示</small>
+      <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+        <IconFaceId />顧客情報一覧</h2>
       <nav class="row border-bottom g-1 mb-3">
         <div class="col-6">
           <button 
@@ -857,9 +965,31 @@ const latestGoalView = computed(() => {
         </p>
       </div>
 
-      <div v-if="activeCustomerTab === 'customer-info'" class="wrap"><!-- 顧客情報一覧 -->
-        <div v-if="allCustomersList.length">
-          <div v-for="c in allCustomersList" :key="c.name"
+      <!-- 顧客情報一覧（絞り込み機能付き） -->
+      <div v-if="activeCustomerTab === 'customer-info'" class="wrap">
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <input v-model="customerSearch" class="form-control form-control-sm bg-white" placeholder="名前で検索">
+          </div>
+          <div class="col-3">
+            <select v-model.number="customerMinVisit" class="form-select form-select-sm bg-white">
+              <option :value="0">来店条件なし</option>
+              <option :value="2">2回〜</option>
+              <option :value="3">3回〜</option>
+              <option :value="5">5回〜</option>
+              <option :value="10">10回〜</option>
+            </select>
+          </div>
+          <div class="col-3">
+            <select v-model="customerSort" class="form-select form-select-sm bg-white">
+              <option value="latest">最終来店順</option>
+              <option value="visits">来店回数順</option>
+            </select>
+          </div>
+        </div>
+
+        <div v-if="filteredAllCustomersList.length">
+          <div v-for="c in filteredAllCustomersList" :key="c.name"
             @click="openCustomer(c.latestBillId)"
             class="card shadow-sm mb-3">
             <div class="card-header d-flex align-items-center justify-content-between">
@@ -895,61 +1025,16 @@ const latestGoalView = computed(() => {
 
       <CustomerDetailModal
         :bill-id="selectedBillId"
+        :customer-stats="selectedCustomerStats"
         :show="showCustomerModal"
         @close="closeCustomerModal"
       />
     </div>
 
-    <footer class="position-fixed bottom-0 end-0 start-0 w-100 bg-white py-2">
-      <!-- タブ -->
-      <nav class="d-flex justify-content-around bg-white">
-        <button
-          class="df-center flex-column"
-          :class="{ 'fw-bold': activeTab === 'home' }"
-          @click="setTab('home')"
-        >
-          <IconHome />
-          <small>ホーム</small>
-        </button>
-        <button
-          class="df-center flex-column"
-          :class="{ 'fw-bold': activeTab === 'apply' }"
-          @click="setTab('apply')"
-        >
-          <IconCalendarPlus />
-          <small>シフト</small>
-        </button>
-        <button
-          class="df-center flex-column"
-          :class="{ 'fw-bold': activeTab === 'goals' }"
-          @click="setTab('goals')"
-        >
-          <IconTargetArrow />
-          <small>目標</small>
-        </button>
-        <button
-          class="df-center flex-column"
-          :class="{ 'fw-bold': activeTab === 'sales' }"
-          @click="setTab('sales')"
-        >
-          <IconRosetteDiscountCheck />
-          <small>売上</small>
-        </button>
-        <button
-          class="df-center flex-column"
-          :class="{ 'fw-bold': activeTab === 'customers' }"
-          @click="setTab('customers')"
-        >
-          <IconFaceId />
-          <small>顧客</small>
-        </button>
-      </nav>
-    </footer>
   </div>
 
 
-    <!-- オフキャンバス（サイドバー） -->
-    <CastSidebar />
+
 
 </template>
 

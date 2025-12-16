@@ -40,18 +40,18 @@ async function logout() {
       <button type="button" class="btn-close text-reset" @click="closeOffcanvas('#castSidebar')" aria-label="閉じる" />
     </div>
 
-    <div class="aside offcanvas-body d-flex flex-column justify-content-between v-100">
+    <div class="aside offcanvas-body d-flex flex-column justify-content-between w-100">
       <div class="wrap d-flex flex-column gap-1">
-          <a class="btn w-100 d-flex justify-content-start" href="#" @click.prevent="nav({name:'cast-mypage'})">
+          <a class="btn w-100 d-flex justify-content-start px-2" href="#" @click.prevent="nav({name:'cast-mypage'})">
             マイページ
           </a>
-          <a class="btn w-100 d-flex" href="#" @click.prevent="nav({name:'cast-profile'})">
+          <a class="btn w-100 d-flex justify-content-start px-2" href="#" @click.prevent="nav({name:'cast-profile'})">
             プロフィール編集
           </a>
       </div>
 
       <div class="footer d-flex flex-column gap-2">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex justify-content-between align-items-center">
 
           <div class="d-flex align-items-center gap-2">
             <Avatar :url="avatarURL" :size="40" class="rounded-circle"/> 
@@ -62,10 +62,10 @@ async function logout() {
           </a>
         </div>
 
-        <button class="btn btn-outline-danger w-100" @click="logout">
+        <button class="btn btn-sm btn-outline-danger w-100" @click="logout">
           ログアウト
         </button>
-        <DevRoleSwitcher class="mt-4 mb-2"/>
+        <DevRoleSwitcher class="mb-2"/>
       </div>
     </div>
   </div>

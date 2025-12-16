@@ -1,11 +1,14 @@
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import dayjs from 'dayjs'
 import { fetchBill, fetchCustomer, fetchBillItemsByBillId, updateCustomer } from '@/api'
+import CustomerPicker from './CustomerPicker.vue'
 
 const props = defineProps({
   billId: { type: Number, default: null },
   show:   { type: Boolean, default: false },
+  // 親から渡される統計（任意）: { name, visit_count, last_visit_at }
+  customerStats: { type: Object, default: null },
 })
 const emit = defineEmits(['close'])
 
@@ -22,6 +25,7 @@ const editForm  = ref({
   memo: ''
 })
 const saving = ref(false)
+const editCustomerId = ref(null)
 
 // 日付等の表示
 const openedAt = computed(() =>
@@ -50,6 +54,40 @@ function normalizeItem(it) {
   return { id: it?.id, name, qty, unit, line, route: it?.route || it?.route_code || null }
 }
 
+// Bill から主顧客IDを優先度付きで決定する
+function pickPrimaryCustomerIdFromBill(b) {
+  if (!b) return null
+
+  // 1) 明示があれば最優先
+  if (b.customer_id) return b.customer_id
+  if (b.customer?.id) return b.customer.id
+
+  const list = Array.isArray(b.customers) ? b.customers : []
+  if (!list.length) return null
+
+  const disp = (b.customer_display_name || '').trim()
+
+  // 2) customer_display_name と alias / full_name が一致するものを優先
+  if (disp) {
+    const hit = list.find(c =>
+      (c.alias && c.alias.trim() === disp) ||
+      (c.full_name && c.full_name.trim() === disp)
+    )
+    if (hit?.id != null) return hit.id
+  }
+
+  // 3) 「空っぽじゃない顧客」を優先（最低限の実用ルール）
+  const nonEmpty = list.find(c =>
+    (c.full_name && c.full_name.trim()) ||
+    (c.alias && c.alias.trim()) ||
+    (c.phone && c.phone.trim())
+  )
+  if (nonEmpty?.id != null) return nonEmpty.id
+
+  // 4) 最後の手段
+  return list[0]?.id ?? null
+}
+
 async function loadDetail () {
   if (!props.billId) return
   loading.value  = true
@@ -61,9 +99,16 @@ async function loadDetail () {
     const b = await fetchBill(props.billId)
     bill.value = b
 
-    // 顧客詳細
-    const cid = b.customer_id || b.customer?.id
-    if (cid) customer.value = await fetchCustomer(cid)
+    // 顧客詳細：pickPrimaryCustomerIdFromBill で主顧客を決定
+    const cid = pickPrimaryCustomerIdFromBill(b)
+    if (cid) {
+      try {
+        customer.value = await fetchCustomer(cid)
+      } catch (e) {
+        console.warn('顧客情報の取得に失敗しました (404かアクセス権なし)', e)
+        // customer.value は null のまま（顧客情報なしで続行）
+      }
+    }
 
     // 明細：bill.items があればそれ、無ければ /bill-items?bill=ID
     let items = []
@@ -98,6 +143,9 @@ watch(() => isEditing.value, (editing) => {
       memo: memo
     }
     console.log('Edit form initialized:', editForm.value)
+    // 編集モード突入時点でIDも同期（CustomerPicker 初期化用）
+    const cid = customer.value?.id || pickPrimaryCustomerIdFromBill(bill.value)
+    editCustomerId.value = cid ?? null
   }
 })
 
@@ -109,12 +157,13 @@ function setTab(t){ activeTab.value = t }
 
 function startEdit() {
   console.log('startEdit called', customer.value)
-  if (!customer.value) return
-  editForm.value = {
-    display_name: customer.value.display_name || '',
-    phone: customer.value.phone || '',
-    memo: customer.value.memo || ''
+  // pickPrimaryCustomerIdFromBill で一貫して顧客IDを決定
+  const customerId = customer.value?.id || pickPrimaryCustomerIdFromBill(bill.value)
+  if (!customerId) {
+    console.warn('startEdit: customerId not found from bill')
+    return
   }
+  editCustomerId.value = customerId
   isEditing.value = true
   console.log('isEditing set to', isEditing.value)
 }
@@ -157,6 +206,21 @@ async function saveEdit() {
     saving.value = false
   }
 }
+
+function onPicked(obj){
+  // ピック時はローカル表示を更新（保存はしない）
+  if (obj?.id != null) {
+    editCustomerId.value = obj.id
+  }
+}
+
+function onSaved(saved){
+  // CustomerPicker 側で保存完了したらモーダルの表示も更新して閉じる
+  if (saved && saved.id != null) {
+    customer.value = saved
+  }
+  isEditing.value = false
+}
 </script>
 
 <template>
@@ -172,10 +236,6 @@ async function saveEdit() {
       <div class="modal-content">
 
         <div class="modal-header">
-          <h5 class="modal-title">
-            顧客詳細
-            <small v-if="customer?.display_name" class="text-muted ms-2">/ {{ customer.display_name }}</small>
-          </h5>
           <button type="button" class="btn-close" @click="close" aria-label="Close"></button>
         </div>
 
@@ -198,56 +258,68 @@ async function saveEdit() {
             </ul>
 
             <!-- 顧客情報タブ -->
-            <div v-if="activeTab==='customer'">
+            <div v-if="activeTab==='customer'"
+            class="mt-4">
               <div v-if="!isEditing">
-                <dl class="row mb-0">
-                  <dt class="col-4">来店日時</dt>
-                  <dd class="col-8">{{ openedAt }}</dd>
+                <dl class="row mb-0 g-2">
+                  <dt class="col-3">来店日時</dt>
+                  <dd class="col-9">{{ openedAt }}</dd>
 
-                  <dt class="col-4">顧客名</dt>
-                  <dd class="col-8">{{ customer?.full_name || customer?.display_name || bill?.customer_display_name || '—' }}</dd>
+                  <dt class="col-3">顧客名</dt>
+                  <dd class="col-9">{{ customer?.full_name || customer?.display_name || bill?.customer_display_name || '—' }}</dd>
 
-                  <dt class="col-4">電話</dt>
-                  <dd class="col-8">{{ customer?.phone || '—' }}</dd>
+                  <dt class="col-3">電話</dt>
+                  <dd class="col-9">{{ customer?.phone || '—' }}</dd>
 
-                  <dt class="col-4">メモ</dt>
-                  <dd class="col-8">
-                    <pre class="mb-0" style="white-space:pre-wrap">{{ customer?.memo || '—' }}</pre>
+                  <dt class="col-3">ボトル</dt>
+                  <dd class="col-9">
+                    <div v-if="customer?.has_bottle" class="d-flex align-items-center gap-2">
+                      <div class="df-center">
+                        <span class="badge bg-light text-dark">棚番号</span>
+                        <span class="ms-2">{{ customer?.bottle_shelf || '—' }}</span>
+                      </div>
+                      <div class="df-center">
+                        <span class="badge bg-light text-dark">種類</span>
+                        <span class="ms-2">{{ customer?.bottle_memo || '—' }}</span>
+                      </div>
+                    </div>
+                    <div v-else class="df-center">
+                      なし
+                    </div>
                   </dd>
 
-                  <dt class="col-4">来店回数</dt>
-                  <dd class="col-8">{{ customer?.visit_count ?? '—' }}</dd>
+                  <dt class="col-3">メモ</dt>
+                  <dd class="col-9">
+                    <pre class="mb-0" style="white-space:pre-wrap">{{ customer?.memo || '—' }}</pre>
+                  </dd>
+                  
 
-                  <dt class="col-4">直近来店</dt>
-                  <dd class="col-8">
-                    <span v-if="customer?.last_visit_at">
-                      {{ dayjs(customer.last_visit_at).format('YYYY/MM/DD') }}
+                  <dt class="col-3">来店回数</dt>
+                  <dd class="col-9">{{ (props.customerStats?.visit_count ?? customer?.visit_count) ?? '—' }}</dd>
+
+                  <dt class="col-3">直近来店</dt>
+                  <dd class="col-9">
+                    <span v-if="props.customerStats?.last_visit_at || customer?.last_visit_at">
+                      {{ dayjs(props.customerStats?.last_visit_at || customer?.last_visit_at).format('YYYY/MM/DD') }}
                     </span>
                     <span v-else>—</span>
                   </dd>
                 </dl>
-                <button type="button" class="btn btn-primary btn-sm" @click="isEditing = true">編集</button>
+                <button type="button" class="btn btn-primary btn-sm mt-4" @click="startEdit">編集</button>
               </div>
 
+              <!-- ＊上の編集を押すと、下のCustomerPickerが出るようにしたんだけど、情報が引き継がれない -->
+
               <div v-else>
-                <div class="mb-3">
-                  <label class="form-label">顧客名</label>
-                  <input type="text" class="form-control" v-model="editForm.display_name">
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">電話</label>
-                  <input type="text" class="form-control" v-model="editForm.phone">
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">メモ</label>
-                  <textarea class="form-control" rows="4" v-model="editForm.memo"></textarea>
-                </div>
-                <div class="d-flex gap-2">
-                  <button type="button" class="btn btn-primary" @click="saveEdit" :disabled="saving">
-                    {{ saving ? '保存中...' : '保存' }}
-                  </button>
-                  <button type="button" class="btn btn-secondary" @click="cancelEdit" :disabled="saving">キャンセル</button>
-                </div>
+                <!-- CustomerPicker で顧客情報の編集を行う -->
+                <CustomerPicker
+                  v-if="editCustomerId != null"
+                  v-model="editCustomerId"
+                  :key="editCustomerId || 'new'"
+                  @picked="onPicked"
+                  @saved="onSaved"
+                />
+                <div v-else class="text-muted">読み込み中…</div>
               </div>
             </div>
 
@@ -307,11 +379,6 @@ async function saveEdit() {
             </div>
           </template>
         </div>
-
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="close">閉じる</button>
-        </div>
-
       </div>
     </div>
   </div>

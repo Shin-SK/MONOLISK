@@ -1,7 +1,8 @@
 # billing/views.py
 from datetime import date
+from datetime import timedelta
 from django.db import models, transaction
-from django.db.models import Sum, F, Q, IntegerField, Value, OuterRef, Subquery
+from django.db.models import Sum, F, Q, IntegerField, Value, OuterRef, Subquery, Count, Max
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -703,6 +704,13 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        
+        # display_name がない（full_name と alias の両方が空）顧客を除外
+        # ただし、一覧表示（list）と相性チェック（match）の時のみ
+        # 個別取得（retrieve）や他のアクションでは全て表示
+        if self.action in ['list', 'match_ranking']:
+            qs = qs.exclude(Q(full_name='') & Q(alias=''))
+        
         q = self.request.query_params.get("q")
         if q:
             qs = qs.filter(
@@ -748,6 +756,207 @@ class CustomerViewSet(viewsets.ModelViewSet):
         instance = serializer.save()
         after = CustomerSerializer(instance=instance).data
         log_customer_change(self.request.user, instance, "update", before, after)
+
+    @action(detail=False, methods=["get"], url_path='match')
+    def match_ranking(self, request):
+        """
+        キャスト向け：顧客×キャスト相性ランキング
+        GET /api/billing/customers/match/?cast_id=<id>&sort=spent_30d&min_spent_30d=10000&limit=20
+        
+        Phase1: BillItem.served_by_cast が付いた明細のみを「そのキャストの売上」とみなす
+        """
+        cast_id = request.query_params.get('cast_id')
+        if not cast_id:
+            return Response({'error': 'cast_id is required'}, status=400)
+        
+        try:
+            cast = Cast.objects.get(id=cast_id)
+        except Cast.DoesNotExist:
+            return Response({'error': 'Cast not found'}, status=404)
+        
+        # Store-Locked: request.store で絞り込み
+        store = getattr(request, 'store', None)
+        if not store:
+            return Response({'error': 'Store not found'}, status=400)
+        
+        # 顧客×キャスト相性集計
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        
+        # BillItem 起点で Customer ごとに集計
+        # 名前なし顧客を除外（full_name と alias の両方が空の顧客）
+        customers_with_stats = Customer.objects.filter(
+            bills__table__store=store,
+            bills__items__served_by_cast_id=cast_id
+        ).exclude(
+            Q(full_name='') & Q(alias='')
+        ).annotate(
+            # 通算売上（served_by_cast 付き明細の price * qty 合計）
+            spent_with_cast_total=Coalesce(
+                Sum(
+                    F('bills__items__price') * F('bills__items__qty'),
+                    filter=Q(bills__items__served_by_cast_id=cast_id) & Q(bills__table__store=store)
+                ),
+                0
+            ),
+            
+            # 直近30日売上
+            spent_with_cast_30d=Coalesce(
+                Sum(
+                    F('bills__items__price') * F('bills__items__qty'),
+                    filter=Q(bills__items__served_by_cast_id=cast_id) & 
+                           Q(bills__table__store=store) & 
+                           Q(bills__opened_at__gte=thirty_days_ago)
+                ),
+                0
+            ),
+            
+            # served_by_cast 付き明細件数
+            served_item_count=Count('bills__items', 
+                                   filter=Q(bills__items__served_by_cast_id=cast_id) & Q(bills__table__store=store)),
+            
+            # served_by_cast 付き明細が含まれる伝票数（distinct bill）
+            served_bill_count=Count('bills', 
+                                   filter=Q(bills__items__served_by_cast_id=cast_id) & Q(bills__table__store=store),
+                                   distinct=True),
+            
+            # 最後に served_by_cast が発生した日時（opened_at 基準）
+            last_served_at=Max('bills__opened_at', 
+                              filter=Q(bills__items__served_by_cast_id=cast_id) & Q(bills__table__store=store)),
+            
+            # Customer全体 stats（参考）
+            visit_count=Count('bills', filter=Q(bills__table__store=store), distinct=True),
+            total_spent=Coalesce(Sum('bills__grand_total', filter=Q(bills__table__store=store)), 0),
+            last_visit_at=Max('bills__opened_at', filter=Q(bills__table__store=store))
+        ).distinct()
+        
+        # フィルタ適用
+        min_spent_30d = request.query_params.get('min_spent_30d')
+        if min_spent_30d:
+            customers_with_stats = customers_with_stats.filter(spent_with_cast_30d__gte=int(min_spent_30d))
+        
+        min_spent_total = request.query_params.get('min_spent_total')
+        if min_spent_total:
+            customers_with_stats = customers_with_stats.filter(spent_with_cast_total__gte=int(min_spent_total))
+        
+        min_served_bill_count = request.query_params.get('min_served_bill_count')
+        if min_served_bill_count:
+            customers_with_stats = customers_with_stats.filter(served_bill_count__gte=int(min_served_bill_count))
+        
+        # ソート
+        sort_param = request.query_params.get('sort', 'spent_30d')
+        sort_map = {
+            'spent_30d': '-spent_with_cast_30d',
+            'spent_total': '-spent_with_cast_total',
+            'last_served': '-last_served_at',
+            'served_bill_count': '-served_bill_count',
+        }
+        order_by = sort_map.get(sort_param, '-spent_with_cast_30d')
+        customers_with_stats = customers_with_stats.order_by(order_by)
+        
+        # リミット
+        limit = int(request.query_params.get('limit', 20))
+        limit = min(limit, 100)  # 上限100
+        customers_with_stats = customers_with_stats[:limit]
+        
+        # レスポンス構築
+        results = []
+        for customer in customers_with_stats:
+            spent_total = int(customer.spent_with_cast_total or 0)
+            spent_30d = int(customer.spent_with_cast_30d or 0)
+            bill_count = int(customer.served_bill_count or 0)
+            
+            results.append({
+                'customer': CustomerSerializer(customer).data,
+                'stats': {
+                    'visit_count': int(customer.visit_count or 0),
+                    'total_spent': int(customer.total_spent or 0),
+                    'last_visit_at': customer.last_visit_at,
+                },
+                'affinity': {
+                    'cast_id': int(cast_id),
+                    'spent_with_cast_total': spent_total,
+                    'spent_with_cast_30d': spent_30d,
+                    'served_item_count': int(customer.served_item_count or 0),
+                    'served_bill_count': bill_count,
+                    'last_served_at': customer.last_served_at,
+                    'avg_spent_per_bill_with_cast': int(spent_total / bill_count) if bill_count > 0 else 0,
+                }
+            })
+        
+        return Response({
+            'cast': CastSerializer(cast).data,
+            'count': len(results),
+            'results': results,
+        })
+
+    @action(detail=True, methods=["get"], url_path='affinity')
+    def affinity(self, request, pk=None):
+        """
+        顧客個別：特定キャストとの相性
+        GET /api/billing/customers/<customer_id>/affinity/?cast_id=<id>
+        """
+        cast_id = request.query_params.get('cast_id')
+        if not cast_id:
+            return Response({'error': 'cast_id is required'}, status=400)
+        
+        try:
+            cast = Cast.objects.get(id=cast_id)
+        except Cast.DoesNotExist:
+            return Response({'error': 'Cast not found'}, status=404)
+        
+        customer = self.get_object()
+        
+        # Store-Locked: request.store で絞り込み
+        store = getattr(request, 'store', None)
+        if not store:
+            return Response({'error': 'Store not found'}, status=400)
+        
+        # 顧客×キャスト相性集計
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        
+        # BillItem から集計
+        items = BillItem.objects.filter(
+            bill__customers=customer,
+            bill__table__store=store,
+            served_by_cast_id=cast_id
+        )
+        
+        spent_with_cast_total = sum((item.price or 0) * item.qty for item in items)
+        
+        items_30d = items.filter(bill__opened_at__gte=thirty_days_ago)
+        spent_with_cast_30d = sum((item.price or 0) * item.qty for item in items_30d)
+        
+        served_item_count = items.count()
+        served_bill_count = items.values('bill').distinct().count()
+        
+        last_served_bill = items.order_by('-bill__opened_at').first()
+        last_served_at = last_served_bill.bill.opened_at if last_served_bill else None
+        
+        # Customer全体 stats
+        customer_bills = Bill.objects.filter(customers=customer, table__store=store)
+        visit_count = customer_bills.count()
+        total_spent = customer_bills.aggregate(total=Sum('grand_total'))['total'] or 0
+        last_visit = customer_bills.order_by('-opened_at').first()
+        last_visit_at = last_visit.opened_at if last_visit else None
+        
+        return Response({
+            'customer': CustomerSerializer(customer).data,
+            'cast': CastSerializer(cast).data,
+            'stats': {
+                'visit_count': int(visit_count),
+                'total_spent': int(total_spent),
+                'last_visit_at': last_visit_at,
+            },
+            'affinity': {
+                'cast_id': int(cast_id),
+                'spent_with_cast_total': int(spent_with_cast_total),
+                'spent_with_cast_30d': int(spent_with_cast_30d),
+                'served_item_count': int(served_item_count),
+                'served_bill_count': int(served_bill_count),
+                'last_served_at': last_served_at,
+                'avg_spent_per_bill_with_cast': int(spent_with_cast_total / served_bill_count) if served_bill_count > 0 else 0,
+            }
+        })
 
 
 # ────────────────────────────────────────────────────────────────────

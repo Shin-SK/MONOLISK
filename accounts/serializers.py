@@ -10,6 +10,17 @@ from billing.models_profile import get_user_avatar_url
 User = get_user_model()
 
 
+
+
+class StoreMembershipMiniSerializer(serializers.ModelSerializer):
+    store_id = serializers.IntegerField(source='store.id', read_only=True)
+    store_name = serializers.CharField(source='store.name', read_only=True)
+
+    class Meta:
+        from .models import StoreMembership
+        model = StoreMembership
+        fields = ('store_id', 'store_name', 'role', 'is_primary')
+        read_only_fields = ('store_id','store_name','role','is_primary')
 class UserDetailsWithStoreSerializer(UserDetailsSerializer):
     store_id   = serializers.IntegerField(read_only=True)
     store_name = serializers.CharField(source="store.name", read_only=True)

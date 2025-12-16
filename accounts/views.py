@@ -54,8 +54,18 @@ def _me_payload(request):
         u, context={'request': request, 'store_id': current_store_id}
     ).data.get('avatar_url')
 
+    # store_name を付与（N+1回避：まとめて取得）
+    try:
+        name_map = dict(Store.objects.filter(id__in=store_ids).values_list('id', 'name'))
+    except Exception:
+        name_map = {}
     memberships = [
-        {'store_id': m['store_id'], 'role': ROLE_MAP.get(m.get('role')), 'is_primary': m['is_primary']}
+        {
+            'store_id': m['store_id'],
+            'store_name': name_map.get(m['store_id']),
+            'role': ROLE_MAP.get(m.get('role')),
+            'is_primary': m['is_primary'],
+        }
         for m in mems
     ]
 

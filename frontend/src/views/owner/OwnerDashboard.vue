@@ -1,226 +1,406 @@
-<!-- src/views/owner/OwnerDashboard.vue -->
+<!-- src/views/OwnerDashboard.vue -->
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import dayjs from 'dayjs'
-import { yen } from '@/utils/money'
 import {
-  getBillDailyPL, getBillMonthlyPL, getBillYearlyPL,
-  fetchCastShifts, fetchCastRankings, fetchBillItems, 
+  getBillDailyPL,
+  getBillDailyPLForStore,
+  fetchBills,
+  fetchCastShifts,
+  fetchStaffShifts,
 } from '@/api'
-import { getStoreId } from '@/auth'
-import SalesTrendLine from '@/components/charts/SalesTrendLine.vue'
-import SalesMixPie   from '@/components/charts/SalesMixPie.vue'
-import CastRankBar   from '@/components/charts/CastRankBar.vue'
+import MiniTip from '@/components/MiniTip.vue'
+import Avatar from '@/components/Avatar.vue'
+import { useUser } from '@/stores/useUser'
+import { useProfile } from '@/composables/useProfile'
+import PLPage from '../PLPage.vue'
+import BillList from '../BillList.vue'
 
-const storeId = getStoreId()
-const loading = ref(true)
-const err = ref('')
+const route = useRoute()
+const user = useUser()
+const { avatarURL } = useProfile()
 
-/* ── KPI ── */
-const summary = ref({ today:{}, month:{}, year:{} })
+const userName = computed(() => {
+  return user.me?.username || user.me?.email || 'ユーザー'
+})
 
-const trendRef = ref(null)   // ← 追加
-const mixRef   = ref(null)   // ← 追加
-const chartsReady = ref(false)
-const mixRows = ref([])
+/* ----------------- 店舗選択（オーナー用） ----------------- */
+const selectedStoreIds = ref([])
 
-/* ── グラフ用 ── */
-const days = ref([])                     // [{ date:'YYYY-MM-DD', sales:Number }]
-const monthlyTotal = ref({ cash:0, card:0 })
-const rankRows = ref([])                 // [{ stage_name, revenue }]
+const availableStores = computed(() => {
+  const mems = Array.isArray(user.me?.memberships) ? user.me.memberships : []
+  return mems.map(m => ({ id: m.store_id, name: m.store_name })).filter(s => s.id != null)
+})
 
-/* ── UI ── */
-const tab = ref('suii')
-const rankPeriod = ref('month')
+const showStoreSelector = computed(() => {
+  const role = user.me?.current_role || ''
+  return (role === 'owner' || role === 'superuser') && availableStores.value.length > 1
+})
 
-const pct = v => (v===0||v==null) ? '0%' : `${v>0?'+':''}${Math.round(v)}%`
-const num = v => Number.isFinite(+v) ? +v : 0
-
-async function loadKpis(){
-  const today = dayjs().format('YYYY-MM-DD')
-  const prev1 = dayjs(today).subtract(1,'day').format('YYYY-MM-DD')
-  const prev7 = dayjs(today).subtract(7,'day').format('YYYY-MM-DD')
-
-  const [d0, d1, d7] = await Promise.all([
-    getBillDailyPL(today, storeId),
-    getBillDailyPL(prev1, storeId),
-    getBillDailyPL(prev7, storeId),
-  ])
-  const s0 = num(d0.sales_total ?? (num(d0.sales_cash)+num(d0.sales_card)))
-  const s1 = num(d1?.sales_total ?? (num(d1?.sales_cash)+num(d1?.sales_card)))
-  const s7 = num(d7?.sales_total ?? (num(d7?.sales_cash)+num(d7?.sales_card)))
-
-  let working = 0
-  try {
-    const shifts = await fetchCastShifts({ date: today })
-    working = Array.isArray(shifts) ? shifts.filter(x => x.clock_in && !x.clock_out).length : 0
-  } catch {}
-
-  summary.value.today = {
-    sales: s0,
-    prev_day_pct: s1 ? ((s0 - s1)/s1)*100 : 0,
-    prev_weekday_pct: s7 ? ((s0 - s7)/s7)*100 : 0,
-    sets: num(d0.guest_count),                 // 暫定：来客組数を流用
-    avg_unit_price: num(d0.avg_spend),
-    working_casts: working,
-    avg_sales_per_cast: working ? s0/working : 0,
-  }
-
-  const ym = today.slice(0,7)
-  const m = await getBillMonthlyPL(ym)
-  summary.value.month = { sales: num(m?.monthly_total?.sales_total), target_pct: null }
-
-  const y = await getBillYearlyPL(dayjs().year())
-  summary.value.year = { sales: num(y?.totals?.sales_total) }
-}
-
-async function loadTrendAndMix(){
-  const ym = dayjs().format('YYYY-MM')
-  const { days: d, monthly_total } = await getBillMonthlyPL(ym)
-  days.value = (d||[]).map(x => ({
-    date: x.date,
-    sales: num(x.sales_total ?? (num(x.sales_cash)+num(x.sales_card)))
-  }))
-
-  // 当月の BillItem を取得 → カテゴリ(show_in_menu=True)で集計
-  const from = dayjs().startOf('month').format('YYYY-MM-DD')
-  const to   = dayjs().endOf('month').format('YYYY-MM-DD')
-  const items = await fetchBillItems({ from, to })
-  const map = new Map()
-  for (const it of (items || [])) {
-    const cat = it.category
-    if (!cat || !cat.show_in_menu) continue
-    const key = cat.code
-    const cur = map.get(key) || { name: cat.name, value: 0 }
-    cur.value += Number(it.subtotal) || 0
-    map.set(key, cur)
-  }
-  mixRows.value = Array.from(map.values()).sort((a,b)=>b.value-a.value)
-
-  monthlyTotal.value = {
-    cash: num(monthly_total?.sales_cash),
-    card: num(monthly_total?.sales_card),
+function toggleStore(storeId) {
+  const idx = selectedStoreIds.value.indexOf(storeId)
+  if (idx >= 0) {
+    if (selectedStoreIds.value.length > 1) {
+      selectedStoreIds.value.splice(idx, 1)
+    }
+  } else {
+    selectedStoreIds.value.push(storeId)
   }
 }
 
-const trendLabels = computed(() => (days.value ?? []).map(x => x.date?.slice(5) ?? ''))
-const trendValues = computed(() => (days.value ?? []).map(x => Number(x.sales) || 0))
-const mixItems = computed(() => mixRows.value)
-
-function periodRange(p='month'){
-  const t = dayjs()
-  if (p==='today') return { from: t.format('YYYY-MM-DD'), to: t.format('YYYY-MM-DD') }
-  if (p==='year')  return { from: t.startOf('year').format('YYYY-MM-DD'),  to: t.endOf('year').format('YYYY-MM-DD') }
-  return { from: t.startOf('month').format('YYYY-MM-DD'), to: t.endOf('month').format('YYYY-MM-DD') }
+function isStoreSelected(storeId) {
+  return selectedStoreIds.value.includes(storeId)
 }
 
-async function loadRanks(){
-  const { from, to } = periodRange(rankPeriod.value)
-  try {
-    const rows = await fetchCastRankings({ from, to })
-    rankRows.value = (rows||[]).map(r => ({
-      stage_name: r.stage_name ?? r.name ?? `CAST-${r.cast_id ?? ''}`,
-      revenue:    num(r.revenue ?? r.sales ?? 0),
-    }))
-  } catch { rankRows.value = [] }
+// billsタブ用：単一選択
+function selectStoreForBills(storeId) {
+  selectedStoreIds.value = [storeId]
 }
 
-onMounted(async () => {
-  try {
-    await Promise.all([loadKpis(), loadTrendAndMix(), loadRanks()])
-  } catch(e){ err.value = e?.message || 'load error' }
-  finally { 
+const showOpenTip = ref(false)
+const showDutyTip = ref(false)
+
+/* ----------------- タブ管理 ----------------- */
+const activeTab = ref('home') // 'home', 'bills', 'download'
+const homeSubTab = ref('day') // 'day', 'month', 'year'
+
+function switchTab(tabId) {
+  activeTab.value = tabId
+}
+
+function switchHomeTab(subTabId) {
+  homeSubTab.value = subTabId
+}
+
+/* ----------------- 日付（単日） ----------------- */
+const date = ref(dayjs().format('YYYY-MM-DD'))
+
+/* ----------------- 状態 ----------------- */
+const loading = ref(false)
+const errorMsg = ref('')
+
+const kpi = ref({
+  sales_total: 0,
+  sales_cash: 0,
+  sales_card: 0,
+  visitors: 0,
+  open_count: 0,
+  unsettled_count: 0,
+  cast_on_duty: 0,
+  staff_on_duty: 0,
+})
+
+const billsToday = ref([])   // 今日の伝票（最小表示用）
+
+/* ----------------- ユーティリティ ----------------- */
+const asId = v => (v && typeof v === 'object') ? v.id : v
+const fmtYen = n => `¥${(Number(n)||0).toLocaleString()}`
+const fmtTime = t => t ? dayjs(t).format('HH:mm') : '-'
+
+/* ----------------- ロード ----------------- */
+async function loadAll(){
+  loading.value = true
+  errorMsg.value = ''
+  try{
+    const d = date.value
+
+    // 1) PL（売上）- キャッシュ無効化
+    //    オーナーは全所属店舗の合算。その他は現在店舗のみ。
+    let pl
+    const mems = Array.isArray(user.me?.memberships) ? user.me.memberships : []
+    const storeIds = mems.map(m => m.store_id).filter(id => id != null)
+    if (storeIds.length > 1) {
+      const list = await Promise.all(
+        storeIds.map(sid => getBillDailyPLForStore(d, sid, { cache:false, meta:{ silent:true } }).catch(()=>({})))
+      )
+      const sum = (arr, key) => arr.reduce((a,b)=> a + (Number(b?.[key])||0), 0)
+      pl = {
+        sales_total : sum(list, 'sales_total'),
+        sales_cash  : sum(list, 'sales_cash'),
+        sales_card  : sum(list, 'sales_card'),
+      }
+    } else {
+      pl = await getBillDailyPL(d, { cache: false })
+    }
+
+    // 2) 伝票（クライアントで当日抽出）- キャッシュ無効化
+    const allBills = await fetchBills({ ordering: '-opened_at' }, { cache: false }).catch(()=>[])
+    const onlyToday = (Array.isArray(allBills?.results) ? allBills.results : allBills || [])
+      .filter(b => b.opened_at && dayjs(b.opened_at).isSame(d, 'day'))
+    billsToday.value = onlyToday
+
+    // 来店数：当日の全伝票の “customers” をユニーク化
+    const custSet = new Set()
+    for (const b of onlyToday) {
+      const arr = Array.isArray(b.customers) ? b.customers : []
+      for (const c of arr) custSet.add(asId(c))
+    }
+
+    // オープン中／未決済
+    const openCnt      = onlyToday.filter(b => !b.closed_at).length
+    const unsettledCnt = onlyToday.filter(b => {
+      const st = (b.settled_total ?? b.grand_total) || 0
+      const pt = b.paid_total || 0
+      return b.closed_at && pt < st
+    }).length
+
+// 3) 出勤状況（キャスト／スタッフ）- キャッシュ無効化
+const [castShiftsRaw, staffShiftsRaw] = await Promise.all([
+  fetchCastShifts({ from: d, to: d }, { cache: false }).catch(() => []),
+  fetchStaffShifts({ time_min: `${d}T00:00:00`, time_max: `${d}T23:59:59` }, { cache: false }).catch(() => []),
+])
+
+const dayStart = dayjs(`${d}T00:00:00`)
+const dayEnd   = dayjs(`${d}T23:59:59`)
+
+// 「当日打刻のみ」＋「人物でユニーク」に絞る
+const isClockInToday = (s) => {
+  if (!s?.clock_in) return false
+  const ci = dayjs(s.clock_in)
+  return ci.isValid() && ci.isSame(dayStart, 'day')
+}
+const uniqCountBy = (arr, getPersonId) => {
+  const seen = new Set()
+  for (const s of arr) {
+    const pid = getPersonId(s)
+    if (pid != null) seen.add(String(pid))
+  }
+  return seen.size
+}
+
+// キャスト
+const castShiftsToday = (Array.isArray(castShiftsRaw) ? castShiftsRaw : []).filter(isClockInToday)
+// 「退勤済みでも当日ならOK」or「未退勤（勤務中）」のどちらも当日実績として扱う
+const castOn = uniqCountBy(castShiftsToday, s => s.cast?.id ?? s.cast_id)
+
+// スタッフ（構造が cast と同様だと仮定）
+const staffShiftsToday = (Array.isArray(staffShiftsRaw) ? staffShiftsRaw : []).filter(isClockInToday)
+const staffOn = uniqCountBy(staffShiftsToday, s => s.staff?.id ?? s.staff_id)
+
+kpi.value = {
+  sales_total : pl.sales_total || 0,
+  sales_cash  : pl.sales_cash  || 0,
+  sales_card  : pl.sales_card  || 0,
+  visitors    : custSet.size,
+  open_count  : openCnt,
+  unsettled_count: unsettledCnt,
+  cast_on_duty: castOn,
+  staff_on_duty: staffOn,
+}
+
+  }catch(e){
+    console.warn(e)
+    errorMsg.value = '読み込みに失敗しました'
+  }finally{
     loading.value = false
-    chartsReady.value = true 
-    await nextTick()
-    if (tab.value==='suii')   trendRef.value?.resize()
   }
-})
-watch(rankPeriod, loadRanks)
-watch(tab, async (t) => {    // ← 追加：タブ切替後に強制resize
-  await nextTick()
-  if (t==='suii')   trendRef.value?.resize()
-  if (t==='kousei') mixRef.value?.resize()
+}
+
+onMounted(() => {
+  // 店舗初期化：全店舗選択
+  if (availableStores.value.length) {
+    selectedStoreIds.value = availableStores.value.map(s => s.id)
+  }
+  // クエリパラメータからタブを復元
+  if (route.query.tab) {
+    activeTab.value = route.query.tab
+  }
+  loadAll()
 })
 
-/* 派生 */
-const kpiToday = computed(() => summary.value.today || {})
-const kpiMonth = computed(() => summary.value.month || {})
-const kpiYear  = computed(() => summary.value.year  || {})
+watch(date, loadAll)
+
+// クエリパラメータ変更でタブ切替
+watch(() => route.query.tab, (newTab) => {
+  if (newTab && newTab !== activeTab.value) {
+    activeTab.value = newTab
+  }
+})
+
+/* ----------------- CSV（フロント生成） ----------------- */
+function csvEscape(v){
+  const s = String(v ?? '')
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+function downloadCsv(filename, headers, rows){
+  const lines = []
+  lines.push(headers.map(csvEscape).join(','))
+  for (const r of rows) lines.push(headers.map(h => csvEscape(r[h])).join(','))
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function downloadBillsCsv(){
+  const headers = [
+    'id','table_no','opened_at','closed_at',
+    'subtotal','service_charge','tax','grand_total','total',
+    'paid_cash','paid_card','paid_total','settled_total',
+    'customer_display_name','memo'
+  ]
+  const rows = billsToday.value.map(b => ({
+    id: b.id,
+    table_no: b.table?.number ?? '',
+    opened_at: b.opened_at ?? '',
+    closed_at: b.closed_at ?? '',
+    subtotal: b.subtotal ?? 0,
+    service_charge: b.service_charge ?? 0,
+    tax: b.tax ?? 0,
+    grand_total: b.grand_total ?? 0,
+    total: b.total ?? 0,
+    paid_cash: b.paid_cash ?? 0,
+    paid_card: b.paid_card ?? 0,
+    paid_total: b.paid_total ?? 0,
+    settled_total: b.settled_total ?? (b.grand_total || 0),
+    customer_display_name: b.customer_display_name ?? '',
+    memo: b.memo ?? '',
+  }))
+  downloadCsv(`bills_${date.value}.csv`, headers, rows)
+}
+
+function downloadItemsCsv(){
+  const headers = [
+    'bill_id','item_id','name','qty','price','subtotal',
+    'served_by','category','code'
+  ]
+  const rows = []
+  for (const b of billsToday.value){
+    const items = Array.isArray(b.items) ? b.items : []
+    for (const it of items){
+      rows.push({
+        bill_id  : b.id,
+        item_id  : it.id,
+        name     : it.name ?? '',
+        qty      : it.qty ?? 0,
+        price    : it.price ?? 0,
+        subtotal : it.subtotal ?? 0,
+        served_by: it.served_by_cast?.stage_name ?? '',
+        category : it.category?.name ?? it.category ?? '',
+        code     : it.code ?? '',
+      })
+    }
+  }
+  downloadCsv(`bill_items_${date.value}.csv`, headers, rows)
+}
+
+/* ----------------- 表示用の派生 ----------------- */
+const kpiSalesLabel = computed(() =>
+  `${fmtYen(kpi.value.sales_total)}<span>（現金:${fmtYen(kpi.value.sales_cash)} / カード:${fmtYen(kpi.value.sales_card)}）</span>`
+)
+
+
+const kpiOpenLabel = computed(() =>
+  `${kpi.value.unsettled_count}/${kpi.value.open_count}`
+)
+const kpiDutyLabel = computed(() =>
+  `${kpi.value.cast_on_duty}/${kpi.value.staff_on_duty}`
+)
 </script>
 
-
-
-
 <template>
-  <div class="container owner-dashboard mt-3">
-    <div v-if="loading">Loading...</div>
-    <div v-else>
-      <div v-if="err" class="text-danger small">{{ err }}</div>
+  <div class="owner-dashboard">
 
-      <div class="sales d-flex flex-column gap-3">
-        <div class="today box">
-          <div class="item item-main"><span class="fw-bold">今日の売上</span><span class="fs-1 fw-bold">{{ yen(kpiToday.sales) }}</span></div>
-            <div class="mini-wrap d-flex overflow-auto flex-nowrap">
-              <div class="item mini"><span class="badge bg-secondary">前日比</span><span class="fs-3">{{ pct(kpiToday.prev_day_pct) }}</span></div>
-              <div class="item mini"><span class="badge bg-secondary">先週同曜比</span><span class="fs-3">{{ pct(kpiToday.prev_weekday_pct) }}</span></div>
-              <div class="item mini"><span class="badge bg-secondary">本数（セット数）</span><span class="fs-3">{{ kpiToday.sets ?? 0 }}</span></div>
-              <div class="item mini"><span class="badge bg-secondary">平均単価（客単価）</span><span class="fs-3">{{ yen(kpiToday.avg_unit_price) }}</span></div>
-              <div class="item mini"><span class="badge bg-secondary">稼働キャスト数（本日出勤）</span><span class="fs-3">{{ kpiToday.working_casts ?? 0 }}</span></div>
-              <div class="item mini"><span class="badge bg-secondary">平均売上/キャスト</span><span class="fs-3">{{ yen(kpiToday.avg_sales_per_cast) }}</span></div>
-            </div>
-        </div>
-
-        <div class="d-flex gap-3">
-          <div class="month box">
-            <div class="item item-main"><span class="fw-bold">今月の売上</span><span class="fs-1 fw-bold">{{ yen(kpiMonth.sales) }}</span></div>
-            <!-- <div class="item mini"><span class="badge bg-secondary">目標対比</span><span class="fs-3">{{ pct(kpiMonth.target_pct) }}</span></div> -->
-          </div>
-
-          <div class="year box">
-            <div class="item item-main"><span class="fw-bold">今年の売上</span><span class="fs-1 fw-bold">{{ yen(kpiYear.sales) }}</span></div>
-          </div>
-        </div>
-
+    <div class="header d-flex flex-column mb-4">
+      <div class="user-info d-flex align-items-center gap-2">
+        <Avatar :url="avatarURL" :size="60" class="rounded-circle" />
+        <div class="name fs-5 fw-bold">{{ userName }}</div>
       </div>
 
-      <div class="sales-transition mt-5" v-if="chartsReady">
-        <div class="nav nav-pills d-flex gap-2 mb-2">
-          <button class="nav-link" :class="{active: tab==='suii'}" @click="tab='suii'">売上推移</button>
-          <button class="nav-link" :class="{active: tab==='kousei'}" @click="tab='kousei'">売上構成</button>
-          <button class="nav-link" :class="{active: tab==='cast-rank'}" @click="tab='cast-rank'">キャスト別売上</button>
-        </div>
-
-        <div v-if="tab==='suii'" class="chart-box">
-          <SalesTrendLine ref="trendRef" :labels="trendLabels" :values="trendValues" height="320px" />
-        </div>
-
-        <div v-else-if="tab==='kousei'" class="chart-box">
-          <SalesMixPie ref="mixRef" :items="mixItems" title="支払別構成（当月）" height="300px" />
-        </div>
-
-        <div v-else>
-          <div class="d-flex align-items-center gap-2 mb-2">
-            <span>期間</span>
-            <select v-model="rankPeriod" class="form-select form-select-sm w-auto">
-              <option value="today">今日</option>
-              <option value="month">今月</option>
-              <option value="year">年</option>
-            </select>
-          </div>
-          <CastRankBar :rows="rankRows" height="360px" />
-          <!-- or 既存のRankingBlockを使う場合
-          <RankingBlock :rows="rankRows" label="キャスト別売上" />
-          -->
-        </div>
-      </div>
-      
     </div>
+
+    <div v-if="activeTab === 'home'" class="area">
+
+      <!-- オーナー用：店舗セレクタ -->
+      <div v-if="showStoreSelector" class="store-selector">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <div class="fw-bold">
+            対象店舗
+          </div>
+          <div class="text-muted small">
+            {{ selectedStoreIds.length }}店舗選択中（複数選択可）
+          </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button
+            v-for="st in availableStores"
+            :key="st.id"
+            class="btn btn-sm"
+            :class="isStoreSelected(st.id) ? 'btn-secondary' : 'btn-outline-secondary'"
+            @click="toggleStore(st.id)">
+            {{ st.name }}
+          </button>
+        </div>
+
+      </div>
+
+      <PLPage :store-ids="selectedStoreIds" /><!-- ＊これが出ればいい -->
+
+    </div>
+
+    <div v-if="activeTab === 'bills'" class="area my-4"><!-- Download タブ -->
+
+      <!-- オーナー用：店舗セレクタ（単一選択） -->
+      <div v-if="showStoreSelector" class="store-selector">
+        <div class="fw-bold mb-2">対象店舗</div>
+        <div class="d-flex flex-wrap gap-2">
+          <button
+            v-for="st in availableStores"
+            :key="st.id"
+            class="btn btn-sm"
+            :class="selectedStoreIds[0] === st.id ? 'btn-secondary' : 'btn-outline-secondary'"
+            @click="selectStoreForBills(st.id)">
+            {{ st.name }}
+          </button>
+        </div>
+      </div>
+
+
+      <BillList :store-id="selectedStoreIds[0]" />
+
+    </div>
+
   </div>
+
+
 </template>
 
+<style scoped lang="scss">
 
-<style scoped>
-.chart-box{ width:100%; min-height:320px; }
-.sales-transition { min-width: 0; }
+  .manager-dashboard{
+    .card{
+      .title{
+        font-weight: normal;
+        margin: 0;
+        padding: 8px;
+        text-align: center;
+        gap: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .value{
+        font-size: 2rem;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        &.sales{
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          span{
+            font-size: 12px;
+          }
+        }
+      }
+    }
+  }
+
 </style>

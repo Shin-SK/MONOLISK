@@ -36,8 +36,11 @@ class StoreMembership(models.Model):
     is_primary = models.BooleanField(default=False)
 
     class Meta:
-        unique_together = ('user', 'store')
         constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'store'],
+                name='uniq_storemembership_user_store',
+            ),
             models.UniqueConstraint(
                 fields=['user'],
                 condition=Q(is_primary=True),

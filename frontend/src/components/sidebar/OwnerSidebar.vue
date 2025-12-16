@@ -38,10 +38,9 @@ async function logout () {
 
       <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
         <nav class="nav flex-column h-100">
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'owner-dashboard'})">ダッシュボード</a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'owner-pl-daily'})">PL/日次</a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'owner-pl-monthly'})">PL/月次</a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'owner-pl-yearly'})">PL/年次</a>
+          <div class="wrap">
+            <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'owner-dashboard'})">マイページ</a>
+          </div>
 
           <div class="mt-auto">
             <a href="https://studio-color.jp/" class="d-flex text-black justify-content-between align-items-center" target="_blank" rel="noopener">
@@ -53,8 +52,8 @@ async function logout () {
           </div>
         </nav>
 
-        <div class="mt-auto border-top pt-3">
-          <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="mt-auto border-top pt-3 d-flex flex-column gap-2">
+          <div class="d-flex justify-content-between align-items-center">
             <div class="d-flex align-items-center gap-2">
               <Avatar :url="avatarURL" :size="40" class="rounded-circle"/>
               <span>{{ displayName }}</span>
@@ -63,10 +62,9 @@ async function logout () {
               <IconEdit :size="16" class="text-secondary" />
             </RouterLink>
           </div>
-
-          <button class="btn btn-outline-danger w-100" @click.prevent="logout">ログアウト</button>
-          <StoreSwitcher class="mt-5" />
-          <DevRoleSwitcher class="mt-4 mb-2"/>
+          <button class="btn btn-sm btn-outline-danger w-100" @click.prevent="logout">ログアウト</button>
+          <StoreSwitcher class="" />
+          <DevRoleSwitcher class="mb-2"/>
         </div>
       </aside>
     </div>

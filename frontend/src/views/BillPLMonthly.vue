@@ -1,7 +1,11 @@
 <!-- src/views/BillPLMonthly.vue -->
 <script setup>
-import { ref, onMounted } from 'vue'
-import { getBillMonthlyPL }   from '@/api'
+import { ref, onMounted, watch } from 'vue'
+import { getBillMonthlyPL, getBillMonthlyPLForStore } from '@/api'
+
+const props = defineProps({
+  storeIds: { type: Array, default: () => [] }
+})
 
 /* ---------- state ---------- */
 const yearMonth   = ref(new Date().toISOString().slice(0, 7))  // 'YYYY-MM'
@@ -13,13 +17,52 @@ const yen         = n => `¥${(+n || 0).toLocaleString()}`      // undefined →
 /* ---------- fetch ---------- */
 async function fetchData() {
   loading.value = true
-  const { days, monthly_total } = await getBillMonthlyPL(yearMonth.value)
-  rows.value   = days
-  total.value  = monthly_total
+  const ids = (props.storeIds && props.storeIds.length) ? props.storeIds : []
+  const storeId = localStorage.getItem('store_id')
+  const finalIds = ids.length ? ids : (storeId ? [Number(storeId)] : [])
+
+  if (finalIds.length > 1) {
+    // 複数店舗：並列取得→合算
+    const list = await Promise.all(
+      finalIds.map(sid => getBillMonthlyPLForStore(yearMonth.value, sid, { cache:false }).catch(()=>({ days:[], monthly_total:{} })))
+    )
+    // 日別を日付でマージ
+    const dayMap = new Map()
+    for (const pl of list) {
+      for (const d of (pl.days || [])) {
+        if (!dayMap.has(d.date)) {
+          dayMap.set(d.date, { date: d.date, sales_cash:0, sales_card:0, sales_total:0, cast_labor:0, gross_profit:0 })
+        }
+        const agg = dayMap.get(d.date)
+        agg.sales_cash   += (Number(d.sales_cash) || 0)
+        agg.sales_card   += (Number(d.sales_card) || 0)
+        agg.sales_total  += (Number(d.sales_total) || 0)
+        agg.cast_labor   += (Number(d.cast_labor) || 0)
+        agg.gross_profit += (Number(d.gross_profit) || 0)
+      }
+    }
+    rows.value = Array.from(dayMap.values()).sort((a,b) => a.date.localeCompare(b.date))
+
+    // 月合計も合算
+    const sum = (key) => list.reduce((a,b)=> a + (Number(b.monthly_total?.[key])||0), 0)
+    total.value = {
+      sales_cash   : sum('sales_cash'),
+      sales_card   : sum('sales_card'),
+      sales_total  : sum('sales_total'),
+      cast_labor   : sum('cast_labor'),
+      gross_profit : sum('gross_profit'),
+    }
+  } else {
+    // 単店舗（既存）
+    const { days, monthly_total } = await getBillMonthlyPL(yearMonth.value)
+    rows.value   = days
+    total.value  = monthly_total
+  }
   loading.value = false
 }
 
 onMounted(fetchData)
+watch(() => props.storeIds, fetchData, { deep: true })
 </script>
 
 <template>

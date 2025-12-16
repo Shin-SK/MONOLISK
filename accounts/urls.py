@@ -3,6 +3,8 @@ from django.urls import path
 from .views import me, debug_set_role
 
 urlpatterns = [
+    # /api/accounts/me/
     path('me/', me, name='me'),
-    path('accounts/debug/set-role/', debug_set_role),
+    # デバッグ用は /api/accounts/debug/set-role/
+    path('debug/set-role/', debug_set_role),
 ]

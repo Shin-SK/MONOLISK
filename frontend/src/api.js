@@ -90,14 +90,15 @@ export const fetchBill = (id, { noCache=false } = {}) =>
      .then(r => r.data)
 
 // 一覧リロード用の helper（任意。なければ store 側で api.get を直叩きでOK）
-export const fetchBillsList = ({ params={}, noCache=false } = {}) =>
+export const fetchBillsList = ({ params={}, noCache=false, meta={} } = {}) =>
   api.get('billing/bills/', {
     params,
-    ...(noCache ? { cache:false } : {})
+    ...(noCache ? { cache:false } : {}),
+    ...(Object.keys(meta).length ? { meta } : {})
   }).then(r => Array.isArray(r.data?.results) ? r.data.results : (Array.isArray(r.data) ? r.data : []))
 
-  export const fetchBills = (params = {}) =>
-  fetchBillsList({ params, noCache: true })
+  export const fetchBills = (params = {}, options = {}) =>
+  fetchBillsList({ params, noCache: true, ...options })
 
 
 export const createBill = (arg = {}) => {
@@ -242,6 +243,45 @@ export const getBillYearlyPL = (year) =>
       }))
       return { year: d.year, totals, months }
     })
+
+// ===== オーナー用：店舗IDを明示して叩くヘルパー =====
+export const getBillDailyPLForStore = (date, storeId, opt={}) =>
+  api.get('billing/pl/daily/', {
+    params: { date },
+    headers: { 'X-Store-Id': String(storeId), 'X-Store-ID': String(storeId) },
+    ...(opt.cache === false ? { cache:false } : {}),
+    ...(opt.meta ? { meta: opt.meta } : {}),
+  }).then(r => r.data)
+
+export const getBillMonthlyPLForStore = (monthStr, storeId, opt={}) => {
+  const [year, month] = String(monthStr).split('-').map(Number)
+  return api.get('billing/pl/monthly/', {
+    params: { year, month },
+    headers: { 'X-Store-Id': String(storeId), 'X-Store-ID': String(storeId) },
+    ...(opt.cache === false ? { cache:false } : {}),
+    ...(opt.meta ? { meta: opt.meta } : {}),
+  }).then(r => {
+    const days = (r.data.days ?? []).map(d => ({
+      sales_cash: 0, sales_card: 0, sales_total: 0,
+      cast_labor: 0, driver_labor: 0, custom_expense: 0, gross_profit: 0,
+      ...d,
+    }))
+    const mt = {
+      sales_cash: 0, sales_card: 0, sales_total: 0,
+      cast_labor: 0, driver_labor: 0, custom_expense: 0, gross_profit: 0,
+      ...r.data.monthly_total,
+    }
+    return { days, monthly_total: mt }
+  })
+}
+
+export const getBillYearlyPLForStore = (year, storeId, opt={}) =>
+  api.get('billing/pl/yearly/', {
+    params: { year },
+    headers: { 'X-Store-Id': String(storeId), 'X-Store-ID': String(storeId) },
+    ...(opt.cache === false ? { cache:false } : {}),
+    ...(opt.meta ? { meta: opt.meta } : {}),
+  }).then(r => r.data)
 
 
 // キャスト系
@@ -522,6 +562,17 @@ export const fetchCustomerTags = () =>
 
 export const createCustomerTag = (payload = {}) =>
   api.post('billing/customer-tags/', payload).then(r => r.data)
+
+// 相性チェック（マッチング）
+export const fetchCustomerMatch = (params = {}) =>
+  api.get('billing/customers/match/', { params, cache: false }).then(r => r.data)
+
+// 顧客個別の相性情報
+export const fetchCustomerAffinity = (customerId, castId) =>
+  api.get(`billing/customers/${customerId}/affinity/`, {
+    params: { cast_id: castId },
+    cache: false
+  }).then(r => r.data)
 
 // 検索（名前・電話）
 export const searchCustomers = (q = '') =>

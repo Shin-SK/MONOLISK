@@ -441,7 +441,7 @@ class CustomerLog(models.Model):
 # ───────── 伝票 ─────────
 class Bill(models.Model):
     table = models.ForeignKey('billing.Table', on_delete=models.CASCADE, null=True, blank=True)
-    opened_at = models.DateTimeField(default=timezone.now)
+    opened_at = models.DateTimeField(default=timezone.now, db_index=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     expected_out = models.DateTimeField('退店予定', null=True, blank=True)
     customers = models.ManyToManyField(
@@ -743,7 +743,7 @@ class BillItem(models.Model):
     name = models.CharField(max_length=40, blank=True)
     price = models.PositiveIntegerField(null=True, blank=True)
     qty = models.PositiveSmallIntegerField(default=1)
-    served_by_cast = models.ForeignKey('billing.Cast', null=True, blank=True, on_delete=models.SET_NULL)
+    served_by_cast = models.ForeignKey('billing.Cast', null=True, blank=True, on_delete=models.SET_NULL, db_index=True)
 
     is_nomination = models.BooleanField(default=False, null=True)
     is_inhouse = models.BooleanField(default=False, null=True)

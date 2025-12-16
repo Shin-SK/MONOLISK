@@ -18,7 +18,10 @@ urlpatterns = [
     path("api/auth/registration/", include("dj_rest_auth.registration.urls")),
     path("api/dj-rest-auth/", include("dj_rest_auth.urls")),
  
-    path('api/', include('accounts.urls')),
+    # accounts API は /api/accounts/ 配下に統一
+    path('api/accounts/', include('accounts.urls')),
+    # 互換: 旧 /api/me/ も維持
+    path('api/me/', __import__('accounts.views', fromlist=['me']).me),
  
 ]
 

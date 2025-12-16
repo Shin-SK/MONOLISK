@@ -7,6 +7,10 @@ import Avatar from '@/components/Avatar.vue'
 import BillListCard from '@/components/BillListCard.vue'
 import { deleteBill } from '@/api'
 
+const props = defineProps({
+  storeId: { type: Number, default: null }
+})
+
 const router = useRouter()
 const bills = ref([])
 const loading = ref(false)
@@ -90,13 +94,21 @@ watch([searchQuery, dateFilter, selectedDate], () => {
 async function loadBills() {
   loading.value = true
   try {
-    const { data } = await api.get('billing/bills/', {
+    const config = {
       params: {
         closed_at__isnull: false,
         ordering: '-closed_at',
         page_size: 1000 // クライアント側でフィルタリングするため多めに取得
       }
-    })
+    }
+    // 店舗ID指定がある場合はヘッダで明示
+    if (props.storeId) {
+      config.headers = {
+        'X-Store-Id': String(props.storeId),
+        'X-Store-ID': String(props.storeId)
+      }
+    }
+    const { data } = await api.get('billing/bills/', config)
     bills.value = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
     // デバッグ：最初のbillをログに出力
     if (bills.value.length > 0) {
@@ -231,6 +243,7 @@ function applyAllPeriods() {
 }
 
 onMounted(loadBills)
+watch(() => props.storeId, loadBills)
 </script>
 
 <template>

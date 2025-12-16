@@ -21,7 +21,8 @@ export function useCastEvents(me, onChange){
       const meId = Number(me?.cast_id)
       if (!Number.isFinite(meId)) return schedule()
 
-      const data  = await fetchBills({ limit: 100 })
+      // 背景ポーリングのため、ローディング表示しない
+      const data  = await fetchBills({ limit: 100 }, { meta: { silent: true } })
       const bills = Array.isArray(data.results) ? data.results : data
       const count = bills.filter(b => (b.stays || []).some(s =>
         Number(s?.cast?.id ?? s?.cast_id) === meId &&

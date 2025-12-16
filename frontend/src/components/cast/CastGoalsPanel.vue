@@ -257,7 +257,7 @@ function goalView(g){
 <template>
   <div class="pb-5">
 
-    <div class="wrap position-relative mb-5">
+    <div class="wrap position-relative mb-4">
       <div class="position-absolute top-0 end-0">
         <button
           type="button"
@@ -267,7 +267,8 @@ function goalView(g){
           <IconRefresh />
         </button>
       </div>
-      <h2 class="fs-5 df-center gap-1"><IconTargetArrow />目標一覧</h2>
+      <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+        <IconTargetArrow />目標一覧</h2>
       <div v-if="loading">読み込み中…</div>
       <div v-else-if="!goals.length">目標はまだありません</div>
       <ul v-else class="list-unstyled">
@@ -327,10 +328,10 @@ function goalView(g){
     </div>
 
     <div class="wrap">
-      <h3 class="fw-bold df-center gap-1 fs-5 mb-2"><IconTargetArrow />目標を設定</h3>
-      <small class="df-center">目標をクリアできるようサポートします！</small>
+      <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+        <IconTargetArrow />目標を設定</h2>
       <!-- 作成フォーム -->
-      <div class="form-area mt-3">
+      <div class="form-area mt-2">
         <div class="card border-0 shadow-sm mb-5">
           <div class="card-body">
             <!-- 指標 & 目標値 -->
@@ -361,10 +362,10 @@ function goalView(g){
                 <div class="form-label">期間</div>
               </div>
               <div class="col-10">
-                <d class="wrap">
+                <div class="wrap">
                   <input type="date" class="form-control mb-3" placeholder="いつから" v-model="form.period_from" />
                   <input type="date" class="form-control" placeholder="いつまで" v-model="form.period_to" />
-                </d iv>
+                </div>
               </div>
               <div class="col-6">
                 <button

@@ -5,6 +5,10 @@ import PLDaily from '@/views/BillPLDaily.vue'
 import PLMonthly from '@/views/BillPLMonthly.vue'
 import PLYearly from '@/views/BillPLYearly.vue'
 
+const props = defineProps({
+  storeIds: { type: Array, default: () => [] }
+})
+
 const activeTab = ref('daily') // 'daily' | 'monthly' | 'yearly'
 
 function switchTab(tab) {
@@ -13,7 +17,6 @@ function switchTab(tab) {
 </script>
 
 <template>
-
   <nav class="row border-bottom g-1 mb-3">
     <div
       class="col-4"
@@ -45,8 +48,8 @@ function switchTab(tab) {
   </nav>
 
   <div class="pl">
-    <PLDaily v-if="activeTab === 'daily'" :key="'daily'" />
-    <PLMonthly v-else-if="activeTab === 'monthly'" :key="'monthly'" />
-    <PLYearly v-else :key="'yearly'" />
+    <PLDaily v-if="activeTab === 'daily'" :key="'daily'" :store-ids="storeIds" />
+    <PLMonthly v-else-if="activeTab === 'monthly'" :key="'monthly'" :store-ids="storeIds" />
+    <PLYearly v-else :key="'yearly'" :store-ids="storeIds" />
   </div>
 </template>

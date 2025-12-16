@@ -243,12 +243,6 @@ const kpiDutyLabel = computed(() =>
           <IconChartHistogram />
         </RouterLink>
       </div>
-    <!-- <div class="search">
-      <span>日付を変更する</span>
-      <div class="mb-3" style="width: fit-content;">
-        <input type="date" v-model="date" class="form-control bg-white" />
-      </div>
-    </div> -->
     </div>
 
 

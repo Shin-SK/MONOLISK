@@ -47,16 +47,18 @@ async function logout() {
       <div class="offcanvas-body d-flex flex-column gap-2">
         <div class="wrap d-flex flex-column h-100">
 
-          <!-- 常時メニュー -->
-          <a class="btn w-100 d-flex gap-2 justify-content-start border-0"
-             href="#"
-             :class="{ active: route.name==='staff-mypage' }"
-             @click.prevent="nav({ name:'staff-mypage' })">
-            <IconUserSquare /> <span>マイページ</span>
-          </a>
+          <div class="menu">
+            <!-- 常時メニュー -->
+            <a class="btn p-2 w-100 d-flex gap-2 justify-content-start border-0"
+               href="#"
+               :class="{ active: route.name==='staff-mypage' }"
+               @click.prevent="nav({ name:'staff-mypage' })">
+              <IconUserSquare /> <span>マイページ</span>
+            </a>
+          </div>
 
           <template v-if="KDS_ENABLED">
-            <div class="mt-auto mb-5">
+            <div class="mt-auto mb-3">
               <div class="mt-2 small text-muted mb-2">KDS</div>
               <div class="d-flex flex-column gap-3">
                 <a class="nav-link ps-3 ms-1 bg-white" href="#" @click.prevent="nav('/kds/dishup')">
@@ -71,11 +73,10 @@ async function logout() {
               </div>
             </div>
           </template>
-
         </div>
 
         <div class="footer d-flex flex-column gap-2">
-          <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="d-flex justify-content-between align-items-center">
             <div class="d-flex align-items-center gap-2">
               <Avatar :url="avatarURL" :size="40" class="rounded-circle"/> 
               <span>{{ displayName }}</span>
@@ -86,11 +87,11 @@ async function logout() {
             </a>
           </div>
 
-          <button class="btn btn-outline-danger w-100" @click="logout">
+          <button class="btn btn-sm btn-outline-danger w-100" @click="logout">
             ログアウト
           </button>
 
-          <DevRoleSwitcher class="mt-4 mb-2"/>
+          <DevRoleSwitcher class="mb-2"/>
         </div>
       </div>
     </div>

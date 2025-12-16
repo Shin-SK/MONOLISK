@@ -1,107 +1,59 @@
-<!-- Mypage.vue -->
+<!-- StaffMypage.vue -->
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
 import RankingBlock from '@/components/RankingBlock.vue'
-import CastGoalsPanel from '@/components/cast/CastGoalsPanel.vue'
+import CustomerDetailModal from '@/components/CustomerDetailModal.vue'
+import Avatar from '@/components/Avatar.vue'
 import dayjs from 'dayjs'
 import {
   fetchBills,
   createCastShift,
-  fetchCastShiftHistory,  
-  fetchCastDailySummaries,
+  fetchCastShiftHistory,
   fetchCastRankings,
-  fetchCastMypage,
   fetchStoreNotices
 } from '@/api'
 import { useUser } from '@/stores/useUser'
+import { useProfile } from '@/composables/useProfile'
 import { yen } from '@/utils/money'
-import { useAuth } from '@/stores/useAuth'
 
-/* ---------- 自分中心：route.id が無ければ me.cast_id を使う ---------- */
-const route = useRoute()
+/* ---------- 現在のログインユーザーの情報取得 ---------- */
 const userStore = useUser()
-const castId = ref(null)
+const { displayName, avatarURL } = useProfile()
 
-const auth = useAuth()
-const me = computed(() => auth.me)  // ストアが保持する現在ログインユーザー
-
-onMounted(async () => {
-  // 二重取得を避けたいなら、未取得時だけ叩く
-  if (!me.value) {
-    // ストアのメソッド名に合わせてどちらか
-    if (typeof auth.fetchMe === 'function') await auth.fetchMe()
-    else if (typeof auth.loadMe === 'function') await auth.loadMe()
-  }
-})
-
-async function resolveCastId() {
-  // 1) URLに :id があればそれを優先
-  const idParam = Number(route.params.id)
-  if (!Number.isNaN(idParam)) { castId.value = idParam; return }
-
-  // 2) なければ /api/me から cast_id を取得
-  if (!userStore.me) {
-    try { await userStore.fetchMe?.() } catch {}
-  }
-  if (userStore.me?.cast_id) {
-    castId.value = userStore.me.cast_id
-    return
-  }
-
-  // 3) それでも無ければキャスト権限が無いアカウント
-  alert('このアカウントはキャストとして登録されていません。')
-  throw new Error('no cast_id')
-}
+// ユーザー名表示
+const userName = computed(() => displayName.value || userStore.me?.username || 'ユーザー')
 
 /* ---------- 日付 ---------- */
 const dateFrom = ref(dayjs().startOf('month').format('YYYY-MM-DD'))
 const dateTo   = ref(dayjs().format('YYYY-MM-DD'))
-const todayStr = dayjs().format('YYYY-MM-DD')
 
 /* ---------- 状態 ---------- */
-const castInfo    = ref(null)
 const shifts      = ref([])
-const summary     = ref(null)
-const todaySum    = ref(null)
 const rankings    = ref([])
 const notices     = ref([])
 const draftShifts = ref([])
-const customerBills = ref([])
+const allCustomerBills = ref([])
+
+/* ---------- シフト月フィルタ ---------- */
+const selectedMonth = ref(dayjs().format('YYYY-MM'))
 
 /* ---------- タブ ---------- */
-const activeTab = ref(null)
-const setTab    = k => (activeTab.value = k)
+const activeTab = ref('home')
+
+// 顧客情報一覧の絞り込み
+const customerSearch = ref('')
+const customerMinVisit = ref(0)
+const customerSort = ref('latest') // latest / visits
 
 /* ---------- util ---------- */
 const fmt = d => d ? dayjs(d).format('YYYY/MM/DD HH:mm') : '–'
-const h   = m => m ? (m/60).toFixed(2) : '0.00'
 
-/* ---------- データ取得（castId.value を参照） ---------- */
-async function loadCast () {
-  castInfo.value = await fetchCastMypage(castId.value)
-}
+/* ---------- データ取得 ---------- */
 async function loadShifts () {
-  shifts.value = await fetchCastShiftHistory(castId.value, {
+  shifts.value = await fetchCastShiftHistory(userStore.me?.id, {
     from: dateFrom.value,
     to  : dateTo.value,
   })
-}
-async function loadSummary () {
-  const list = await fetchCastDailySummaries({
-    cast : castId.value,
-    from : dateFrom.value,
-    to   : dateTo.value,
-  })
-  summary.value = list[0] ?? null
-}
-async function loadToday () {
-  const list = await fetchCastDailySummaries({
-    cast : castId.value,
-    from : todayStr,
-    to   : todayStr,
-  })
-  todaySum.value = list[0] ?? null
 }
 async function loadRankings () {
   rankings.value = await fetchCastRankings({
@@ -113,47 +65,86 @@ async function loadNotices () {
   const data = await fetchStoreNotices({ status:'published', ordering:'-pinned,-publish_at,-created_at', limit:20 })
   notices.value = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
 }
-async function loadCustomerBills () {
-  customerBills.value = (await fetchBills({ cast: castId.value }))
+async function loadAllCustomerBills () {
+  allCustomerBills.value = (await fetchBills({}))
     .filter(b => (b.customer_display_name ?? '').trim().length)
 }
 async function loadAll () {
-  await Promise.all([ loadCast(), loadShifts(), loadSummary(), loadToday(), loadRankings(), loadNotices(), loadCustomerBills() ])
+  await Promise.all([ loadShifts(), loadRankings(), loadNotices(), loadAllCustomerBills() ])
 }
 
-/* ---------- アバター ---------- */
-const avatarUrl = computed(() =>
-  castInfo.value?.avatar_url || userStore.info?.avatar_url || ''
-)
-
 /* ---------- 計算 ---------- */
-const myRank = computed(() => {
-  const idx = rankings.value.findIndex(r => r.cast_id === castId.value)
-  return idx === -1 ? null : idx + 1
-})
-const nextShift = computed(() => {
-  const now = dayjs()
-  return shifts.value
-    .filter(s => s.plan_start && dayjs(s.plan_start).isAfter(now))
-    .sort((a,b) => dayjs(a.plan_start) - dayjs(b.plan_start))[0] || null
-})
-const todaySales = computed(() =>
-  todaySum.value ? todaySum.value.total + todaySum.value.payroll : null
-)
-const salesBreakdown = computed(() => summary.value ? {
-  champ: summary.value.sales_champ || 0,
-  nom  : summary.value.sales_nom   || 0,
-  in   : summary.value.sales_in    || 0,
-  free : summary.value.sales_free  || 0,
-  total: summary.value.total       || 0,
-  payroll: summary.value.payroll   || 0,
-} : null)
+// ランキング配列ガード
+const monthlyRows = computed(() => Array.isArray(rankings.value) ? rankings.value : [])
 
-/* ---------- 申請 ---------- */
-const form = reactive({ start:'', end:'' })  // 'YYYY-MM-DDTHH:mm'（datetime-local）
+// フィルタされたシフト
+const filteredShifts = computed(() => {
+  if (!selectedMonth.value) return shifts.value
+  return shifts.value.filter(s => {
+    if (!s.plan_start) return false
+    return dayjs(s.plan_start).format('YYYY-MM') === selectedMonth.value
+  })
+})
+
+// 全顧客の最新来店情報
+const allCustomersList = computed(() => {
+  const grouped = {}
+  for (const b of allCustomerBills.value) {
+    const name = b.customer_display_name || '(名前なし)'
+    if (!grouped[name]) {
+      grouped[name] = []
+    }
+    grouped[name].push(b)
+  }
+  
+  return Object.entries(grouped).map(([name, bills]) => {
+    const sorted = bills.sort((a, b) => 
+      dayjs(b.opened_at).valueOf() - dayjs(a.opened_at).valueOf()
+    )
+    const latest = sorted[0]
+    
+    return {
+      name,
+      visitCount: bills.length,
+      latestVisit: latest.opened_at,
+      latestBillId: latest.id,
+      latestSubtotal: latest.subtotal,
+      casts: latest.stays?.map(s => s.cast?.stage_name || s.cast?.name).filter(Boolean) || []
+    }
+  }).sort((a, b) => dayjs(b.latestVisit).valueOf() - dayjs(a.latestVisit).valueOf())
+})
+
+// 全顧客の最新来店情報（フィルタ付き）
+const filteredAllCustomersList = computed(() => {
+  const q = (customerSearch.value || '').trim().toLowerCase()
+  const minV = Number(customerMinVisit.value || 0)
+
+  let list = Array.isArray(allCustomersList.value) ? allCustomersList.value : []
+
+  if (q) {
+    list = list.filter(c => (c.name || '').toLowerCase().includes(q))
+  }
+  if (minV > 0) {
+    list = list.filter(c => (c.visitCount || 0) >= minV)
+  }
+
+  if (customerSort.value === 'visits') {
+    list = list.slice().sort((a,b) => (b.visitCount||0) - (a.visitCount||0))
+  } else {
+    list = list.slice().sort((a,b) => dayjs(b.latestVisit).valueOf() - dayjs(a.latestVisit).valueOf())
+  }
+  return list
+})
+
+/* ---------- タブ切り替え ---------- */
+function switchTab(k) {
+  activeTab.value = k
+}
+
+/* ---------- シフト申請 ---------- */
+const form = reactive({ start:'', end:'' })
 
 function addDraft () {
-  // 入力チェック
   const s = String(form.start || '').trim()
   const e = String(form.end   || '').trim()
   if (!s || !e) { alert('開始と終了を入力してください'); return }
@@ -162,13 +153,11 @@ function addDraft () {
   if (!start.isValid() || !end.isValid()) { alert('日時の形式が不正です'); return }
   if (end.isSameOrBefore(start)) { alert('終了は開始より後にしてください'); return }
 
-  // 下書きに追加（画面表示用：ローカル時刻のまま持つ）
   draftShifts.value.push({
     plan_start: start.toDate(),
     plan_end  : end.toDate(),
   })
 
-  // 入力欄リセット
   form.start = ''
   form.end   = ''
 }
@@ -180,20 +169,18 @@ function removeDraft(i){
 const submitting = ref(false)
 async function submitAll () {
   if (!draftShifts.value.length) return
-  if (!castId.value) { alert('キャストIDが未解決です'); return }
+  const userId = userStore.me?.id
+  if (!userId) { alert('ユーザー情報が未取得です'); return }
   submitting.value = true
   try {
-    // まとめてPOST（store_idはミドルウェアがX-Store-Idから補完する想定）
     for (const d of draftShifts.value) {
       await createCastShift({
-        cast_id   : castId.value,
-        // APIはISOを想定。datetime-localはローカル時刻なので toISOString() に変換。
+        user_id   : userId,
         plan_start: dayjs(d.plan_start).toISOString(),
         plan_end  : dayjs(d.plan_end).toISOString(),
       })
     }
     draftShifts.value = []
-    // 一覧を最新化
     await loadShifts()
     alert('申請を送信しました')
   } catch (e) {
@@ -204,413 +191,341 @@ async function submitAll () {
   }
 }
 
+/* ---------- 顧客モーダル ---------- */
+const showCustomerModal = ref(false)
+const selectedBillId    = ref(null)
+const selectedCustomerStats = ref(null)
+
+function openCustomer(id) {
+  selectedBillId.value = id
+  try {
+    const billObj = allCustomerBills.value.find(b => b.id === id)
+    if (billObj) {
+      const name = billObj.customer_display_name || ''
+      const sameCustomerBills = allCustomerBills.value.filter(b => (b.customer_display_name || '') === name)
+      const visitCount = sameCustomerBills.length
+      const latestVisit = sameCustomerBills.length
+        ? sameCustomerBills
+            .map(b => b.opened_at)
+            .sort((a,b) => dayjs(b).valueOf() - dayjs(a).valueOf())[0]
+        : null
+      selectedCustomerStats.value = { name, visit_count: visitCount, last_visit_at: latestVisit }
+    } else {
+      selectedCustomerStats.value = null
+    }
+  } catch { selectedCustomerStats.value = null }
+  showCustomerModal.value = true
+}
+
+function closeCustomerModal(){
+  showCustomerModal.value = false
+}
+
+
 /* ---------- 監視 ---------- */
-watch([dateFrom,dateTo], () => { if (castId.value) { loadShifts(); loadSummary(); loadRankings() } })
+watch([dateFrom, dateTo], () => { loadShifts(); loadRankings() })
 
 /* ---------- 起動 ---------- */
 onMounted(async () => {
-  await resolveCastId()   // ← まず自分の cast_id を決める
   await loadAll()
 })
-
-/* ───────── 追加①: 月間ランキングの配列ガード ───────── */
-const monthlyRows = computed(() => Array.isArray(rankings.value) ? rankings.value : [])
-
-/* ───────── 追加②: 次シフトの表示用フォーマット ───────── */
-const nextShiftDate  = computed(() =>
-  nextShift.value ? dayjs(nextShift.value.plan_start).format('YYYY/MM/DD') : null
-)
-const nextShiftStart = computed(() =>
-  nextShift.value ? dayjs(nextShift.value.plan_start).format('HH:mm') : null
-)
-const nextShiftEnd   = computed(() =>
-  nextShift.value ? dayjs(nextShift.value.plan_end).format('HH:mm') : null
-)
-
-/* ───────── 追加③: 顧客行クリック時のハンドラ（暫定） ───────── */
-// まだ遷移先が未決なら no-op でもOK。後で適切な詳細画面に差し替え。
-function open(id) {
-  // 例: 伝票詳細へ飛ばすなら → router.push(`/bills/${id}`)
-  // 今は暫定で何もしない
-}
-
 
 </script>
 
 <template>
-  <div class="cast-mypage mt-4">
-    <!-- ===== ヘッダ ===== -->
-    <div class="d-flex align-items-center mb-4 gap-4">
-      <Avatar :url="avatarUrl" :size="72" class="rounded-circle"/>
-      <div>
-        <h3 class="mb-1">
-          {{ castInfo?.stage_name || 'キャスト名' }}
-        </h3>
-        <!-- <p class="mb-0 text-muted">
-          あなたは現在 <strong v-if="myRank">{{ myRank }} 位</strong>
-          <span v-else>圏外</span> です
-        </p> -->
-      </div>
+
+  <div class="header d-flex justify-content-between align-items-center mb-3">
+    <div class="user-info d-flex align-items-center gap-2">
+      <Avatar :url="avatarURL" :size="60" class="rounded-circle" />
+      <div class="name fs-5 fw-bold">{{ userName }}</div>
     </div>
+  </div>
 
-    <!-- 次シフト & 今日売上 -->
-    <div class="row g-3 mb-4">
-      <div class="col-12">
-        <div class="card">
-          <div class="card-body">
-            <h6 class="card-title mb-1">
-              次のシフト
-            </h6>
-            <p class="card-text fs-5 mb-0">
-              <template v-if="nextShift">
-                <span>{{ nextShiftDate }}</span>
-                <span class="ms-2">{{ nextShiftStart }} 〜 {{ nextShiftEnd }}</span>
-              </template>
-              <span v-else>予定なし</span>
-            </p>
-          </div>
-        </div>
-      </div>
-      <!-- <div class="col-6">
-        <div class="card">
-          <div class="card-body">
-            <h6 class="card-title mb-1">
-              今日の売上
-            </h6>
-            <p class="card-text fs-5 mb-0">
-              <span v-if="todaySales !== null">{{ yen(todaySales) }}</span>
-              <span v-else>–</span>
-            </p>
-          </div>
-        </div>
-      </div> -->
-    </div>
-
-    <!-- タブ -->
-    <nav class="d-flex justify-content-around bg-white">
-      <a
-        href="#"
-        :class="{ active: activeTab === 'apply' }"
-        @click.prevent="setTab('apply')"
-      >
-        <IconCalendarPlus /><span>申請</span>
-      </a>
-      <a
-        href="#"
-        :class="{ active: activeTab === 'list' }"
-        @click.prevent="setTab('list')"
-      >
-        <IconCalendarWeek /><span>一覧</span>
-      </a>
-      <!-- <a
-        href="#"
-        :class="{ active: activeTab === 'goals' }"
-        @click.prevent="setTab('goals')"
-      >
-        <IconTargetArrow /><span>目標</span>
-      </a> -->
-      <!-- <a
-        href="#"
-        :class="{ active: activeTab === 'sales' }"
-        @click.prevent="setTab('sales')"
-      >
-        <IconRosetteDiscountCheck /><span>売上</span>
-      </a> -->
-      <a
-        href="#"
-        :class="{ active: activeTab === 'customers' }"
-        @click.prevent="setTab('customers')"
-      >
-        <IconFaceId /><span>顧客</span>
-      </a>
-    </nav>
-
-    <!-- ▼ シフト申請 -->
+  <nav class="row border-bottom g-1 mb-4">
     <div
-      v-if="activeTab === 'apply'"
-      class="card mb-5"
-    >
-      <div class="card-header fw-bold">
-        シフト申請
+      class="col-4"
+      :class="{ 'border-bottom border-3 border-secondary': activeTab === 'home' }">
+      <button 
+        class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+        @click="switchTab('home')">
+        ホーム
+      </button>
+    </div>
+    <div
+      class="col-4"
+      :class="{ 'border-bottom border-3 border-secondary': activeTab === 'bills' }">
+      <button 
+        class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+        @click="switchTab('apply')">
+        シフト
+      </button>
+    </div>
+    <div
+      class="col-4"
+      :class="{ 'border-bottom border-3 border-secondary': activeTab === 'bills' }">
+      <button 
+        class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+        @click="switchTab('customers')">
+        顧客情報
+      </button>
+    </div>
+  </nav>
+
+  <div class="staff-mypage-page">
+    <div class="staff-mypage mt-3">
+
+      <div v-if="activeTab === 'home'"
+        class="wrap">
+
+        <!-- ランキング -->
+        <div class="rank mb-5">
+          <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+            <IconCrown />ランキング
+          </h2>
+          <RankingBlock :rows="monthlyRows" />
+        </div>
+        <!-- ▼ お店からのお知らせ -->
+        <div class="notice mt-5">
+          <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+            <IconInfoCircle />お知らせ
+          </h2>
+
+          <div v-if="notices.length" class="mb-4 bg-white">
+            <div
+              v-for="n in notices"
+              :key="n.id"
+              class="d-flex align-items-center justify-content-between p-3"
+            >
+              <!-- ▼ ここをリンク化して NewsDetail へ -->
+              <RouterLink
+                :to="{ name: 'news-detail', params: { id: n.id } }"
+                class="d-flex flex-column"
+              >
+                <span class="text-muted small">
+                  {{ dayjs(n.publish_at || n.created_at).format('YYYY/MM/DD') }}
+                </span>
+                <span v-if="n.pinned" class="badge bg-warning text-dark me-2">PIN</span>
+                <strong>{{ n.title || n.message || '(無題)' }}</strong>
+              </RouterLink>
+            </div>
+          </div>
+
+          <p v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height: 200px;">
+            現在お知らせはありません
+          </p>
+        </div>
       </div>
-      <div class="card-body bg-white">
-        <div class="row g-3 align-items-end">
-          <div class="col-md-5">
-            <label class="form-label">開始日時</label>
-            <input
-              v-model="form.start"
-              type="datetime-local"
-              class="form-control"
-            >
+
+
+      <!-- ▼ シフト申請 -->
+      <div v-if="activeTab === 'apply'"
+        class="mb-5"
+      >
+        <div class="mb-5">
+          <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+            <IconCalendarPlus />シフト申請
+          </h2>
+          <div class="bg-white p-3">
+            <div class="">
+              <div class="row g-2">
+              <div class="col-3 d-flex align-items-center">
+                    <label class="form-label">開始日時</label>
+              </div>
+              <div class="col-9">
+                  <input
+                    v-model="form.start"
+                    type="datetime-local"
+                    class="form-control"
+                  >
+              </div>
+              <div class="col-3 d-flex align-items-center">
+                  <label class="form-label">終了日時</label>
+              </div>
+              <div class="col-9">
+                  <input
+                    v-model="form.end"
+                    type="datetime-local"
+                    class="form-control"
+                  >
+              </div>
+              <div class="col-12 mt-4">
+                <button
+                  class="btn btn-outline-secondary w-100"
+                  @click="addDraft"
+                >
+                  追加
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="col-md-5">
-            <label class="form-label">終了日時</label>
-            <input
-              v-model="form.end"
-              type="datetime-local"
-              class="form-control"
-            >
+
+          <div v-if="draftShifts.length" class="mt-3">
+            <div v-for="(d,i) in draftShifts"
+              class="box p-2 bg-white">
+              <div class="time row border-bottom g-2 pb-2">
+                <div class="col-4 align-items-center d-flex">
+                  <div class="d-flex align-items-center gap-1">
+                    <IconClock />
+                    シフト{{ i+1 }}
+                  </div>
+                </div>
+                <div class="col-7">
+                  <div class="text-muted">{{ dayjs(d.plan_start).format('YYYY/MM/DD') }}</div>
+                  <div class="fw-bold fs-4">
+                    <span>{{ dayjs(d.plan_start).format('HH:mm') }}</span>〜<span>{{ dayjs(d.plan_end).format('HH:mm') }}</span>
+                  </div>
+                </div>
+                <div class="col-1 df-center">
+                  <button
+                      @click="removeDraft(i)"
+                    >
+                      <IconX />
+                  </button>                
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="col-md-2 text-end">
+          <div class="d-flex justify-content-center mt-3">
             <button
-              class="btn btn-outline-secondary w-100"
-              @click="addDraft"
+              class="btn btn-primary"
+              :disabled="!draftShifts.length || submitting"
+              @click="submitAll"
             >
-              追加
+              {{ draftShifts.length }} 件まとめて申請
             </button>
           </div>
         </div>
-
-        <table
-          v-if="draftShifts.length"
-          class="table mb-3"
-        >
-          <thead><tr><th>#</th><th>開始</th><th>終了</th><th /></tr></thead>
-          <tbody>
-            <tr
-              v-for="(d,i) in draftShifts"
-              :key="i"
-            >
-              <td>{{ i+1 }}</td>
-              <td>{{ fmt(d.plan_start) }}</td>
-              <td>{{ fmt(d.plan_end) }}</td>
-              <td>
-                <button
-                  class="btn"
-                  @click="removeDraft(i)"
-                >
-                  <IconX />
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="d-flex justify-content-center mt-5">
-          <button
-            class="btn btn-primary"
-            :disabled="!draftShifts.length || submitting"
-            @click="submitAll"
-          >
-            {{ draftShifts.length }} 件まとめて申請
-          </button>
-        </div>
       </div>
-    </div>
-    <div v-if="activeTab==='goals' && castId != null" class="d-none">
-      <!-- me は未ロード瞬間があるのでフォールバックを渡す -->
-      <CastGoalsPanel :cast-id="castId" :me="me || {}" />
-    </div>
-    <!-- ▼ 自分のシフト一覧 -->
-    <div v-if="activeTab === 'list'">
-      <h4 class="mt-4 mb-2">
-        シフト一覧
-      </h4>
-      <div class="table-responsive">
-        <table class="table align-middle text-nowrap">
-          <thead class="table-light">
-            <tr>
-              <th>ID</th><th>予定</th><th>出勤</th><th>退勤</th>
-              <th>勤務</th><th>見込給与</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="s in shifts"
+
+        <div class="wrap">
+          <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+            <IconListTree />シフト一覧
+          </h2>
+          <div class="search mb-3">
+            <input 
+              v-model="selectedMonth" 
+              type="month" 
+              class="form-control bg-white"
+              placeholder="月を選択">
+          </div>
+
+          <div class="cards-container">
+            <div
+              v-for="s in filteredShifts"
               :key="s.id"
+              class="card shift-card mb-3"
             >
-              <td>{{ s.id }}</td>
-              <!-- ★ 予定を 2 行表記 (日付 / 時間帯) -->
-              <td>
-                <template v-if="s.plan_start">
+              <div class="card-header d-flex align-items-center gap-2">
+
+                  <IconClock />
                   <div>{{ dayjs(s.plan_start).format('YYYY/MM/DD') }}</div>
-                  <div class="fw-bold">
-                    {{ dayjs(s.plan_start).format('HH:mm') }} – {{ dayjs(s.plan_end).format('HH:mm') }}
+                  <div class="wrap fs-4">
+                    <span class="fw-bold">{{ dayjs(s.plan_start).format('HH:mm') }}</span>〜<span class="fw-bold">{{ dayjs(s.plan_end).format('HH:mm') }}</span>
                   </div>
-                </template>
-                <span v-else>–</span>
-              </td>
-              <td>{{ s.clock_in ? dayjs(s.clock_in).format('HH:mm') : '–' }}</td>
-              <td>{{ s.clock_out ? dayjs(s.clock_out).format('HH:mm') : '–' }}</td>
-              <td>{{ s.worked_min ? (s.worked_min/60).toFixed(2) + ' h' : '–' }}</td>
-              <td>{{ s.payroll_amount ? yen(s.payroll_amount) : '–' }}</td>
-            </tr>
-            <tr v-if="!shifts.length">
-              <td
-                colspan="6"
-                class="text-center text-muted"
-              >
-                シフトがありません
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="d-flex justify-content-center">
-          <button
-            class="btn btn-outline-primary"
-            @click="setTab('apply')"
-          >
-            シフト申請
-          </button>
+
+              </div>
+
+              <div class="card-body">
+                <div class="row g-2">
+                  <div class="col-4 text-center">
+                    <div class="badge bg-secondary">出勤</div>
+                    <div class="fw-bold mt-1">{{ s.clock_in ? dayjs(s.clock_in).format('HH:mm') : '–' }}</div>
+                  </div>
+                  <div class="col-4 text-center">
+                    <div class="badge bg-secondary">退勤</div>
+                    <div class="fw-bold mt-1">{{ s.clock_out ? dayjs(s.clock_out).format('HH:mm') : '–' }}</div>
+                  </div>
+                  <div class="col-4 text-center">
+                    <div class="badge bg-secondary">勤務時間</div>
+                    <div class="fw-bold mt-1">{{ s.worked_min ? (s.worked_min/60).toFixed(2) + ' h' : '–' }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="!filteredShifts.length" class="text-center text-muted py-3">
+              シフトがありません
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <!-- ▼ 売上 -->
-    <div v-if="activeTab === 'sales'" class="d-none">
-      <!-- ▼ 売上タブ用：期間フィルタ（スマホ向けにコンパクト） -->
-      <div class="row g-2 mb-4 align-items-center">
-        <div class="col-5">
-          <input
-            v-model="dateFrom"
-            type="date"
-            class="form-control form-control-sm bg-white"
-          >
-        </div>
-        <div class="col-1 d-flex align-items-center justify-content-center">〜</div>
-        <div class="col-5">
-          <input
-            v-model="dateTo"
-            type="date"
-            class="form-control form-control-sm bg-white"
-          >
-        </div>
-        <button
-          class="col-1"
-          @click="loadSummary"
-        >
-          <IconSearch />
-        </button>
       </div>
 
-      <!-- <h4 class="mt-5 mb-3">売上 ({{ dateFrom }} 〜 {{ dateTo }})</h4> -->
 
-      <div
-        v-if="salesBreakdown"
-        class="table-responsive"
-      >
-        <table class="table table-sm text-nowrap align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>シャンパン</th>
-              <th>本指名</th>
-              <th>場内</th>
-              <th>フリー</th>
-              <th class="text-end">
-                歩合小計
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>{{ yen(salesBreakdown.champ) }}</td>
-              <td>{{ yen(salesBreakdown.nom) }}</td>
-              <td>{{ yen(salesBreakdown.in) }}</td>
-              <td>{{ yen(salesBreakdown.free) }}</td>
-              <td class="text-end fw-bold">
-                {{ yen(salesBreakdown.total) }}
-              </td>
-            </tr>
-          </tbody>
-          <tfoot class="table-light fw-bold">
-            <tr>
-              <td
-                colspan="4"
-                class="text-end"
-              >
-                時給小計
-              </td>
-              <td class="text-end">
-                {{ yen(salesBreakdown.payroll) }}
-              </td>
-            </tr>
-            <tr>
-              <td
-                colspan="4"
-                class="text-end"
-              >
-                支給見込 (歩合+時給)
-              </td>
-              <td class="text-end">
-                {{ yen(salesBreakdown.total + salesBreakdown.payroll) }}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <p
-        v-else
-        class="text-muted d-flex align-items-center justify-content-center"
-        style="min-height: 200px;"
-      >
-        売上はまだありません
-      </p>
-    </div>
+      <!-- ▼ 顧客情報 -->
+      <div v-if="activeTab === 'customers'">
+        <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+          <IconFaceId />顧客情報一覧</h2>
+          <!-- 顧客情報一覧（絞り込み機能付き） -->
+          <div class="wrap">
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <input v-model="customerSearch" class="form-control form-control-sm bg-white" placeholder="名前で検索">
+              </div>
+              <div class="col-3">
+                <select v-model.number="customerMinVisit" class="form-select form-select-sm bg-white">
+                  <option :value="0">来店条件なし</option>
+                  <option :value="2">2回〜</option>
+                  <option :value="3">3回〜</option>
+                  <option :value="5">5回〜</option>
+                  <option :value="10">10回〜</option>
+                </select>
+              </div>
+              <div class="col-3">
+                <select v-model="customerSort" class="form-select form-select-sm bg-white">
+                  <option value="latest">最終来店順</option>
+                  <option value="visits">来店回数順</option>
+                </select>
+              </div>
+            </div>
 
-    <!-- ▼ 顧客情報 -->
-    <div v-if="activeTab === 'customers'">
-      <h5>顧客情報</h5>
-
-      <table v-if="customerBills.length" class="table align-middle">
-        <thead class="table-light">
-          <tr><th>日時</th><th>顧客名</th><th class="text-end">小計</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="b in customerBills" :key="b.id" role="button" @click="open(b.id)">
-            <td>{{ dayjs(b.opened_at).format('YYYY/MM/DD HH:mm') }}</td>
-            <td>{{ b.customer_display_name || '-' }}</td>
-            <td class="text-end">{{ yen(b.subtotal) }}</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <p v-else
-        class="text-muted d-flex align-items-center justify-content-center"
-        style="min-height: 200px;">
-        あなたが担当した顧客情報はまだありません
-      </p>
-    </div>
-
-    <!-- ▼ お店からのお知らせ -->
-    <div class="notice mt-5">
-      <div class="fs-5 fw-bold d-flex align-items-center justify-content-center gap-1 mb-1"><IconInfoCircle />お知らせ</div>
-
-      <div v-if="notices.length" class="mb-4 bg-white">
-        <div
-          v-for="n in notices"
-          :key="n.id"
-          class="d-flex align-items-center justify-content-between p-3"
-        >
-          <!-- ▼ ここをリンク化して NewsDetail へ -->
-          <RouterLink
-            :to="{ name: 'news-detail', params: { id: n.id } }"
-            class="d-flex flex-column"
-          >
-            <span class="text-muted small">
-              {{ dayjs(n.publish_at || n.created_at).format('YYYY/MM/DD') }}
-            </span>
-            <span v-if="n.pinned" class="badge bg-warning text-dark me-2">PIN</span>
-            <strong>{{ n.title || n.message || '(無題)' }}</strong>
-          </RouterLink>
-        </div>
+            <div v-if="filteredAllCustomersList.length">
+              <div v-for="c in filteredAllCustomersList" :key="c.name"
+                @click="openCustomer(c.latestBillId)"
+                class="card shadow-sm mb-3">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                  <span class="fw-bold">{{ c.name }}様</span>
+                  <span class="badge bg-secondary">来店{{ c.visitCount }}回</span>
+                </div>
+                <div class="card-body">
+                  <div class="row g-2 small">
+                    <div class="col-6">
+                      <div class="text-muted">最終来店</div>
+                      <div class="fw-bold">{{ dayjs(c.latestVisit).format('YYYY/MM/DD') }}</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-muted">ご利用金額</div>
+                      <div class="fw-bold">{{ yen(c.latestSubtotal) }}</div>
+                    </div>
+                    <div v-if="c.casts.length" class="col-12">
+                      <div class="text-muted">担当キャスト</div>
+                      <div class="fw-bold">{{ c.casts.join(', ') }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p v-else
+              class="text-muted d-flex align-items-center justify-content-center"
+              style="min-height: 200px;">
+              顧客情報はまだありません
+            </p>
+          </div>
       </div>
 
-      <p v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height: 200px;">
-        現在お知らせはありません
-      </p>
-    </div>
-
-
-    <!-- ランキング -->
-    <div class="mt-4">
-      <div class="fs-5 fw-bold d-flex align-items-center justify-content-center gap-1 mb-1">
-        <IconCrown />ランキング
-      </div>
-      <RankingBlock :rows="monthlyRows" />
+      <CustomerDetailModal
+        :bill-id="selectedBillId"
+        :customer-stats="selectedCustomerStats"
+        :show="showCustomerModal"
+        @close="closeCustomerModal"
+      />
     </div>
   </div>
 </template>
 
 <style>
-nav a.active { font-weight: bold; }
+.avatars img {
+  width: 60px !important;
+  height: 60px !important;
+}
 </style>

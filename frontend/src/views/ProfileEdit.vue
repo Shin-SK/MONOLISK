@@ -5,6 +5,8 @@ import { useUser } from '@/stores/useUser'
 import { api } from '@/api'
 import Avatar from '@/components/Avatar.vue'
 import { useProfile } from '@/composables/useProfile'
+import CastSidebar from '@/components/sidebar/CastSidebar.vue'
+import { openOffcanvas } from '@/utils/bsOffcanvas'
 
 const meStore = useUser()
 const { avatarURL } = useProfile()
@@ -79,59 +81,71 @@ async function save() {
   }
 }
 
+function openSidebar(){
+  openOffcanvas('#castSidebar')
+}
+
 onMounted(load)
 </script>
 
 <template>
-  <div class="container py-3">
+  <div class="py-3">
+    <div class="upper mb-5 d-flex align-items-center justify-content-between">
+      <h2 class="fs-2 fw-bold">プロフィール編集</h2>
+      <button @click="openSidebar"><IconMenuDeep class="fs-5"/></button><!-- サイドバー開く -->
+    </div>
     <!-- アバター -->
     <div class="mb-4 d-flex align-items-center gap-3">
-      <Avatar :url="previewUrl || avatarURL" :size="72" class="rounded-circle" />
+      <Avatar :url="previewUrl || avatarURL" :size="60" class="rounded-circle" />
       <div class="d-flex flex-column gap-2">
-        <label class="btn btn-outline-secondary mb-0">
+        <label class="btn btn-sm btn-outline-secondary mb-0">
           画像を選択
           <input type="file" accept="image/*" class="d-none" @change="onPick" />
         </label>
-        <small class="text-muted">※「保存」で反映されます。</small>
       </div>
     </div>
 
     <!-- 基本情報 -->
     <div class="row g-3">
-      <div class="col-sm-6">
-        <label class="form-label">姓</label>
+      <div class="col-12">
+        <label class="form-label small text-muted">姓</label>
         <input v-model="form.last_name" class="form-control" />
       </div>
-      <div class="col-sm-6">
-        <label class="form-label">名</label>
+      <div class="col-12">
+        <label class="form-label small text-muted">名</label>
         <input v-model="form.first_name" class="form-control" />
       </div>
 
-      <div class="col-sm-6">
-        <label class="form-label">ログインID（ユーザーネーム）</label>
+      <div class="col-12">
+        <label class="form-label small text-muted">ログインID（ユーザーネーム）</label>
         <input v-model="form.username" class="form-control" />
       </div>
 
-      <div class="col-sm-6">
-        <label class="form-label">メールアドレス</label>
+      <div class="col-12">
+        <label class="form-label small text-muted">メールアドレス</label>
         <input v-model="form.email" type="email" class="form-control" />
       </div>
 
-      <div class="col-sm-6">
-        <label class="form-label">電話番号</label>
+      <div class="col-12">
+        <label class="form-label small text-muted">電話番号</label>
         <input v-model="form.phone" class="form-control" />
       </div>
     </div>
 
-    <div class="mt-4 d-flex align-items-center gap-3">
-      <button class="btn btn-primary" :disabled="saving" @click="save">
+    <div class="mt-5 w-100">
+      <button class="btn btn-sm btn-primary w-100" :disabled="saving" @click="save">
         {{ saving ? '保存中…' : '保存' }}
       </button>
       <span class="text-muted">{{ msg }}</span>
     </div>
   </div>
+
+    <!-- オフキャンバス（サイドバー） -->
+    <CastSidebar />
+
 </template>
 
 <style scoped lang="scss">
 input { background: white; }
+form-label { font-size: 0.8rem; }
 </style>

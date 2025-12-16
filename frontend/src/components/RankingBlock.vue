@@ -17,7 +17,7 @@ const max      = computed(() => props.rows[0]?.revenue || 1)
 const barW     = r => `${(r.revenue / max.value * 100).toFixed(0)}%`
 
 // ★ 各順位ごとのアバターサイズ（px）
-const sizeByRank = [80, 60, 40]        // 1位,2位,3位
+const sizeByRank = [40, 35, 30]        // 1位,2位,3位
 const avatarSize = i => sizeByRank[i]  // helper
 
 //  メダル SVG の絶対パスを返すヘルパ
