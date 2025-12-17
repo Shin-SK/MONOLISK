@@ -62,7 +62,7 @@ const showOpenTip = ref(false)
 const showDutyTip = ref(false)
 
 /* ----------------- タブ管理 ----------------- */
-const activeTab = ref('home') // 'home', 'bills', 'download'
+const activeTab = ref('home') // 'home', 'sales', 'bills'
 const homeSubTab = ref('day') // 'day', 'month', 'year'
 
 function switchTab(tabId) {
@@ -92,6 +92,7 @@ const kpi = ref({
 })
 
 const billsToday = ref([])   // 今日の伝票（最小表示用）
+const storesSalesData = ref({}) // 店舗ごとの売上データ
 
 /* ----------------- ユーティリティ ----------------- */
 const asId = v => (v && typeof v === 'object') ? v.id : v
@@ -114,6 +115,13 @@ async function loadAll(){
       const list = await Promise.all(
         storeIds.map(sid => getBillDailyPLForStore(d, sid, { cache:false, meta:{ silent:true } }).catch(()=>({})))
       )
+      // 店舗ごとの売上データを保存
+      const storeData = {}
+      for (let i = 0; i < storeIds.length; i++) {
+        storeData[storeIds[i]] = list[i] || {}
+      }
+      storesSalesData.value = storeData
+      
       const sum = (arr, key) => arr.reduce((a,b)=> a + (Number(b?.[key])||0), 0)
       pl = {
         sales_total : sum(list, 'sales_total'),
@@ -122,6 +130,10 @@ async function loadAll(){
       }
     } else {
       pl = await getBillDailyPL(d, { cache: false })
+      // 単一店舗の場合
+      if (storeIds.length === 1) {
+        storesSalesData.value = { [storeIds[0]]: pl }
+      }
     }
 
     // 2) 伝票（クライアントで当日抽出）- キャッシュ無効化
@@ -306,18 +318,36 @@ const kpiDutyLabel = computed(() =>
 <template>
   <div class="owner-dashboard">
 
-    <div class="header d-flex flex-column mb-4">
+    <div class="header d-flex flex-column mb-3">
       <div class="user-info d-flex align-items-center gap-2">
         <Avatar :url="avatarURL" :size="60" class="rounded-circle" />
         <div class="name fs-5 fw-bold">{{ userName }}</div>
       </div>
-
     </div>
 
     <div v-if="activeTab === 'home'" class="area">
 
+      <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+        <IconChartBarPopular />本日の売上（店舗別）</h2>
+
+      <div v-for="store in availableStores" :key="store.id" class="card mb-3">
+        <div class="card-header">
+          <small>{{ store.name }}</small>
+        </div>
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-end fw-bold fs-1">
+            {{ fmtYen(storesSalesData[store.id]?.sales_total || 0) }}
+          </div>
+        </div>
+      </div>
+
+
+    </div>
+
+    <div v-if="activeTab === 'sales'" class="area">
+
       <!-- オーナー用：店舗セレクタ -->
-      <div v-if="showStoreSelector" class="store-selector">
+      <div v-if="showStoreSelector" class="store-selector mb-4">
         <div class="d-flex align-items-center gap-2 mb-1">
           <div class="fw-bold">
             対象店舗

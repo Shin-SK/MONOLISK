@@ -54,7 +54,7 @@ async function fetchData(){
           agg.operating_profit += (Number(src.operating_profit) || 0)
         }
       }
-      months.value = Array.from(monthMap.values()).sort((a,b) => a.month.localeCompare(b.month))
+      months.value = Array.from(monthMap.values()).sort((a,b) => String(a.month).localeCompare(String(b.month)))
       
       // 年間totals合算
       const sum = (key) => list.reduce((a,b)=> a + (Number(b.totals?.[key])||0), 0)

@@ -198,15 +198,24 @@ async function logout () {
     style="z-index: 99;">
       <button 
         class="df-center flex-column"
-        :class="route.name === 'owner-dashboard' && !route.query.tab ? 'text-dark' : 'text-secondary'"
+        :class="route.query.tab === 'home' ? 'text-dark' : 'text-secondary'"
         @click="$router.push({ name:'owner-dashboard', query: { tab: 'home' } })">
         <span>
-          <IconHomeFilled v-if="route.name === 'owner-dashboard' && !route.query.tab" />
+          <IconHomeFilled v-if="route.query.tab === 'home'" />
           <IconHome v-else />
         </span>
         <small>ホーム</small>
       </button>
-
+      <button 
+        class="df-center flex-column"
+        :class="route.query.tab === 'sales' ? 'text-dark' : 'text-secondary'"
+        @click="$router.push({ name:'owner-dashboard', query: { tab: 'sales' } })">
+        <span>
+          <IconReceiptYenFilled v-if="route.query.tab === 'sales'" />
+          <IconReceiptYen v-else />
+        </span>
+        <small>売上</small>
+      </button>
       <button 
         class="df-center flex-column"
         :class="route.query.tab === 'bills' ? 'text-dark' : 'text-secondary'"
