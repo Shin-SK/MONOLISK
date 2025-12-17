@@ -190,8 +190,17 @@ export async function getBillDailyPL(date) {
 }
 
 export async function getHourlySales(date, storeId) {
-	const { data } = await api.get('billing/sales/hourly/', { params: { date, store_id: storeId } })
-	return Array.isArray(data) ? data : []
+  const sid = String(storeId)
+  const { data } = await api.get('billing/sales/hourly/', {
+    cache: false, // ★これが一番効く
+    params: { date },
+    headers: {
+      'X-Store-Id': sid,
+      'X-Store-ID': sid,
+    },
+    meta: { overrideStoreId: sid },
+  })
+  return Array.isArray(data) ? data : []
 }
 
 export const getBillMonthlyPL = (monthStr) => {

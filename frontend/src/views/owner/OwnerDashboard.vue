@@ -16,6 +16,7 @@ import { useUser } from '@/stores/useUser'
 import { useProfile } from '@/composables/useProfile'
 import PLPage from '../PLPage.vue'
 import BillList from '../BillList.vue'
+import HourlyChart from '@/components/HourlyChart.vue'
 
 const route = useRoute()
 const user = useUser()
@@ -26,11 +27,16 @@ const userName = computed(() => {
 })
 
 /* ----------------- 店舗選択（オーナー用） ----------------- */
-const selectedStoreIds = ref([])
+const selectedStoreIds = ref([]) // sales / bills タブ用：複数選択
+const selectedStoreIdForHourly = ref('') // home タブ専用：単一選択（時間帯別グラフ用）
+
+const normId = (v) => String(v ?? '')
 
 const availableStores = computed(() => {
   const mems = Array.isArray(user.me?.memberships) ? user.me.memberships : []
-  return mems.map(m => ({ id: m.store_id, name: m.store_name })).filter(s => s.id != null)
+  return mems
+    .map(m => ({ id: normId(m.store_id), name: m.store_name }))
+    .filter(s => s.id)
 })
 
 const showStoreSelector = computed(() => {
@@ -39,23 +45,24 @@ const showStoreSelector = computed(() => {
 })
 
 function toggleStore(storeId) {
-  const idx = selectedStoreIds.value.indexOf(storeId)
+  const id = normId(storeId)
+  const idx = selectedStoreIds.value.indexOf(id)
   if (idx >= 0) {
     if (selectedStoreIds.value.length > 1) {
       selectedStoreIds.value.splice(idx, 1)
     }
   } else {
-    selectedStoreIds.value.push(storeId)
+    selectedStoreIds.value.push(id)
   }
 }
 
 function isStoreSelected(storeId) {
-  return selectedStoreIds.value.includes(storeId)
+  return selectedStoreIds.value.includes(normId(storeId))
 }
 
 // billsタブ用：単一選択
 function selectStoreForBills(storeId) {
-  selectedStoreIds.value = [storeId]
+  selectedStoreIds.value = [normId(storeId)]
 }
 
 const showOpenTip = ref(false)
@@ -110,7 +117,7 @@ async function loadAll(){
     //    オーナーは全所属店舗の合算。その他は現在店舗のみ。
     let pl
     const mems = Array.isArray(user.me?.memberships) ? user.me.memberships : []
-    const storeIds = mems.map(m => m.store_id).filter(id => id != null)
+    const storeIds = mems.map(m => normId(m.store_id)).filter(Boolean)
     if (storeIds.length > 1) {
       const list = await Promise.all(
         storeIds.map(sid => getBillDailyPLForStore(d, sid, { cache:false, meta:{ silent:true } }).catch(()=>({})))
@@ -210,10 +217,6 @@ kpi.value = {
 }
 
 onMounted(() => {
-  // 店舗初期化：全店舗選択
-  if (availableStores.value.length) {
-    selectedStoreIds.value = availableStores.value.map(s => s.id)
-  }
   // クエリパラメータからタブを復元
   if (route.query.tab) {
     activeTab.value = route.query.tab
@@ -221,7 +224,38 @@ onMounted(() => {
   loadAll()
 })
 
-watch(date, loadAll)
+// availableStores が変わったら初期選択を同期（user.me API遅延対策）
+watch(
+  availableStores,
+  (stores) => {
+    if (!stores.length) return
+
+    // 初回（未選択）なら全選択にする
+    if (!selectedStoreIds.value.length) {
+      selectedStoreIds.value = stores.map(s => s.id)
+    }
+
+    // stores 側から消えたIDは除去（所属変更など対策）
+    const allowed = new Set(stores.map(s => s.id))
+    selectedStoreIds.value = selectedStoreIds.value.filter(id => allowed.has(id))
+
+    // 0件になったら保険で全選択
+    if (!selectedStoreIds.value.length) {
+      selectedStoreIds.value = stores.map(s => s.id)
+    }
+
+    // home タブ用：selectedStoreIdForHourly の初期化
+    // 未設定なら最初の店舗をセット
+    if (!selectedStoreIdForHourly.value && stores.length > 0) {
+      selectedStoreIdForHourly.value = stores[0].id
+    }
+    // 存在しない店舗に設定されていたら、最初の店舗に修正
+    if (selectedStoreIdForHourly.value && !allowed.has(selectedStoreIdForHourly.value)) {
+      selectedStoreIdForHourly.value = stores[0].id
+    }
+  },
+  { immediate: true }
+)
 
 // クエリパラメータ変更でタブ切替
 watch(() => route.query.tab, (newTab) => {
@@ -341,6 +375,25 @@ const kpiDutyLabel = computed(() =>
         </div>
       </div>
 
+      <!-- home タブ専用：店舗選択ボタン（複数店舗の場合のみ表示） -->
+      <div v-if="availableStores.length > 1" class="hourly-store-selector mb-3">
+        <div class="fw-bold mb-2 text-muted small">時間帯別売上</div>
+        <div class="d-flex flex-wrap gap-2">
+          <button
+            v-for="st in availableStores"
+            :key="st.id"
+            class="btn btn-sm"
+            :class="selectedStoreIdForHourly === st.id ? 'btn-primary' : 'btn-outline-secondary'"
+            @click="selectedStoreIdForHourly = st.id">
+            {{ st.name }}
+          </button>
+        </div>
+      </div>
+
+      <HourlyChart
+        :store-id="selectedStoreIdForHourly"
+        :date="date"
+      />
 
     </div>
 
@@ -369,7 +422,7 @@ const kpiDutyLabel = computed(() =>
 
       </div>
 
-      <PLPage :store-ids="selectedStoreIds" /><!-- ＊これが出ればいい -->
+      <PLPage :store-ids="selectedStoreIds" />
 
     </div>
 
@@ -401,6 +454,13 @@ const kpiDutyLabel = computed(() =>
 </template>
 
 <style scoped lang="scss">
+
+/* 未選択ボタンだけ hover で裏返らないようにする */
+.btn.btn-outline-secondary:hover {
+  color: var(--bs-secondary);
+  background-color: transparent;
+  border-color: var(--bs-secondary);
+}
 
   .manager-dashboard{
     .card{

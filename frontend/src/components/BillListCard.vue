@@ -21,16 +21,7 @@ const props = defineProps({
 const emit = defineEmits(['select', 'edit'])
 
 function calcPax(b) {
-  if (!b) return 0
-  const items = b.items || []
-  let total = 0
-  for (const it of items) {
-    const code = it.item_master?.code || it.code || ''
-    if (code.includes('Male') || code.includes('Female')) {
-      total += (it.qty || 0)
-    }
-  }
-  return total
+  return b?.pax || 0
 }
 
 function liveCasts(b) {

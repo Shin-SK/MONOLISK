@@ -574,6 +574,7 @@ class BillSerializer(serializers.ModelSerializer):
     expected_out  = serializers.DateTimeField(required=False, allow_null=True)
     set_rounds    = serializers.IntegerField(read_only=True)
     ext_minutes   = serializers.IntegerField(read_only=True)
+    pax           = serializers.IntegerField(required=False, default=0)
 
     main_cast      = serializers.PrimaryKeyRelatedField(
         queryset=Cast.objects.all(), allow_null=True, required=False
@@ -626,7 +627,7 @@ class BillSerializer(serializers.ModelSerializer):
         model = Bill
         fields = (
             # ---- 基本 ----
-            "id", "table", "table_id", "opened_at", "closed_at","memo",
+            "id", "table", "table_id", "opened_at", "closed_at","memo", "pax",
             # ---- 金額 ----
             "subtotal", "service_charge", "tax", "grand_total", "total",
             "paid_cash","paid_card","paid_total","change_due",
@@ -801,8 +802,34 @@ class BillSerializer(serializers.ModelSerializer):
     # ---- UPDATE：手入力割引＋本体更新を統合 ----
     @transaction.atomic
     def update(self, instance, validated_data):
-        # ★ opened_at をバリデーションから除外（セット追加時にリセットされない）
-        validated_data.pop('opened_at', None)
+        # opened_at の更新許可＋ロールに応じた最小ガード
+        req = self.context.get('request')
+        new_opened_at = validated_data.get('opened_at', None)
+
+        if new_opened_at is not None and req is not None:
+            try:
+                is_staff_user = Staff.objects.filter(user=req.user).exists()
+            except Exception:
+                is_staff_user = False
+
+            if is_staff_user:
+                try:
+                    # 当日判定（タイムゾーン考慮）: 伝票が本日分である場合のみ staff は更新可
+                    bill_date = None
+                    if instance.opened_at:
+                        bill_date = timezone.localtime(instance.opened_at).date()
+                    today_local = timezone.localdate()
+                    if bill_date != today_local:
+                        from rest_framework import serializers as drf_serializers
+                        raise drf_serializers.ValidationError({
+                            'opened_at': 'スタッフは当日伝票のみ変更できます。'
+                        })
+                except Exception:
+                    # 何らかの理由で安全に判定できない場合は弾く（保守的）
+                    from rest_framework import serializers as drf_serializers
+                    raise drf_serializers.ValidationError({
+                        'opened_at': 'opened_at の更新が許可されていません。'
+                    })
 
         # 更新前スナップ
         prev_main = set(instance.nominated_casts.values_list("id", flat=True))
@@ -825,7 +852,20 @@ class BillSerializer(serializers.ModelSerializer):
             validated_data['discount_rule'] = instance.discount_rule
 
         # 通常フィールドをまとめて更新
+        opened_at_was_changed = ('opened_at' in validated_data)
         instance = super().update(instance, validated_data)
+
+        # opened_at を変更した場合は expected_out を再計算
+        # さらに closed_at が既にある（締め済み）かつ closed_at を明示更新していないときは
+        # 新しい opened_at に基づく expected_out へ closed_at を合わせる（自動整合）
+        if opened_at_was_changed:
+            try:
+                instance.update_expected_out(save=True)
+                if instance.closed_at and ('closed_at' not in validated_data):
+                    instance.closed_at = instance.expected_out
+                    instance.save(update_fields=['closed_at'])
+            except Exception:
+                pass
 
         # 顧客M2M
         if cust_ids is not None:

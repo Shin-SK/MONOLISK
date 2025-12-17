@@ -12,7 +12,7 @@ import {
   updateBillCasts,
   toggleBillInhouse,
   addBillItem, deleteBillItem, closeBill,
-  fetchBill,
+  fetchBill, patchBillItem,
   setBillDiscountByCode,
   setBillDohan,
 } from '@/api'
@@ -469,6 +469,23 @@ const onRemovePending = (i) => pending.value.splice(i, 1)
 const onClearPending  = () => (pending.value = [])
 const onPlaceOrder    = async () => { await save() }
 
+async function onChangeServedBy({ item, castId }) {
+  if (!props.bill?.id) return
+  try {
+    await patchBillItem(props.bill.id, item.id, { served_by_cast_id: castId })
+    const fresh = await fetchBill(props.bill.id).catch(() => null)
+    if (fresh) {
+      Object.assign(props.bill, fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    }
+  } catch (e) {
+    console.error('[onChangeServedBy]', e)
+    alert('担当者の変更に失敗しました')
+  }
+}
+
 /* ---------------------------------------------------------
  * 場内/配席/キャスト表示
  * --------------------------------------------------------- */
@@ -885,6 +902,7 @@ watch(freeCastIds, list => {
             :items="props.bill.items || []"
             :master-name-map="masterNameMap"
             :served-by-map="servedByMap"
+            :served-by-options="servedByOptions"
 
             :current="current"
             :display-grand-total="displayGrandTotal"
@@ -914,6 +932,7 @@ watch(freeCastIds, list => {
             @incItem="it => enqueue('addBillItem', { id: props.bill.id, item: { item_master: it.item_master, qty: 1 }})"
             @decItem="it => enqueue('addBillItem', { id: props.bill.id, item: { item_master: it.item_master, qty: -1 }})"
             @deleteItem="it => cancelItem(0, it)"
+            @changeServedBy="onChangeServedBy"
           />
 
         </div>

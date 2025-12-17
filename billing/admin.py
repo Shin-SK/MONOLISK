@@ -178,11 +178,27 @@ class CastAdmin(admin.ModelAdmin):
 @admin.register(ItemCategory)
 class ItemCategoryAdmin(ImportExportModelAdmin):
     resource_class = ItemCategoryRes
-    list_display = ("code", "name", "show_in_menu",
+    list_display = ("code", "name", "major_group", "show_in_menu",
                     "back_rate_free", "back_rate_nomination", "back_rate_inhouse",
-                    "route")  # ←追加
-    list_editable = ("back_rate_free", "back_rate_nomination", "back_rate_inhouse",
-                     "route")  # ←追加
+                    "route")
+    list_filter = ("major_group", "show_in_menu", "route")
+    list_editable = ("major_group", "back_rate_free", "back_rate_nomination", "back_rate_inhouse",
+                     "route")
+    fieldsets = (
+        ('基本情報', {
+            'fields': ('code', 'name')
+        }),
+        ('大カテゴリ（集計用）', {
+            'fields': ('major_group',),
+            'description': '集計用の大カテゴリを選択します。7種類で固定です。'
+        }),
+        ('手数料レート', {
+            'fields': ('back_rate_free', 'back_rate_nomination', 'back_rate_inhouse')
+        }),
+        ('その他設定', {
+            'fields': ('show_in_menu', 'route', 'use_fixed_payout_free_in', 'payout_fixed_per_item')
+        }),
+    )
 
 
 @admin.register(ItemMaster)

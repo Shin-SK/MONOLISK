@@ -11,6 +11,7 @@ const props = defineProps({
   items: { type: Array, default: () => [] },
   masterNameMap: { type: Object, default: () => ({}) },
   servedByMap:   { type: Object, default: () => ({}) },
+  servedByOptions: { type: Array, default: () => [] },
 
   // 金額（サーバ計算の転送値）
   current: { type: Object, default: () => ({ sub:0, svc:0, tax:0, total:0 }) },
@@ -51,6 +52,7 @@ const emit = defineEmits([
   'incItem',
   'decItem',
   'deleteItem',
+  'changeServedBy',
   'update:discountRule',
   'saveDiscount',
 ])
@@ -385,6 +387,28 @@ const memoLocal = ref(String(props.memo ?? ''))
 watch(() => props.memo, v => { memoLocal.value = String(v ?? '') })
 const getMemo = () => String(memoLocal.value || '')
 
+/* 担当変更用の選択状態（item.id -> cast_id） */
+const servedBySelection = ref({})
+watch(() => props.items, (list = []) => {
+  const next = {}
+  for (const it of list) {
+    const id = Number(it?.served_by_cast_id ?? it?.served_by_cast?.id)
+    next[it.id] = Number.isFinite(id) ? id : ''
+  }
+  servedBySelection.value = next
+}, { immediate: true, deep: true })
+
+// デバッグ：servedByOptionsを監視
+watch(() => props.servedByOptions, (opts) => {
+  console.log('[PayPanel] servedByOptions received:', opts)
+}, { immediate: true })
+
+function onSelectServedBy(it, val){
+  const castId = val === '' ? null : Number(val)
+  servedBySelection.value = { ...servedBySelection.value, [it.id]: val }
+  emit('changeServedBy', { item: it, castId })
+}
+
 /* 親へ割引明細を返すエクスポート関数
  * - ドスコイ：¥1,000×2, ¥500×1 のような内訳をラベル化
  * - 通常   ：選択ルール名と割引額
@@ -558,9 +582,24 @@ function removeSavedDiscount(index) {
             </div>
             <div class="price">¥{{ (it.subtotal ?? 0).toLocaleString() }}</div>
           </div>
-          <div class="cast d-flex align-items-center gap-1">
+          <div class="cast d-flex align-items-center gap-2 flex-wrap">
             <IconUser :size="16" />
-            {{ it.served_by_cast?.stage_name || servedByMap[String(it.served_by_cast_id)] || '—' }}
+
+            <select
+              class="form-select form-select-sm w-auto"
+              :disabled="!servedByOptions || !servedByOptions.length"
+              :value="servedBySelection[it.id] ?? ''"
+              @change="onSelectServedBy(it, $event.target.value)"
+            >
+              <option value="">担当なし</option>
+              <option v-for="c in servedByOptions" :key="c.id" :value="c.id">
+                {{ c.label }}
+              </option>
+            </select>
+
+            <span v-if="!servedByOptions || !servedByOptions.length" class="text-muted small">
+              （担当候補が未取得）
+            </span>
           </div>
         </div>
         <div class="d-flex align-items-center">

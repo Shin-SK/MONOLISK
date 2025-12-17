@@ -88,12 +88,15 @@ export function wireInterceptors(api) {
     // X-Store-Id（Store 非依存パス以外は必須）
     const p = pathFrom(cfg, api.defaults.baseURL)
     if (!isStoreIndependentPath(p)) {
-      const sid = getStoreId()
+      const sid = cfg.meta?.overrideStoreId || getStoreId()  // ★ meta.overrideStoreId を優先
       cfg.headers ||= {}
       const hasOverride = !!(cfg.headers['X-Store-Id'] || cfg.headers['X-Store-ID'])
       if (!hasOverride && sid) {
         cfg.headers['X-Store-Id'] = String(sid)
-        cfg.headers['X-Store-ID'] = String(sid) // 大小どちらも見る実装対策
+        cfg.headers['X-Store-ID'] = String(sid)
+        if (cfg.meta?.overrideStoreId) {
+          console.log('[api] X-Store-Id overridden to:', sid, 'for url:', cfg.url)
+        }
       } else if (!hasOverride && !sid) {
         console.warn('[api] X-Store-Id missing for Store-Locked API:', p)
       }

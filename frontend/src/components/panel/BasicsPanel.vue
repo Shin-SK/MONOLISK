@@ -157,9 +157,11 @@ const totalGuests = computed(() =>
   (Number(maleRef.value)||0) + (Number(femaleRef.value)||0)
 )
 
-// 男/女変更時に親へ pax 同期（PCと整合）
-watch([maleRef, femaleRef], () => {
-  emit('update:pax', totalGuests.value)
+// 男/女変更時に親へ pax 同期（男+女が0なら上書きしない）
+watch([maleRef, femaleRef], ([m, f]) => {
+  const total = (Number(m) || 0) + (Number(f) || 0)
+  if (total === 0) return
+  emit('update:pax', total)
 }, { immediate: true })
 
 const qtyOf = (k) => (k==='male' ? Number(maleRef.value)||0 : Number(femaleRef.value)||0)
@@ -354,7 +356,7 @@ function saveEditTable() {
 
 // 人数編集
 function beginEditPax() {
-  editPaxLocal.value = paxLabel.value
+  editPaxLocal.value = Number(props.pax) || 0
   editingPax.value = true
 }
 function saveEditPax() {

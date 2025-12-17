@@ -11,7 +11,7 @@ import { useRoles } from '@/composables/useRoles'
 import { enqueue } from '@/utils/txQueue'
 import {
   api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts,
-  fetchBill, deleteBillItem, patchBillItemQty, fetchMasters,
+  fetchBill, deleteBillItem, patchBillItem, patchBillItemQty, fetchMasters,
   createBill, patchBill,
   setBillDiscountByCode, updateBillDiscountRule, settleBill,
  } from '@/api'
@@ -171,6 +171,7 @@ async function ensureBillId () {
     table: tableId,
     opened_at: props.bill?.opened_at ?? null,
     expected_out: props.bill?.expected_out ?? null,
+    pax: paxFromItems.value || 0,  // ★ 人数も保存
   })
   // 戻り値で補正された場合はローカルにも反映
   if (b?.opened_at) props.bill.opened_at = b.opened_at
@@ -217,6 +218,13 @@ async function onApplySet (payload){
   } else {
     await updateBillDiscountRule(billId, null)
   }
+  
+  // ★ 人数を保存（SET追加時に合計人数を反映）
+  const totalPax = paxFromItems.value || 0
+  if (totalPax > 0) {
+    await patchBill(billId, { pax: totalPax })
+  }
+  
   const fresh = await fetchBill(billId).catch(()=>null)
   if (fresh) {
     Object.assign(props.bill, fresh)   // Bill本体
@@ -280,10 +288,45 @@ const masterPriceMap = computed(() => {
   return map
 })
 const servedByOptions = computed(() => {
-  const out = [], seen = new Set(), cc = Array.isArray(ed.currentCasts.value) ? ed.currentCasts.value : []
-  for (const c of cc) { const id = Number(c?.id); if (!Number.isFinite(id)||seen.has(id)) continue; out.push({ id, label: c.stage_name || `cast#${id}` }); seen.add(id) }
+  const out = [], seen = new Set()
+  
+  // 勤務中の全キャスト（ed.casts から取得）
+  const allCasts = Array.isArray(ed.casts?.value) ? ed.casts.value : []
+  const onDuty = ed.onDutySet?.value || new Set()
+  
+  console.log('[BillModalSP] ed.casts.value=', ed.casts?.value)
+  console.log('[BillModalSP] onDutySet=', onDuty)
+  
+  // 今日出勤中のキャストのみフィルタ
+  const onDutyCasts = allCasts.filter(c => onDuty.has(c.id))
+  console.log('[BillModalSP] onDutyCasts filtered=', onDutyCasts)
+  
+  for (const c of onDutyCasts) {
+    const id = Number(c?.id)
+    if (!Number.isFinite(id) || seen.has(id)) continue
+    out.push({ id, label: c.stage_name || `cast#${id}` })
+    seen.add(id)
+  }
+  
+  // 念のため、現在着席中のキャストと伝票のstaysからも追加（重複は除外済み）
+  const cc = Array.isArray(ed.currentCasts.value) ? ed.currentCasts.value : []
+  for (const c of cc) {
+    const id = Number(c?.id)
+    if (!Number.isFinite(id) || seen.has(id)) continue
+    out.push({ id, label: c.stage_name || `cast#${id}` })
+    seen.add(id)
+  }
+  
   const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
-  for (const s of stays) { if (!s || s.left_at) continue; const id = Number(s.cast?.id); if (!Number.isFinite(id)||seen.has(id)) continue; out.push({ id, label: s.cast.stage_name || `cast#${id}` }); seen.add(id) }
+  for (const s of stays) {
+    if (!s || s.left_at) continue
+    const id = Number(s.cast?.id)
+    if (!Number.isFinite(id) || seen.has(id)) continue
+    out.push({ id, label: s.cast.stage_name || `cast#${id}` })
+    seen.add(id)
+  }
+  
+  console.log('[BillModalSP] servedByOptions=', out)
   return out
 })
 const servedByMap = computed(() => { const map = {}; for (const c of servedByOptions.value || []) map[String(c.id)] = c.label; return map })
@@ -376,6 +419,22 @@ const decItem = async (it) => {
     }
   }catch(e){ console.error('[decItem] error:', e); alert('数量を減らせませんでした') }
 }
+
+const changeServedBy = async ({ item, castId }) => {
+  try {
+    await patchBillItem(props.bill.id, item.id, { served_by_cast_id: castId })
+    const fresh = await fetchBill(props.bill.id).catch(() => null)
+    if (fresh) {
+      Object.assign(props.bill, fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    }
+  } catch (e) {
+    console.error('[changeServedBy] failed', e)
+    alert('担当者の変更に失敗しました')
+  }
+}
 const removeItem = async (it) => {
   try{
     await deleteBillItem(props.bill.id, it.id)
@@ -401,6 +460,21 @@ function onUpdateTimes({ opened_at, expected_out}){
   // 既存伝票は即時 patch
   if (props.bill?.id) {
     enqueue('patchBill', { id: props.bill.id, payload: { opened_at, expected_out }})
+    enqueue('reconcile', { id: props.bill.id })
+  }
+}
+
+// ★ BasicsPanel からの人数更新を受けて patch（即時反映＋裏送信）
+function onUpdatePax(newPax) {
+  // ★ 新規伝票でもローカルに保持
+  if (newPax !== undefined) {
+    props.bill.pax = newPax
+    ed.pax.value = newPax
+  }
+
+  // 既存伝票は即時 patch
+  if (props.bill?.id) {
+    enqueue('patchBill', { id: props.bill.id, payload: { pax: newPax }})
     enqueue('reconcile', { id: props.bill.id })
   }
 }
@@ -463,6 +537,7 @@ const historyEvents = computed(() => {
 })
 
 const closing = ref(false)
+const deleting = ref(false)
 async function confirmClose(){
   if (closing.value || !props.bill?.id) return
   const ok = window.confirm('本当に会計しますか？')
@@ -536,6 +611,43 @@ async function confirmClose(){
     alert('会計に失敗しました（オフラインでも後で確定されます）')
   }finally{
     closing.value = false
+  }
+}
+
+async function confirmDelete(){
+  if (deleting.value) return
+  const billId = props.bill?.id
+  // 未保存の新規伝票なら、単純にモーダルを閉じる
+  if (!billId) {
+    visible.value = false
+    pane.value = 'base'
+    return
+  }
+  const ok = window.confirm('この伝票を削除します。よろしいですか？')
+  if (!ok) return
+  deleting.value = true
+  try {
+    // 楽観更新：一覧から除外
+    try {
+      const { useBills } = await import('@/stores/useBills')
+      const bs = useBills()
+      bs.list = (bs.list || []).filter(b => Number(b.id) !== Number(billId))
+    } catch {}
+
+    // 非同期削除（オフライン対応キュー）
+    enqueue('deleteBill', { id: billId })
+    enqueue('reconcile', { id: billId })
+
+    // 親へ通知してモーダルを閉じる
+    emit('saved', { id: billId, deleted: true })
+    visible.value = false
+    pane.value = 'base'
+    alert('伝票を削除しました')
+  } catch (e) {
+    console.error('[BillModalSP] delete failed', e)
+    alert('伝票の削除に失敗しました')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -695,6 +807,7 @@ async function handleSave(){
       <div id="header" class="header-bar">
         <div class="page-title fs-1">{{ pageTitle }}</div>
         <div class="button-area fs-5">
+          <button :disabled="deleting" @click="confirmDelete" aria-label="delete"><IconTrash /></button>
           <button :disabled="saving" @click="handleSave" aria-label="save"><IconDeviceFloppy /></button>
           <button @click="$emit('update:modelValue', false)" aria-label="close"><IconX /></button>
         </div>
@@ -718,14 +831,14 @@ async function handleSave(){
       :expected-out="bill.expected_out"
       :ext-minutes="bill.ext_minutes || 0"
       :set-rounds="bill.set_rounds || 0"
-      :pax="paxFromItems"
+      :pax="bill.pax ?? paxFromItems"
       :male="maleFromItems"
       :female="femaleFromItems"
       :history-events="historyEvents"
       @update-times="onUpdateTimes"
       @update:seatType="onSeatTypeChange" 
       @update:tableId="v => (ed.tableId.value = v)"
-      @update:pax="v => (ed.pax.value = v)"
+      @update:pax="onUpdatePax"
       @chooseCourse="(opt, qty) => onChooseCourse(opt, qty)"
       @clearCustomer="ed.clearCustomer"
       @searchCustomer="ed.searchCustomers"
@@ -756,11 +869,11 @@ async function handleSave(){
       :cat-options="ed.orderCatOptions.value || []"
       :selected-cat="ed.selectedOrderCat.value"
       :order-masters="ed.orderMasters.value || []"
-      :served-by-options="servedByOptions"
       v-model:served-by-cast-id="ed.servedByCastId.value"
       :pending="ed.pending.value"
       :master-name-map="masterNameMap"
       :served-by-map="servedByMap"
+      :served-by-options="servedByOptions"
       :master-price-map="masterPriceMap"
       @update:selectedCat="v => (ed.selectedOrderCat.value = v)"
       @addPending="(id, qty) => ed.addPending(id, qty)"
@@ -775,6 +888,7 @@ async function handleSave(){
        :items="bill.items || []"
        :master-name-map="masterNameMap"
        :served-by-map="servedByMap"
+       :served-by-options="servedByOptions"
        :bill-opened-at="bill.opened_at || ''"
       :current="payCurrent"
       :display-grand-total="displayGrandTotal"
@@ -797,6 +911,7 @@ async function handleSave(){
       @incItem="incItem"
       @decItem="decItem"
       @deleteItem="removeItem"
+      @changeServedBy="changeServedBy"
       @update:discountRule="onDiscountRuleChange"
       @saveDiscount="onSaveDiscount"
      />

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { api } from '@/api'
@@ -98,8 +98,10 @@ async function loadBills() {
       params: {
         closed_at__isnull: false,
         ordering: '-closed_at',
-        page_size: 1000 // クライアント側でフィルタリングするため多めに取得
-      }
+        page_size: 1000, // クライアント側でフィルタリングするため多めに取得
+        _ts: Date.now(), // キャッシュバスター
+      },
+      cache: false, // Service Worker/HTTPキャッシュ回避
     }
     // 店舗ID指定がある場合はヘッダで明示
     if (props.storeId) {
@@ -243,6 +245,8 @@ function applyAllPeriods() {
 }
 
 onMounted(loadBills)
+// タブ戻りや keep-alive 復帰時にも最新取得
+onActivated(loadBills)
 watch(() => props.storeId, loadBills)
 </script>
 

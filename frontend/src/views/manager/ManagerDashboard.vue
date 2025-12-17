@@ -50,6 +50,8 @@ const kpi = ref({
 
 const billsToday = ref([])   // 今日の伝票（最小表示用）
 
+
+
 /* ----------------- ユーティリティ ----------------- */
 const asId = v => (v && typeof v === 'object') ? v.id : v
 const fmtYen = n => `¥${(Number(n)||0).toLocaleString()}`
@@ -69,22 +71,55 @@ async function loadAll(){
     const allBills = await fetchBills({ ordering: '-opened_at' }, { cache: false }).catch(()=>[])
     const onlyToday = (Array.isArray(allBills?.results) ? allBills.results : allBills || [])
       .filter(b => b.opened_at && dayjs(b.opened_at).isSame(d, 'day'))
-    billsToday.value = onlyToday
+    console.log('[Dashboard] allBills count:', Array.isArray(allBills?.results) ? allBills.results.length : allBills.length)
+    console.log('[Dashboard] onlyToday count:', onlyToday.length)
+    console.log('[Dashboard] onlyToday:', onlyToday)
 
-    // 来店数：当日の全伝票の “customers” をユニーク化
-    const custSet = new Set()
-    for (const b of onlyToday) {
-      const arr = Array.isArray(b.customers) ? b.customers : []
-      for (const c of arr) custSet.add(asId(c))
+    // まず今日の伝票（削除除外込み）を確定
+    const isDeletedBill = (b) => {
+      // 論理削除フィールドで判定
+      return Boolean(b?.is_deleted || b?.deleted_at || b?.status === 'deleted' || b?.is_active === false)
     }
 
-    // オープン中／未決済
-    const openCnt      = onlyToday.filter(b => !b.closed_at).length
-    const unsettledCnt = onlyToday.filter(b => {
-      const st = (b.settled_total ?? b.grand_total) || 0
-      const pt = b.paid_total || 0
-      return b.closed_at && pt < st
-    }).length
+    // 重複除去関数
+    const uniqById = (arr) => Array.from(new Map(arr.map(b => [String(b.id), b])).values())
+
+    const todayBills = uniqById(onlyToday.filter(b => !isDeletedBill(b)))
+    billsToday.value = todayBills
+
+    // 重複チェック + 削除っぽいフラグの実態確認 + pax確認
+    const rows = todayBills.map(b => ({
+      id: b.id,
+      opened_at: b.opened_at,
+      closed_at: b.closed_at,
+      pax: b.pax,
+      // 削除判定に使えそうな候補を全部見える化（実際に何が返ってきてるか確認する）
+      is_deleted: b.is_deleted,
+      deleted_at: b.deleted_at,
+      is_active: b.is_active,
+      status: b.status,
+    }))
+    console.table(rows)
+
+    const ids = todayBills.map(b => b.id)
+    const dupIds = ids.filter((id, i) => ids.indexOf(id) !== i)
+    console.log('[todayBills] count=', todayBills.length, 'unique=', new Set(ids).size, 'dupIds=', dupIds)
+
+    // 来店数 = PAX合計（未入力は 0）
+    const paxTotal = todayBills.reduce((s, b) => s + Number(b?.pax || 0), 0)
+    console.log('[paxTotal]', paxTotal)
+
+    // オープン中
+    const openCnt = todayBills.filter(b => !b.closed_at).length
+
+    // 決済済み（= closed かつ 支払い>=会計）
+    const isPaid = (b) => {
+      const st = Number((b.settled_total ?? b.grand_total) || 0)
+      const pt = Number(b.paid_total || 0)
+      return Boolean(b.closed_at) && pt >= st && st > 0
+    }
+    const paidCnt = todayBills.filter(isPaid).length
+    console.log('[Dashboard] openCnt:', openCnt, 'paidCnt:', paidCnt)
 
 // 3) 出勤状況（キャスト／スタッフ）- キャッシュ無効化
 const [castShiftsRaw, staffShiftsRaw] = await Promise.all([
@@ -123,9 +158,9 @@ kpi.value = {
   sales_total : pl.sales_total || 0,
   sales_cash  : pl.sales_cash  || 0,
   sales_card  : pl.sales_card  || 0,
-  visitors    : custSet.size,
+  visitors    : paxTotal,
   open_count  : openCnt,
-  unsettled_count: unsettledCnt,
+  unsettled_count: paidCnt,  // 名前は unsettled_count だが実際には "決済済み" の数
   cast_on_duty: castOn,
   staff_on_duty: staffOn,
 }
@@ -219,7 +254,7 @@ const kpiSalesLabel = computed(() =>
 
 
 const kpiOpenLabel = computed(() =>
-  `${kpi.value.unsettled_count}/${kpi.value.open_count}`
+  `${kpi.value.unsettled_count}/${kpi.value.open_count}`  // 当日のオープン中（決済待ち）伝票数
 )
 const kpiDutyLabel = computed(() =>
   `${kpi.value.cast_on_duty}/${kpi.value.staff_on_duty}`
@@ -305,10 +340,10 @@ const kpiDutyLabel = computed(() =>
             </div>
           </div>
         </div>
-        <!-- 来店数 -->
+        <!-- 来客数 -->
         <div class="col-4 col-md-3 d-flex">
           <div class="card h-100 w-100">
-            <div class="card-header title">来店数</div>
+            <div class="card-header title">来客数</div>
             <div class="card-body value">{{ kpi.visitors }}</div>
           </div>
         </div>
@@ -317,12 +352,12 @@ const kpiDutyLabel = computed(() =>
         <div class="col-4 col-md-3 d-flex">
           <div class="card h-100 w-100">
             <div class="card-header title">伝票
-              <MiniTip v-model="showOpenTip" text="会計済み/オープン中" align="right">
+              <MiniTip v-model="showOpenTip" text="決済済み/オープン中" align="right">
                 <button type="button" class="btn btn-link p-0 text-muted d-flex align-items-center" @click.stop="showOpenTip = !showOpenTip">
                   <IconInfoCircle />
                 </button>
               </MiniTip>
-            </div><!-- このinnerがbadgeというかtipsとして出てくる -->
+            </div>
             <div class="card-body value">{{ kpiOpenLabel }}</div>
           </div>
         </div>

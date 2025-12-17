@@ -180,8 +180,25 @@ class StoreSeatSetting(models.Model):
 
 # ── バック率を 3 レーン持つカテゴリ
 class ItemCategory(models.Model):
+    # 大カテゴリの選択肢（固定7種）
+    MAJOR_GROUP_CHOICES = [
+        ('drink', 'ドリンク'),
+        ('champagne', 'シャンパン'),
+        ('food', 'フード'),
+        ('other', 'その他商品'),
+        ('set', 'セット（人数）'),
+        ('extension', '延長'),
+        ('other_fee', 'その他料金'),
+    ]
+    
     code  = models.CharField(max_length=20, primary_key=True)      # 'set' 'drink' …
     name  = models.CharField(max_length=30)
+    major_group = models.CharField(
+        max_length=20,
+        choices=MAJOR_GROUP_CHOICES,
+        default='other',
+        help_text='集計用の大カテゴリ（7種類で固定）'
+    )
     back_rate_free       = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
     back_rate_nomination = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
     back_rate_inhouse    = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.30'))
@@ -444,6 +461,7 @@ class Bill(models.Model):
     opened_at = models.DateTimeField(default=timezone.now, db_index=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     expected_out = models.DateTimeField('退店予定', null=True, blank=True)
+    pax = models.PositiveSmallIntegerField(default=0, verbose_name='人数')
     customers = models.ManyToManyField(
         'billing.Customer',
         through='billing.BillCustomer',
@@ -525,11 +543,18 @@ class Bill(models.Model):
         for it in self.items.all():
             code = (it.code or '').lower()
             dur = it.duration_min or 0
-            if code.startswith('set') and not base_found:
+            cat_code = ''
+            try:
+                cat_code = (getattr(getattr(it, 'item_master', None), 'category', None).code or '').lower()
+            except Exception:
+                cat_code = ''
+
+            # カテゴリ優先で判定（後方互換でコード接頭辞も許容）
+            if (cat_code == 'set' or ('set' in code)) and not base_found:
                 base_found = True
                 minutes += dur
-            elif code.startswith(('extension', 'ext')):
-                minutes += dur * it.qty
+            elif (cat_code in ('ext', 'extension') or ('extension' in code) or ('ext' in code)):
+                minutes += dur * (it.qty or 0)
         self.expected_out = self.opened_at + timedelta(minutes=minutes) if minutes else None
         if save:
             self.save(update_fields=['expected_out'])
@@ -544,6 +569,13 @@ class Bill(models.Model):
         
         result = BillCalculator(self).execute()
 
+        # 閉店時刻は原則「opened_at + SET/EXT 合計分」に合わせる
+        # expected_out が未計算の可能性もあるため、ここで最新を計算
+        try:
+            latest_expected = self.update_expected_out(save=False)
+        except Exception:
+            latest_expected = None
+
         # ← ここを追加
         if settled_total is None and self.paid_total:
             settled_total = int(self.paid_total)
@@ -556,7 +588,8 @@ class Bill(models.Model):
         self.total          = settled_total or result.total
         if settled_total is not None:
             self.settled_total = settled_total
-        self.closed_at = timezone.now()
+        # expected_out があればそれを閉店時刻に採用、無ければ現在時刻
+        self.closed_at = latest_expected or timezone.now()
 
         from .models import CastPayout, CastDailySummary  # ループ依存対策
 
@@ -619,8 +652,9 @@ class Bill(models.Model):
         if not self.closed_at:
             return
         
-        date = self.closed_at.date()
-        hour = self.closed_at.hour
+        dt = timezone.localtime(self.closed_at)
+        date = dt.date()
+        hour = dt.hour
         
         # HourlySalesSummary を取得または作成
         summary, _ = HourlySalesSummary.objects.get_or_create(
@@ -812,8 +846,10 @@ class BillItem(models.Model):
 
         super().save(*args, **kwargs)
 
-        # SET/EXT なら退店予定更新
-        if self.code.startswith(('set', 'extension', 'ext')):
+        # SET/EXT なら退店予定更新（カテゴリ優先、後方互換でコード部分一致も）
+        cat_id = getattr(getattr(self, 'item_master', None), 'category_id', '') or ''
+        code = (self.code or '').lower()
+        if (str(cat_id).lower() in ('set', 'ext')) or ('set' in code) or ('extension' in code) or ('ext' in code):
             self.bill.update_expected_out(save=True)
 
         # ★ ここで金額を再計算（OPEN中でも常に最新に）
