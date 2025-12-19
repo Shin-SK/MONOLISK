@@ -36,17 +36,20 @@ export default defineConfig(({ mode }) => {
 
       Icons({ autoInstall: true }),
 
-      // ← 手動登録に一本化（自動更新を無効化して update-watcher.js に制御を任せる）
+      // PWA/Service Worker 設定（本番は自動更新・即時適用）
       VitePWA({
-        registerType: 'prompt',
+        registerType: 'autoUpdate',
         injectRegister: 'auto',
         devOptions: { enabled: mode === 'development', type: 'module' },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         workbox: {
-          skipWaiting: false,
-          clientsClaim: false,
+          skipWaiting: true,
+          clientsClaim: true,
           cleanupOutdatedCaches: true,
+          // SPA 直リンク/リロードは index.html にフォールバック
           navigateFallback: '/index.html',
+          // HTMLでない拡張子やAPI/手動配信ディレクトリは除外
+          navigateFallbackAllowlist: [/^\/(?:$|[^.].*)/],
           navigateFallbackDenylist: [/^\/api\//, /^\/manuals\//],
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           globIgnores: ['**/*.map'],
