@@ -1127,8 +1127,7 @@ class CastRankingSerializer(serializers.ModelSerializer):
                 secure=True,
             )
             return url
-        return static('img/user-default.png')
-
+        return ""
 
 
 class StaffSerializer(serializers.ModelSerializer):
