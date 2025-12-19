@@ -491,6 +491,13 @@ class Bill(models.Model):
     )
     paid_cash = models.PositiveIntegerField(default=0)  # 現金受領
     paid_card = models.PositiveIntegerField(default=0)  # カード請求
+    
+    # ─── 給与計算の予防線（スナップショット） ──────
+    payroll_snapshot = models.JSONField(
+        null=True, blank=True, 
+        verbose_name='給与スナップショット',
+        help_text='クローズ時点の給与内訳を保存（不変）'
+    )
 
     @property
     def manual_discount_total(self) -> int:
@@ -592,18 +599,23 @@ class Bill(models.Model):
         self.closed_at = latest_expected or timezone.now()
 
         from .models import CastPayout, CastDailySummary  # ループ依存対策
+        from billing.services import generate_payroll_snapshot
 
         with transaction.atomic():
-            # ① 退席前に stay_type をキャッシュ
+            # ① 給与スナップショット生成（初回クローズのみ。上書きしない）
+            if not self.payroll_snapshot:
+                self.payroll_snapshot = generate_payroll_snapshot(self)
+            
+            # ② 退席前に stay_type をキャッシュ
             stay_map = {
                 s.cast_id: s.stay_type
                 for s in self.stays.filter(left_at__isnull=True)
             }
 
-            # ② 伝票を確定（discount_ruleも保存）
+            # ② 伝票を確定（discount_ruleも保存 + payroll_snapshot）
             self.save(update_fields=[
                 'subtotal', 'service_charge', 'tax', 'grand_total',
-                'total', 'settled_total', 'closed_at', 'discount_rule'
+                'total', 'settled_total', 'closed_at', 'discount_rule', 'payroll_snapshot'
             ])
 
             # ③ 一括退席

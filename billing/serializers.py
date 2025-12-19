@@ -622,6 +622,10 @@ class BillSerializer(serializers.ModelSerializer):
     # ★ 手入力割引：入出力
     manual_discounts = BillDiscountLineSerializer(many=True, required=False)
     manual_discount_total = serializers.SerializerMethodField(read_only=True)
+    
+    # ★ 給与スナップショット・dirty 判定
+    payroll_snapshot = serializers.JSONField(read_only=True)
+    payroll_dirty = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Bill
@@ -644,12 +648,15 @@ class BillSerializer(serializers.ModelSerializer):
             # ---- 割引 ----
             "discount_rule",
             "manual_discounts", "manual_discount_total",
+            # ---- 給与スナップショット ----
+            "payroll_snapshot", "payroll_dirty",
         )
         read_only_fields = (
             "subtotal", "service_charge", "tax", "grand_total", "total",
             "closed_at", "set_rounds","ext_minutes",
             "paid_total","change_due",
             "manual_discount_total",
+            "payroll_snapshot", "payroll_dirty",
         )
         depth = 2
 
@@ -742,6 +749,14 @@ class BillSerializer(serializers.ModelSerializer):
     def get_customer_display_name(self, obj):
         first = obj.customers.first()
         return first.display_name if first else ''
+
+    def get_payroll_dirty(self, obj):
+        """
+        payroll_dirty 判定：snapshot が存在し、
+        現在の計算ハッシュが snapshot ハッシュと異なる場合 True。
+        """
+        from billing.services import is_payroll_dirty
+        return is_payroll_dirty(obj)
 
     def to_representation(self, obj):
         rep = super().to_representation(obj)

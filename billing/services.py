@@ -5,8 +5,58 @@ from typing import Set, Iterable          # 追加
 from django.db.models import Sum, Case, When, IntegerField, F, Q, Value
 from django.db.models.functions import Coalesce
 from .models import Cast, CastPayout, Bill, BillItem, ItemMaster
+import hashlib
+import json
+from django.utils import timezone
 
 
+# ─────────────────────────────────────────
+# 給与計算の予防線（スナップショット生成）
+# ─────────────────────────────────────────
+# ★ billing/payroll/snapshot.py へ統合
+# ここから以下の関数を使用する：
+#   - build_payroll_snapshot(bill)
+#   - compute_current_hash(bill)
+#   - is_payroll_dirty(bill)
+
+def generate_payroll_snapshot(bill: "Bill") -> dict:
+    """
+    伝票をクローズする際、その時点での給与内訳をスナップショットとして生成。
+    
+    新実装は billing/payroll/snapshot.py に統合。
+    """
+    from billing.payroll.snapshot import build_payroll_snapshot
+    return build_payroll_snapshot(bill)
+
+
+# 以下は is_payroll_dirty() が呼び出すため、services.py でも定義しておく
+def compute_current_hash(bill: "Bill") -> str:
+    """
+    Bill の現在状態から動的に hash を計算し直す。
+    payroll_dirty 判定に使用。
+    """
+    from billing.payroll.snapshot import compute_current_hash as _compute_current_hash
+    return _compute_current_hash(bill)
+
+
+def is_payroll_dirty(bill: "Bill") -> bool:
+    """
+    Bill が payroll_dirty 状態か判定。
+    
+    条件:
+    - payroll_snapshot が存在する（クローズ済）
+    - 現在の計算ハッシュが snapshot ハッシュと異なる
+    
+    Returns:
+        True: dirty（更新あり）、False: clean（更新なし）
+    """
+    from billing.payroll.snapshot import is_payroll_dirty as _is_payroll_dirty
+    return _is_payroll_dirty(bill)
+
+
+# ─────────────────────────────────────────
+# 既存の関数群
+# ─────────────────────────────────────────
 # 旧ロジックが必要なら残してOKだが いまは BillCalculator を真とする
 def calc_bill_totals(bill):
     items = bill.items.select_related('item_master', 'served_by_cast')

@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { fetchBill } from '@/api'
+import PayrollSnapshotPanel from '@/components/billing/PayrollSnapshotPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -11,6 +12,16 @@ const id = Number(route.params.id)
 const bill = ref(null)
 const loading = ref(false)
 const errorMsg = ref('')
+
+const payrollSnapshot = computed(() => {
+  const b = bill.value || {}
+  return b.payroll_snapshot || b.payrollSnapshot || null
+})
+
+const payrollDirty = computed(() => {
+  const b = bill.value || {}
+  return b.payroll_dirty ?? b.payrollSnapshotDirty ?? b.payroll_dirty ?? false
+})
 
 const yen  = n => `¥${(Number(n||0)).toLocaleString()}`
 const dt   = s => s ? dayjs(s).format('YYYY/MM/DD HH:mm') : '—'
@@ -76,6 +87,14 @@ onMounted(load)
               <tr><th colspan="4" class="text-end">合計</th><th class="text-end fw-bold">{{ yen(bill.grand_total ?? bill.total) }}</th></tr>
             </tfoot>
           </table>
+        </div>
+
+        <div class="mt-4">
+          <PayrollSnapshotPanel
+            :snapshot="payrollSnapshot"
+            :dirty="payrollDirty"
+            :bill-id="bill?.id"
+          />
         </div>
       </div>
     </div>
