@@ -843,18 +843,43 @@ class BillItem(models.Model):
                 self.exclude_from_payout = True
 
         # back_rate は保存前に解決して持たせる（失敗しても継続）
+        # Phase1-1: store 解決を複数経路フォールバック（王道の防波堤）
         try:
             from billing.services.backrate import resolve_back_rate
+            import logging
+            logger = logging.getLogger(__name__)
+            
             bill   = getattr(self, 'bill', None)
             im     = getattr(self, 'item_master', None)
-            store  = getattr(getattr(bill, 'table', None), 'store', None)
             cat    = getattr(im, 'category', None)
             cast   = getattr(self, 'served_by_cast', None)
             stay   = self._stay_type_hint()
+            
+            # ★ 優先順位: A. bill.table.store → B. item_master.store → C. bill.store
+            store = None
+            if bill and hasattr(bill, 'table') and bill.table:
+                store = getattr(bill.table, 'store', None)
+            
+            if not store and im:
+                store = getattr(im, 'store', None)
+            
+            if not store and bill:
+                store = getattr(bill, 'store', None)
+            
             if store:
                 self.back_rate = resolve_back_rate(store=store, category=cat, cast=cast, stay_type=stay)
+            else:
+                # store が最終的に取得できない場合は警告を出す（back_rate は変更しない）
+                logger.warning(
+                    f"[BillItem.save] Could not resolve store for back_rate calculation: "
+                    f"billitem_id={self.id}, bill_id={self.bill_id}, "
+                    f"item_master_id={getattr(im, 'id', 'N/A')}, "
+                    f"category_code={getattr(cat, 'code', 'N/A')}, "
+                    f"cast_id={getattr(cast, 'id', 'N/A')}, stay_type={stay}. "
+                    f"back_rate will remain {self.back_rate} (may default to 0)"
+                )
         except Exception as e:
-            # ★ import 失敗など根本的な問題を検知できるようにログ出力
+            # import 失敗など根本的な問題を検知できるようにログ出力
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(
