@@ -60,7 +60,9 @@ def _add_front_stubs(rec: Dict[str, Any]) -> Dict[str, Any]:
         rec["sales_cash"] = 0
     if "sales_card" not in rec:
         rec["sales_card"] = 0
-    rec.setdefault("cast_labor",   rec.get("labor_cost", 0))
+    rec.setdefault("cast_hourly", int(rec.get("hourly_pay", 0) or 0))
+    rec.setdefault("cast_commission", int(rec.get("commission", 0) or 0))
+    rec.setdefault("cast_labor",   int(rec.get("labor_cost", 0) or 0))
     rec.setdefault("driver_labor", 0)
     rec.setdefault("custom_expense", 0)
     rec.setdefault("gross_profit", rec.get("operating_profit", 0))

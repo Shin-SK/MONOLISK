@@ -139,6 +139,9 @@ async function fetchMultiStorePL(storeIds) {
       sales_card       : sum('sales_card'),
       guest_count      : sum('guest_count'),
       avg_spend        : sum('sales_total') / (sum('guest_count') || 1),
+      cast_hourly      : sum('cast_hourly'),
+      cast_commission  : sum('cast_commission'),
+      cast_labor       : sum('cast_labor'),
       labor_cost       : sum('labor_cost'),
       operating_profit : sum('operating_profit'),
       drink_sales      : sum('drink_sales'),
@@ -279,8 +282,8 @@ watch(() => props.storeIds, fetchData, { deep: true })
         </div>
         <div class="col-12 col-md-4">
           <div class="box">
-            <div class="head">人件費</div>
-            <div class="number">{{ yen(pl.labor_cost) }}</div>
+            <div class="head">人件費<small>（時給＋歩合）</small></div>
+            <div class="number">{{ yen(pl.cast_labor ?? pl.labor_cost) }}</div>
           </div>
         </div>
         <div class="col-12 col-md-4">
@@ -299,76 +302,94 @@ watch(() => props.storeIds, fetchData, { deep: true })
         />
       </div> -->
 
-      <table class="table no-vert my-5">
-        <tbody>
-          <tr><th>売上</th><td class="text-end fw-bold">{{ yen(pl.sales_total ?? ((pl.sales_cash ?? 0) + (pl.sales_card ?? 0))) }}</td></tr>
-          <tr><th>来客数</th><td class="text-end">{{ pl.guest_count }}</td></tr>
-          <tr>
-            <th>
-              <div class="d-flex align-items-center gap-1">
-                平均客単価
-                <MiniTip v-model="showOpenTipSalesAve" text="平均値 / 人数" align="right">
-                  <button type="button" class="btn btn-link p-0 text-muted d-flex align-items-center" @click.stop="showOpenTipSalesAve = !showOpenTipSalesAve">
-                    <IconInfoCircle />
-                  </button>
-                </MiniTip>
-              </div>
-            </th>
-            <td class="text-end">{{ yen(pl.avg_spend) }} / {{ pl.guest_count }}</td>
-          </tr>
-          <tr><th>ドリンク売上</th><td class="text-end">{{ yen(pl.drink_sales) }}</td></tr>
-          <tr>
-            <th>
-              <div class="d-flex align-items-center gap-1">
-                ドリンク平均単価
-                <MiniTip v-model="showOpenTipDrinkAve" text="平均値 / 杯数" align="right">
-                  <button type="button" class="btn btn-link p-0 text-muted d-flex align-items-center" @click.stop="showOpenTipDrinkAve = !showOpenTipDrinkAve">
-                    <IconInfoCircle />
-                  </button>
-                </MiniTip>
-              </div>
-            </th>
-            <td class="text-end">{{ yen(pl.drink_unit_price) }} / {{ pl.drink_qty }}</td>
-          </tr>
-          <tr><th>シャンパン売上</th><td class="text-end">{{ yen(pl.champagne_sales ?? 0) }}</td></tr>
-          <tr>
-            <th>
-              <div class="d-flex align-items-center gap-1">
-                  延長売上
-                <MiniTip v-model="showOpenTipEx" text="売上 / 人数" align="right">
-                  <button type="button" class="btn btn-link p-0 text-muted d-flex align-items-center" @click.stop="showOpenTipEx = !showOpenTipEx">
-                    <IconInfoCircle />
-                  </button>
-                </MiniTip>
-              </div>            </th>
-            <td class="text-end">{{ yen(pl.extension_sales ?? 0) }} / {{ pl.extension_qty ?? 0 }}</td>
-          </tr>
-          <tr><th>その他売上</th><td class="text-end">{{ yen(pl.other_sales ?? 0) }}</td></tr>
-        </tbody>
-      </table>
-
       <!-- ▼ 追加：会計内訳（必ず0円表示） -->
       <div class="mt-4">
         <h6 class="fw-bold mb-3">会計内訳</h6>
         <div class="row g-3">
+          <div class="col-12">
+              <div class="h-100">
+                <div class="bg-white d-flex justify-content-between align-items-center p-3">
+                  <div class="fw-bold">売上合計</div>
+                  <div class="fs-5 fw-bold">{{ yen(pl.sales_total ?? ((pl.sales_cash ?? 0) + (pl.sales_card ?? 0))) }}</div>
+                </div>
+              </div>          
+          </div>
           <div class="col-mb-6">
             <div class="h-100">
               <div class="bg-white d-flex justify-content-between align-items-center p-3">
-                <div>カード会計</div>
-                <div class="fs-5 fw-bold">{{ yen(pl.sales_card ?? 0) }}</div>
+                <div class="ps-3">カード会計</div>
+                <div class="">{{ yen(pl.sales_card ?? 0) }}</div>
               </div>
             </div>
           </div>
           <div class="col-mb-6">
             <div class="h-100">
               <div class="bg-white d-flex justify-content-between align-items-center p-3">
-                <div>現金会計</div>
-                <div class="fs-5 fw-bold">{{ yen(pl.sales_cash ?? 0) }}</div>
+                <div class="ps-3">現金会計</div>
+                <div class="">{{ yen(pl.sales_cash ?? 0) }}</div>
               </div>
             </div>
           </div>
         </div>
+
       </div>
+
+      <div class="mt-5">
+        <h6 class="fw-bold mb-3">収支</h6>
+        <table class="table no-vert mb-5">
+          <tbody>
+            <tr class="text-blue border-top"><th>売上</th><td class="text-end fw-bold">{{ yen(pl.sales_total ?? ((pl.sales_cash ?? 0) + (pl.sales_card ?? 0))) }}</td></tr>
+            <tr class="text-blue"><th>来客数</th><td class="text-end">{{ pl.guest_count }}</td></tr>
+            <tr class="text-blue">
+              <th>
+                <div class="d-flex align-items-center gap-1">
+                  平均客単価
+                  <MiniTip v-model="showOpenTipSalesAve" text="平均値 / 人数" align="right">
+                    <button type="button" class="btn btn-link p-0 text-muted d-flex align-items-center" @click.stop="showOpenTipSalesAve = !showOpenTipSalesAve">
+                      <IconInfoCircle />
+                    </button>
+                  </MiniTip>
+                </div>
+              </th>
+              <td class="text-end">{{ yen(pl.avg_spend) }} / {{ pl.guest_count }}</td>
+            </tr>
+            <tr class="text-blue"><th>ドリンク売上</th><td class="text-end">{{ yen(pl.drink_sales) }}</td></tr>
+            <tr class="text-blue">
+              <th>
+                <div class="d-flex align-items-center gap-1">
+                  ドリンク平均単価
+                  <MiniTip v-model="showOpenTipDrinkAve" text="平均値 / 杯数" align="right">
+                    <button type="button" class="btn btn-link p-0 text-muted d-flex align-items-center" @click.stop="showOpenTipDrinkAve = !showOpenTipDrinkAve">
+                      <IconInfoCircle />
+                    </button>
+                  </MiniTip>
+                </div>
+              </th>
+              <td class="text-end">{{ yen(pl.drink_unit_price) }} / {{ pl.drink_qty }}</td>
+            </tr>
+            <tr class="text-blue"><th>シャンパン売上</th><td class="text-end">{{ yen(pl.champagne_sales ?? 0) }}</td></tr>
+            <tr class="text-blue">
+              <th>
+                <div class="d-flex align-items-center gap-1">
+                    延長売上
+                  <MiniTip v-model="showOpenTipEx" text="売上 / 人数" align="right">
+                    <button type="button" class="btn btn-link p-0 text-muted d-flex align-items-center" @click.stop="showOpenTipEx = !showOpenTipEx">
+                      <IconInfoCircle />
+                    </button>
+                  </MiniTip>
+                </div>            </th>
+              <td class="text-end">{{ yen(pl.extension_sales ?? 0) }} / {{ pl.extension_qty ?? 0 }}</td>
+            </tr>
+            <tr class="text-blue"><th>その他売上</th><td class="text-end">{{ yen(pl.other_sales ?? 0) }}</td></tr>
+            <tr class="text-red"><th>人件費（合算）</th><td class="text-end fw-bold">{{ yen(pl.cast_labor ?? pl.labor_cost ?? 0) }}</td></tr>
+            <tr class="text-red"><th class="fw-normal ps-5">時給</th><td class="text-end">{{ yen(pl.cast_hourly ?? pl.hourly_pay ?? 0) }}</td></tr>
+            <tr class="text-red"><th class="fw-normal ps-5">歩合</th><td class="text-end">{{ yen(pl.cast_commission ?? pl.commission ?? 0) }}</td></tr>
+            <tr><th>営業利益</th><td class="text-end fw-bold fs-5">{{ yen(pl.operating_profit ?? 0) }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+
       <!-- ▲ ここまで追加 -->
     </template>
 
@@ -377,6 +398,12 @@ watch(() => props.storeIds, fetchData, { deep: true })
 </template>
 
 <style scoped>
+.table .text-blue{
+  --bs-table-color: #0051c9 !important;
+}
+.table .text-red{
+  --bs-table-color: #bb0012 !important;
+}
 .pl-daily input,
 .pl-daily select { min-width: 130px; }
 

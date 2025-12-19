@@ -186,7 +186,7 @@ export const getStore  = id => api.get(`billing/stores/${id}/`, { cache: false }
 
 export async function getBillDailyPL(date) {
 	const { data } = await api.get('billing/pl/daily/', { params: { date } })
-	return { sales_cash:0, sales_card:0, sales_total:0, cast_labor:0, driver_labor:0, custom_expense:0, gross_profit:0, ...data }
+  return { sales_cash:0, sales_card:0, sales_total:0, cast_hourly:0, cast_commission:0, cast_labor:0, driver_labor:0, custom_expense:0, gross_profit:0, ...data }
 }
 
 export async function getHourlySales(date, storeId) {
