@@ -853,8 +853,15 @@ class BillItem(models.Model):
             stay   = self._stay_type_hint()
             if store:
                 self.back_rate = resolve_back_rate(store=store, category=cat, cast=cast, stay_type=stay)
-        except Exception:
-            pass
+        except Exception as e:
+            # ★ import 失敗など根本的な問題を検知できるようにログ出力
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"[BillItem.save] resolve_back_rate failed for item_id={self.id}: {e}. "
+                f"back_rate will remain {self.back_rate} (may default to 0)",
+                exc_info=True  # スタックトレースも出力
+            )
 
         super().save(*args, **kwargs)
 

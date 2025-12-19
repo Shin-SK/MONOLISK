@@ -1,4 +1,7 @@
-# billing/services.py
+# billing/service_utils.py
+# （リネーム: 旧 services.py）
+# 衝突解消： billing/services/ パッケージとの命名衝突を回避するため
+# services.py → service_utils.py へリネーム
 
 from decimal import Decimal, ROUND_HALF_UP, ROUND_FLOOR
 from typing import Set, Iterable          # 追加
@@ -29,7 +32,7 @@ def generate_payroll_snapshot(bill: "Bill") -> dict:
     return build_payroll_snapshot(bill)
 
 
-# 以下は is_payroll_dirty() が呼び出すため、services.py でも定義しておく
+# 以下は is_payroll_dirty() が呼び出すため、service_utils.py でも定義しておく
 def compute_current_hash(bill: "Bill") -> str:
     """
     Bill の現在状態から動的に hash を計算し直す。
