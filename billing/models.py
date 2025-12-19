@@ -832,6 +832,61 @@ class BillItem(models.Model):
         if getattr(self, 'is_dohan', False):      return 'dohan'
         return 'free'
 
+    @property
+    def effective_back_rate(self) -> Decimal:
+        """
+        Phase2: 実効バックレート（都度計算）
+        - OPEN中は resolve_back_rate で都度計算
+        - CLOSED済みは DB の back_rate を返す
+        
+        計算: store を A/B/C ルートで解決 → resolve_back_rate を呼ぶ
+        """
+        try:
+            # CLOSED済みなら DB の back_rate を確定値として返す
+            if self.bill and self.bill.closed_at is not None:
+                return self.back_rate
+            
+            # OPEN中なら都度計算
+            from billing.services.backrate import resolve_back_rate
+            
+            bill = self.bill
+            im = self.item_master
+            cat = im.category if im else None
+            cast = self.served_by_cast
+            stay = self._stay_type_hint()
+            
+            # store 解決: A. bill.table.store → B. item_master.store → C. bill.store
+            store = None
+            if bill and hasattr(bill, 'table') and bill.table:
+                store = bill.table.store
+            
+            if not store and im:
+                store = im.store
+            
+            if not store and bill:
+                store = getattr(bill, 'store', None)
+            
+            if store:
+                return resolve_back_rate(store=store, category=cat, cast=cast, stay_type=stay)
+            else:
+                # store が取得できなかった場合は DB の back_rate を返す（フォールバック）
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"[BillItem.effective_back_rate] Could not resolve store for billitem_id={self.id}, "
+                    f"falling back to DB back_rate={self.back_rate}"
+                )
+                return self.back_rate
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"[BillItem.effective_back_rate] Exception calculating effective_back_rate for item_id={self.id}: {e}. "
+                f"Falling back to DB back_rate={self.back_rate}",
+                exc_info=True
+            )
+            return self.back_rate
+
     def save(self, *args, **kwargs):
         self.is_nomination = bool(self.is_nomination)
         self.is_inhouse    = bool(self.is_inhouse)

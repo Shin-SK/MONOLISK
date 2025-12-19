@@ -297,6 +297,8 @@ class BillItemSerializer(serializers.ModelSerializer):
     served_by_cast = CastMiniSerializer(read_only=True)
     # 小計はサーバ側で算出するだけ
     subtotal = serializers.SerializerMethodField()
+    # Phase2: back_rate は OPEN中は effective、CLOSED済みは DB値
+    back_rate = serializers.SerializerMethodField()
     bill = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
@@ -306,6 +308,13 @@ class BillItemSerializer(serializers.ModelSerializer):
 
     def get_subtotal(self, obj):
         return obj.subtotal
+    
+    def get_back_rate(self, obj):
+        """
+        Phase2: OPEN中は effective_back_rate（都度計算）、
+               CLOSED済みは DB の back_rate（確定値）を返す
+        """
+        return obj.effective_back_rate
     
     # ───────── バリデーション（締め済みでも修正OK前提で極端値を防ぐ） ─────────
     def validate_qty(self, value):
