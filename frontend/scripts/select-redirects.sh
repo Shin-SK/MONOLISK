@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 必須: REDIRECTS_PROFILE=prod|stg
+# 必須: REDIRECTS_PROFILE=prod|stg|sandbox
 case "${REDIRECTS_PROFILE:-}" in
-  prod|stg) ;;
+  prod|stg|sandbox) ;;
   *)
-    echo "ERROR: REDIRECTS_PROFILE must be 'prod' or 'stg' (current: '${REDIRECTS_PROFILE:-<unset>}')" >&2
+    echo "ERROR: REDIRECTS_PROFILE must be 'prod' or 'stg' or 'sandbox' (current: '${REDIRECTS_PROFILE:-<unset>}')" >&2
     exit 1
     ;;
 esac
