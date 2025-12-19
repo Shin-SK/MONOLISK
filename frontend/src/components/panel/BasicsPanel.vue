@@ -153,6 +153,16 @@ const setQtyMap = ref({})    // セット商品ごとの数量 { masterId: qty }
 watch(() => props.male,   v => maleRef.value   = v)
 watch(() => props.female, v => femaleRef.value = v)
 
+// 再オープン時に男女が0でも pax が残っていれば復元する
+watch(() => props.pax, v => {
+  const currentTotal = (Number(maleRef.value)||0) + (Number(femaleRef.value)||0)
+  const newTotal = Number(v)||0
+  if (currentTotal === 0 && newTotal > 0) {
+    maleRef.value = newTotal
+    femaleRef.value = 0
+  }
+})
+
 const totalGuests = computed(() =>
   (Number(maleRef.value)||0) + (Number(femaleRef.value)||0)
 )

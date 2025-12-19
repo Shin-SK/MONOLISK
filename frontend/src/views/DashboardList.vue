@@ -98,9 +98,15 @@ async function open(target) {
 }
 
 /* ───── モーダル側から emit('saved') を受ける ───── */
-function handleSaved() {
+async function handleSaved() {
   showModal.value = false
-  bills.loadAll(true)
+  await bills.loadAll(true)
+}
+
+/* ───── モーダル側から emit('updated') を受ける（BillListTable と同じフロー） ───── */
+async function handleUpdated(payload) {
+  // payload が {id:..} / number / bill object のどれでも対応
+  await bills.loadAll(true)
 }
 
 /* ───── 新規伝票 ───── */
@@ -249,6 +255,7 @@ function liveCasts (b) {
       v-model="showModal"
       :bill="currentBill"
       @saved="handleSaved"
+      @updated="handleUpdated"
     />
   </div><!-- dashboard -->
 </template>

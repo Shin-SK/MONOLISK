@@ -107,6 +107,7 @@ export const createBill = (arg = {}) => {
 		table_id    : payload.table_id ?? payload.table ?? null,
 		opened_at   : payload.opened_at,               // 任意
 		expected_out: payload.expected_out ?? null,    // 任意
+		pax         : payload.pax ?? null,             // 任意: 人数
 		...(payload.memo != null ? { memo: String(payload.memo) } : {}),
 	}
 	return api.post('billing/bills/', body).then(r => r.data)

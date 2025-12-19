@@ -26,12 +26,13 @@ function calcPax(b) {
 
 function liveCasts(b) {
   const map = new Map();
+  const closed = !!(b && b.closed_at);
 
   (b.stays || []).forEach(s => {
     const id = s.cast?.id
     if (!id) return
 
-    const present = !s.left_at
+    const present = !closed && !s.left_at
     const entered = new Date(s.entered_at).getTime()
 
     const prev = map.get(id)
@@ -74,7 +75,7 @@ function handleEdit(e) {
 <template>
   <div
     class="card bill-card"
-    :class="{ 'selected': isSelected }"
+    :class="{ 'selected': isSelected, 'closed': !!bill.closed_at }"
   >
     <!-- チェックボックス（選択モード時のみ表示） -->
     <div v-if="isSelectable" class="card-checkbox">

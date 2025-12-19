@@ -167,11 +167,17 @@ async function ensureBillId () {
   const tableId = props.bill?.table?.id ?? props.bill?.table_id_hint ?? ed.tableId.value ?? null
   if (!tableId) { alert('テーブルが未選択です'); throw new Error('no table') }
   // 開始/終了が編集済みなら一緒に送る（サーバで now に戻されるのを防ぐ）
+  const paxPayload = (
+    Number(props.bill?.pax) ||
+    Number(ed.pax?.value) ||
+    Number(paxFromItems.value) ||
+    0
+  )
   const b = await createBill({
     table: tableId,
     opened_at: props.bill?.opened_at ?? null,
     expected_out: props.bill?.expected_out ?? null,
-    pax: paxFromItems.value || 0,  // ★ 人数も保存
+    pax: paxPayload,  // ★ 人数も保存（手入力優先）
   })
   // 戻り値で補正された場合はローカルにも反映
   if (b?.opened_at) props.bill.opened_at = b.opened_at
@@ -288,46 +294,11 @@ const masterPriceMap = computed(() => {
   return map
 })
 const servedByOptions = computed(() => {
-  const out = [], seen = new Set()
-  
-  // 勤務中の全キャスト（ed.casts から取得）
-  const allCasts = Array.isArray(ed.casts?.value) ? ed.casts.value : []
-  const onDuty = ed.onDutySet?.value || new Set()
-  
-  console.log('[BillModalSP] ed.casts.value=', ed.casts?.value)
-  console.log('[BillModalSP] onDutySet=', onDuty)
-  
-  // 今日出勤中のキャストのみフィルタ
-  const onDutyCasts = allCasts.filter(c => onDuty.has(c.id))
-  console.log('[BillModalSP] onDutyCasts filtered=', onDutyCasts)
-  
-  for (const c of onDutyCasts) {
-    const id = Number(c?.id)
-    if (!Number.isFinite(id) || seen.has(id)) continue
-    out.push({ id, label: c.stage_name || `cast#${id}` })
-    seen.add(id)
-  }
-  
-  // 念のため、現在着席中のキャストと伝票のstaysからも追加（重複は除外済み）
-  const cc = Array.isArray(ed.currentCasts.value) ? ed.currentCasts.value : []
-  for (const c of cc) {
-    const id = Number(c?.id)
-    if (!Number.isFinite(id) || seen.has(id)) continue
-    out.push({ id, label: c.stage_name || `cast#${id}` })
-    seen.add(id)
-  }
-  
-  const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
-  for (const s of stays) {
-    if (!s || s.left_at) continue
-    const id = Number(s.cast?.id)
-    if (!Number.isFinite(id) || seen.has(id)) continue
-    out.push({ id, label: s.cast.stage_name || `cast#${id}` })
-    seen.add(id)
-  }
-  
-  console.log('[BillModalSP] servedByOptions=', out)
-  return out
+  // 現在ついてるキャストのみを選択肢にする
+  return currentCastsForPanel.value.map(c => ({
+    id: c.id,
+    label: c.stage_name || `cast#${c.id}`
+  }))
 })
 const servedByMap = computed(() => { const map = {}; for (const c of servedByOptions.value || []) map[String(c.id)] = c.label; return map })
 
@@ -682,6 +653,28 @@ const currentCastsForPanel = computed(() => {
   })
 })
 
+// 注文パネル: 最初のキャストを自動選択
+watch(() => currentCastsForPanel.value, (casts) => {
+  if (!casts || casts.length === 0) return
+  const currentIds = casts.map(c => c.id)
+  const currentSelected = ed.servedByCastId?.value
+  // 既に有効なキャストが選択されていれば変更しない
+  if (currentSelected && currentIds.includes(currentSelected)) return
+  // 最初のキャストを自動選択
+  if (ed.servedByCastId) ed.servedByCastId.value = casts[0].id
+}, { immediate: true })
+
+// 注文パネル: キャスト変更時にpending内のnull cast_idを更新（手順に関わらず担当を保存）
+watch(() => ed.servedByCastId?.value, (newCastId) => {
+  if (!newCastId || !ed.pending?.value) return
+  // pending内のcast_idがnullの商品を現在のキャストIDで更新
+  ed.pending.value.forEach(item => {
+    if (item && item.cast_id === null) {
+      item.cast_id = newCastId
+    }
+  })
+})
+
 
 function updateStayLocal(castId, next) {
   const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
@@ -799,6 +792,13 @@ async function handleSave(){
   }
 }
 
+function handleClose() {
+  // 閉じる際も保存時と同等のリロードをトリガー
+  emit('saved', props.bill)
+  visible.value = false
+  pane.value = 'base'
+}
+
 </script>
 
 <template>
@@ -809,7 +809,7 @@ async function handleSave(){
         <div class="button-area fs-5">
           <button :disabled="deleting" @click="confirmDelete" aria-label="delete"><IconTrash /></button>
           <button :disabled="saving" @click="handleSave" aria-label="save"><IconDeviceFloppy /></button>
-          <button @click="$emit('update:modelValue', false)" aria-label="close"><IconX /></button>
+          <button @click="handleClose" aria-label="close"><IconX /></button>
         </div>
       </div>
     </template>

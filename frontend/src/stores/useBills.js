@@ -75,7 +75,17 @@ export const useBills = defineStore('bills', {
         if (!nb || nb.id == null) continue
         const ex = byId.get(nb.id)
         if (ex) {
-          Object.assign(ex, nb)     // 既存オブジェクトを上書き
+          // サーバからの新データで上書き（ただしローカルの確定状態は後退させない）
+          const merged = { ...ex, ...nb }
+          // 楽観的に closed_at を付けている場合、サーバ未反映のレスポンスで消さない
+          if (ex.closed_at && !nb.closed_at) {
+            merged.closed_at = ex.closed_at
+            // ゴースト防止：stays も退席扱いを維持
+            merged.stays = (merged.stays || []).map(s => s.left_at ? s : ({ ...s, left_at: ex.closed_at }))
+            // settled_total が既にローカルにあれば維持
+            if (ex.settled_total && !nb.settled_total) merged.settled_total = ex.settled_total
+          }
+          Object.assign(ex, merged)     // 既存オブジェクトを上書き
         } else {
           this.list.push(nb)        // 新規だけ追加
         }

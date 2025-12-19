@@ -642,6 +642,25 @@ async function confirmClose(){
       closed_at: new Date().toISOString(),
     })
 
+    // 一覧ストアも即時更新（残像を消す）：stays を退席扱いに
+    try {
+      const { useBills } = await import('@/stores/useBills')
+      const bs = useBills()
+      const i = bs.list.findIndex(b => Number(b.id) === Number(billId))
+      if (i >= 0) {
+        const nowISO = new Date().toISOString()
+        bs.list[i] = {
+          ...bs.list[i],
+          paid_cash: paidCash,
+          paid_card: paidCard,
+          settled_total: settled,
+          memo: memoStr,
+          closed_at: nowISO,
+          stays: (bs.list[i].stays || []).map(s => s.left_at ? s : ({ ...s, left_at: nowISO })),
+        }
+      }
+    } catch {}
+
     // 裏送信
    enqueue('patchBill', { id: billId, payload: {
      paid_cash: paidCash,
