@@ -602,6 +602,20 @@ class Bill(models.Model):
         from billing.services import generate_payroll_snapshot
 
         with transaction.atomic():
+            # ★ Phase2-3: back_rate 一括確定焼き付け（OPEN中→CLOSED時に唯一のDB更新ポイント）
+            # ⚠️ close() 処理の最初で実行。payroll_snapshot 計算より前
+            items = self.items.select_related('item_master__category','served_by_cast','bill__table__store','item_master__store')
+            for item in items:
+                # effective_back_rate で計算（OPEN中だと store 解決して都度計算）
+                item.back_rate = item.effective_back_rate
+            
+            # bulk_update でまとめて更新（副作用なし、パフォーマンス優良）
+            BillItem.objects.bulk_update(items, ['back_rate'], batch_size=100)
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[Bill.close] back_rate fixed for {len(items)} items in bill_id={self.id}")
+            
             # ① 給与スナップショット生成（初回クローズのみ。上書きしない）
             if not self.payroll_snapshot:
                 self.payroll_snapshot = generate_payroll_snapshot(self)
@@ -612,7 +626,7 @@ class Bill(models.Model):
                 for s in self.stays.filter(left_at__isnull=True)
             }
 
-            # ② 伝票を確定（discount_ruleも保存 + payroll_snapshot）
+            # ③ 伝票を確定（discount_ruleも保存 + payroll_snapshot）
             self.save(update_fields=[
                 'subtotal', 'service_charge', 'tax', 'grand_total',
                 'total', 'settled_total', 'closed_at', 'discount_rule', 'payroll_snapshot'
@@ -897,50 +911,16 @@ class BillItem(models.Model):
             if self.item_master.exclude_from_payout:
                 self.exclude_from_payout = True
 
-        # back_rate は保存前に解決して持たせる（失敗しても継続）
-        # Phase1-1: store 解決を複数経路フォールバック（王道の防波堤）
-        try:
-            from billing.services.backrate import resolve_back_rate
-            import logging
-            logger = logging.getLogger(__name__)
-            
-            bill   = getattr(self, 'bill', None)
-            im     = getattr(self, 'item_master', None)
-            cat    = getattr(im, 'category', None)
-            cast   = getattr(self, 'served_by_cast', None)
-            stay   = self._stay_type_hint()
-            
-            # ★ 優先順位: A. bill.table.store → B. item_master.store → C. bill.store
-            store = None
-            if bill and hasattr(bill, 'table') and bill.table:
-                store = getattr(bill.table, 'store', None)
-            
-            if not store and im:
-                store = getattr(im, 'store', None)
-            
-            if not store and bill:
-                store = getattr(bill, 'store', None)
-            
-            if store:
-                self.back_rate = resolve_back_rate(store=store, category=cat, cast=cast, stay_type=stay)
-            else:
-                # store が最終的に取得できない場合は警告を出す（back_rate は変更しない）
-                logger.warning(
-                    f"[BillItem.save] Could not resolve store for back_rate calculation: "
-                    f"billitem_id={self.id}, bill_id={self.bill_id}, "
-                    f"item_master_id={getattr(im, 'id', 'N/A')}, "
-                    f"category_code={getattr(cat, 'code', 'N/A')}, "
-                    f"cast_id={getattr(cast, 'id', 'N/A')}, stay_type={stay}. "
-                    f"back_rate will remain {self.back_rate} (may default to 0)"
-                )
-        except Exception as e:
-            # import 失敗など根本的な問題を検知できるようにログ出力
+        # Phase2: save() からは back_rate の焼き付けをしない
+        # back_rate は effective_back_rate プロパティで都度計算
+        # 焼き付けは Bill.close() で一括処理（唯一のDB更新ポイント）
+        # ガードレール: CLOSED済みなら back_rate を再計算しない
+        if self.bill and self.bill.closed_at is not None:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(
-                f"[BillItem.save] resolve_back_rate failed for item_id={self.id}: {e}. "
-                f"back_rate will remain {self.back_rate} (may default to 0)",
-                exc_info=True  # スタックトレースも出力
+                f"[BillItem.save] CLOSED bill detected (bill_id={self.bill_id}). "
+                f"back_rate will NOT be recalculated to maintain integrity (current value: {self.back_rate})"
             )
 
         super().save(*args, **kwargs)
