@@ -5,10 +5,13 @@ from decimal import Decimal
 from django.db.models import F, Sum, Value, IntegerField, Q, CharField 
 from django.db.models.functions import Coalesce
 from billing.models  import Bill, BillItem
-from billing.utils.services import cast_payout_sum_by_closed_window, cast_payroll_sum_by_business_date
+from billing.utils.services import cast_payroll_sum_by_business_date
 from billing.calculator import BillCalculator
 from billing.utils.bizday import get_business_window
 from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["get_daily_pl"]
 
@@ -18,6 +21,41 @@ DRINK_ITEM_PREFIXES  = set(getattr(settings, "PL_DRINK_ITEM_PREFIXES",  set()))
 
 def _calc_open_bill_total(bill: Bill) -> int:
     return BillCalculator(bill).execute().total
+
+
+def _calculate_commission_from_snapshot(bills) -> int:
+    """
+    ★ Phase A: payroll_snapshot ベースで歩合を集計
+    
+    スナップショットから by_cast[].amount を合算。
+    フォールバック：snapshot が無い Bill は BillCalculator で一時計算（DB 保存なし）。
+    """
+    total = 0
+    
+    for bill in bills:
+        if bill.payroll_snapshot and isinstance(bill.payroll_snapshot, dict):
+            # snapshot の by_cast 配列から amount を合算
+            by_cast = bill.payroll_snapshot.get('by_cast', [])
+            bill_commission = sum(int(c.get('amount', 0)) for c in by_cast)
+            total += bill_commission
+            logger.debug(f"[PL] Bill {bill.id}: commission from snapshot = {bill_commission}")
+        else:
+            # フォールバック：snapshot がない Bill は BillCalculator で一時計算
+            try:
+                result = BillCalculator(bill).execute()
+                payouts = result.cast_payouts
+                bill_commission = sum(p.amount for p in payouts)
+                total += bill_commission
+                logger.warning(
+                    f"[PL] Bill {bill.id}: snapshot missing, calculated commission = {bill_commission} "
+                    f"(will NOT save payout)"
+                )
+            except Exception as e:
+                logger.exception(f"[PL] Bill {bill.id}: failed to calculate commission: {e}")
+                bill_commission = 0
+                total += bill_commission
+    
+    return int(total)
 
 
 def get_daily_pl(target_date: date, *, store_id: int, include_breakdown: bool = False):
@@ -103,10 +141,13 @@ def get_daily_pl(target_date: date, *, store_id: int, include_breakdown: bool = 
     sales_cash = int(paid_sums["sales_cash"] or 0)
     sales_card = int(paid_sums["sales_card"] or 0)
 
-    # 人件費：歩合=CastPayout（closed window）/ 時給=CastDailySummary（business date）
-    hourly_pay      = int(cast_payroll_sum_by_business_date(target_date, target_date, store_id) or 0)
-    commission      = int(cast_payout_sum_by_closed_window(start_dt, end_dt, store_id) or 0)
-    labor_cost      = int(hourly_pay + commission)
+    # ★ Phase A: 歩合を payroll_snapshot ベースで集計
+    # （CastPayout 生成失敗の影響を遮断。現場の数字は snapshot/都度計算が正とする）
+    commission = _calculate_commission_from_snapshot(bills)
+    
+    # 時給=CastDailySummary（business date）
+    hourly_pay = int(cast_payroll_sum_by_business_date(target_date, target_date, store_id) or 0)
+    labor_cost = int(hourly_pay + commission)
     operating_profit = int(sales_total - labor_cost)
 
     result = {
