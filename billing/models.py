@@ -619,12 +619,6 @@ class Bill(models.Model):
             # ① 給与スナップショット生成（初回クローズのみ。上書きしない）
             if not self.payroll_snapshot:
                 self.payroll_snapshot = generate_payroll_snapshot(self)
-            
-            # ② 退席前に stay_type をキャッシュ
-            stay_map = {
-                s.cast_id: s.stay_type
-                for s in self.stays.filter(left_at__isnull=True)
-            }
 
             # ③ 伝票を確定（discount_ruleも保存 + payroll_snapshot）
             self.save(update_fields=[
@@ -636,8 +630,14 @@ class Bill(models.Model):
             self.stays.filter(left_at__isnull=True).update(left_at=self.closed_at)
 
             # ④ CastPayout をリフレッシュ
+            # ★ Phase B: snapshot.by_cast を唯一のソースにして，stay_map 参照廃止
             self.payouts.all().delete()
-            CastPayout.objects.bulk_create(result.cast_payouts)
+            try:
+                CastPayout.objects.bulk_create(result.cast_payouts)
+                logger.info(f"[Bill.close] created {len(result.cast_payouts)} CastPayouts for bill_id={self.id}")
+            except Exception as e:
+                logger.exception(f"[Bill.close] CastPayout bulk_create failed for bill_id={self.id}: {e}")
+                raise
 
             # ⑤ cast_id → 売上合計を集計
             sales_map = defaultdict(int)
@@ -652,26 +652,41 @@ class Bill(models.Model):
             store_id = (
                 self.table.store_id if self.table_id else
                 self.store_id       if self.store_id  else
-                next(iter(stay_map)) and self.stays.first().bill.table.store_id  # 最後の保険
+                self.stays.filter(cast_id__isnull=False).first().bill.table.store_id if self.stays.filter(cast_id__isnull=False).exists() else None
             )
-
-            # ⑥ CastDailySummary を upsert
-            for cid, amt in sales_map.items():
-                col = {
-                    'nom': 'sales_nom', 'in': 'sales_in', 'free': 'sales_free',
-                }.get(stay_map.get(cid, 'free'), 'sales_free')
-
-                rec, _ = CastDailySummary.objects.get_or_create(
-                    store_id=store_id, cast_id=cid, work_date=work_date,
-                    defaults={}
-                )
-                setattr(rec, col, (getattr(rec, col) or 0) + amt)
-                rec.save(update_fields=[col])
             
-            # ⑦ 時間別サマリを更新（リアルタイム集計）
-            self._update_hourly_summary(store_id, stay_map, sales_map)
+            if not store_id:
+                logger.warning(f"[Bill.close] could not determine store_id for bill_id={self.id}, skipping CastDailySummary")
+            else:
+                # ⑥ CastDailySummary を upsert
+                # ★ Phase B: snapshot.by_cast から stay_type を取得（stay_map 廃止）
+                stay_type_map = {}
+                if self.payroll_snapshot and isinstance(self.payroll_snapshot, dict):
+                    by_cast = self.payroll_snapshot.get('by_cast', [])
+                    for cast_rec in by_cast:
+                        cid = cast_rec.get('cast_id')
+                        st = cast_rec.get('stay_type', 'free')
+                        if cid:
+                            stay_type_map[cid] = st
+                
+                for cid, amt in sales_map.items():
+                    # stay_type を snapshot から取得、なければ'free'デフォルト
+                    stay_type = stay_type_map.get(cid, 'free')
+                    col = {
+                        'nom': 'sales_nom', 'in': 'sales_in', 'free': 'sales_free',
+                    }.get(stay_type, 'sales_free')
 
-    def _update_hourly_summary(self, store_id: int, stay_map: dict, sales_map: dict):
+                    rec, _ = CastDailySummary.objects.get_or_create(
+                        store_id=store_id, cast_id=cid, work_date=work_date,
+                        defaults={}
+                    )
+                    setattr(rec, col, (getattr(rec, col) or 0) + amt)
+                    rec.save(update_fields=[col])
+                
+                # ⑦ 時間別サマリを更新（リアルタイム集計）
+                self._update_hourly_summary(store_id, stay_type_map, sales_map)
+
+    def _update_hourly_summary(self, store_id: int, stay_type_map: dict, sales_map: dict):
         """時間別サマリ（HourlySalesSummary + HourlyCastSales）を更新"""
         from .models import HourlySalesSummary, HourlyCastSales, ItemCategory
         
@@ -720,7 +735,7 @@ class Bill(models.Model):
             cast_sales.bill_count += 1
             
             # stay_type に応じて分類
-            stay_type = stay_map.get(cast_id, 'free')
+            stay_type = stay_type_map.get(cast_id, 'free')
             if stay_type == 'nom':
                 cast_sales.sales_nom += total_sales
             elif stay_type == 'in':
