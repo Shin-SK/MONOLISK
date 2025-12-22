@@ -88,7 +88,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="mt-4">
+  <div class="mt-4 table-responsive">
     <table class="table table-bordered table-hover align-middle table-striped">
       <thead class="table-dark">
         <tr>
@@ -148,3 +148,14 @@ onMounted(load)
     </table>
   </div>
 </template>
+
+
+<style scoped lang="scss">
+
+  table{
+    th, td{
+      white-space: nowrap;
+    };
+  }
+
+</style>
