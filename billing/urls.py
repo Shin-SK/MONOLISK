@@ -11,6 +11,7 @@ from .views import (
      StaffViewSet, StaffShiftViewSet,
      CustomerViewSet, StoreNoticeViewSet, StoreSeatSettingViewSet, DiscountRuleViewSet, CastPayrollSummaryView, CastPayrollDetailView, CastPayrollDetailCSVView,
      CustomerTagViewSet, HourlySalesView,
+     PayrollRunPreviewView, PayrollRunExportCSVView,
 )
 
 from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
@@ -70,6 +71,10 @@ urlpatterns = [
     path("payroll/summary/", CastPayrollSummaryView.as_view(), name="payroll-summary"),
     path("payroll/casts/<int:cast_id>/", CastPayrollDetailView.as_view(), name="payroll-cast-detail"),
     path("payroll/casts/<int:cast_id>/export.csv", CastPayrollDetailCSVView.as_view(), name="payroll-cast-detail-csv"),
+    
+    # ★給与締め（PayrollRun）
+    path("payroll/runs/preview/", PayrollRunPreviewView.as_view(), name="payroll-runs-preview"),
+    path("payroll/runs/export.csv", PayrollRunExportCSVView.as_view(), name="payroll-runs-export-csv"),
     
     path('kds/tickets/', KDSTicketList.as_view(), name='kds_ticket_list'),
     path('kds/tickets/<int:pk>/ack/', KDSTicketAck.as_view(), name='kds_ticket_ack'),

@@ -87,10 +87,13 @@ async function logout () {
             顧客情報
           </a>
 
-<!-- 
+          <!-- 給与 -->
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'Payroll'})">
             給与計算
-          </a> -->
+          </a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'PayrollRuns'})">
+            給与締め・出力
+          </a>
 
           <!-- 設定（ManagerLayout配下の /settings） -->
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'settings'})">

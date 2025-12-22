@@ -159,6 +159,12 @@ const routes = [
         component: () => import('@/views/PayrollCastDetail.vue'),
         props: true
       },
+      {
+        path: '/payroll/runs',
+        name: 'PayrollRuns',
+        component: () => import('@/views/PayrollRuns.vue'),
+        meta: { title: '給与締め・出力', rolesAny: ['manager','owner','superuser'], requiresAuth: true }
+      },
 
       {
         path: 'kds/kitchen',

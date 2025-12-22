@@ -10,6 +10,7 @@ import {
 } from '@/api'
 import MiniTip from '@/components/MiniTip.vue'
 import Avatar from '@/components/Avatar.vue'
+import CsvPreviewTable from '@/components/CsvPreviewTable.vue'
 import { useUser } from '@/stores/useUser'
 import { useProfile } from '@/composables/useProfile'
 
@@ -25,9 +26,14 @@ const showDutyTip = ref(false)
 
 /* ----------------- タブ管理 ----------------- */
 const activeTab = ref('sales') // 'sales', 'bills', 'download'
+const csvTab = ref('bills') // 'bills', 'payroll'
 
 function switchTab(tabId) {
   activeTab.value = tabId
+}
+
+function switchCsvTab(tabId) {
+  csvTab.value = tabId
 }
 
 /* ----------------- 日付（単日） ----------------- */
@@ -49,6 +55,11 @@ const kpi = ref({
 })
 
 const billsToday = ref([])   // 今日の伝票（最小表示用）
+
+// 給与CSV用
+const payrollCsvText = ref('')
+const payrollPreviewHeaders = ref([])
+const payrollPreviewRows = ref([])
 
 
 
@@ -177,6 +188,33 @@ onMounted(loadAll)
 watch(date, loadAll)
 
 /* ----------------- CSV（フロント生成） ----------------- */
+const billsCsvHeaders = [
+  'id','table_no','opened_at','closed_at',
+  'subtotal','service_charge','tax','grand_total','total',
+  'paid_cash','paid_card','paid_total','settled_total',
+  'customer_display_name','memo'
+]
+
+const billsCsvRows = computed(() => {
+  return billsToday.value.map(b => ({
+    id: b.id,
+    table_no: b.table?.number ?? '',
+    opened_at: b.opened_at ?? '',
+    closed_at: b.closed_at ?? '',
+    subtotal: b.subtotal ?? 0,
+    service_charge: b.service_charge ?? 0,
+    tax: b.tax ?? 0,
+    grand_total: b.grand_total ?? 0,
+    total: b.total ?? 0,
+    paid_cash: b.paid_cash ?? 0,
+    paid_card: b.paid_card ?? 0,
+    paid_total: b.paid_total ?? 0,
+    settled_total: b.settled_total ?? (b.grand_total || 0),
+    customer_display_name: b.customer_display_name ?? '',
+    memo: b.memo ?? '',
+  }))
+})
+
 function csvEscape(v){
   const s = String(v ?? '')
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
@@ -196,30 +234,112 @@ function downloadCsv(filename, headers, rows){
 }
 
 function downloadBillsCsv(){
-  const headers = [
-    'id','table_no','opened_at','closed_at',
-    'subtotal','service_charge','tax','grand_total','total',
-    'paid_cash','paid_card','paid_total','settled_total',
-    'customer_display_name','memo'
-  ]
-  const rows = billsToday.value.map(b => ({
-    id: b.id,
-    table_no: b.table?.number ?? '',
-    opened_at: b.opened_at ?? '',
-    closed_at: b.closed_at ?? '',
-    subtotal: b.subtotal ?? 0,
-    service_charge: b.service_charge ?? 0,
-    tax: b.tax ?? 0,
-    grand_total: b.grand_total ?? 0,
-    total: b.total ?? 0,
-    paid_cash: b.paid_cash ?? 0,
-    paid_card: b.paid_card ?? 0,
-    paid_total: b.paid_total ?? 0,
-    settled_total: b.settled_total ?? (b.grand_total || 0),
-    customer_display_name: b.customer_display_name ?? '',
-    memo: b.memo ?? '',
-  }))
-  downloadCsv(`bills_${date.value}.csv`, headers, rows)
+  downloadCsv(`bills_${date.value}.csv`, billsCsvHeaders, billsCsvRows.value)
+}
+
+function parseCsvForPreview(text) {
+  // BOM除去
+  let csv = text
+  if (csv.charCodeAt(0) === 0xFEFF) {
+    csv = csv.slice(1)
+  }
+
+  const lines = csv.split(/\r?\n/).filter(line => line.trim())
+  if (!lines.length) {
+    payrollPreviewHeaders.value = []
+    payrollPreviewRows.value = []
+    return
+  }
+
+  // 簡易CSV行パース（ダブルクォート対応）
+  function parseCsvLine(line) {
+    const result = []
+    let current = ''
+    let inQuotes = false
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i]
+      const next = line[i + 1]
+      
+      if (char === '"') {
+        if (inQuotes && next === '"') {
+          current += '"'
+          i++
+        } else {
+          inQuotes = !inQuotes
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current)
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    result.push(current)
+    return result
+  }
+
+  // ヘッダ
+  const headers = parseCsvLine(lines[0])
+  payrollPreviewHeaders.value = headers
+
+  // データ行（先頭50行まで）
+  const rows = []
+  const maxRows = Math.min(lines.length - 1, 50)
+  for (let i = 1; i <= maxRows; i++) {
+    const values = parseCsvLine(lines[i])
+    const row = {}
+    headers.forEach((h, idx) => {
+      row[h] = values[idx] ?? ''
+    })
+    rows.push(row)
+  }
+  payrollPreviewRows.value = rows
+}
+
+async function downloadPayrollCsv() {
+  try {
+    loading.value = true
+    const storeId = user.storeId
+    
+    const res = await fetch('/api/billing/payroll/runs/export.csv', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Store-Id': String(storeId),
+        'Authorization': `Token ${user.token}`,
+      },
+      body: JSON.stringify({
+        from: date.value,
+        to: date.value,
+        note: '',
+      }),
+    })
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`)
+    }
+
+    const blob = await res.blob()
+    const text = await blob.text()
+    
+    // プレビュー更新
+    payrollCsvText.value = text
+    parseCsvForPreview(text)
+
+    // ダウンロード
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `payroll_${date.value}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error(e)
+    errorMsg.value = '給与CSVダウンロードに失敗しました'
+  } finally {
+    loading.value = false
+  }
 }
 
 function downloadItemsCsv(){
@@ -413,14 +533,60 @@ const kpiDutyLabel = computed(() =>
     <!-- CSV -->
     <div v-show="activeTab === 'download'" class="area my-4">
       <div class="h4 fw-bold text-center">CSVダウンロード</div>
-      <div class="row g-3">
-    <div class="col-6">
-      <button class="btn btn-secondary w-100" type="button" @click="downloadBillsCsv">伝票CSV</button>
-    </div>
-    <div class="col-6">
-      <button class="btn btn-secondary w-100" type="button" @click="downloadItemsCsv">明細CSV</button>
-    </div>
+
+      <nav class="row border-bottom g-1 mb-3">
+        <div
+          class="col-6"
+          :class="{ 'border-bottom border-3 border-secondary': csvTab === 'bills' }">
+          <button 
+            class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+            @click="switchCsvTab('bills')">
+            伝票
+          </button>
+        </div>
+        <div
+          class="col-6"
+          :class="{ 'border-bottom border-3 border-secondary': csvTab === 'payroll' }">
+          <button 
+            class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+            @click="switchCsvTab('payroll')">
+            給与
+          </button>
+        </div>
+      </nav>
+
+      <div v-show="csvTab === 'bills'" class="card mb-3">
+        <div class="card-header">本日の伝票CSVプレビュー</div>
+        <div class="card-body">
+          <CsvPreviewTable 
+            :headers="billsCsvHeaders" 
+            :rows="billsCsvRows" 
+            :maxRows="20" 
+          />
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-sm btn-success w-100" type="button" @click="downloadBillsCsv">
+            伝票CSVダウンロード
+          </button>
+        </div>
       </div>
+
+      <div v-show="csvTab === 'payroll'" class="card">
+        <div class="card-header">本日の給与CSVプレビュー</div>
+        <div class="card-body">
+          <CsvPreviewTable 
+            :headers="payrollPreviewHeaders" 
+            :rows="payrollPreviewRows" 
+            :maxRows="20" 
+          />
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-sm btn-success w-100" type="button" @click="downloadPayrollCsv">
+            給与CSVダウンロード
+          </button>
+        </div>
+      </div>
+
     </div>
 
   </div>

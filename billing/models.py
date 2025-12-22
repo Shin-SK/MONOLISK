@@ -67,6 +67,26 @@ class Store(models.Model):
         help_text="営業日の切替時刻（例: 6 = 朝6時締め。営業日外の処理に使用）",
     )
 
+    # ─────────────── 給与締め設定 ───────────────────
+    PAYROLL_CUTOFF_DAY = 'day'
+    PAYROLL_CUTOFF_EOM = 'eom'
+    PAYROLL_CUTOFF_KIND_CHOICES = [
+        (PAYROLL_CUTOFF_DAY, '日付'),
+        (PAYROLL_CUTOFF_EOM, '月末'),
+    ]
+    
+    payroll_cutoff_kind = models.CharField(
+        max_length=10,
+        choices=PAYROLL_CUTOFF_KIND_CHOICES,
+        default=PAYROLL_CUTOFF_DAY,
+        help_text="給与締め基準（日付 or 月末）",
+    )
+    payroll_cutoff_day = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(28)],
+        help_text="給与締め日（kind='day'のとき必須。例: 25締め）",
+    )
+
     # ─────────────── 営業時間 ───────────────────
     business_open_hour = models.DecimalField(
         max_digits=4, decimal_places=2, default=Decimal("20.0"),
@@ -1666,3 +1686,78 @@ class HourlyCastSales(models.Model):
     
     def __str__(self):
         return f'{self.cast.stage_name} {self.hourly_summary.date} {self.hourly_summary.hour:02d}:00 - ¥{self.sales_total:,}'
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 給与締め（PayrollRun）モデル
+# ═══════════════════════════════════════════════════════════════════
+
+class PayrollRun(models.Model):
+    """給与締め期間（スナップショット）"""
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name='payroll_runs')
+    period_start = models.DateField(verbose_name='期間開始日')
+    period_end = models.DateField(verbose_name='期間終了日')
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        verbose_name='作成者'
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='作成日時')
+    overlap_warning = models.BooleanField(
+        default=False,
+        verbose_name='重複警告',
+        help_text='既存の締め期間と重複している場合 True'
+    )
+    note = models.CharField(max_length=255, blank=True, default='', verbose_name='備考')
+
+    class Meta:
+        verbose_name = '給与締め'
+        verbose_name_plural = verbose_name
+        ordering = ['-period_end', '-created_at']
+        indexes = [
+            models.Index(fields=['store', 'period_start', 'period_end']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.store.name} {self.period_start} ～ {self.period_end}'
+
+
+class PayrollRunLine(models.Model):
+    """給与締め明細行（1キャスト x 1締め）"""
+    run = models.ForeignKey(PayrollRun, on_delete=models.CASCADE, related_name='lines')
+    cast = models.ForeignKey(Cast, on_delete=models.PROTECT, verbose_name='キャスト')
+    worked_min = models.PositiveIntegerField(default=0, verbose_name='勤務分')
+    hourly_pay = models.PositiveIntegerField(default=0, verbose_name='時給合計')
+    commission = models.PositiveIntegerField(default=0, verbose_name='バック合計')
+    total = models.PositiveIntegerField(default=0, verbose_name='給与合計')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '給与締め明細'
+        verbose_name_plural = verbose_name
+        unique_together = ('run', 'cast')
+        ordering = ['cast__stage_name', 'cast_id']
+
+    def __str__(self):
+        return f'{self.run} - {self.cast.stage_name}: ¥{self.total:,}'
+
+
+class PayrollRunBackRow(models.Model):
+    """給与締めバック根拠行（粒度：1キャスト x 1伝票明細）"""
+    run = models.ForeignKey(PayrollRun, on_delete=models.CASCADE, related_name='back_rows')
+    cast = models.ForeignKey(Cast, on_delete=models.PROTECT, verbose_name='キャスト')
+    bill_id = models.IntegerField(null=True, blank=True, verbose_name='伝票ID')
+    bill_item_id = models.IntegerField(null=True, blank=True, verbose_name='明細ID')
+    occurred_at = models.DateTimeField(null=True, blank=True, verbose_name='発生日時')
+    amount = models.PositiveIntegerField(default=0, verbose_name='バック額')
+
+    class Meta:
+        verbose_name = '給与締めバック根拠'
+        verbose_name_plural = verbose_name
+        ordering = ['cast_id', 'occurred_at', 'bill_id']
+        indexes = [
+            models.Index(fields=['run', 'cast', 'bill_id']),
+        ]
+
+    def __str__(self):
+        return f'{self.cast.stage_name} - Bill#{self.bill_id}: ¥{self.amount:,}'

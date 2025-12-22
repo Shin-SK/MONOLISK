@@ -1,6 +1,7 @@
 # billing/views.py
 from datetime import date
 from datetime import timedelta
+from collections import defaultdict
 from django.db import models, transaction
 from django.db.models import Sum, F, Q, IntegerField, Value, OuterRef, Subquery, Count, Max
 from django.db.models.functions import Coalesce
@@ -67,6 +68,9 @@ from .serializers import (
     CastPayrollSummaryRowSerializer,
     CastPayoutListSerializer,
 )
+from .exports.payroll_run_csv import PayrollRunExportCSVView
+
+
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -1532,3 +1536,272 @@ class HourlySalesView(ListAPIView):
         return Response(result)
 
 
+# ═══════════════════════════════════════════════════════════════════
+# 給与締め（PayrollRun）API
+# ═══════════════════════════════════════════════════════════════════
+
+from dateutil.relativedelta import relativedelta
+from .models import PayrollRun, PayrollRunLine, PayrollRunBackRow
+
+
+def get_default_payroll_period(store, ref_date=None):
+    """
+    storeの締め設定から「ref_dateを含む期間」を返す
+    
+    Args:
+        store: Store インスタンス
+        ref_date: 基準日（省略時は今日）
+    
+    Returns:
+        (start_date, end_date) のタプル
+    """
+    if ref_date is None:
+        ref_date = date.today()
+    
+    if store.payroll_cutoff_kind == Store.PAYROLL_CUTOFF_EOM:
+        # 月末締め: 当月1日～当月末日
+        start_date = ref_date.replace(day=1)
+        # 月末を取得: 翌月1日 - 1日
+        if ref_date.month == 12:
+            end_date = date(ref_date.year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end_date = date(ref_date.year, ref_date.month + 1, 1) - timedelta(days=1)
+        return (start_date, end_date)
+    
+    # 日付締め（例: 25締め）
+    cutoff_day = store.payroll_cutoff_day or 25
+    
+    if ref_date.day < cutoff_day:
+        # 例: 2025-01-15 で 25締めなら、前月25～当月24
+        # start: 2024-12-25
+        # end: 2025-01-24
+        start_date = (ref_date.replace(day=1) - timedelta(days=1)).replace(day=cutoff_day)
+        end_date = ref_date.replace(day=cutoff_day) - timedelta(days=1)
+    else:
+        # 例: 2025-01-28 で 25締めなら、当月25～翌月24
+        # start: 2025-01-25
+        # end: 2025-02-24
+        start_date = ref_date.replace(day=cutoff_day)
+        next_month = ref_date + relativedelta(months=1)
+        end_date = next_month.replace(day=cutoff_day) - timedelta(days=1)
+    
+    return (start_date, end_date)
+
+
+def check_overlap(store, period_start, period_end):
+    """
+    既存の PayrollRun と重複があれば True を返す
+    
+    Args:
+        store: Store インスタンス
+        period_start: 新しい期間の開始日
+        period_end: 新しい期間の終了日
+    
+    Returns:
+        bool: 重複があれば True
+    """
+    overlap_qs = PayrollRun.objects.filter(
+        store=store,
+        period_start__lte=period_end,
+        period_end__gte=period_start,
+    )
+    return overlap_qs.exists()
+
+
+class PayrollRunPreviewView(APIView):
+    """
+    GET /api/billing/payroll/runs/preview/?from=YYYY-MM-DD&to=YYYY-MM-DD
+    
+    権限: user_manage (Manager専用)
+    
+    レスポンス:
+    {
+      "range": {"from": "...", "to": "..."},
+      "overlap": true/false,
+      "summary": [
+        {
+          "cast_id": 123,
+          "stage_name": "...",
+          "worked_min": 1200,
+          "hourly_pay": 12000,
+          "commission": 50000,
+          "total": 62000
+        },
+        ...
+      ]
+    }
+    """
+    permission_classes = [IsAuthenticated, RequireCap]
+    required_cap = 'user_manage'
+
+    def get(self, request):
+        sid = _get_store_id_from_header(request)
+        store = get_object_or_404(Store, pk=sid)
+
+        # 期間
+        from_param = request.query_params.get('from')
+        to_param = request.query_params.get('to')
+        if from_param and to_param:
+            df = from_param
+            dt = to_param
+        else:
+            ref_date = date.today()
+            df, dt = get_default_payroll_period(store, ref_date)
+            df = df.isoformat()
+            dt = dt.isoformat()
+
+        overlap = check_overlap(store, df, dt)
+
+        # ── 伝票明細（キャスト別にグルーピング） ──
+        bill_rows_map = defaultdict(dict)  # {cast_id: {bill_id: row}}
+        sales_total_map = defaultdict(int)
+
+        items_qs = (
+            BillItem.objects
+            .filter(
+                bill__table__store_id=sid,
+                bill__closed_at__date__range=(df, dt),
+            )
+            .select_related('bill', 'served_by_cast', 'item_master')
+        )
+
+        for it in items_qs:
+            cast_id = it.served_by_cast_id
+            if not cast_id:
+                continue
+            bill = it.bill
+            if not bill:
+                continue
+
+            bill_id = bill.id
+            row = bill_rows_map[cast_id].get(bill_id)
+            if not row:
+                row = {
+                    'bill_id': bill_id,
+                    'closed_at': bill.closed_at,
+                    'sales': 0,
+                    'back': 0,
+                    'items': [],
+                }
+                bill_rows_map[cast_id][bill_id] = row
+
+            price = int(it.price or 0)
+            qty = int(it.qty or 0)
+            subtotal = price * qty
+
+            row['sales'] += subtotal
+            sales_total_map[cast_id] += subtotal
+
+            row['items'].append({
+                'name': (getattr(it, 'name', None) or getattr(it.item_master, 'name', '') or ''),
+                'qty': qty,
+                'price': price,
+            })
+
+        payouts_qs = (
+            CastPayout.objects
+            .filter(
+                bill__table__store_id=sid,
+                bill__closed_at__date__range=(df, dt),
+            )
+            .select_related('bill', 'cast')
+        )
+
+        for p in payouts_qs:
+            cast_id = p.cast_id
+            bill = p.bill
+            if not cast_id or not bill:
+                continue
+            bill_id = bill.id
+
+            row = bill_rows_map[cast_id].get(bill_id)
+            if not row:
+                row = {
+                    'bill_id': bill_id,
+                    'closed_at': bill.closed_at,
+                    'sales': 0,
+                    'back': 0,
+                    'items': [],
+                }
+                bill_rows_map[cast_id][bill_id] = row
+
+            row['back'] += int(p.amount or 0)
+
+        bill_rows_sorted = {}
+        for cid, bills in bill_rows_map.items():
+            bill_rows_sorted[cid] = sorted(
+                bills.values(),
+                key=lambda b: (b.get('closed_at') or timezone.make_aware(timezone.datetime.min), b.get('bill_id') or 0)
+            )
+
+        # ── 給与集計（既存の集計ロジック） ──
+        commission_sq = (
+            CastPayout.objects
+            .filter(
+                cast_id=OuterRef('pk'),
+                bill__table__store_id=sid,
+                bill__closed_at__date__range=(df, dt),
+            )
+            .values('cast')
+            .annotate(total=Sum('amount'))
+            .values('total')[:1]
+        )
+
+        hourly_sq = (
+            CastDailySummary.objects
+            .filter(
+                cast_id=OuterRef('pk'),
+                store_id=sid,
+                work_date__range=(df, dt),
+            )
+            .values('cast')
+            .annotate(total=Sum('payroll'))
+            .values('total')[:1]
+        )
+
+        worked_min_sq = (
+            CastDailySummary.objects
+            .filter(
+                cast_id=OuterRef('pk'),
+                store_id=sid,
+                work_date__range=(df, dt),
+            )
+            .values('cast')
+            .annotate(total=Sum('worked_min'))
+            .values('total')[:1]
+        )
+
+        qs = (
+            Cast.objects.filter(store_id=sid)
+            .annotate(
+                commission=Coalesce(Subquery(commission_sq), Value(0), output_field=IntegerField()),
+                hourly_pay=Coalesce(Subquery(hourly_sq), Value(0), output_field=IntegerField()),
+                worked_min=Coalesce(Subquery(worked_min_sq), Value(0), output_field=IntegerField()),
+            )
+            .values('id', 'stage_name', 'worked_min', 'hourly_pay', 'commission')
+            .order_by('stage_name', 'id')
+        )
+
+        summary = []
+        for r in qs:
+            cast_id = r['id']
+            worked_min = int(r['worked_min'] or 0)
+            hourly_pay = int(r['hourly_pay'] or 0)
+            commission = int(r['commission'] or 0)
+
+            summary.append({
+                'cast_id': cast_id,
+                'stage_name': r['stage_name'],
+                'worked_min': worked_min,
+                'hourly_pay': hourly_pay,
+                'commission': commission,
+                'total': hourly_pay + commission,
+                'sales_total': int(sales_total_map.get(cast_id, 0)),
+                'bill_rows': bill_rows_sorted.get(cast_id, []),
+            })
+
+        return Response({
+            'range': {'from': df, 'to': dt},
+            'overlap': overlap,
+            'summary': summary,
+        })
