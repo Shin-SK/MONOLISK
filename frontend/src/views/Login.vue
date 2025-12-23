@@ -10,24 +10,32 @@ const route  = useRoute()
 const form = ref({ username:'', password:'' })
 const err  = ref('')
 
+// ★追加：パスワード表示切替
+const showPassword = ref(false)
+const passwordRef = ref(null)
+
+const togglePassword = async () => {
+  showPassword.value = !showPassword.value
+  await nextTick()
+  // フォーカス維持（地味にUX良い）
+  passwordRef.value?.focus?.()
+}
+
 const submit = async () => {
-	err.value = ''
-	try {
-		await auth.login(form.value.username, form.value.password)
-		// ★ ここが重要：/ に移動して beforeEach の安全ホーム分岐に任せる
-		await router.replace('/')
-	} catch (e) {
-		err.value = 'ユーザー名かパスワードが違います'
-	}
+  err.value = ''
+  try {
+    await auth.login(form.value.username, form.value.password)
+    await router.replace('/')
+  } catch (e) {
+    err.value = 'ユーザー名かパスワードが違います'
+  }
 }
 </script>
-
 
 <template>
   <div class="d-flex align-items-center justify-content-center flex-column gap-4 min-vh-100 p-3">
     <img src="/img/logo-full.webp" alt="" style="width: 96px;">
     <div class="container bg-white p-4" style="max-width:420px">
-      <!-- Enter で送信できるよう <form> を使う -->
       <form @submit.prevent="submit" novalidate>
         <div class="mb-3">
           <label class="form-label">ユーザー名</label>
@@ -41,12 +49,25 @@ const submit = async () => {
 
         <div class="mb-4">
           <label class="form-label">パスワード</label>
-          <input
-            v-model="form.password"
-            type="password"
-            class="form-control"
-            autocomplete="current-password"
-          >
+          <div class="wrap position-relative">
+            <input
+              ref="passwordRef"
+              v-model="form.password"
+              :type="showPassword ? 'text' : 'password'"
+              class="form-control"
+              autocomplete="current-password"
+            >
+            <button
+              type="button"
+              class="btn btn-sm text-secondary position-absolute top-50 end-0 translate-middle-y me-2 p-1"
+              @click="togglePassword"
+              :aria-label="showPassword ? 'パスワードを隠す' : 'パスワードを表示'"
+              :title="showPassword ? '隠す' : '表示'"
+            >
+              <IconEye v-if="!showPassword" />
+              <IconEyeOff v-else />
+            </button>
+          </div>
         </div>
 
         <div v-if="err" class="alert alert-danger py-1">
@@ -59,5 +80,4 @@ const submit = async () => {
       </form>
     </div>
   </div>
-
 </template>
