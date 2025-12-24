@@ -416,6 +416,39 @@ class CustomerTag(models.Model):
         return self.name
 
 
+class BillTag(models.Model):
+    """伝票タグマスター（店舗ごと）"""
+    store = models.ForeignKey(
+        'billing.Store',
+        on_delete=models.CASCADE,
+        related_name='bill_tags',
+        verbose_name='店舗'
+    )
+    code = models.SlugField(
+        max_length=40,
+        help_text="内部コード（例: catch / free_info / referral）"
+    )
+    name = models.CharField(
+        max_length=50,
+        help_text="表示名（例: キャッチ / 無料案内所 / 紹介）"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="説明・使用ガイドライン"
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '伝票タグ'
+        verbose_name_plural = verbose_name
+        ordering = ['store', 'code']
+        unique_together = [('store', 'code')]  # 同じ店舗内でコード重複不可
+
+    def __str__(self):
+        return f"{self.store.name} - {self.name}"
+
+
 class Customer(models.Model):
     full_name  = models.CharField(max_length=100, blank=True)  # 名前
     alias      = models.CharField(max_length=100, blank=True)  # あだ名
@@ -494,12 +527,15 @@ class Bill(models.Model):
         verbose_name='本指名'
     )
     nominated_casts = models.ManyToManyField('billing.Cast', blank=True, related_name='nominated_bills')
+    tags = models.ManyToManyField('billing.BillTag', blank=True, related_name='bills', verbose_name='タグ')
 
     memo = models.TextField('メモ', blank=True, default='')
     
     subtotal = models.PositiveIntegerField(default=0)
     service_charge = models.PositiveIntegerField(default=0)
     tax = models.PositiveIntegerField(default=0)
+    apply_service_charge = models.BooleanField(default=True)
+    apply_tax = models.BooleanField(default=True)
     grand_total = models.PositiveIntegerField(default=0)
 
     total = models.PositiveIntegerField(default=0)          # close 時に確定
@@ -540,9 +576,9 @@ class Bill(models.Model):
 
     @property
     def ext_minutes(self):
+        """延長分数の合計（商品コードに 'extension' が含まれる商品のみ）"""
         qs = self.items.filter(
-            Q(item_master__code__icontains='extension') |
-            Q(item_master__code__icontains='ext')
+            item_master__code__icontains='extension'
         )
         return sum(
             (it.duration_min or 30) * it.qty

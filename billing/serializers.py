@@ -1,6 +1,6 @@
 # billing/serializer.py
 from rest_framework import serializers
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule, CastGoal, User, CustomerTag
+from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule, CastGoal, User, CustomerTag, BillTag
 from dj_rest_auth.serializers import UserDetailsSerializer
 from cloudinary.utils import cloudinary_url
 from decimal import Decimal, ROUND_HALF_UP
@@ -306,6 +306,13 @@ class BillItemSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('bill', 'subtotal')
 
+    def to_representation(self, instance):
+        """GET時だけ item_master を展開してカテゴリ情報も含める"""
+        data = super().to_representation(instance)
+        if instance.item_master:
+            data['item_master'] = ItemMasterSerializer(instance.item_master).data
+        return data
+
     def get_subtotal(self, obj):
         return obj.subtotal
     
@@ -508,6 +515,14 @@ class CustomerTagSerializer(serializers.ModelSerializer):
         fields = ('id', 'code', 'name', 'color', 'is_active')
 
 
+class BillTagSerializer(serializers.ModelSerializer):
+    """伝票タグ"""
+    class Meta:
+        model = BillTag
+        fields = ('id', 'store', 'code', 'name', 'description', 'is_active')
+        read_only_fields = ('id',)
+
+
 class CustomerSerializer(serializers.ModelSerializer):
     # タグを読み取り・書き込み両対応
     tags = CustomerTagSerializer(many=True, read_only=True)
@@ -635,6 +650,16 @@ class BillSerializer(serializers.ModelSerializer):
     # ★ 給与スナップショット・dirty 判定
     payroll_snapshot = serializers.JSONField(read_only=True)
     payroll_dirty = serializers.SerializerMethodField(read_only=True)
+    
+    # ★ タグ（READ/WRITE両対応）
+    tags = BillTagSerializer(many=True, read_only=True)
+    tag_ids = serializers.PrimaryKeyRelatedField(
+        source='tags',
+        many=True,
+        queryset=BillTag.objects.all(),
+        required=False,
+        write_only=True
+    )
 
     class Meta:
         model = Bill
@@ -642,7 +667,7 @@ class BillSerializer(serializers.ModelSerializer):
             # ---- 基本 ----
             "id", "table", "table_id", "opened_at", "closed_at","memo", "pax",
             # ---- 金額 ----
-            "subtotal", "service_charge", "tax", "grand_total", "total",
+            "subtotal", "service_charge", "tax", "apply_service_charge", "apply_tax", "grand_total", "total",
             "paid_cash","paid_card","paid_total","change_due",
             # ---- 関連 ----
             "items", "stays","expected_out",
@@ -654,6 +679,8 @@ class BillSerializer(serializers.ModelSerializer):
             "free_ids","set_rounds","ext_minutes",
             "main_cast", "main_cast_obj",
             "customers", "customer_ids", "customer_display_name",
+            # ---- タグ ----
+            "tags", "tag_ids",
             # ---- 割引 ----
             "discount_rule",
             "manual_discounts", "manual_discount_total",

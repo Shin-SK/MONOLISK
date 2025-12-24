@@ -160,6 +160,17 @@ function handleEdit(e) {
           <div class="value">¥{{ (bill.settled_total ?? (bill.closed_at ? bill.total : bill.grand_total))?.toLocaleString() || '-' }}</div>
         </div>
         <div class="col-12">
+          <div class="label">関係店</div>
+          <div class="d-flex gap-2 flex-wrap">
+            <template v-if="bill.tags && bill.tags.length">
+              <span v-for="tag in bill.tags" :key="tag.id" class="badge bg-secondary">
+                {{ tag.name }}
+              </span>
+            </template>
+            <small v-else class="text-muted">タグなし</small>
+          </div>
+        </div>
+        <div class="col-12">
           <div class="label">メモ</div>
           <div v-if="hasMemo(bill)" class="memo-content">{{ bill.memo }}</div>
           <div v-else class="text-muted small">メモなし</div>

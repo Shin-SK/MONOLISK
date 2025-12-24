@@ -4,7 +4,7 @@ import dayjs from 'dayjs'
 import Avatar from '@/components/Avatar.vue'
 import Multiselect from 'vue-multiselect'
 import 'vue-multiselect/dist/vue-multiselect.css'
-import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings, fetchMasters } from '@/api'  // ← 追加
+import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings, fetchMasters, fetchBillTags } from '@/api'  // ← fetchBillTags 追加
 
 const props = defineProps({
   tables: { type: Array, default: () => [] },
@@ -52,10 +52,23 @@ const props = defineProps({
 
   // 小計
   subtotal: { type: Number, default: 0 },   // bill.subtotal
+
+  // 税・サービス料（ON=加算）
+  applyService: { type: Boolean, default: true },
+  applyTax: { type: Boolean, default: true },
+  
+  // メモ
+  memo: { type: String, default: '' },
+  
+  // タグ
+  tags: { type: Array, default: () => [] },  // BillTag オブジェクトの配列
+  selectedTagIds: { type: Array, default: () => [] },  // 選択済みのタグ ID リスト
 })
 
 const emit = defineEmits([
   'update:seatType','update:tableId','update:pax',
+  'update:applyService','update:applyTax','update:memo',
+  'update:selectedTagIds',  // ← 追加
   'chooseCourse','clearCustomer','searchCustomer','pickCustomer',
   'applySet','save','switchPanel','update-times'
 ])
@@ -63,6 +76,35 @@ const emit = defineEmits([
 /* ===== 席種・テーブル ===== */
 const seatTypeRef  = ref(props.seatType || 'main')
 watch(() => props.seatType, v => { seatTypeRef.value = v || 'main' })
+
+const applyServiceModel = computed({
+  get: () => !!props.applyService,
+  set: (v) => emit('update:applyService', !!v)
+})
+const applyTaxModel = computed({
+  get: () => !!props.applyTax,
+  set: (v) => emit('update:applyTax', !!v)
+})
+
+// メモの双方向バインディング
+const memoLocal = ref(props.memo || '')
+watch(() => props.memo, (v) => { memoLocal.value = v || '' }, { immediate: true })
+watch(memoLocal, (v) => { emit('update:memo', v) })
+
+// タグ関連
+const selectedTagIds = ref(props.selectedTagIds || [])
+watch(() => props.selectedTagIds, (v) => { selectedTagIds.value = v || [] }, { immediate: true })
+
+const toggleTag = (tagId) => {
+  const idx = selectedTagIds.value.indexOf(tagId)
+  if (idx >= 0) {
+    selectedTagIds.value.splice(idx, 1)
+  } else {
+    selectedTagIds.value.push(tagId)
+  }
+  // 直接 emit（watch ではなく、click ハンドラから直接呼び出す）
+  emit('update:selectedTagIds', Array.from(selectedTagIds.value))
+}
 
 const safeTables = computed(() =>
   Array.isArray(props.tables) ? props.tables.filter(t => t && t.id!=null) : []
@@ -583,7 +625,7 @@ function customLabel(customer) {
         初期入力をして<br>
         伝票を作成してください</h2>
 
-      <div class="area mb-4">
+      <div class="area mb-5">
         <h3 class="fs-5 fw-bold"><IconUsers />人数</h3>
         <div class="row g-3">
           <!-- 男性 -->
@@ -619,7 +661,7 @@ function customLabel(customer) {
         </div>
       </div>
 
-      <div class="area mb-4">
+      <div class="area mb-5">
         <h3 class="fs-5 fw-bold"><IconPinned />テーブル番号</h3>
         <div class="row g-1">
           <div
@@ -636,8 +678,7 @@ function customLabel(customer) {
         </div>
       </div>
 
-
-      <div class="area mb-4">
+      <div class="area mb-5">
         <div class="box" v-if="Object.keys(setMasters).length > 0">
           <h3 class="fs-5 fw-bold"><IconSettings2 />セット</h3>
           <div class="d-flex flex-column gap-2 w-100" role="group" aria-label="セット商品">
@@ -664,6 +705,48 @@ function customLabel(customer) {
           </div>
         </div>
       </div>
+
+      <div class="area mb-5">
+        <h3 class="fs-5 fw-bold mb-0"><IconAdjustments />チャージ</h3>
+        <small class="text-muted mb-3">オフでカットできます</small>
+
+        <div class="df-center justify-content-start gap-4 mt-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="switch-service" v-model="applyServiceModel">
+            <label class="form-check-label" for="switch-service">サービス料を追加</label>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="switch-tax" v-model="applyTaxModel">
+            <label class="form-check-label" for="switch-tax">TAXを追加</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="area mb-5">
+        <h3 class="fs-5 fw-bold"><IconLabel />関係店</h3>
+
+        <div class="df-center justify-content-start gap-4 mt-3 flex-wrap">
+          <template v-if="tags && tags.length">
+            <button
+              v-for="tag in tags"
+              :key="tag.id"
+              type="button"
+              :class="selectedTagIds.includes(tag.id) ? 'btn btn-primary' : 'btn btn-outline-primary'"
+              @click="toggleTag(tag.id)"
+            >
+              {{ tag.name }}
+            </button>
+          </template>
+          <small v-else class="text-muted">タグはまだありません</small>
+        </div>
+      </div>
+
+      <!-- メモ -->
+      <div class="area mb-5">
+        <h3 class="fs-5 fw-bold"><IconNote />メモ</h3>
+        <textarea class="form-control" rows="3" v-model="memoLocal" placeholder="伝票情報や割引などをメモしてください"></textarea>
+      </div>
+
 
       <div class="area mt-auto">
         <button class="btn btn-warning w-100 my-2" @click="applySet">伝票を作成</button>
@@ -805,6 +888,7 @@ function customLabel(customer) {
             </button>
           </div>
         </div>
+
       </div>
 
       <div class="bg-light py-3 mt-3">

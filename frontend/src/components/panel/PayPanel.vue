@@ -31,6 +31,9 @@ const props = defineProps({
   // 備考
   memo: { type: String, default: '' },
 
+  // タグ
+  tags: { type: Array, default: () => [] },
+
   // 割引（サーバ側の単発適用用）
   discountRuleId: { type: [Number, null], default: null },
   // 保存済み手入力割引（再初期化用）
@@ -860,11 +863,21 @@ function removeSavedDiscount(index) {
         <span v-if="overPay>0" class="text-danger ms-1">（お釣り: ¥{{ overPay.toLocaleString() }}）</span>
       </div>
     </div>
-
+    <div class="tag">
+      <label class="form-label">関係店</label>
+      <div class="d-flex gap-2 flex-wrap">
+        <template v-if="tags && tags.length">
+          <span v-for="tag in tags" :key="tag.id" class="badge bg-secondary">
+            {{ tag.name }}
+          </span>
+        </template>
+        <small v-else class="text-muted">タグなし</small>
+      </div>
+    </div>
     <!-- メモ -->
     <div class="memo">
       <label class="form-label">メモ</label>
-      <textarea class="form-control" rows="3" v-model="memoLocal" placeholder="伝票メモ（備考）"></textarea>
+      <textarea class="form-control" rows="3" v-model="memoLocal" placeholder="備考メモ"></textarea>
     </div>
 
     <!-- 確定 -->

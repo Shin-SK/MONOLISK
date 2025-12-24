@@ -13,7 +13,7 @@ import {
   api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts,
   fetchBill, deleteBillItem, patchBillItem, patchBillItemQty, fetchMasters,
   createBill, patchBill,
-  setBillDiscountByCode, updateBillDiscountRule, settleBill,
+  setBillDiscountByCode, updateBillDiscountRule, settleBill, fetchBillTags,  // ← fetchBillTags 追加
  } from '@/api'
 
 const { hasRole } = useRoles()
@@ -53,16 +53,24 @@ onMounted(async () => {
   const ls = localStorage.getItem('store_slug')
   if (ls) {
     storeSlug.value = normalizeSlug(ls)
-    return
+  } else {
+    // 2) API: /billing/stores/me/（X-Store-Id に紐づく現在の店舗）
+    try {
+      const { data } = await api.get('billing/stores/me/')
+      storeSlug.value = normalizeSlug(data?.slug)
+      if (storeSlug.value) localStorage.setItem('store_slug', storeSlug.value)
+    } catch (e) {
+      console.warn('[storeSlug] fetch failed', e)
+      storeSlug.value = ''
+    }
   }
-  // 2) API: /billing/stores/me/（X-Store-Id に紐づく現在の店舗）
+  
+  // billTags を取得
   try {
-    const { data } = await api.get('billing/stores/me/')
-    storeSlug.value = normalizeSlug(data?.slug)
-    if (storeSlug.value) localStorage.setItem('store_slug', storeSlug.value)
+    billTags.value = await fetchBillTags({ is_active: true })
   } catch (e) {
-    console.warn('[storeSlug] fetch failed', e)
-    storeSlug.value = ''
+    console.warn('[BillModalSP] fetch bill tags failed', e)
+    billTags.value = []
   }
 })
 
@@ -178,10 +186,14 @@ async function ensureBillId () {
     opened_at: props.bill?.opened_at ?? null,
     expected_out: props.bill?.expected_out ?? null,
     pax: paxPayload,  // ★ 人数も保存（手入力優先）
+    apply_service_charge: applyServiceChargeRef.value,
+    apply_tax: applyTaxRef.value,
   })
   // 戻り値で補正された場合はローカルにも反映
   if (b?.opened_at) props.bill.opened_at = b.opened_at
   if (b?.expected_out) props.bill.expected_out = b.expected_out
+  if (b?.apply_service_charge !== undefined) props.bill.apply_service_charge = b.apply_service_charge
+  if (b?.apply_tax !== undefined) props.bill.apply_tax = b.apply_tax
   props.bill.id = b.id
   return b.id
 }
@@ -302,10 +314,132 @@ const servedByOptions = computed(() => {
 })
 const servedByMap = computed(() => { const map = {}; for (const c of servedByOptions.value || []) map[String(c.id)] = c.label; return map })
 
+/* ========== 税・サービス料トグル ========== */
+const applyServiceChargeRef = ref(props.bill?.apply_service_charge !== false)
+const applyTaxRef = ref(props.bill?.apply_tax !== false)
+
+function syncChargeFlagsFromBill() {
+  const b = props.bill || {}
+  applyServiceChargeRef.value = b?.apply_service_charge !== false
+  applyTaxRef.value = b?.apply_tax !== false
+}
+
+watch(() => props.bill?.apply_service_charge, (v) => {
+  applyServiceChargeRef.value = v !== false
+})
+watch(() => props.bill?.apply_tax, (v) => {
+  applyTaxRef.value = v !== false
+})
+
+async function patchChargeFlags(payload) {
+  if (!props.bill?.id) return null
+  const updated = await patchBill(props.bill.id, payload)
+  if (updated) {
+    Object.assign(props.bill, updated)
+    emit('updated', updated)
+  }
+  return updated
+}
+
+async function onApplyServiceChange(v) {
+  const next = !!v
+  const prev = applyServiceChargeRef.value
+  applyServiceChargeRef.value = next
+  if (props.bill) props.bill.apply_service_charge = next
+
+  if (!props.bill?.id) return
+  try {
+    await patchChargeFlags({ apply_service_charge: next })
+  } catch (e) {
+    console.error('[BillModalSP] failed to update apply_service_charge', e)
+    applyServiceChargeRef.value = prev
+    if (props.bill) props.bill.apply_service_charge = prev
+    alert('サービス料の設定を更新できませんでした')
+  }
+}
+
+async function onApplyTaxChange(v) {
+  const next = !!v
+  const prev = applyTaxRef.value
+  applyTaxRef.value = next
+  if (props.bill) props.bill.apply_tax = next
+
+  if (!props.bill?.id) return
+  try {
+    await patchChargeFlags({ apply_tax: next })
+  } catch (e) {
+    console.error('[BillModalSP] failed to update apply_tax', e)
+    applyTaxRef.value = prev
+    if (props.bill) props.bill.apply_tax = prev
+    alert('TAXの設定を更新できませんでした')
+  }
+}
+
+async function onMemoChange(v) {
+  const next = String(v || '')
+  memoRef.value = next
+  if (props.bill) props.bill.memo = next
+
+  if (!props.bill?.id) return
+  try {
+    await patchBill(props.bill.id, { memo: next })
+  } catch (e) {
+    console.error('[BillModalSP] failed to update memo', e)
+  }
+}
+
+async function onSelectedTagIdsChange(v) {
+  selectedTagIds.value = v || []
+  if (props.bill) props.bill.tags = billTags.value.filter(t => selectedTagIds.value.includes(t.id))
+
+  if (!props.bill?.id) return
+  try {
+    await patchBill(props.bill.id, { tag_ids: selectedTagIds.value })
+  } catch (e) {
+    console.error('[BillModalSP] failed to update tag_ids', e)
+    // リバート
+    selectedTagIds.value = props.bill?.tags?.map(t => t.id) || []
+  }
+}
+
 /* ========== Pay 周り ========== */
 const displayGrandTotal = computed(() => {
   const b = props.bill || {}
   return Number((b.total != null && b.total > 0) ? b.total : (b.grand_total ?? 0))
+})
+// 延長分：サーバ値が不正な場合に備えてローカルで再計算（空伝票なら0）
+const extMinutesView = computed(() => {
+  const b = props.bill || {}
+  const items = Array.isArray(b.items) ? b.items : []
+  if (!items.length) return 0
+  
+  // デバッグ: 各アイテムのカテゴリコードを出力
+  console.log('[extMinutesView] アイテム一覧:')
+  items.forEach(it => {
+    console.log({
+      name: it.name,
+      code: it.code,
+      item_master: it.item_master,
+      category_code: it?.item_master?.category?.code,
+      category: it?.category,
+      category_code_direct: it?.category_code,
+      duration_min: it.duration_min,
+      qty: it.qty
+    })
+  })
+  
+  let mins = 0
+  for (const it of items) {
+    const code = String(it?.code || it?.item_master?.code || '').toLowerCase()
+    const isExt = code.includes('extension')
+    if (!isExt) continue
+    const dur = Number(it.duration_min || it?.item_master?.duration_min || 30)
+    const qty = Number(it.qty || 0)
+    mins += Math.max(0, dur) * Math.max(0, qty)
+  }
+  
+  console.log('[extMinutesView] 延長合計分数:', mins)
+  return mins || Number(b.ext_minutes || 0) || 0
 })
 const payCurrent = computed(() => {
   const b = props.bill || {}
@@ -329,6 +463,11 @@ const payRef = ref(null)
 const memoRef = ref(props.bill?.memo ?? '')
 watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
 
+// タグ関連
+const billTags = ref([])  // 店舗の全タグ
+const selectedTagIds = ref(props.bill?.tags?.map(t => t.id) || [])
+watch(() => props.bill?.tags, (v) => { selectedTagIds.value = v?.map(t => t.id) || [] }, { immediate: true })
+
 watch(visible, v => {
   if (!v) return
   memoRef.value = props.bill?.memo ?? ''
@@ -341,6 +480,8 @@ function resetPaymentFromProps() {
   paidCardRef.value     = Number(b.paid_card ?? 0) || 0
   settledTotalRef.value = Number(b.settled_total ?? (b.grand_total || 0)) || 0
   memoRef.value         = b.memo ?? ''
+  selectedTagIds.value  = b.tags?.map(t => t.id) || []
+  syncChargeFlagsFromBill()
 }
 
 let _prevBillId = props.bill?.id ?? null
@@ -829,16 +970,25 @@ function handleClose() {
       :customer-searching="ed.custLoading.value"
       :opened-at="bill.opened_at"
       :expected-out="bill.expected_out"
-      :ext-minutes="bill.ext_minutes || 0"
+      :ext-minutes="extMinutesView"
       :set-rounds="bill.set_rounds || 0"
       :pax="bill.pax ?? paxFromItems"
       :male="maleFromItems"
       :female="femaleFromItems"
+      :apply-service="applyServiceChargeRef"
+      :apply-tax="applyTaxRef"
+      :memo="memoRef"
+      :tags="billTags"
+      :selected-tag-ids="selectedTagIds"
       :history-events="historyEvents"
       @update-times="onUpdateTimes"
       @update:seatType="onSeatTypeChange" 
       @update:tableId="v => (ed.tableId.value = v)"
       @update:pax="onUpdatePax"
+      @update:applyService="onApplyServiceChange"
+      @update:applyTax="onApplyTaxChange"
+      @update:memo="onMemoChange"
+      @update:selectedTagIds="onSelectedTagIdsChange"
       @chooseCourse="(opt, qty) => onChooseCourse(opt, qty)"
       @clearCustomer="ed.clearCustomer"
       @searchCustomer="ed.searchCustomers"
@@ -893,6 +1043,7 @@ function handleClose() {
       :current="payCurrent"
       :display-grand-total="displayGrandTotal"
       :memo="props.bill?.memo || ''"
+      :tags="props.bill?.tags || []"
       :settled-total="settledTotalRef"
       :paid-cash="paidCashRef"
       :paid-card="paidCardRef"

@@ -31,7 +31,7 @@ from .models import (
     Store, Table, Bill, BillCustomer, ItemMaster, BillItem, BillCastStay,
     Cast, CastPayout, ItemCategory, CastShift, CastDailySummary,
     Staff, StaffShift, Customer, CustomerLog, CustomerTag,
-    StoreNotice, StoreSeatSetting, DiscountRule
+    StoreNotice, StoreSeatSetting, DiscountRule, BillTag
 )
 from .serializers import (
     StoreSerializer, TableSerializer, BillSerializer,
@@ -42,7 +42,7 @@ from .serializers import (
     StaffSerializer, StaffShiftSerializer,
     BillCastStayMiniSerializer, CustomerSerializer, CustomerLogSerializer,
     StoreNoticeSerializer, ItemCategorySerializer, StoreSeatSettingSerializer, DiscountRuleSerializer,
-    CastPayoutListSerializer, CustomerTagSerializer,
+    CastPayoutListSerializer, CustomerTagSerializer, BillTagSerializer,
 )
 from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales, sync_nomination_fees
@@ -274,12 +274,14 @@ class BillViewSet(viewsets.ModelViewSet):
         # discount_ruleが更新された場合、再計算を実行
         bill = serializer.instance
         discount_rule_updated = 'discount_rule' in serializer.validated_data
+        service_toggle_updated = 'apply_service_charge' in serializer.validated_data
+        tax_toggle_updated = 'apply_tax' in serializer.validated_data
         old_discount_rule_id = bill.discount_rule_id if hasattr(bill, 'discount_rule_id') else None
 
         serializer.save()
 
         # discount_ruleが変更された場合、金額を再計算
-        if discount_rule_updated:
+        if discount_rule_updated or service_toggle_updated or tax_toggle_updated:
             from .models import _recalc_bill_after_items_change
             bill.refresh_from_db()
             _recalc_bill_after_items_change(bill)
@@ -522,6 +524,18 @@ class ItemCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ItemCategory.objects.all()
     serializer_class = ItemCategorySerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+class BillTagViewSet(CacheListMixin, StoreScopedModelViewSet):
+    """
+    伝票タグ（店舗ごと）
+    GET /api/billing/bill-tags/?_sid=13  店舗13のタグ一覧
+    POST/PUT/PATCH/DELETE も可能（admin 推奨）
+    """
+    queryset = BillTag.objects.all()
+    serializer_class = BillTagSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ['is_active']
 
 
 # ────────────────────────────────────────────────────────────────────

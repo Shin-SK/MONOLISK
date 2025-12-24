@@ -10,7 +10,7 @@ from .views import (
      CastDailySummaryViewSet, CastRankingView,
      StaffViewSet, StaffShiftViewSet,
      CustomerViewSet, StoreNoticeViewSet, StoreSeatSettingViewSet, DiscountRuleViewSet, CastPayrollSummaryView, CastPayrollDetailView, CastPayrollDetailCSVView,
-     CustomerTagViewSet, HourlySalesView,
+     CustomerTagViewSet, BillTagViewSet, HourlySalesView,
      PayrollRunPreviewView, PayrollRunExportCSVView,
 )
 
@@ -25,6 +25,7 @@ router.register(r"item-masters",         ItemMasterViewSet,      basename="item-
 router.register(r"bills",                BillViewSet,            basename="bills")
 router.register(r"casts",                CastViewSet,            basename="casts")
 router.register(r"item-categories",      ItemCategoryViewSet,    basename="item-categories")
+router.register(r"bill-tags",            BillTagViewSet,         basename="bill-tags")
 router.register(r"cast-shifts",          CastShiftViewSet,       basename="cast-shifts")
 router.register(r"cast-daily-summaries", CastDailySummaryViewSet,basename="cast-daily-summaries")
 router.register(r"staffs", StaffViewSet, basename="staffs")

@@ -12,7 +12,7 @@ import {
   updateBillCasts,
   toggleBillInhouse,
   addBillItem, deleteBillItem, closeBill,
-  fetchBill, patchBillItem,
+  fetchBill, patchBillItem, patchBill,
   setBillDiscountByCode,
   setBillDohan,
 } from '@/api'
@@ -188,6 +188,49 @@ watch(() => props.bill?.table?.seat_type, v => {
   if (v != null) seatType.value = String(v)
 })
 watch(seatType, () => { form.table_id = null })
+
+const applyServiceCharge = ref(props.bill?.apply_service_charge !== false)
+const applyTax = ref(props.bill?.apply_tax !== false)
+watch(() => props.bill?.apply_service_charge, v => { applyServiceCharge.value = v !== false })
+watch(() => props.bill?.apply_tax, v => { applyTax.value = v !== false })
+
+async function onApplyServiceChangePc(v) {
+  const next = !!v
+  const prev = applyServiceCharge.value
+  applyServiceCharge.value = next
+  if (!props.bill?.id) return
+  try {
+    const updated = await patchBill(props.bill.id, { apply_service_charge: next })
+    if (updated) {
+      Object.assign(props.bill, updated)
+      emit('updated', updated)
+    }
+  } catch (e) {
+    console.error('[BillModalPC] failed to update apply_service_charge', e)
+    applyServiceCharge.value = prev
+    if (props.bill) props.bill.apply_service_charge = prev
+    alert('サービス料の設定を更新できませんでした')
+  }
+}
+
+async function onApplyTaxChangePc(v) {
+  const next = !!v
+  const prev = applyTax.value
+  applyTax.value = next
+  if (!props.bill?.id) return
+  try {
+    const updated = await patchBill(props.bill.id, { apply_tax: next })
+    if (updated) {
+      Object.assign(props.bill, updated)
+      emit('updated', updated)
+    }
+  } catch (e) {
+    console.error('[BillModalPC] failed to update apply_tax', e)
+    applyTax.value = prev
+    if (props.bill) props.bill.apply_tax = prev
+    alert('TAXの設定を更新できませんでした')
+  }
+}
 
 function onApplySet(payload){
   const lines = Array.isArray(payload?.lines) ? payload.lines : []
@@ -702,9 +745,13 @@ async function save () {
         opened_at   : form.opened_at ? dayjs(form.opened_at).toISOString() : null,
         expected_out: form.expected_out ? dayjs(form.expected_out).toISOString() : null,
         memo        : String(memoRef.value || ''),
+        apply_service_charge: applyServiceCharge.value,
+        apply_tax: applyTax.value,
       })
       billId = created.id
       props.bill.id = billId
+      props.bill.apply_service_charge = created.apply_service_charge
+      props.bill.apply_tax = created.apply_tax
       if ((props.bill.customers?.length ?? 0) > 0) {
         await updateBillCustomers(billId, props.bill.customers)
       }
@@ -714,10 +761,12 @@ async function save () {
       if (currentTableId === null || form.table_id !== currentTableId) {
         await updateBillTable(billId, form.table_id)
       }
-      await api.patch(`billing/bills/${billId}/`, {
+      await patchBill(billId, {
         opened_at   : form.opened_at    ? dayjs(form.opened_at).toISOString()    : null,
         expected_out: form.expected_out ? dayjs(form.expected_out).toISOString() : null,
         memo        : String(memoRef.value || ''),
+        apply_service_charge: applyServiceCharge.value,
+        apply_tax: applyTax.value,
       })
     }
 
@@ -844,11 +893,15 @@ watch(freeCastIds, list => {
               :male="maleFromItems"
               :female="femaleFromItems"
               :course-options="courseOptions"
+              :apply-service="applyServiceCharge"
+              :apply-tax="applyTax"
 
               v-model:seatType="seatType"
 
               @update:tableId="v => (form.table_id = v)"
               @update:pax="v => (pax = v)"
+              @update:applyService="onApplyServiceChangePc"
+              @update:applyTax="onApplyTaxChangePc"
               @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"
               @jumpToBill="rightTab = 'bill'"
               @applySet="onApplySet"

@@ -108,6 +108,8 @@ export const createBill = (arg = {}) => {
 		opened_at   : payload.opened_at,               // 任意
 		expected_out: payload.expected_out ?? null,    // 任意
 		pax         : payload.pax ?? null,             // 任意: 人数
+    ...(payload.apply_service_charge !== undefined ? { apply_service_charge: !!payload.apply_service_charge } : {}),
+    ...(payload.apply_tax !== undefined ? { apply_tax: !!payload.apply_tax } : {}),
 		...(payload.memo != null ? { memo: String(payload.memo) } : {}),
 	}
 	return api.post('billing/bills/', body).then(r => r.data)
@@ -810,6 +812,13 @@ export const fetchDiscountRules = (params = {}) =>
 // Basicsパネル用（is_active & is_basic）
 export const fetchBasicDiscountRules = () =>
   fetchDiscountRules({ is_active: true, is_basic: true })
+
+// 伝票タグを取得（店舗ごと）
+export const fetchBillTags = (params = {}) =>
+  api.get('billing/bill-tags/', { params })
+     .then(r => Array.isArray(r.data?.results) ? r.data.results
+              : Array.isArray(r.data)          ? r.data
+              : [])
 
 // Billに割引ルールをセット（idを直接指定）
 export const updateBillDiscountRule = (billId, ruleId /* number|null|undefined */) => {

@@ -63,6 +63,8 @@ class BillCalculator:
 
     def _service_fee(self, subtotal: Decimal) -> Decimal:
         """席種別の実効サービス率（Bill._effective_service_rate）を優先"""
+        if getattr(self.bill, "apply_service_charge", True) is False:
+            return Decimal(0)
         # Bill にヘルパがある想定（過去に追加済み）。無ければ store.service_rate を使う。
         if hasattr(self.bill, "_effective_service_rate"):
             rate = Decimal(str(self.bill._effective_service_rate()))
@@ -76,6 +78,8 @@ class BillCalculator:
         """
         グローバル既定：税は小計にのみ課税（サービス料には課税しない）
         """
+        if getattr(self.bill, "apply_tax", True) is False:
+            return Decimal(0)
         rate = Decimal(str(self.store.tax_rate or 0))
         if rate >= 1:
             rate /= 100

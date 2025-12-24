@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from .models import (
     Store, Table, ItemCategory, ItemMaster, Bill, BillItem,
     BillCastStay, Cast, CastPayout, ItemStock, BillingUser, CastCategoryRate, Customer,
-    StoreSeatSetting, SeatType
+    StoreSeatSetting, SeatType, BillTag
 )
 
 from django import forms
@@ -443,3 +443,32 @@ class DiscountRuleAdmin(admin.ModelAdmin):
             return f"{float(obj.percent_off)*100:.0f}%"
         return '—'
     _kind.short_description = '割引'
+
+
+@admin.register(BillTag)
+class BillTagAdmin(admin.ModelAdmin):
+    list_display  = ('id', 'store', 'code', 'name', 'color_badge', 'is_active', 'created_at')
+    list_filter   = ('store', 'is_active')
+    search_fields = ('code', 'name', 'description')
+    ordering      = ('store', 'code')
+    readonly_fields = ('created_at',)
+    
+    fieldsets = (
+        (None, {
+            'fields': ('store', 'code', 'name', 'description', 'color', 'is_active')
+        }),
+        ('システム', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def color_badge(self, obj):
+        """カラーバッジを表示"""
+        return format_html(
+            '<span style="display:inline-block;width:60px;padding:4px 8px;'
+            'background-color:{};color:#fff;border-radius:4px;text-align:center;">{}</span>',
+            obj.color or '#FF9800',
+            obj.name
+        )
+    color_badge.short_description = 'プレビュー'
