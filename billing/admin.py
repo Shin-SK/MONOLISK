@@ -447,7 +447,7 @@ class DiscountRuleAdmin(admin.ModelAdmin):
 
 @admin.register(BillTag)
 class BillTagAdmin(admin.ModelAdmin):
-    list_display  = ('id', 'store', 'code', 'name', 'color_badge', 'is_active', 'created_at')
+    list_display  = ('id', 'store', 'code', 'name', 'is_active', 'created_at')
     list_filter   = ('store', 'is_active')
     search_fields = ('code', 'name', 'description')
     ordering      = ('store', 'code')
@@ -455,20 +455,10 @@ class BillTagAdmin(admin.ModelAdmin):
     
     fieldsets = (
         (None, {
-            'fields': ('store', 'code', 'name', 'description', 'color', 'is_active')
+            'fields': ('store', 'code', 'name', 'description', 'is_active')
         }),
         ('システム', {
             'fields': ('created_at',),
             'classes': ('collapse',)
         }),
     )
-    
-    def color_badge(self, obj):
-        """カラーバッジを表示"""
-        return format_html(
-            '<span style="display:inline-block;width:60px;padding:4px 8px;'
-            'background-color:{};color:#fff;border-radius:4px;text-align:center;">{}</span>',
-            obj.color or '#FF9800',
-            obj.name
-        )
-    color_badge.short_description = 'プレビュー'
