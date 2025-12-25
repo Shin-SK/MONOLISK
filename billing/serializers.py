@@ -1,6 +1,12 @@
 # billing/serializer.py
 from rest_framework import serializers
-from .models import Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule, CastGoal, User, CustomerTag, BillTag
+from .models import (
+    Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, 
+    ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, 
+    Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule, CastGoal, User, 
+    CustomerTag, BillTag,
+    PersonnelExpenseCategory, PersonnelExpense, PersonnelExpenseSettlementEvent
+)
 from dj_rest_auth.serializers import UserDetailsSerializer
 from cloudinary.utils import cloudinary_url
 from decimal import Decimal, ROUND_HALF_UP
@@ -382,6 +388,7 @@ class CastSerializer(serializers.ModelSerializer):
     username_read   = serializers.CharField(source='user.username',   read_only=True)
     first_name_read = serializers.CharField(source='user.first_name', read_only=True)
     last_name_read  = serializers.CharField(source='user.last_name',  read_only=True)
+    user_id         = serializers.IntegerField(source='user.id', read_only=True)
 
     avatar_url     = serializers.SerializerMethodField()
     category_rates = CastCategoryRateSerializer(many=True, required=False)
@@ -394,6 +401,7 @@ class CastSerializer(serializers.ModelSerializer):
         model  = Cast
         fields = (
             "id", "stage_name", "store",
+            "user_id",
             # User 表示
             "username_read","first_name_read","last_name_read",
             # User 入力（新規/任意更新）
@@ -1162,6 +1170,7 @@ class StaffSerializer(serializers.ModelSerializer):
     username    = serializers.CharField(source='user.username', read_only=True)
     first_name  = serializers.CharField(source='user.first_name', read_only=True)
     last_name   = serializers.CharField(source='user.last_name', read_only=True)
+    user_id     = serializers.IntegerField(source='user.id', read_only=True)
     role_code   = serializers.CharField(source='role', read_only=True)
     # stores は ID 配列で入出力（ID/PKで OK）
     stores      = serializers.PrimaryKeyRelatedField(
@@ -1177,6 +1186,7 @@ class StaffSerializer(serializers.ModelSerializer):
         model  = Staff
         fields = [
             'id',
+            'user_id',
             'username', 'first_name', 'last_name',   # 読み取り
             'username_in', 'first_name_in', 'last_name_in',  # 書き込み
             'role_code', 'role', 'hourly_wage', 'stores',
@@ -1588,4 +1598,162 @@ class HourlySalesSummarySerializer(serializers.ModelSerializer):
     def get_time_display(self, obj):
         """時刻を HH:00 フォーマットで返す"""
         return f"{obj.hour:02d}:00"
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Personnel Expense Serializers
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class PersonnelExpenseCategorySerializer(serializers.ModelSerializer):
+    """人件費経費カテゴリ"""
+    class Meta:
+        model = PersonnelExpenseCategory
+        fields = ('id', 'store', 'code', 'name', 'description', 'is_active', 'created_at')
+        read_only_fields = ('id', 'created_at')
+
+
+class PersonnelExpenseSerializer(serializers.ModelSerializer):
+    """人件費経費"""
+    # READ: settled_amount を含める
+    settled_amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        read_only=True
+    )
+    remaining_amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        read_only=True
+    )
+    
+    # subject_user の表示用フィールド
+    subject_user_username = serializers.CharField(
+        source='subject_user.username',
+        read_only=True
+    )
+    subject_user_display = serializers.SerializerMethodField()
+    
+    # category の表示用
+    category_name = serializers.CharField(
+        source='category.name',
+        read_only=True
+    )
+    
+    # WRITE: ID で受け取る
+    subject_user_id = serializers.PrimaryKeyRelatedField(
+        source='subject_user',
+        queryset=User.objects.all(),
+        write_only=True,
+        required=True
+    )
+    category_id = serializers.PrimaryKeyRelatedField(
+        source='category',
+        queryset=PersonnelExpenseCategory.objects.all(),
+        write_only=True,
+        required=True
+    )
+    
+    class Meta:
+        model = PersonnelExpense
+        fields = (
+            'id', 'store', 'category', 'category_id', 'category_name',
+            'subject_user', 'subject_user_id', 'subject_user_username', 'subject_user_display',
+            'subject_role', 'amount', 'policy', 'status', 'description',
+            'occurred_at', 'payroll_run',
+            'settled_amount', 'remaining_amount',
+            'created_at', 'updated_at'
+        )
+        read_only_fields = ('id', 'store', 'status', 'created_at', 'updated_at', 'category', 'subject_user')
+    
+    def get_subject_user_display(self, obj):
+        """subject_user の表示用（username または full_name）"""
+        user = obj.subject_user
+        if not user:
+            return None
+        # Cast の場合は stage_name を優先
+        if obj.subject_role == 'cast':
+            try:
+                cast = Cast.objects.get(user=user, store=obj.store)
+                return cast.stage_name
+            except Cast.DoesNotExist:
+                pass
+        # staff/manager は username
+        return user.username
+    
+    def create(self, validated_data):
+        """store を request から自動セット"""
+        request = self.context.get('request')
+        if request and hasattr(request, 'store'):
+            validated_data['store'] = request.store
+        return super().create(validated_data)
+
+
+class PersonnelExpenseSettlementEventSerializer(serializers.ModelSerializer):
+    """人件費経費の回収イベント"""
+    # READ: expense の詳細情報
+    expense_detail = serializers.SerializerMethodField(read_only=True)
+    
+    # WRITE: ID で受け取る
+    expense_id = serializers.PrimaryKeyRelatedField(
+        source='expense',
+        queryset=PersonnelExpense.objects.all(),
+        write_only=True,
+        required=True
+    )
+    
+    class Meta:
+        model = PersonnelExpenseSettlementEvent
+        fields = (
+            'id', 'expense', 'expense_id', 'expense_detail',
+            'amount', 'settled_at', 'note',
+            'created_at'
+        )
+        read_only_fields = ('id', 'created_at')
+    
+    def get_expense_detail(self, obj):
+        """expense の基本情報"""
+        expense = obj.expense
+        return {
+            'id': expense.id,
+            'subject_user_username': expense.subject_user.username,
+            'subject_role': expense.subject_role,
+            'category_name': expense.category.name,
+            'total_amount': str(expense.amount),
+            'policy': expense.policy,
+        }
+    
+    def validate(self, attrs):
+        """store 一致チェック"""
+        request = self.context.get('request')
+        expense = attrs.get('expense')
+        
+        # request.store と expense.store が一致するか
+        if request and hasattr(request, 'store') and expense:
+            if expense.store != request.store:
+                raise serializers.ValidationError({
+                    'expense': f'この経費は別の店舗（{expense.store.name}）に属しています。'
+                })
+        
+        # 回収金額が残額を超えていないか
+        if expense:
+            remaining = expense.remaining_amount
+            settle_amount = attrs.get('amount', 0)
+            if settle_amount > remaining:
+                raise serializers.ValidationError({
+                    'amount': f'回収金額（¥{settle_amount:,}）が残額（¥{remaining:,}）を超えています。'
+                })
+        
+        return attrs
+    
+    def create(self, validated_data):
+        """回収イベント作成後、expense の status を更新"""
+        event = super().create(validated_data)
+        expense = event.expense
+        
+        # settled_amount を再計算して status を更新
+        if expense.settled_amount >= expense.amount:
+            expense.status = PersonnelExpense.ExpenseStatus.SETTLED
+            expense.save(update_fields=['status'])
+        
+        return event
 

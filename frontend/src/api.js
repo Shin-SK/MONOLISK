@@ -874,6 +874,73 @@ export const switchStore = async (sid) => {
 	return data
 }
 
+// ───────── Personnel Expenses (人件費に紐づく経費) ─────────
+
+/**
+ * カテゴリ一覧取得
+ *   params: { is_active, search, ... }
+ */
+export const fetchPersonnelExpenseCategories = async (params = {}) => {
+	const { data } = await api.get('billing/personnel-expense-categories/', { params })
+	return Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
+}
+
+/**
+ * カテゴリ作成
+ *   payload: { code, name, is_active }
+ */
+export const createPersonnelExpenseCategory = async (payload) => {
+	const { data } = await api.post('billing/personnel-expense-categories/', payload)
+	return data
+}
+
+/**
+ * 経費一覧取得
+ *   params: { status, policy, payroll_run, subject_user, subject_role, occurred_at_from, occurred_at_to, ... }
+ */
+export const fetchPersonnelExpenses = async (params = {}) => {
+	const { data } = await api.get('billing/personnel-expenses/', { params })
+	return Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
+}
+
+/**
+ * 経費作成
+ *   payload: { category_id, subject_user_id, subject_role, amount, policy, occurred_at, description }
+ */
+export const createPersonnelExpense = async (payload) => {
+	const { data } = await api.post('billing/personnel-expenses/', payload)
+	return data
+}
+
+/**
+ * 経費更新（PATCH）
+ *   id: 経費ID
+ *   payload: { amount, description, status, ... }
+ */
+export const patchPersonnelExpense = async (id, payload) => {
+	const { data } = await api.patch(`billing/personnel-expenses/${id}/`, payload)
+	return data
+}
+
+/**
+ * 精算イベント作成（経費の決済）
+ *   expenseId: 経費ID
+ *   payload: { amount, settled_at, note }
+ */
+export const createPersonnelExpenseSettlement = async (expenseId, payload) => {
+	const { data } = await api.post(`billing/personnel-expenses/${expenseId}/settlements/`, payload)
+	return data
+}
+
+/**
+ * 給与締めへの一括紐付け
+ *   runId: PayrollRun ID
+ *   payload: { date_from, date_to } (任意。空でも可)
+ */
+export const attachPersonnelExpensesToPayrollRun = async (runId, payload = {}) => {
+	const { data } = await api.post(`billing/payroll/runs/${runId}/attach-personnel-expenses/`, payload)
+	return data
+}
 
 if (import.meta.env.DEV) window.__API__ = api
 

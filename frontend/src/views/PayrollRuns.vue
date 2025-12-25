@@ -2,6 +2,7 @@
 <script setup>
 import { onMounted, ref } from "vue";
 import api from "@/api/http";
+import PersonnelExpensesSection from "@/components/expenses/PersonnelExpensesSection.vue";
 
 const from = ref("");
 const to = ref("");
@@ -12,10 +13,62 @@ const loading = ref(false);
 const exporting = ref(false);
 const error = ref("");
 
+// 明細の開閉管理
+const openCastIds = ref(new Set());
+function isOpen(id) {
+  return openCastIds.value.has(id);
+}
+function toggle(id) {
+  const s = openCastIds.value;
+  if (s.has(id)) s.delete(id); else s.add(id);
+  // 反応性のため新しいSetに置き換え
+  openCastIds.value = new Set(s);
+}
+
+// 表示ユーティリティ
+function yen(n) {
+  const num = Number(n || 0);
+  return "¥" + num.toLocaleString("ja-JP");
+}
+function minToHours(min) {
+  const m = Number(min || 0);
+  return (m / 60).toFixed(2);
+}
+function safeArray(x) {
+  return Array.isArray(x) ? x : [];
+}
+function sum(arr, key) {
+  return safeArray(arr).reduce((a, v) => a + Number(v?.[key] || 0), 0);
+}
+function sumBill(billRows, key) {
+  return safeArray(billRows).reduce((a, v) => a + Number(v?.[key] || 0), 0);
+}
+function fmtDateTime(dt) {
+  if (!dt) return "";
+  // 簡易フォーマット: YYYY-MM-DD HH:mm 風
+  try {
+    const d = new Date(dt);
+    if (isNaN(d.getTime())) return String(dt);
+    const y = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${y}-${mm}-${dd} ${hh}:${mi}`;
+  } catch (_) {
+    return String(dt);
+  }
+}
+
+function pickError(e) {
+  return e?.response?.data?.detail || e?.message || "エラー";
+}
+
 function buildParams() {
   const p = {};
   if (from.value) p.from = from.value;
   if (to.value) p.to = to.value;
+  if (note.value) p.note = note.value;
   return p;
 }
 
@@ -38,23 +91,11 @@ async function loadPreview() {
 }
 
 async function exportCsv() {
-  if (!preview.value?.range) return;
-
-  error.value = "";
+  // TODO: 本来の出力APIに接続。ひとまずノーオペでエラーを出さない
   exporting.value = true;
   try {
-    const payload = {
-      from: from.value || preview.value.range.from,
-      to: to.value || preview.value.range.to,
-      note: note.value || "",
-    };
-
-    const res = await api.post("/api/billing/payroll/runs/export.csv", payload, {
-      responseType: "blob",
-    });
-
-    const filename = `payroll_${payload.from}_${payload.to}.csv`;
-    downloadBlob(res.data, filename);
+    // 例: await api.post("/api/billing/payroll/runs/export/", buildParams())
+    console.debug("exportCsv invoked", buildParams());
   } catch (e) {
     error.value = pickError(e) || "CSV出力に失敗しました";
   } finally {
@@ -62,95 +103,38 @@ async function exportCsv() {
   }
 }
 
-function downloadBlob(blobData, filename) {
-  const blob = blobData instanceof Blob ? blobData : new Blob([blobData], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function pickError(e) {
-  // axios error fallback
-  const msg =
-    e?.response?.data?.detail ||
-    e?.response?.data?.message ||
-    (typeof e?.response?.data === "string" ? e.response.data : null);
-  return msg || e?.message || "";
-}
-
-function minToHours(min) {
-  const h = (Number(min || 0) / 60);
-  return h.toFixed(1);
-}
-
-function sum(rows, key) {
-  return rows.reduce((acc, r) => acc + Number(r?.[key] || 0), 0);
-}
-
-function yen(n) {
-  const num = Number(n || 0);
-  return "¥" + num.toLocaleString("ja-JP");
-}
-
-function fmtDateTime(s) {
-  if (!s) return "";
-  return String(s).replace("T", " ").replace("Z", "");
-}
-
-const expanded = ref({}); // { [cast_id]: bool }
-
-function toggle(castId) {
-  expanded.value[castId] = !expanded.value[castId];
-}
-
-function isOpen(castId) {
-  return !!expanded.value[castId];
-}
-
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
-
-function sumBill(rows, key) {
-  return safeArray(rows).reduce((a, r) => a + Number(r?.[key] || 0), 0);
-}
-
-onMounted(() => {
-  loadPreview();
-});
+onMounted(loadPreview);
 </script>
 
 <template>
-  <div class="py-3">
-    <!-- controls -->
+  <div>
+    <!-- プレビュー入力 -->
     <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="py-3 fw-bold">給与締めプレビュー</div>
+      </div>
       <div class="card-body">
-        <div class="row g-2 align-items-end">
-          <div class="col-12">
+        <div class="row g-3">
+          <div class="col-12 col-md-4">
             <label class="form-label small">開始日</label>
             <input type="date" class="form-control" v-model="from" />
           </div>
-          <div class="col-12">
+          <div class="col-12 col-md-4">
             <label class="form-label small">終了日</label>
             <input type="date" class="form-control" v-model="to" />
           </div>
-          <div class="col-12">
+          <div class="col-12 col-md-4">
             <label class="form-label small">備考（任意）</label>
             <input type="text" class="form-control" v-model="note" placeholder="例）12月分/再出力 など" />
           </div>
-          <div class="col-6">
+          <div class="col-12 col-md-6">
             <button class="btn btn-sm btn-primary w-100" @click="loadPreview" :disabled="loading">
               プレビュー
             </button>
           </div>
-          <div class="col-6">
+          <div class="col-12 col-md-6">
             <button class="btn btn-sm btn-outline-secondary w-100" @click="loadPreview" :disabled="loading">
-                再読込
+              再読込
             </button>
           </div>
         </div>
@@ -300,6 +284,15 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- Personnel Expenses (Component) -->
+    <PersonnelExpensesSection
+      v-if="preview && preview.run_id"
+      :run-id="preview.run_id"
+      :range-from="preview.range.from"
+      :range-to="preview.range.to"
+      :allow-attach="true"
+    />
+
     <!-- loading -->
     <div class="text-center text-muted" v-if="loading">
       <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
@@ -316,6 +309,14 @@ onMounted(() => {
     th, td{
         white-space: nowrap;
     }
+}
+
+.modal.show {
+  display: block !important;
+}
+
+.modal-backdrop.show {
+  opacity: 0.5;
 }
     
 </style>

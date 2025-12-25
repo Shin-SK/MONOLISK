@@ -12,6 +12,8 @@ from .views import (
      CustomerViewSet, StoreNoticeViewSet, StoreSeatSettingViewSet, DiscountRuleViewSet, CastPayrollSummaryView, CastPayrollDetailView, CastPayrollDetailCSVView,
      CustomerTagViewSet, BillTagViewSet, HourlySalesView,
      PayrollRunPreviewView, PayrollRunExportCSVView,
+     PersonnelExpenseCategoryViewSet, PersonnelExpenseViewSet,
+     attach_personnel_expenses_to_run,
 )
 
 from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
@@ -35,6 +37,8 @@ router.register(r"store-notices",        StoreNoticeViewSet,     basename="store
 router.register(r'store-seat-settings', StoreSeatSettingViewSet, basename='store-seat-settings')
 router.register(r'discount-rules', DiscountRuleViewSet, basename='discount-rule')
 router.register(r"customer-tags",       CustomerTagViewSet,     basename="customer-tags")
+router.register(r"personnel-expense-categories", PersonnelExpenseCategoryViewSet, basename="personnelexpensecategory")
+router.register(r"personnel-expenses",   PersonnelExpenseViewSet, basename="personnelexpense")
 
 
 urlpatterns = [
@@ -76,6 +80,7 @@ urlpatterns = [
     # ★給与締め（PayrollRun）
     path("payroll/runs/preview/", PayrollRunPreviewView.as_view(), name="payroll-runs-preview"),
     path("payroll/runs/export.csv", PayrollRunExportCSVView.as_view(), name="payroll-runs-export-csv"),
+    path("payroll/runs/<int:pk>/attach-personnel-expenses/", attach_personnel_expenses_to_run, name="payroll-attach-expenses"),
     
     path('kds/tickets/', KDSTicketList.as_view(), name='kds_ticket_list'),
     path('kds/tickets/<int:pk>/ack/', KDSTicketAck.as_view(), name='kds_ticket_ack'),

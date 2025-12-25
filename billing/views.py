@@ -31,7 +31,8 @@ from .models import (
     Store, Table, Bill, BillCustomer, ItemMaster, BillItem, BillCastStay,
     Cast, CastPayout, ItemCategory, CastShift, CastDailySummary,
     Staff, StaffShift, Customer, CustomerLog, CustomerTag,
-    StoreNotice, StoreSeatSetting, DiscountRule, BillTag
+    StoreNotice, StoreSeatSetting, DiscountRule, BillTag,
+    PersonnelExpenseCategory, PersonnelExpense, PersonnelExpenseSettlementEvent, PayrollRun
 )
 from .serializers import (
     StoreSerializer, TableSerializer, BillSerializer,
@@ -43,6 +44,7 @@ from .serializers import (
     BillCastStayMiniSerializer, CustomerSerializer, CustomerLogSerializer,
     StoreNoticeSerializer, ItemCategorySerializer, StoreSeatSettingSerializer, DiscountRuleSerializer,
     CastPayoutListSerializer, CustomerTagSerializer, BillTagSerializer,
+    PersonnelExpenseCategorySerializer, PersonnelExpenseSerializer, PersonnelExpenseSettlementEventSerializer,
 )
 from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales, sync_nomination_fees
@@ -400,7 +402,9 @@ class CastViewSet(StoreScopedModelViewSet):
     queryset = Cast.objects.select_related("store").prefetch_related("category_rates")
     serializer_class = CastSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ["user__is_active", "stage_name", "user__username"]
+    search_fields = ["stage_name", "user__username", "user__first_name", "user__last_name"]
 
     @action(detail=True, methods=['get','post'], url_path='goals')
     def goals(self, request, pk=None):
@@ -630,7 +634,7 @@ class StaffViewSet(viewsets.ModelViewSet):
     serializer_class  = StaffSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends   = [DjangoFilterBackend, SearchFilter]
-    filterset_fields  = ["stores"]
+    filterset_fields  = ["stores", "role"]
     search_fields     = ["user__username","user__first_name","user__last_name","user__email"]
 
     def get_queryset(self):
@@ -639,6 +643,11 @@ class StaffViewSet(viewsets.ModelViewSet):
               .filter(stores__id=sid)
               .prefetch_related("stores", "user")
               .distinct())
+
+        # role フィルタ（例: ?role=mgr で店長のみ）
+        role = (self.request.query_params.get("role") or "").strip()
+        if role:
+            qs = qs.filter(role=role)
 
         # ★ 手動フィルタ（SearchFilter保険）
         kw = (self.request.query_params.get("search")
@@ -1814,8 +1823,121 @@ class PayrollRunPreviewView(APIView):
                 'bill_rows': bill_rows_sorted.get(cast_id, []),
             })
 
+        # --- PayrollRun を期間に応じて get_or_create し、run_id を返す ---
+        ps = date.fromisoformat(df) if isinstance(df, str) else df
+        pe = date.fromisoformat(dt) if isinstance(dt, str) else dt
+
+        run, _created = PayrollRun.objects.get_or_create(
+            store=store,
+            period_start=ps,
+            period_end=pe,
+            defaults={
+                "created_by": request.user if getattr(request.user, "is_authenticated", False) else None,
+                "overlap_warning": overlap,
+                "note": "",
+            },
+        )
+        # 既存runがあり overlap_warning を最新化したい場合は更新
+        if run.overlap_warning != overlap:
+            run.overlap_warning = overlap
+            run.save(update_fields=["overlap_warning"])
+
         return Response({
             'range': {'from': df, 'to': dt},
             'overlap': overlap,
+            'run_id': run.id,
             'summary': summary,
         })
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Personnel Expense ViewSets
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class PersonnelExpenseCategoryViewSet(StoreScopedModelViewSet):
+    """人件費経費カテゴリ（店舗ごと）"""
+    queryset = PersonnelExpenseCategory.objects.all()
+    serializer_class = PersonnelExpenseCategorySerializer
+    permission_classes = [permissions.IsAuthenticated, RequireCap]
+    required_cap = 'operate_orders'
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    search_fields = ['code', 'name']
+    filterset_fields = ['is_active']
+
+
+class PersonnelExpenseViewSet(StoreScopedModelViewSet):
+    """人件費経費（cast/staff/managerの立替/店舗負担）"""
+    queryset = PersonnelExpense.objects.select_related(
+        'store', 'category', 'subject_user', 'payroll_run'
+    ).all()
+    serializer_class = PersonnelExpenseSerializer
+    permission_classes = [permissions.IsAuthenticated, RequireCap]
+    required_cap = 'operate_orders'
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    search_fields = ['subject_user__username', 'description']
+    filterset_fields = ['status', 'policy', 'subject_role', 'category', 'payroll_run']
+
+    @action(detail=True, methods=['post'], url_path='settlements')
+    def settlements(self, request, pk=None):
+        """
+        POST /personnel-expenses/{id}/settlements/
+        SettlementEvent を作成し、残高が0になれば status を settled に
+        """
+        expense = self.get_object()
+        
+        # リクエストデータから amount, settled_at, note を取得
+        serializer = PersonnelExpenseSettlementEventSerializer(
+            data={
+                'expense_id': expense.id,
+                'amount': request.data.get('amount'),
+                'settled_at': request.data.get('settled_at'),
+                'note': request.data.get('note', ''),
+            },
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        event = serializer.save()
+        
+        # expense をリフレッシュして settled_amount を再計算
+        expense.refresh_from_db()
+        
+        return Response({
+            'event': serializer.data,
+            'expense': PersonnelExpenseSerializer(expense, context={'request': request}).data,
+        }, status=status.HTTP_201_CREATED)
+
+
+@action(detail=True, methods=['post'], url_path='attach-personnel-expenses')
+def attach_personnel_expenses_to_run(request, pk=None):
+    """
+    POST /payroll/runs/{run_id}/attach-personnel-expenses/
+    PayrollRun に人件費経費を一括紐付け
+    - payroll_run が null で occurred_at が期間内の expense を run に紐付け
+    """
+    # PayrollRun を取得（store チェック込み）
+    store_id = getattr(request, 'store', None) and request.store.id
+    if not store_id:
+        raise ValidationError({'store': 'X-Store-Id header is required.'})
+    
+    try:
+        run = PayrollRun.objects.get(pk=pk, store_id=store_id)
+    except PayrollRun.DoesNotExist:
+        raise ValidationError({'run_id': 'PayrollRun not found for this store.'})
+    
+    # 期間内の未紐付け経費を取得
+    expenses = PersonnelExpense.objects.filter(
+        store_id=store_id,
+        payroll_run__isnull=True,
+        occurred_at__gte=run.period_start,
+        occurred_at__lt=run.period_end,
+    )
+    
+    # 一括更新
+    count = expenses.update(payroll_run=run)
+    
+    return Response({
+        'run_id': run.id,
+        'attached_count': count,
+        'start_date': run.period_start,
+        'end_date': run.period_end,
+    }, status=status.HTTP_200_OK)

@@ -153,6 +153,10 @@ async function fetchMultiStorePL(storeIds) {
       extension_qty    : sum('extension_qty'),
       other_sales      : sum('other_sales'),
       vip_ratio        : list.length ? list.reduce((a, b) => a + (Number(b?.vip_ratio) || 0), 0) / list.length : 0,
+      // Personnel Expenses (参考情報)
+      personnel_expenses_collect_created     : sum('personnel_expenses_collect_created'),
+      personnel_expenses_collect_settled     : sum('personnel_expenses_collect_settled'),
+      personnel_expenses_collect_outstanding : sum('personnel_expenses_collect_outstanding'),
     }
     console.log('[BillPLDaily] Multi-store PL aggregated, total sales:', pl.value?.sales_total)
   } catch (e) {
@@ -387,6 +391,33 @@ watch(() => props.storeIds, fetchData, { deep: true })
             <tr><th>営業利益</th><td class="text-end fw-bold fs-5">{{ yen(pl.operating_profit ?? 0) }}</td></tr>
           </tbody>
         </table>
+
+        <!-- Personnel Expenses Reference Section -->
+        <div 
+          v-if="pl.personnel_expenses_collect_created != null || 
+                pl.personnel_expenses_collect_settled != null || 
+                pl.personnel_expenses_collect_outstanding != null"
+        >
+          <h6 class="fw-bold mb-3 text-secondary">立替経費（参考値）<small>損益計算には含まれません</small></h6>
+          
+          <table class="table no-vert mb-5">
+            <tbody>
+              <tr v-if="pl.personnel_expenses_collect_created != null" class="border-top">
+                <th class="text-secondary">立替発生額</th>
+                <td class="text-end text-secondary">{{ yen(pl.personnel_expenses_collect_created) }}</td>
+              </tr>
+              <tr v-if="pl.personnel_expenses_collect_settled != null">
+                <th class="text-secondary">回収済額</th>
+                <td class="text-end text-secondary">{{ yen(pl.personnel_expenses_collect_settled) }}</td>
+              </tr>
+              <tr v-if="pl.personnel_expenses_collect_outstanding != null">
+                <th class="text-secondary">未回収残高</th>
+                <td class="text-end text-secondary" :class="{ 'text-danger': pl.personnel_expenses_collect_outstanding > 0 }">{{ yen(pl.personnel_expenses_collect_outstanding) }}</td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
       </div>
 
 

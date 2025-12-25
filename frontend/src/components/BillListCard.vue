@@ -262,9 +262,6 @@ function handleEdit(e) {
   color: #333;
 }
 
-.casts-section {
-}
-
 .memo-content {
   white-space: pre-wrap;
   word-break: break-word;

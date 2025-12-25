@@ -13,6 +13,7 @@ import Avatar from '@/components/Avatar.vue'
 import CsvPreviewTable from '@/components/CsvPreviewTable.vue'
 import { useUser } from '@/stores/useUser'
 import { useProfile } from '@/composables/useProfile'
+import PersonnelExpensesSection from '@/components/expenses/PersonnelExpensesSection.vue'
 
 const user = useUser()
 const { avatarURL } = useProfile()
@@ -38,6 +39,10 @@ function switchCsvTab(tabId) {
 
 /* ----------------- 日付（単日） ----------------- */
 const date = ref(dayjs().format('YYYY-MM-DD'))
+
+/* 経費タブ用日付範囲 */
+const expenseFrom = ref(dayjs().format('YYYY-MM-DD'))
+const expenseTo = ref(dayjs().format('YYYY-MM-DD'))
 
 /* ----------------- 状態 ----------------- */
 const loading = ref(false)
@@ -403,7 +408,7 @@ const kpiDutyLabel = computed(() =>
 
     <nav class="row border-bottom g-1 mb-4">
       <div
-        class="col-4"
+        class="col-3"
         :class="{ 'border-bottom border-3 border-secondary': activeTab === 'sales' }">
         <button 
           class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
@@ -412,7 +417,7 @@ const kpiDutyLabel = computed(() =>
         </button>
       </div>
       <div
-        class="col-4"
+        class="col-3"
         :class="{ 'border-bottom border-3 border-secondary': activeTab === 'bills' }">
         <button 
           class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
@@ -421,12 +426,21 @@ const kpiDutyLabel = computed(() =>
         </button>
       </div>
       <div
-        class="col-4"
+        class="col-3"
+        :class="{ 'border-bottom border-3 border-secondary': activeTab === 'expenses' }">
+        <button 
+          class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
+          @click="switchTab('expenses')">
+          経費
+        </button>
+      </div>
+      <div
+        class="col-3"
         :class="{ 'border-bottom border-3 border-secondary': activeTab === 'download' }">
         <button
           class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
           @click="switchTab('download')">
-          ダウンロード
+          CSV
         </button>
       </div>
     </nav>
@@ -528,6 +542,25 @@ const kpiDutyLabel = computed(() =>
           </div>
         </div>
       </div>
+    </div>
+
+    <div v-show="activeTab === 'expenses'" class="area my-4">
+
+        <div class="row g-2 align-items-center mb-3">
+          <div class="col-auto">
+            <label class="form-label small mb-0">開始日</label>
+            <input type="date" class="form-control form-control-sm bg-white" v-model="expenseFrom" />
+          </div>
+          <div class="col-auto">
+            <label class="form-label small mb-0">終了日</label>
+            <input type="date" class="form-control form-control-sm bg-white" v-model="expenseTo" />
+          </div>
+        </div>
+
+      <PersonnelExpensesSection 
+        :range-from="expenseFrom"
+        :range-to="expenseTo"
+      />
     </div>
 
     <!-- CSV -->

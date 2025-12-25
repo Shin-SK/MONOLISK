@@ -8,7 +8,6 @@ from django.db import models, transaction
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from cloudinary.models import CloudinaryField
-from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from datetime import timedelta
 from django.db.models.signals import post_save
@@ -165,10 +164,27 @@ class Table(models.Model):
     class Meta:
         verbose_name = 'テーブル番号'
         verbose_name_plural = verbose_name
-        unique_together = ('store', 'code')
         ordering = ['store', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['store', 'code'],
+                name='uniq_table_store_code_nonnull',
+                condition=~models.Q(code__isnull=True) & ~models.Q(code=''),
+            ),
+            models.UniqueConstraint(
+                fields=['store'],
+                name='uniq_table_store_null_code_single',
+                condition=models.Q(code__isnull=True),
+            ),
+            models.UniqueConstraint(
+                fields=['store'],
+                name='uniq_table_store_blank_code_single',
+                condition=models.Q(code=''),
+            ),
+        ]
 
-    def __str__(self): return self.code
+    def __str__(self):
+        return self.code or f"Table-{self.id}"
 
 
 # 席種ごとの店舗設定（席別サービス料率/チャージ/延長等を上書き）
@@ -188,9 +204,20 @@ class StoreSeatSetting(models.Model):
     memo = models.CharField(max_length=100, blank=True, default="")
 
     class Meta:
-        unique_together = (('store', 'seat_type'),)
         verbose_name = "席種設定"
         verbose_name_plural = "席種設定"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['store', 'seat_type'],
+                name='uniq_store_seat_type_nonnull',
+                condition=~models.Q(seat_type__isnull=True),
+            ),
+            models.UniqueConstraint(
+                fields=['store'],
+                name='uniq_store_seat_type_null_single',
+                condition=models.Q(seat_type__isnull=True),
+            ),
+        ]
 
     def __str__(self):
         seat_name = self.seat_type.name if self.seat_type else "未設定"
@@ -382,7 +409,11 @@ class ItemMaster(models.Model):
     
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['store', 'code'], name='uniq_store_code'),  # ★これ
+            models.UniqueConstraint(
+                fields=['store', 'code'],
+                name='uniq_store_code',
+                condition=~models.Q(code__isnull=True) & ~models.Q(code=''),
+            ),
         ]
 
 
@@ -607,13 +638,11 @@ class Bill(models.Model):
             code = (it.code or '').lower()
             dur = it.duration_min or 0
             cat_code = ''
-            try:
-                cat_code = (getattr(getattr(it, 'item_master', None), 'category', None).code or '').lower()
-            except Exception:
-                cat_code = ''
+            cat_obj = getattr(getattr(it, 'item_master', None), 'category', None)
+            cat_code = (getattr(cat_obj, 'code', '') or '').lower()
 
-            # カテゴリ優先で判定（後方互換でコード接頭辞も許容）
-            if (cat_code == 'set' or ('set' in code)) and not base_found:
+            # カテゴリコードを正とし、後方互換で文字列部分一致も許容
+            if (cat_code in ('set', 'ext', 'extension') or ('set' in code)) and not base_found:
                 base_found = True
                 minutes += dur
             elif (cat_code in ('ext', 'extension') or ('extension' in code) or ('ext' in code)):
@@ -627,11 +656,13 @@ class Bill(models.Model):
     def close(self, settled_total: int | None = None):
         from .calculator import BillCalculator
         """伝票を締め、金額・CastPayout・日次サマリを確定保存"""
+        # 二重クローズ防止
+        if self.closed_at is not None:
+            raise ValidationError({'closed_at': 'この伝票は既にクローズ済みです。'})
+
         # ★ discount_ruleを確実に取得するため、DBから最新状態を取得
         self.refresh_from_db()
         
-        result = BillCalculator(self).execute()
-
         # 閉店時刻は原則「opened_at + SET/EXT 合計分」に合わせる
         # expected_out が未計算の可能性もあるため、ここで最新を計算
         try:
@@ -643,35 +674,55 @@ class Bill(models.Model):
         if settled_total is None and self.paid_total:
             settled_total = int(self.paid_total)
 
-        # ─ 金額フィールド更新 ─
-        self.subtotal       = result.subtotal
-        self.service_charge = result.service_fee
-        self.tax            = result.tax
-        self.grand_total    = result.total
-        self.total          = settled_total or result.total
-        if settled_total is not None:
-            self.settled_total = settled_total
-        # expected_out があればそれを閉店時刻に採用、無ければ現在時刻
-        self.closed_at = latest_expected or timezone.now()
-
-        from .models import CastPayout, CastDailySummary  # ループ依存対策
+        # CastPayout, CastDailySummary は同一ファイル内なので直接参照可能
         from billing.services import generate_payroll_snapshot
+        from billing.services.backrate import resolve_back_rate
 
         with transaction.atomic():
-            # ★ Phase2-3: back_rate 一括確定焼き付け（OPEN中→CLOSED時に唯一のDB更新ポイント）
-            # ⚠️ close() 処理の最初で実行。payroll_snapshot 計算より前
-            items = self.items.select_related('item_master__category','served_by_cast','bill__table__store','item_master__store')
+            # 1) back_rate を bill 状態に依存させずに確定させる
+            items = list(self.items.select_related('item_master__category','served_by_cast','item_master__store','bill__table__store'))
             for item in items:
-                # effective_back_rate で計算（OPEN中だと store 解決して都度計算）
-                item.back_rate = item.effective_back_rate
-            
-            # bulk_update でまとめて更新（副作用なし、パフォーマンス優良）
+                cat = item.item_master.category if item.item_master else None
+                cast = item.served_by_cast
+                stay = item._stay_type_hint()
+
+                store = None
+                if self.table_id:
+                    store = getattr(self.table, 'store', None)
+                if not store and item.item_master:
+                    store = item.item_master.store
+                if not store:
+                    store = getattr(self, 'store', None)
+
+                if store:
+                    item.back_rate = resolve_back_rate(store=store, category=cat, cast=cast, stay_type=stay)
+                else:
+                    item.back_rate = item.back_rate
+
             BillItem.objects.bulk_update(items, ['back_rate'], batch_size=100)
-            
+
             import logging
             logger = logging.getLogger(__name__)
             logger.info(f"[Bill.close] back_rate fixed for {len(items)} items in bill_id={self.id}")
-            
+
+            # back_rate 確定後に最新状態を取得し、計算に反映させる
+            self.refresh_from_db()
+
+            # 2) 確定 back_rate を使って計算
+            result = BillCalculator(self).execute()
+
+            # ─ 金額フィールド更新 ─
+            self.subtotal       = result.subtotal
+            self.service_charge = result.service_fee
+            self.tax            = result.tax
+            self.grand_total    = result.total
+            self.total          = settled_total or result.total
+            if settled_total is not None:
+                self.settled_total = settled_total
+
+            # 閉店時刻は実際の締め時刻とし、expected_out は別管理
+            self.closed_at = timezone.now()
+
             # ① 給与スナップショット生成（初回クローズのみ。上書きしない）
             if not self.payroll_snapshot:
                 self.payroll_snapshot = generate_payroll_snapshot(self)
@@ -697,19 +748,28 @@ class Bill(models.Model):
 
             # ⑤ cast_id → 売上合計を集計
             sales_map = defaultdict(int)
-            for it in self.items.select_related('served_by_cast'):
+            champ_sales = defaultdict(int)
+            for it in self.items.select_related('served_by_cast', 'item_master__category'):
                 if not it.served_by_cast:
                     continue
                 sales_map[it.served_by_cast_id] += it.subtotal   # ← “小計” で集計中ならこれ
+                cat_code = (getattr(getattr(it, 'item_master', None), 'category', None) or None)
+                cat_code = (getattr(cat_code, 'code', '') or '').lower()
+                if cat_code in ('champagne', 'original-champagne'):
+                    champ_sales[it.served_by_cast_id] += it.subtotal
 
             work_date = self.closed_at.date()
 
             # テーブルが無い伝票でも落ちないようにフォールバック
-            store_id = (
-                self.table.store_id if self.table_id else
-                self.store_id       if self.store_id  else
-                self.stays.filter(cast_id__isnull=False).first().bill.table.store_id if self.stays.filter(cast_id__isnull=False).exists() else None
-            )
+            store_id = None
+            if self.table_id:
+                store_id = self.table.store_id
+            elif hasattr(self, "store_id") and self.store_id:
+                store_id = self.store_id
+            else:
+                stay = self.stays.select_related("bill__table__store").first()
+                if stay and stay.bill_id and stay.bill.table_id:
+                    store_id = stay.bill.table.store_id
             
             if not store_id:
                 logger.warning(f"[Bill.close] could not determine store_id for bill_id={self.id}, skipping CastDailySummary")
@@ -737,14 +797,19 @@ class Bill(models.Model):
                         defaults={}
                     )
                     setattr(rec, col, (getattr(rec, col) or 0) + amt)
-                    rec.save(update_fields=[col])
+                    champ_add = champ_sales.get(cid, 0)
+                    update_fields = [col]
+                    if champ_add:
+                        rec.sales_champ = (rec.sales_champ or 0) + champ_add
+                        update_fields.append('sales_champ')
+                    rec.save(update_fields=update_fields)
                 
                 # ⑦ 時間別サマリを更新（リアルタイム集計）
                 self._update_hourly_summary(store_id, stay_type_map, sales_map)
 
     def _update_hourly_summary(self, store_id: int, stay_type_map: dict, sales_map: dict):
         """時間別サマリ（HourlySalesSummary + HourlyCastSales）を更新"""
-        from .models import HourlySalesSummary, HourlyCastSales, ItemCategory
+        # HourlySalesSummary, HourlyCastSales, ItemCategory は同一ファイル内なので直接参照可能
         
         if not self.closed_at:
             return
@@ -857,6 +922,8 @@ class Bill(models.Model):
 
 
 def _recalc_bill_after_items_change(bill):
+    if bill.closed_at is not None:
+        return  # 締め後は再計算しない
     from .calculator import BillCalculator
     r = BillCalculator(bill).execute()
     bill.subtotal       = r.subtotal
@@ -876,8 +943,6 @@ class BillItem(models.Model):
     qty = models.PositiveSmallIntegerField(default=1)
     served_by_cast = models.ForeignKey('billing.Cast', null=True, blank=True, on_delete=models.SET_NULL, db_index=True)
 
-    is_nomination = models.BooleanField(default=False, null=True)
-    is_inhouse = models.BooleanField(default=False, null=True)
     exclude_from_payout = models.BooleanField(default=False, null=True)
     is_dohan = models.BooleanField(default=False, null=True)  # 同伴料行フラグ（back_rate に 'dohan' を反映）
 
@@ -973,44 +1038,40 @@ class BillItem(models.Model):
             return self.back_rate
 
     def save(self, *args, **kwargs):
+        if self.bill and self.bill.closed_at is not None:
+            raise ValidationError('クローズ済みの伝票明細は変更できません。')
+
         self.is_nomination = bool(self.is_nomination)
         self.is_inhouse    = bool(self.is_inhouse)
         self.is_dohan      = bool(self.is_dohan)
         if self.item_master:
-            self.name  = self.name  or self.item_master.name
-            self.price = self.price or self.item_master.price_regular
+            self.name = self.name or self.item_master.name
+            if self.price is None:
+                self.price = self.item_master.price_regular
             if self.item_master.exclude_from_payout:
                 self.exclude_from_payout = True
 
-        # Phase2: save() からは back_rate の焼き付けをしない
-        # back_rate は effective_back_rate プロパティで都度計算
-        # 焼き付けは Bill.close() で一括処理（唯一のDB更新ポイント）
-        # ガードレール: CLOSED済みなら back_rate を再計算しない
-        if self.bill and self.bill.closed_at is not None:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                f"[BillItem.save] CLOSED bill detected (bill_id={self.bill_id}). "
-                f"back_rate will NOT be recalculated to maintain integrity (current value: {self.back_rate})"
-            )
-
         super().save(*args, **kwargs)
+        if self.bill and self.bill.closed_at is None:
+            # SET/EXT なら退店予定更新（カテゴリコードを正とし、後方互換で部分一致）
+            cat_obj = getattr(getattr(self, 'item_master', None), 'category', None)
+            cat_code = (getattr(cat_obj, 'code', '') or '').lower()
+            code = (self.code or '').lower()
+            if cat_code in ('set', 'ext', 'extension') or ('set' in code) or ('extension' in code):
+                self.bill.update_expected_out(save=True)
 
-        # SET/EXT なら退店予定更新（カテゴリ優先、後方互換でコード部分一致も）
-        cat_id = getattr(getattr(self, 'item_master', None), 'category_id', '') or ''
-        code = (self.code or '').lower()
-        if (str(cat_id).lower() in ('set', 'ext')) or ('set' in code) or ('extension' in code) or ('ext' in code):
-            self.bill.update_expected_out(save=True)
-
-        # ★ ここで金額を再計算（OPEN中でも常に最新に）
-        _recalc_bill_after_items_change(self.bill)
+            # ★ ここで金額を再計算（OPEN中でも常に最新に）
+            _recalc_bill_after_items_change(self.bill)
 
     def delete(self, *args, **kwargs):
         bill = self.bill
+        if bill and bill.closed_at is not None:
+            raise ValidationError('クローズ済みの伝票明細は削除できません。')
         super().delete(*args, **kwargs)
-        bill.update_expected_out(save=True)
-        # ★ 削除時も再計算
-        _recalc_bill_after_items_change(bill)
+        if bill and bill.closed_at is None:
+            bill.update_expected_out(save=True)
+            # ★ 削除時も再計算
+            _recalc_bill_after_items_change(bill)
 
 
 
@@ -1047,6 +1108,16 @@ class BillCastStay(models.Model):
         # help は free のときのみ True を許可
         if self.is_help and self.stay_type != 'free':
             raise ValidationError('is_help=True は stay_type="free" の時のみ指定できます。')
+
+        if self.left_at and self.entered_at and self.left_at < self.entered_at:
+            raise ValidationError('left_at は entered_at 以降で指定してください。')
+
+        # 同一 bill+cast でオープンな滞在は1つまで
+        qs = BillCastStay.objects.filter(bill=self.bill, cast=self.cast, left_at__isnull=True)
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        if qs.exists() and (self.left_at is None):
+            raise ValidationError('同じ伝票で未退席の滞在は重複登録できません。')
 
     def save(self, *args, **kwargs):
         # stay_type に応じて相互排他フラグを整合
@@ -1231,8 +1302,11 @@ class CastDailySummary(models.Model):
                     clock_in__date=rec.work_date,
                     clock_out__isnull=False)
             .aggregate(total=models.Sum(
-                models.F('hourly_wage_snap') * models.F('worked_min') / 60)
-            )['total'] or 0
+                ExpressionWrapper(
+                    models.F('hourly_wage_snap') * models.F('worked_min') / 60,
+                    output_field=IntegerField(),
+                )
+            ))['total'] or 0
         )
         rec.save(update_fields=['worked_min', 'payroll'])
 
@@ -1267,7 +1341,7 @@ class DiscountRule(models.Model):
         help_text="この割引ルールを適用できる店舗"
     )
 
-    code = models.SlugField(max_length=40, unique=True, null=True, blank=True,
+    code = models.SlugField(max_length=40, null=True, blank=True,
                             help_text="内部コード（例: initial / agency / referral）")
     name = models.CharField(max_length=40, help_text="表示名（例: 初回 / 案内所 / 顧客紹介）")
 
@@ -1312,9 +1386,9 @@ class DiscountRule(models.Model):
 
     def clean(self):
         # どちらも空はNG／両方指定もNG
-        if not self.amount_off and not self.percent_off:
+        if self.amount_off is None and self.percent_off is None:
             raise ValidationError("金額引きまたは率引きのどちらかを指定してください。")
-        if self.amount_off and self.percent_off:
+        if self.amount_off is not None and self.percent_off is not None:
             raise ValidationError("金額引きと率引きは同時に指定できません。")
         if self.percent_off is not None and self.percent_off < 0:
             raise ValidationError("percent_off は 0 以上で指定してください。")
@@ -1371,28 +1445,6 @@ class StoreNotice(models.Model):
             return True
         return self.publish_at <= timezone.now()
 
-
-
-@receiver(post_delete, sender=BillItem)
-def _update_expected_out_on_delete(sender, instance, **kwargs):
-    if getattr(instance, "bill_id", None):
-        try:
-            instance.bill.update_expected_out(save=True)
-            _recalc_bill_after_items_change(instance.bill)   # ★ 追加
-        except Exception:
-            pass
-
-
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-
-@receiver(post_save, sender=BillItem)
-def _ensure_expected_out_on_item_save(sender, instance, **kw):
-    code = (instance.code or "").lower()
-    if code.startswith(("set","extension","ext")):
-        instance.bill.update_expected_out(save=True)
-
-
 class OrderTicket(models.Model):
     STATE_NEW   = 'new'
     STATE_ACK   = 'ack'
@@ -1430,11 +1482,13 @@ class OrderTicket(models.Model):
         if self.state == self.STATE_NEW:
             self.state = self.STATE_ACK
             self.acked_at = timezone.now()
+            self.save(update_fields=['state', 'acked_at'])
 
     def mark_ready(self):
         if self.state in (self.STATE_NEW, self.STATE_ACK):
             self.state = self.STATE_READY
             self.ready_at = timezone.now()
+            self.save(update_fields=['state', 'ready_at'])
 
     def archive_by(self, staff):
         """デシャップで『持ってく』→ 即アーカイブ"""
@@ -1442,16 +1496,7 @@ class OrderTicket(models.Model):
         now = timezone.now()
         self.taken_at = now
         self.archived_at = now
-
-
-# billing/models.py （末尾あたりに追加）
-from django.db import models
-from django.db.models import Sum, Q
-from django.utils import timezone
-try:
-    from django.db.models import JSONField  # Django 3.1+
-except Exception:
-    from django.contrib.postgres.fields import JSONField
+        self.save(update_fields=['taken_by_staff', 'taken_at', 'archived_at'])
 
 
 
@@ -1491,7 +1536,7 @@ class CastGoal(models.Model):
     end_date     = models.DateField(null=True, blank=True)
     active       = models.BooleanField(default=True)
     # 通知済みマイルストーン（50/80/90/100）を保持して“1回だけ”通知する用
-    milestones_hit = JSONField(default=list, blank=True)
+    milestones_hit = models.JSONField(default=list, blank=True)
     created_at   = models.DateTimeField(auto_now_add=True)
     updated_at   = models.DateTimeField(auto_now=True)
 
@@ -1552,7 +1597,7 @@ class CastGoal(models.Model):
             # 担当売上 = Σ(price * qty)
             return int(BillItem.objects.filter(
                 served_by_cast_id=self.cast_id,
-                bill__opened_at__date__range=(s, e),
+                bill__closed_at__date__range=(s, e),
                 bill__table__store=self.cast.store,
             ).aggregate(
                 x=Sum(ExpressionWrapper(F('price') * F('qty'), output_field=IntegerField()))
@@ -1562,7 +1607,7 @@ class CastGoal(models.Model):
             # 本指名：入店イベント数（期間内にenteredのnom）
             return int(BillCastStay.objects.filter(
                 cast_id=self.cast_id, stay_type='nom',
-                entered_at__date__range=(s, e),
+                bill__closed_at__date__range=(s, e),
                 bill__table__store=self.cast.store,
             ).count())
 
@@ -1570,13 +1615,13 @@ class CastGoal(models.Model):
             # 場内指名：入店イベント数（期間内にenteredのin）
             return int(BillCastStay.objects.filter(
                 cast_id=self.cast_id, stay_type='in',
-                entered_at__date__range=(s, e),
+                bill__closed_at__date__range=(s, e),
                 bill__table__store=self.cast.store,
             ).count())
 
         if self.metric in (self.METRIC_CHAMP_REVENUE, self.METRIC_CHAMP_COUNT):
             qs = BillItem.objects.filter(
-                bill__opened_at__date__range=(s, e),
+                bill__closed_at__date__range=(s, e),
                 bill__table__store=self.cast.store,
                 item_master__category__code__in=['champagne', 'original-champagne'],
                 served_by_cast_id=self.cast_id,
@@ -1668,26 +1713,20 @@ class HourlySalesSummary(models.Model):
             models.Index(fields=['store', 'date', 'hour']),
             models.Index(fields=['date', 'hour']),
         ]
-    
-    def __str__(self):
-        return f"{self.store.name} {self.date} {self.hour:02d}:00"
-    
-    @property
-    def is_within_business_hours(self) -> bool:
-        """この時間帯が営業時間内かチェック（営業日ベース）"""
-        # 営業日時刻に変換（日中の時刻 → cutoff前なら +24）
-        hour_relative = Decimal(str(self.hour))
-        if self.hour < self.store.business_day_cutoff_hour:
-            hour_relative += 24
-        
-        return self.store.business_open_hour <= hour_relative <= self.store.business_close_hour
-
         verbose_name = '時間別売上サマリ'
         verbose_name_plural = verbose_name
         ordering = ['date', 'hour']
-    
+
     def __str__(self):
         return f'{self.store.name} {self.date} {self.hour:02d}:00 - ¥{self.sales_total:,}'
+
+    @property
+    def is_within_business_hours(self) -> bool:
+        """この時間帯が営業時間内かチェック（営業日ベース）"""
+        hour_relative = Decimal(str(self.hour))
+        if self.hour < self.store.business_day_cutoff_hour:
+            hour_relative += 24
+        return self.store.business_open_hour <= hour_relative <= self.store.business_close_hour
 
 
 class HourlyCastSales(models.Model):
@@ -1797,3 +1836,234 @@ class PayrollRunBackRow(models.Model):
 
     def __str__(self):
         return f'{self.cast.stage_name} - Bill#{self.bill_id}: ¥{self.amount:,}'
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 人件費経費（Personnel Expense）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class PersonnelExpenseCategory(models.Model):
+    """人件費経費カテゴリマスター（店舗ごと）"""
+    store = models.ForeignKey(
+        'billing.Store',
+        on_delete=models.CASCADE,
+        related_name='personnel_expense_categories',
+        verbose_name='店舗'
+    )
+    code = models.SlugField(
+        max_length=40,
+        help_text="内部コード（例: taxi / meal / uniform）"
+    )
+    name = models.CharField(
+        max_length=50,
+        help_text="表示名（例: タクシー / 食事 / 制服）"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="説明・使用ガイドライン"
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '人件費経費カテゴリ'
+        verbose_name_plural = verbose_name
+        ordering = ['store', 'code']
+        unique_together = [('store', 'code')]
+
+    def __str__(self):
+        return f"{self.store.name} - {self.name}"
+
+
+class PersonnelExpense(models.Model):
+    """人件費経費（cast/staff/managerの立替/店舗負担）"""
+    
+    class ExpensePolicy(models.TextChoices):
+        COLLECT = 'collect', '回収（立替）'
+        STORE_BURDEN = 'store_burden', '店舗負担'
+    
+    class ExpenseStatus(models.TextChoices):
+        OPEN = 'open', '未回収'
+        SETTLED = 'settled', '回収済'
+        VOID = 'void', '無効'
+    
+    class SubjectRole(models.TextChoices):
+        CAST = 'cast', 'キャスト'
+        STAFF = 'staff', 'スタッフ'
+        MANAGER = 'manager', 'マネージャー'
+    
+    # 対象ユーザーのロール（owner は除外）
+    ALLOWED_ROLES = ['cast', 'staff', 'manager']
+    
+    store = models.ForeignKey(
+        'billing.Store',
+        on_delete=models.CASCADE,
+        related_name='personnel_expenses',
+        verbose_name='店舗'
+    )
+    category = models.ForeignKey(
+        PersonnelExpenseCategory,
+        on_delete=models.PROTECT,
+        related_name='expenses',
+        verbose_name='カテゴリ'
+    )
+    subject_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='personnel_expenses',
+        verbose_name='対象ユーザー',
+        help_text='cast/staff/managerのみ'
+    )
+    subject_role = models.CharField(
+        max_length=20,
+        choices=SubjectRole.choices,
+        verbose_name='対象ロール',
+        help_text='cast/staff/manager（owner不可）'
+    )
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        validators=[MinValueValidator(Decimal('0'))],
+        verbose_name='金額'
+    )
+    policy = models.CharField(
+        max_length=20,
+        choices=ExpensePolicy.choices,
+        default=ExpensePolicy.COLLECT,
+        verbose_name='方針'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ExpenseStatus.choices,
+        default=ExpenseStatus.OPEN,
+        db_index=True,
+        verbose_name='ステータス'
+    )
+    description = models.TextField(
+        blank=True,
+        verbose_name='説明'
+    )
+    occurred_at = models.DateTimeField(
+        default=timezone.now,
+        verbose_name='発生日時'
+    )
+    payroll_run = models.ForeignKey(
+        'billing.PayrollRun',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='personnel_expenses',
+        verbose_name='給与締め'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = '人件費経費'
+        verbose_name_plural = verbose_name
+        ordering = ['-occurred_at']
+        indexes = [
+            models.Index(fields=['store', 'status', 'occurred_at']),
+            models.Index(fields=['subject_user', 'status']),
+            models.Index(fields=['payroll_run']),
+        ]
+
+    def __str__(self):
+        return f"{self.subject_user.username} ({self.get_subject_role_display()}) - {self.category.name}: ¥{self.amount:,}"
+
+    @property
+    def settled_amount(self):
+        """回収済み金額の合計"""
+        return self.settlement_events.aggregate(
+            total=Sum('amount')
+        )['total'] or Decimal('0')
+
+    @property
+    def remaining_amount(self):
+        """残額"""
+        return self.amount - self.settled_amount
+
+    def clean(self):
+        """バリデーション"""
+        from accounts.models import StoreMembership
+        
+        # 1. subject_role が許可リストにあるか（choices で owner は弾かれるが念のため）
+        if self.subject_role not in self.ALLOWED_ROLES:
+            raise ValidationError({
+                'subject_role': f'許可されたロール: {", ".join(self.ALLOWED_ROLES)}'
+            })
+        
+        # 2. カテゴリと店舗の整合性チェック
+        if self.category_id and self.store_id and self.category.store_id != self.store_id:
+            raise ValidationError({
+                'category': 'カテゴリの店舗と経費の店舗が一致しません。'
+            })
+        
+        # 3. subject_user が store に所属しているか（ロール別に検証元を切り替え）
+        if self.subject_user_id and self.store_id:
+            if self.subject_role == 'cast':
+                # Cast は billing.Cast モデルを正とする（同一モジュール内なので直接参照）
+                has_registration = Cast.objects.filter(
+                    user=self.subject_user,
+                    store=self.store
+                ).exists()
+                
+                if not has_registration:
+                    raise ValidationError({
+                        'subject_user': f'このユーザーは店舗「{self.store.name}」でキャストとして登録されていません。'
+                    })
+            
+            elif self.subject_role in ['staff', 'manager']:
+                # staff/manager は StoreMembership を正とする
+                has_membership = StoreMembership.objects.filter(
+                    user=self.subject_user,
+                    store=self.store,
+                    role=self.subject_role
+                ).exists()
+                
+                if not has_membership:
+                    role_display = 'スタッフ' if self.subject_role == 'staff' else 'マネージャー'
+                    raise ValidationError({
+                        'subject_user': f'このユーザーは店舗「{self.store.name}」で{role_display}として登録されていません。'
+                    })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class PersonnelExpenseSettlementEvent(models.Model):
+    """人件費経費の回収イベント"""
+    expense = models.ForeignKey(
+        PersonnelExpense,
+        on_delete=models.CASCADE,
+        related_name='settlement_events',
+        verbose_name='経費'
+    )
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        validators=[MinValueValidator(Decimal('0'))],
+        verbose_name='回収金額'
+    )
+    settled_at = models.DateTimeField(
+        default=timezone.now,
+        verbose_name='回収日時'
+    )
+    note = models.TextField(
+        blank=True,
+        verbose_name='備考'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '経費回収イベント'
+        verbose_name_plural = verbose_name
+        ordering = ['-settled_at']
+        indexes = [
+            models.Index(fields=['expense', 'settled_at']),
+        ]
+
+    def __str__(self):
+        return f"回収 #{self.id} - ¥{self.amount:,} ({self.settled_at.strftime('%Y-%m-%d')})"
+

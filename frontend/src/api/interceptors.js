@@ -11,6 +11,15 @@ const STORE_KEY = 'store_id'
 const getToken   = () => localStorage.getItem(TOKEN_KEY)
 const getStoreId = () => localStorage.getItem(STORE_KEY)
 
+// CSRF トークンを Cookie から取得
+function getCsrfToken() {
+  const name = 'csrftoken'
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+  if (parts.length === 2) return parts.pop().split(';').shift()
+  return null
+}
+
 // 認証スキップ対象（含まれていれば Authorization を付けない）
 const DEFAULT_SKIP_AUTH = [
   'dj-rest-auth/login',
@@ -83,6 +92,15 @@ export function wireInterceptors(api) {
     if (!shouldSkipAuth(cfg.url || '')) {
       const t = getToken()
       if (t) (cfg.headers ||= {}).Authorization = `Token ${t}`
+    }
+
+    // CSRF トークン（POST/PUT/DELETE/PATCH の場合に必要）
+    const method = (cfg.method || 'get').toLowerCase()
+    if (['post', 'put', 'delete', 'patch'].includes(method)) {
+      const csrfToken = getCsrfToken()
+      if (csrfToken) {
+        (cfg.headers ||= {})['X-CSRFToken'] = csrfToken
+      }
     }
 
     // X-Store-Id（Store 非依存パス以外は必須）

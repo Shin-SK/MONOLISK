@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 from django.db.models import F, Sum, Value, IntegerField, Q, CharField 
 from django.db.models.functions import Coalesce
-from billing.models  import Bill, BillItem
+from billing.models  import Bill, BillItem, PersonnelExpense
 from billing.utils.services import cast_payroll_sum_by_business_date
 from billing.calculator import BillCalculator
 from billing.utils.bizday import get_business_window
@@ -150,6 +150,29 @@ def get_daily_pl(target_date: date, *, store_id: int, include_breakdown: bool = 
     labor_cost = int(hourly_pay + commission)
     operating_profit = int(sales_total - labor_cost)
 
+    # ─────────────── 立替経費（参考情報） ───────────────────
+    # 対象日付の立替経費を集計（policy='collect' のみ）
+    collect_expenses = PersonnelExpense.objects.filter(
+        subject_user__store_id=store_id,
+        policy='collect',
+        occurred_at__gte=start_dt,
+        occurred_at__lt=end_dt,
+    )
+    
+    personnel_expenses_collect_created = int(
+        collect_expenses.aggregate(
+            s=Coalesce(Sum('amount'), Value(0), output_field=IntegerField())
+        )['s'] or 0
+    )
+    personnel_expenses_collect_settled = int(
+        collect_expenses.aggregate(
+            s=Coalesce(Sum('settlement_events__amount'), Value(0), output_field=IntegerField())
+        )['s'] or 0
+    )
+    personnel_expenses_collect_outstanding = int(
+        personnel_expenses_collect_created - personnel_expenses_collect_settled
+    )
+
     result = {
         "date"             : target_date.isoformat(),
         "store_id"         : store_id,
@@ -176,6 +199,10 @@ def get_daily_pl(target_date: date, *, store_id: int, include_breakdown: bool = 
         "hourly_pay"       : hourly_pay,
         "labor_cost"       : labor_cost,
         "operating_profit" : operating_profit,
+        # 立替経費（参考情報）
+        "personnel_expenses_collect_created"     : personnel_expenses_collect_created,
+        "personnel_expenses_collect_settled"     : personnel_expenses_collect_settled,
+        "personnel_expenses_collect_outstanding" : personnel_expenses_collect_outstanding,
     }
 
     if include_breakdown:

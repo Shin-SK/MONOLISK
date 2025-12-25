@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from .models import (
     Store, Table, ItemCategory, ItemMaster, Bill, BillItem,
     BillCastStay, Cast, CastPayout, ItemStock, BillingUser, CastCategoryRate, Customer,
-    StoreSeatSetting, SeatType, BillTag
+    StoreSeatSetting, SeatType, BillTag, PersonnelExpenseCategory
 )
 
 from django import forms
@@ -199,6 +199,16 @@ class ItemCategoryAdmin(ImportExportModelAdmin):
             'fields': ('show_in_menu', 'route', 'use_fixed_payout_free_in', 'payout_fixed_per_item')
         }),
     )
+
+
+# ───────── 人件費経費カテゴリ ─────────
+@admin.register(PersonnelExpenseCategory)
+class PersonnelExpenseCategoryAdmin(admin.ModelAdmin):
+    list_display = ('store', 'code', 'name', 'is_active', 'created_at')
+    list_filter = ('store', 'is_active')
+    search_fields = ('code', 'name', 'description')
+    autocomplete_fields = ('store',)
+    readonly_fields = ('created_at',)
 
 
 @admin.register(ItemMaster)
