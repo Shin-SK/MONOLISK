@@ -1877,6 +1877,36 @@ class PersonnelExpenseViewSet(StoreScopedModelViewSet):
     search_fields = ['subject_user__username', 'description']
     filterset_fields = ['status', 'policy', 'subject_role', 'category', 'payroll_run']
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        # settled_amount / remaining_amount をDB側で出しておく（高速化 & 一貫性）
+        qs = qs.annotate(
+            settled_amount=Coalesce(Sum('settlement_events__amount'), Value(0), output_field=IntegerField()),
+        ).annotate(
+            remaining_amount=F('amount') - F('settled_amount')
+        )
+
+        role = getattr(self.request.user, "current_role", None)
+
+        # cast/staff は「自分の経費のみ」
+        if role in ("cast", "staff"):
+            qs = qs.filter(subject_user=self.request.user)
+
+        return qs
+
+    def perform_create(self, serializer):
+        role = getattr(self.request.user, "current_role", None)
+        if role in ("cast", "staff"):
+            # 非managerは勝手に他人を作れないよう強制
+            serializer.save(
+                store=self.request.store,
+                subject_user=self.request.user,
+                subject_role=role,
+            )
+        else:
+            serializer.save(store=self.request.store)
+
     @action(detail=True, methods=['post'], url_path='settlements')
     def settlements(self, request, pk=None):
         """

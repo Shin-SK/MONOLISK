@@ -4,6 +4,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import RankingBlock from '@/components/RankingBlock.vue'
 import CustomerDetailModal from '@/components/CustomerDetailModal.vue'
 import Avatar from '@/components/Avatar.vue'
+import PersonnelExpensesSection from '@/components/expenses/PersonnelExpensesSection.vue'
 import dayjs from 'dayjs'
 import {
   fetchBills,
@@ -22,6 +23,9 @@ const { displayName, avatarURL } = useProfile()
 
 // ユーザー名表示
 const userName = computed(() => displayName.value || userStore.me?.username || 'ユーザー')
+
+// 現在のユーザー情報
+const me = computed(() => userStore.me || userStore.info || null)
 
 /* ---------- 日付 ---------- */
 const dateFrom = ref(dayjs().startOf('month').format('YYYY-MM-DD'))
@@ -276,6 +280,13 @@ onMounted(async () => {
 
       <div v-if="activeTab === 'home'"
         class="wrap">
+
+        <div class="home-keihi mb-5">
+          <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+            <IconCalendarDollar />経費
+          </h2>
+          <PersonnelExpensesSection v-if="me" :subject-user-id="me.id" />
+        </div>
 
         <!-- ランキング -->
         <div class="rank mb-5">

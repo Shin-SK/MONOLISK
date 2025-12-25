@@ -21,6 +21,7 @@ import { useUser } from '@/stores/useUser'
 import { yen } from '@/utils/money'
 import { useAuth } from '@/stores/useAuth'
 import { useProfile } from '@/composables/useProfile'
+import PersonnelExpensesSection from '@/components/expenses/PersonnelExpensesSection.vue'
 
 /* ---------- 自分中心：route.id が無ければ me.cast_id を使う ---------- */
 const route = useRoute()
@@ -603,10 +604,17 @@ const latestGoalView = computed(() => {
               </div>
             </div>
           </div>
-          <p v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height:120px;">
+          <small v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height:120px;">
             相性の良いお客様はこれから見つかります。
-          </p>
+          </small>
         </div>
+      </div>
+
+      <div class="home-keihi mb-5">
+        <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
+          <IconCalendarDollar />経費
+        </h2>
+        <PersonnelExpensesSection :subject-user-id="me?.id" />
       </div>
 
       <div class="home-goal mb-5">
@@ -685,9 +693,9 @@ const latestGoalView = computed(() => {
           </div>
         </div>
 
-        <p v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height: 200px;">
+        <small v-else class="text-muted d-flex align-items-center justify-content-center" style="min-height: 200px;">
           現在お知らせはありません
-        </p>
+        </small>
       </div>
 
     </div>

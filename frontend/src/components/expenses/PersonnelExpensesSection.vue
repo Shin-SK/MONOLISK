@@ -311,9 +311,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="card mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <div class="py-3 fw-bold">経費申請</div>
+  <div class="mb-3">
+    <div
+      class="d-flex align-items-center"
+      :class="currentRole === 'manager' ? 'justify-content-between' : 'justify-content-end'"
+    >
+      <div v-if="!currentRole === 'manager'" class="py-3 fw-bold">経費申請</div>
       <div class="d-flex gap-2">
         <button v-if="allowAttach" class="btn btn-sm btn-outline-primary" @click="attachExpenses" :disabled="loading">
           <span v-if="loading" class="spinner-border spinner-border-sm me-2"></span>
@@ -325,78 +328,130 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="table-responsive" v-if="expenses.length">
-      <table class="table table-striped table-hover mb-0">
-        <thead>
-          <tr>
-            <th>発生日</th>
-            <th>対象</th>
-            <th>経費区分</th>
-            <th>カテゴリ</th>
-            <th>ステータス</th>
-            <th>メモ</th>
-            <th class="text-center">操作</th>
-            <th class="text-end">金額</th>
-            <th class="text-end">回収済</th>
-            <th class="text-end">残高</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="exp in expenses" :key="exp.id">
-            <td>{{ formatDate(exp.occurred_at) }}</td>
-            <td>
-              <!-- <span class="badge" :class="{
-                'text-bg-danger': exp.subject_role === 'cast',
-                'text-bg-info': exp.subject_role === 'staff',
-                'text-bg-warning': exp.subject_role === 'manager',
-              }">{{ exp.subject_role }}</span> -->
-              {{ exp.subject_user_display || exp.subject_user_id }}
-            </td>
-            <td>{{ policyLabel(exp.policy) }}</td>
-            <td>{{ exp.category_name || exp.category_id }}</td>
-            <td>
-              <template v-if="exp.policy === 'store_burden'">
-                <span class="badge text-bg-secondary">店舗負担</span>
-              </template>
-              <template v-else>
-                <span v-if="isSettled(exp)" class="badge text-bg-success">回収済</span>
+    <div v-if="expenses.length">
+      <!-- manager: テーブル表示 -->
+      <div class="table-responsive" v-if="currentRole === 'manager'">
+        <table class="table table-striped table-hover mb-0">
+          <thead>
+            <tr>
+              <th>発生日</th>
+              <th>対象</th>
+              <th>経費区分</th>
+              <th>カテゴリ</th>
+              <th>ステータス</th>
+              <th>メモ</th>
+              <th class="text-center">操作</th>
+              <th class="text-end">金額</th>
+              <th class="text-end">回収済</th>
+              <th class="text-end">残高</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="exp in expenses" :key="exp.id">
+              <td>{{ formatDate(exp.occurred_at) }}</td>
+              <td>{{ exp.subject_user_display || exp.subject_user_id }}</td>
+              <td>{{ policyLabel(exp.policy) }}</td>
+              <td>{{ exp.category_name || exp.category_id }}</td>
+              <td>
+                <template v-if="exp.policy === 'store_burden'">
+                  <span class="badge text-bg-secondary">店舗負担</span>
+                </template>
+                <template v-else>
+                  <span v-if="isSettled(exp)" class="badge text-bg-success">回収済</span>
+                  <span v-else class="badge text-bg-warning">未回収</span>
+                </template>
+              </td>
+              <td class="text-truncate" style="max-width: 200px">{{ exp.description }}</td>
+              <td class="text-center">
+                <button
+                  class="btn btn-sm btn-outline-primary"
+                  @click="openSettlementModal(exp)"
+                  :disabled="exp.policy === 'store_burden' || isSettled(exp)"
+                >
+                  回収
+                </button>
+              </td>
+              <td class="text-end">{{ yen(exp.amount) }}</td>
+              <td class="text-end">{{ yen(exp.settled_amount) }}</td>
+              <td class="text-end">
+                <span :class="{ 'text-danger fw-bold': getRemainingAmount(exp) > 0 }">
+                  {{ yen(getRemainingAmount(exp)) }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="table-light">
+              <th colspan="7">合計</th>
+              <th class="text-end">{{ yen(expenses.reduce((a, e) => a + Number(e.amount || 0), 0)) }}</th>
+              <th class="text-end">{{ yen(expenses.reduce((a, e) => a + Number(e.settled_amount || 0), 0)) }}</th>
+              <th class="text-end">{{ yen(expenses.reduce((a, e) => a + (Number(e.amount||0) - Number(e.settled_amount||0)), 0)) }}</th>
+              <th colspan="3"></th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- cast/staff: カード表示 -->
+      <div v-else class="mt-1">
+        <div v-for="exp in expenses" :key="exp.id">
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span class="fw-bold">{{ exp.category_name || exp.category_id }}</span>
+              <div class="wrap d-flex gap-2">
+                <small class="fw-bold">{{ formatDate(exp.occurred_at) }}</small>
+              <span class="badge" :class="exp.policy === 'store_burden' ? 'text-bg-secondary' : 'text-bg-primary'">
+                {{ policyLabel(exp.policy) }}
+              </span>                
+                <span v-if="exp.policy === 'store_burden'" class="badge text-bg-secondary">店舗負担</span>
+                <span v-else-if="isSettled(exp)" class="badge text-bg-success">回収済</span>
                 <span v-else class="badge text-bg-warning">未回収</span>
-              </template>
-            </td>
-            <td class="text-truncate" style="max-width: 200px">{{ exp.description }}</td>
-            <td class="text-center">
+              </div>
+            </div>
+            <div class="card-body row g-2">
+              <div class="col-3 df-center flex-column">
+                <div class="fw-bold">金額</div>
+                <div>{{ yen(exp.amount) }}</div>
+              </div>
+              <div class="col-3 df-center flex-column">
+                <div class="fw-bold">回収済</div>
+                <div>{{ yen(exp.settled_amount) }}</div>
+              </div>
+              <div class="col-3 df-center flex-column">
+                <div class="fw-bold">残高</div>
+                <div :class="{ 'text-danger': getRemainingAmount(exp) > 0 }">{{ yen(getRemainingAmount(exp)) }}</div>
+              </div>
+              <div class="col-3 df-center">
               <button
                 class="btn btn-sm btn-outline-primary"
                 @click="openSettlementModal(exp)"
-                :disabled="exp.policy === 'store_burden' || isSettled(exp)"
               >
                 回収
               </button>
-            </td>
-            <td class="text-end">{{ yen(exp.amount) }}</td>
-            <td class="text-end">{{ yen(exp.settled_amount) }}</td>
-            <td class="text-end">
-              <span :class="{ 'text-danger fw-bold': getRemainingAmount(exp) > 0 }">
-                {{ yen(getRemainingAmount(exp)) }}
-              </span>
-            </td>
-          </tr>
-        </tbody>
-        <tfoot>
-          <tr class="table-light">
-            <th colspan="7">合計</th>
-            <th class="text-end">{{ yen(expenses.reduce((a, e) => a + Number(e.amount || 0), 0)) }}</th>
-            <th class="text-end">{{ yen(expenses.reduce((a, e) => a + Number(e.settled_amount || 0), 0)) }}</th>
-            <th class="text-end">{{ yen(expenses.reduce((a, e) => a + (Number(e.amount||0) - Number(e.settled_amount||0)), 0)) }}</th>
-            <th colspan="3"></th>
-          </tr>
-        </tfoot>
-      </table>
+              </div>
+            </div>
+            <div class="card-footer text-end" v-if="exp.description">
+              <div class="col-3">
+                <div class="df-center flex-column mb-1">
+                  <span class="text-muted small">メモ</span>
+                  <span class="text-truncate" style="max-width: 200px">{{ exp.description }}</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="card-body text-center text-muted" v-else>
-      <p>この締めに紐づく経費はまだありません。</p>
-      <p class="small">「対象期間から取り込む」で未紐付けの経費を一括取り込み、または「経費追加」で新規作成できます。</p>
+    <div v-else>
+      <div v-if="currentRole === 'manager'" class="card-body text-center text-muted">
+        <p>この締めに紐づく経費はまだありません。</p>
+        <p class="small">「対象期間から取り込む」で未紐付けの経費を一括取り込み、または「経費追加」で新規作成できます。</p>
+      </div>
+      <div v-else class="df-center py-5 px-3">
+        <small class="text-muted">まだ経費が登録されていません。</small>
+      </div>
     </div>
   </div>
 
@@ -432,7 +487,6 @@ onMounted(() => {
                   :value="`${opt.type}:${opt.user_id}`"
                 >
                   {{ opt.label }}
-                  <!-- ＊次ここ、ここの表記「名前（キャスト/スタッフ）」だけでいい。IDとかいらない。これだけで十分わかりやすい -->
                 </option>
               </select>
             </template>
