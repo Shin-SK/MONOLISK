@@ -923,6 +923,15 @@ export const patchPersonnelExpense = async (id, payload) => {
 }
 
 /**
+ * 経費削除
+ *   id: 経費ID
+ */
+export const deletePersonnelExpense = async (id) => {
+  const { data } = await api.delete(`billing/personnel-expenses/${id}/`)
+  return data
+}
+
+/**
  * 精算イベント作成（経費の決済）
  *   expenseId: 経費ID
  *   payload: { amount, settled_at, note }

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import api from '@/api/http'
 import { useUser } from '@/stores/useUser'
 import {
@@ -7,6 +7,7 @@ import {
   fetchPersonnelExpenses,
   createPersonnelExpense,
   createPersonnelExpenseSettlement,
+  deletePersonnelExpense,
   attachPersonnelExpensesToPayrollRun,
 } from '@/api'
 
@@ -23,8 +24,9 @@ const userStore = useUser()
 const categories = ref([])
 const expenses = ref([]) // both collect + store_burden
 const loading = ref(false)
-const currentRole = ref(null) // me.current_role に基づいてUI制御
-
+const currentRole = computed(() => {
+  return userStore.me?.current_role || userStore.info?.current_role || null
+})
 // Subject Search UI
 const subjectQuery = ref('')
 const subjectOptions = ref([]) // manager 用: [{ id, type: 'cast'|'staff', label }]
@@ -52,6 +54,8 @@ const settlementForm = ref({
   amount: 0,
   note: '',
 })
+
+const deletingId = ref(null)
 
 const error = ref('')
 
@@ -144,7 +148,6 @@ watch(managerSelected, (val) => {
 
 // 現在ロールに応じて対象者を初期化（cast/staffは自分、managerは未選択）
 async function initializeSubjectByRole() {
-  currentRole.value = userStore.me?.current_role || userStore.info?.current_role || null
   dbg("initializeSubjectByRole: currentRole", currentRole.value)
   const meUsername = userStore.me?.username || userStore.info?.username
   const meId = userStore.me?.id || userStore.info?.id
@@ -199,20 +202,23 @@ async function initializeSubjectByRole() {
 
 // 旧ロジックは廃止（subject_role=managerは存在しない）
 
-async function loadData() {
+async function loadData(force = false) {
   loading.value = true
+  const bust = force ? { _ts: Date.now() } : {}
   try {
     const [cats, collectList, burdenList] = await Promise.all([
-      fetchPersonnelExpenseCategories({ is_active: true }),
+      fetchPersonnelExpenseCategories({ is_active: true, ...bust }),
       fetchPersonnelExpenses({ 
         policy: 'collect', 
         ...(props.runId ? { payroll_run: props.runId } : {}),
-        ...(props.subjectUserId ? { subject_user: props.subjectUserId } : {}) 
+        ...(props.subjectUserId ? { subject_user: props.subjectUserId } : {}),
+        ...bust,
       }),
       fetchPersonnelExpenses({ 
         policy: 'store_burden', 
         ...(props.runId ? { payroll_run: props.runId } : {}),
-        ...(props.subjectUserId ? { subject_user: props.subjectUserId } : {}) 
+        ...(props.subjectUserId ? { subject_user: props.subjectUserId } : {}),
+        ...bust,
       }),
     ])
     categories.value = Array.isArray(cats) ? cats : []
@@ -269,7 +275,7 @@ async function submitNewExpense() {
       ...(props.runId ? { payroll_run: props.runId } : {}),
     })
     showAddModal.value = false
-    await loadData()
+    await loadData(true)
   } catch (e) {
     error.value = e?.response?.data?.detail || e?.message || '経費追加に失敗しました'
   }
@@ -296,9 +302,23 @@ async function submitSettlement() {
     })
     showSettlementModal.value = false
     selectedExpense.value = null
-    await loadData()
+    await loadData(true)
   } catch (e) {
     error.value = e?.response?.data?.detail || e?.message || '回収登録に失敗しました'
+  }
+}
+
+async function deleteExpense(expense) {
+  if (!expense || !expense.id) return
+  if (!window.confirm('この経費を削除しますか？')) return
+  deletingId.value = expense.id
+  try {
+    await deletePersonnelExpense(expense.id)
+    await loadData(true)
+  } catch (e) {
+    error.value = e?.response?.data?.detail || e?.message || '削除に失敗しました'
+  } finally {
+    deletingId.value = null
   }
 }
 
@@ -306,6 +326,8 @@ onMounted(() => {
   dbg("mounted")
   dbg("api.baseURL =", api?.defaults?.baseURL)
   dbg("me =", userStore.me || userStore.info || null)
+  dbg("currentRole(ref) set =", currentRole.value)
+
   loadData()
 })
 </script>
@@ -316,14 +338,11 @@ onMounted(() => {
       class="d-flex align-items-center"
       :class="currentRole === 'manager' ? 'justify-content-between' : 'justify-content-end'"
     >
-      <div v-if="!currentRole === 'manager'" class="py-3 fw-bold">経費申請</div>
+      <div v-if="currentRole !== 'manager'" class="py-3 fw-bold">経費申請</div>
       <div class="d-flex gap-2">
         <button v-if="allowAttach" class="btn btn-sm btn-outline-primary" @click="attachExpenses" :disabled="loading">
           <span v-if="loading" class="spinner-border spinner-border-sm me-2"></span>
           対象期間から取り込む
-        </button>
-        <button class="btn btn-sm btn-primary" @click="openAddModal">
-          ＋ 経費追加
         </button>
       </div>
     </div>
@@ -390,12 +409,18 @@ onMounted(() => {
             </tr>
           </tfoot>
         </table>
+        <button class="btn btn-sm btn-primary" @click="openAddModal">
+          <IconTextPlus />経費追加
+        </button>
       </div>
 
       <!-- cast/staff: カード表示 -->
       <div v-else class="mt-1">
+        <button class="btn btn-sm btn-primary mb-3" @click="openAddModal">
+          <IconTextPlus />経費追加
+        </button>
         <div v-for="exp in expenses" :key="exp.id">
-          <div class="card">
+          <div class="card mb-3 shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center">
               <span class="fw-bold">{{ exp.category_name || exp.category_id }}</span>
               <div class="wrap d-flex gap-2">
@@ -406,32 +431,31 @@ onMounted(() => {
                 <span v-if="exp.policy === 'store_burden'" class="badge text-bg-secondary">店舗負担</span>
                 <span v-else-if="isSettled(exp)" class="badge text-bg-success">回収済</span>
                 <span v-else class="badge text-bg-warning">未回収</span>
+                <button
+                  class="text-danger small p-0"
+                  @click="deleteExpense(exp)"
+                  :disabled="deletingId === exp.id || loading"
+                >
+                  <IconTrash />
+                </button>
               </div>
             </div>
             <div class="card-body row g-2">
-              <div class="col-3 df-center flex-column">
-                <div class="fw-bold">金額</div>
+              <div class="col-4 df-center flex-column">
+                <div class="fw-bold small">金額</div>
                 <div>{{ yen(exp.amount) }}</div>
               </div>
-              <div class="col-3 df-center flex-column">
-                <div class="fw-bold">回収済</div>
+              <div class="col-4 df-center flex-column">
+                <div class="fw-bold small">回収済</div>
                 <div>{{ yen(exp.settled_amount) }}</div>
               </div>
-              <div class="col-3 df-center flex-column">
-                <div class="fw-bold">残高</div>
+              <div class="col-4 df-center flex-column">
+                <div class="fw-bold small">残高</div>
                 <div :class="{ 'text-danger': getRemainingAmount(exp) > 0 }">{{ yen(getRemainingAmount(exp)) }}</div>
-              </div>
-              <div class="col-3 df-center">
-              <button
-                class="btn btn-sm btn-outline-primary"
-                @click="openSettlementModal(exp)"
-              >
-                回収
-              </button>
               </div>
             </div>
             <div class="card-footer text-end" v-if="exp.description">
-              <div class="col-3">
+              <div class="col-12">
                 <div class="df-center flex-column mb-1">
                   <span class="text-muted small">メモ</span>
                   <span class="text-truncate" style="max-width: 200px">{{ exp.description }}</span>
@@ -449,8 +473,11 @@ onMounted(() => {
         <p>この締めに紐づく経費はまだありません。</p>
         <p class="small">「対象期間から取り込む」で未紐付けの経費を一括取り込み、または「経費追加」で新規作成できます。</p>
       </div>
-      <div v-else class="df-center py-5 px-3">
+      <div v-else class="df-center py-5 px-3 bg-white rounded shadow-sm flex-column gap-3">
         <small class="text-muted">まだ経費が登録されていません。</small>
+        <button class="btn btn-sm btn-primary" @click="openAddModal">
+          <IconTextPlus />経費追加
+        </button>
       </div>
     </div>
   </div>

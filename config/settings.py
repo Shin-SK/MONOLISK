@@ -268,7 +268,6 @@ LOGGING = {
 }
 
 # ── 補足 ─────────────────────────────────────────────────────────────
-# ・DEFAULT_STORE_ID / BILL_PL_DEFAULT_STORE は撤廃（Store-Locked原則）
 # ・サブドメイン→店舗解決は、後日 middleware を導入してもOK
 
 PL_DRINK_CATEGORY_CODES = {"cast-drink"}   # 今はこれだけ

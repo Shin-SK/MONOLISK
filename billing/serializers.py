@@ -283,55 +283,56 @@ class CastPayoutDetailSerializer(serializers.ModelSerializer):
 
 class BillItemSerializer(serializers.ModelSerializer):
     # --------------------<<  WRITE 用  >>--------------------
-    # 送信時は ID だけ受け取るフィールド
+    # 送信時はIDだけ受け取る（served_by_cast は write では受けない）
     served_by_cast_id = serializers.PrimaryKeyRelatedField(
-        source='served_by_cast',             # ← Model フィールド名
+        source='served_by_cast',
         queryset=Cast.objects.all(),
-        write_only=True,                     # ← 書き込み専用
+        write_only=True,
         required=False,
-        allow_null=True,    # ← null を許容
+        allow_null=True,
     )
-    code = serializers.CharField(
-        source='item_master.code',            # ← ★追加
-        read_only=True)
-    duration_min  = serializers.IntegerField(
-        source='item_master.duration_min',    # ← ★追加（あれば便利）
-        read_only=True)    
+
+    # 互換・便利フィールド（READのみ）
+    code = serializers.CharField(source='item_master.code', read_only=True)
+    duration_min = serializers.IntegerField(source='item_master.duration_min', read_only=True)
 
     # --------------------<<  READ 用  >>---------------------
-    # 取得時はミニキャストオブジェクトを返す
     served_by_cast = CastMiniSerializer(read_only=True)
-    # 小計はサーバ側で算出するだけ
     subtotal = serializers.SerializerMethodField()
-    # Phase2: back_rate は OPEN中は effective、CLOSED済みは DB値
     back_rate = serializers.SerializerMethodField()
     bill = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
-        model  = BillItem
+        model = BillItem
         fields = '__all__'
         read_only_fields = ('bill', 'subtotal')
 
     def to_representation(self, instance):
-        """GET時だけ item_master を展開してカテゴリ情報も含める"""
+        """
+        GET時だけ item_master を展開して category も含める。
+        POST/PATCH のレスポンスでも展開されるが、問題があればここは外してOK。
+        """
         data = super().to_representation(instance)
-        if instance.item_master:
+        if getattr(instance, 'item_master', None):
             data['item_master'] = ItemMasterSerializer(instance.item_master).data
         return data
 
     def get_subtotal(self, obj):
         return obj.subtotal
-    
+
     def get_back_rate(self, obj):
         """
-        Phase2: OPEN中は effective_back_rate（都度計算）、
-               CLOSED済みは DB の back_rate（確定値）を返す
+        OPEN中は effective_back_rate（都度計算）、
+        CLOSED済みでも effective_back_rate が「確定値を返す実装」なら同じでOK。
         """
-        return obj.effective_back_rate
-    
-    # ───────── バリデーション（締め済みでも修正OK前提で極端値を防ぐ） ─────────
+        try:
+            return obj.effective_back_rate
+        except Exception:
+            # 旧互換：effective_back_rate が無いモデルのための保険
+            return getattr(obj, 'back_rate', None)
+
+    # ───────── バリデーション（極端値を防ぐ） ─────────
     def validate_qty(self, value):
-        """数量: 1〜99の範囲"""
         if value is None:
             raise serializers.ValidationError(ERROR_MESSAGES['qty_zero'])
         if value < BILLITEM_QTY_MIN:
@@ -339,34 +340,68 @@ class BillItemSerializer(serializers.ModelSerializer):
         if value > BILLITEM_QTY_MAX:
             raise serializers.ValidationError(ERROR_MESSAGES['qty_range'])
         return value
-    
+
     def validate_price(self, value):
-        """単価: 0〜2,000,000の範囲"""
         if value is None:
-            return value  # null許容の場合
+            return value
         if value < BILLITEM_PRICE_MIN:
             raise serializers.ValidationError(ERROR_MESSAGES['price_negative'])
         if value > BILLITEM_PRICE_MAX:
             raise serializers.ValidationError(ERROR_MESSAGES['price_range'])
         return value
-    
+
     def validate(self, attrs):
-        """全体整合性チェック + Store-Locked確認"""
-        # item_master の Store-Locked チェック
-        item_master = attrs.get('item_master')
-        if item_master:
-            request = self.context.get('request')
-            if request:
-                # X-Store-Id ヘッダーから店舗IDを取得
-                store_id = request.META.get('HTTP_X_STORE_ID') or request.META.get('HTTP_X_STORE_Id')
-                if store_id and hasattr(item_master, 'store_id'):
-                    if str(item_master.store_id) != str(store_id):
-                        raise serializers.ValidationError({
-                            'item_master': ERROR_MESSAGES['item_master_wrong_store']
-                        })
-        
+        """
+        全体整合性 + Store-Locked確認
+        - request.store が存在する前提（X-Store-Id必須）
+        - item_master / served_by_cast の store を弾く
+        - bill は ViewSet が bill=bill を注入する前提なので、ここでは bill の store チェックは「存在する場合のみ」行う
+        """
+        request = self.context.get('request')
+        store = getattr(request, 'store', None) if request else None
+        store_id = getattr(store, 'id', None)
+
+        if not store_id:
+            # views の require_store と同じ思想。serializer 単体で呼ばれても事故らないように。
+            raise serializers.ValidationError({'store_id': 'X-Store-Id header is required.'})
+
+        # item_master の store ロック
+        item_master = attrs.get('item_master', None)
+        if item_master is not None:
+            im_store_id = getattr(item_master, 'store_id', None)
+            # グローバル商品を許容する設計なら None はOK、店舗商品なら一致必須
+            if im_store_id is not None and im_store_id != store_id:
+                raise serializers.ValidationError({'item_master': '他店舗の商品は使用できません。'})
+
+        # served_by_cast の store ロック
+        served_by_cast = attrs.get('served_by_cast', None)
+        if served_by_cast is not None:
+            if getattr(served_by_cast, 'store_id', None) != store_id:
+                raise serializers.ValidationError({'served_by_cast_id': '他店舗のキャストは指定できません。'})
+
+        # もし bill が attrs に入ってくるケース（将来/別経路）に備えてチェック
+        bill = attrs.get('bill', None)
+        if bill is not None:
+            table = getattr(bill, 'table', None)
+            bill_store_id = getattr(table, 'store_id', None) if table else None
+            if bill_store_id and bill_store_id != store_id:
+                raise serializers.ValidationError({'bill': '他店舗の伝票です。'})
+
         return attrs
 
+    def create(self, validated_data):
+        """
+        bill は View 側で serializer.save(bill=bill, ...) される前提。
+        ここでは特別な処理は不要。
+        """
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """
+        更新も同様に store ロックは validate 済み。
+        """
+        return super().update(instance, validated_data)
+    
 
 class CastCategoryRateSerializer(serializers.ModelSerializer):
 

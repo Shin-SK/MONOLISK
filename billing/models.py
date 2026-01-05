@@ -474,7 +474,9 @@ class BillTag(models.Model):
         verbose_name = '伝票タグ'
         verbose_name_plural = verbose_name
         ordering = ['store', 'code']
-        unique_together = [('store', 'code')]  # 同じ店舗内でコード重複不可
+        constraints = [
+            models.UniqueConstraint(fields=['store', 'code'], name='uniq_billtag_store_code'),
+        ]
 
     def __str__(self):
         return f"{self.store.name} - {self.name}"
@@ -1161,7 +1163,9 @@ class CastCategoryRate(models.Model):
     rate_inhouse    = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
 
     class Meta:
-        unique_together = ('cast', 'category')
+        constraints = [
+            models.UniqueConstraint(fields=['cast', 'category'], name='uniq_castcategoryrate_cast_category'),
+        ]
 
 
 def rate_from_cast_category(cast, category, is_nom: bool, is_in: bool) -> Decimal | None:
@@ -1267,7 +1271,9 @@ class CastDailySummary(models.Model):
     business_date = models.DateField(null=True, blank=True, db_index=True)
 
     class Meta:
-        unique_together = ('store', 'cast', 'work_date')
+        constraints = [
+            models.UniqueConstraint(fields=['store', 'cast', 'work_date'], name='uniq_castdailysummary_store_cast_workdate'),
+        ]
         indexes = [
             models.Index(fields=['work_date']),
             models.Index(fields=['cast', 'work_date']),
@@ -1403,7 +1409,9 @@ class BillCustomer(models.Model):
     # joined_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        unique_together = ('bill', 'customer')   # 同じ客を重複登録させない
+        constraints = [
+            models.UniqueConstraint(fields=['bill', 'customer'], name='uniq_billcustomer_bill_customer'),
+        ]
 
 
 
@@ -1708,7 +1716,9 @@ class HourlySalesSummary(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        unique_together = ('store', 'date', 'hour')
+        constraints = [
+            models.UniqueConstraint(fields=['store', 'date', 'hour'], name='uniq_hourlysales_store_date_hour'),
+        ]
         indexes = [
             models.Index(fields=['store', 'date', 'hour']),
             models.Index(fields=['date', 'hour']),
@@ -1751,7 +1761,9 @@ class HourlyCastSales(models.Model):
     bill_count = models.PositiveIntegerField(default=0, help_text='担当伝票数')
     
     class Meta:
-        unique_together = ('hourly_summary', 'cast')
+        constraints = [
+            models.UniqueConstraint(fields=['hourly_summary', 'cast'], name='uniq_hourlycast_hourlysummary_cast'),
+        ]
         indexes = [
             models.Index(fields=['cast', 'hourly_summary']),
         ]
@@ -1810,7 +1822,9 @@ class PayrollRunLine(models.Model):
     class Meta:
         verbose_name = '給与締め明細'
         verbose_name_plural = verbose_name
-        unique_together = ('run', 'cast')
+        constraints = [
+            models.UniqueConstraint(fields=['run', 'cast'], name='uniq_payrollrunline_run_cast'),
+        ]
         ordering = ['cast__stage_name', 'cast_id']
 
     def __str__(self):
@@ -1869,7 +1883,9 @@ class PersonnelExpenseCategory(models.Model):
         verbose_name = '人件費経費カテゴリ'
         verbose_name_plural = verbose_name
         ordering = ['store', 'code']
-        unique_together = [('store', 'code')]
+        constraints = [
+            models.UniqueConstraint(fields=['store', 'code'], name='uniq_personnelexpcat_store_code'),
+        ]
 
     def __str__(self):
         return f"{self.store.name} - {self.name}"
@@ -1973,10 +1989,14 @@ class PersonnelExpense(models.Model):
 
     @property
     def settled_amount(self):
-        """回収済み金額の合計"""
-        return self.settlement_events.aggregate(
-            total=Sum('amount')
-        )['total'] or Decimal('0')
+        """
+        DBフィールドではなく、紐づく settlement_events の合計金額。
+        annotate が無い場面でも確実に数値（Decimal）を返す。
+        """
+        total = self.settlement_events.aggregate(
+            total=models.Sum("amount")
+        )["total"]
+        return total or Decimal("0")
 
     @property
     def remaining_amount(self):

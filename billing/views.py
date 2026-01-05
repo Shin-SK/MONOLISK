@@ -1880,17 +1880,18 @@ class PersonnelExpenseViewSet(StoreScopedModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
 
-        # settled_amount / remaining_amount をDB側で出しておく（高速化 & 一貫性）
         qs = qs.annotate(
-            settled_amount=Coalesce(Sum('settlement_events__amount'), Value(0), output_field=IntegerField()),
+            settled_amount_db=Coalesce(
+                Sum('settlement_events__amount'),
+                Value(0),
+                output_field=IntegerField(),
+            ),
         ).annotate(
-            remaining_amount=F('amount') - F('settled_amount')
+            remaining_amount_db=F('amount') - F('settled_amount_db')
         )
 
         role = getattr(self.request.user, "current_role", None)
-
-        # cast/staff は「自分の経費のみ」
-        if role in ("cast", "staff"):
+        if role != "manager":
             qs = qs.filter(subject_user=self.request.user)
 
         return qs
