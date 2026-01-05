@@ -338,7 +338,7 @@ onMounted(() => {
       class="d-flex align-items-center"
       :class="currentRole === 'manager' ? 'justify-content-between' : 'justify-content-end'"
     >
-      <div v-if="currentRole !== 'manager'" class="py-3 fw-bold">経費申請</div>
+      <div v-if="currentRole === 'manager'" class="py-3 fw-bold">経費申請</div>
       <div class="d-flex gap-2">
         <button v-if="allowAttach" class="btn btn-sm btn-outline-primary" @click="attachExpenses" :disabled="loading">
           <span v-if="loading" class="spinner-border spinner-border-sm me-2"></span>
