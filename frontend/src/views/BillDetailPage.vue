@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { fetchBill } from '@/api'
-import PayrollSnapshotPanel from '@/components/billing/PayrollSnapshotPanel.vue'
+import PayrollSnapshotPanel from '@/components/expenses/PayrollSnapshotPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
