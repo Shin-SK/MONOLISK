@@ -42,10 +42,17 @@ class Migration(migrations.Migration):
             name='personnelexpensecategory',
             unique_together=set(),
         ),
-        migrations.AlterUniqueTogether(
-            name='storeseatsetting',
-            unique_together=set(),
-        ),
+
+        # NOTE:
+        # storeseatsetting は DB 側で partial unique index
+        # (uniq_store_seat_type_nonnull / uniq_store_seat_type_null_single)
+        # を使って一意性を担保しており、Django の AlterUniqueTogether が
+        # constraint を見つけられず migrate が落ちるため、ここはスキップする。
+        # migrations.AlterUniqueTogether(
+        #     name='storeseatsetting',
+        #     unique_together=set(),
+        # ),
+
         migrations.AlterUniqueTogether(
             name='table',
             unique_together=set(),
