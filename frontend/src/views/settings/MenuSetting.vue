@@ -53,6 +53,7 @@ function resetDraft() {
     category: '',        // ItemCategory の code（文字列）
     price_regular: 0,
     price_late: '',
+    cost: '',
     duration_min: 0,
     apply_service: true,
     exclude_from_payout: false,
@@ -109,6 +110,7 @@ function startEdit(row) {
     category: row.category?.code ?? row.category ?? '',
     price_regular: row.price_regular ?? 0,
     price_late: row.price_late ?? '',
+    cost: row.cost ?? '',
     duration_min: row.duration_min ?? 0,
     apply_service: !!row.apply_service,
     exclude_from_payout: !!row.exclude_from_payout,
@@ -127,6 +129,7 @@ async function save() {
     category: catValue(draft.value.category),
     price_regular: +draft.value.price_regular || 0,
     price_late: draft.value.price_late === '' ? null : (+draft.value.price_late || 0),
+    cost: draft.value.cost === '' ? null : (+draft.value.cost || null),
     duration_min: +draft.value.duration_min || 0,
     apply_service: !!draft.value.apply_service,
     exclude_from_payout: !!draft.value.exclude_from_payout,
@@ -207,8 +210,9 @@ onMounted(async () => {
               <th style="width:18%">カテゴリ</th>
               <th>品名</th>
               <th class="text-end" style="width:12%">通常価格</th>
-              <th class="text-end" style="width:12%">深夜価格</th>
-              <th class="text-end" style="width:12%">時間(min)</th>
+              <th class="text-end" style="width:10%">深夜価格</th>
+              <th class="text-end" style="width:10%">原価</th>
+              <th class="text-end" style="width:10%">時間(min)</th>
               <th style="width:18%">フラグ</th>
               <th style="width:12%"></th>
             </tr>
@@ -228,6 +232,7 @@ onMounted(async () => {
               <td><input class="form-control" v-model="draft.name" /></td>
               <td><input class="form-control text-end" type="number" v-model.number="draft.price_regular" /></td>
               <td><input class="form-control text-end" type="number" v-model="draft.price_late" /></td>
+              <td><input class="form-control text-end" type="number" step="0.01" v-model="draft.cost" /></td>
               <td><input class="form-control text-end" type="number" step="5" v-model.number="draft.duration_min" /></td>
               <td>
                 <div class="form-check form-check-inline">
@@ -264,6 +269,7 @@ onMounted(async () => {
                 <td><input class="form-control" v-model="draft.name" /></td>
                 <td><input class="form-control text-end" type="number" v-model.number="draft.price_regular" /></td>
                 <td><input class="form-control text-end" type="number" v-model="draft.price_late" /></td>
+                <td><input class="form-control text-end" type="number" step="0.01" v-model="draft.cost" /></td>
                 <td><input class="form-control text-end" type="number" step="5" v-model.number="draft.duration_min" /></td>
                 <td>
                   <div class="form-check form-check-inline">
@@ -291,6 +297,7 @@ onMounted(async () => {
                 <td>{{ it.name }}</td>
                 <td class="text-end">¥{{ (+it.price_regular||0).toLocaleString() }}</td>
                 <td class="text-end">¥{{ (+it.price_late||0).toLocaleString() }}</td>
+                <td class="text-end">¥{{ (+it.cost||0).toLocaleString() }}</td>
                 <td class="text-end">{{ it.duration_min || 0 }}</td>
                 <td>
                   <span class="badge bg-secondary me-1" v-if="it.apply_service">サービス料</span>

@@ -45,6 +45,7 @@ class ItemMasterRes(resources.ModelResource):
     duration_min  = fields.Field(attribute="duration_min",  column_name="duration_min",  widget=widgets.IntegerWidget())
     price_regular = fields.Field(attribute="price_regular", column_name="price_regular", widget=widgets.IntegerWidget())
     price_late    = fields.Field(attribute="price_late",    column_name="price_late",    widget=widgets.IntegerWidget())
+    cost          = fields.Field(attribute="cost",          column_name="cost",          widget=widgets.DecimalWidget())
     apply_service       = fields.Field(attribute="apply_service",       column_name="apply_service",       widget=widgets.BooleanWidget())
     exclude_from_payout = fields.Field(attribute="exclude_from_payout", column_name="exclude_from_payout", widget=widgets.BooleanWidget())
     track_stock         = fields.Field(attribute="track_stock",         column_name="track_stock",         widget=widgets.BooleanWidget())
@@ -55,12 +56,12 @@ class ItemMasterRes(resources.ModelResource):
         import_id_fields = ("store", "code")  # 文字列のみ
         fields = (
             "store","code","name","category","duration_min",
-            "price_regular","price_late",
+            "price_regular","price_late","cost",
             "apply_service","exclude_from_payout","track_stock","route",
         )
         export_order = (
             "store","code","name","category","duration_min",
-            "price_regular","price_late",
+            "price_regular","price_late","cost",
             "apply_service","exclude_from_payout","track_stock","route",
         )
         skip_unchanged = True
