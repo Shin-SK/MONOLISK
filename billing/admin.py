@@ -215,7 +215,7 @@ class PersonnelExpenseCategoryAdmin(admin.ModelAdmin):
 class ItemMasterAdmin(ImportExportModelAdmin):
     resource_class = ItemMasterRes
     list_display  = ("store", "category", "code", "name",
-                     "price_regular", "duration_min", "route", "effective_route",
+                     "price_regular", "cost", "duration_min", "route", "effective_route",
                      "track_stock", "exclude_from_payout")
     list_filter   = ("store", "category", "track_stock", "exclude_from_payout", "route")
     search_fields = ("name", "code", "category__name")

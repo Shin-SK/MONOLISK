@@ -53,6 +53,11 @@ export const useUser = defineStore('user', {
     isCast:   (s) => s.info?.groups?.includes('CAST')   ?? false,
     isStaff() { return !this.isDriver && !this.isCast },
     fullName() { return this.name },
+    storeId() {
+      const v = localStorage.getItem('store_id')
+      const n = Number(v)
+      return Number.isFinite(n) && n > 0 ? n : null
+    },
   },
 
   // -------------------------------------------------------------------------

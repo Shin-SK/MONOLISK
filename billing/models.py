@@ -387,6 +387,11 @@ class ItemMaster(models.Model):
     name      = models.CharField(max_length=40)
     price_regular = models.PositiveIntegerField()
     price_late    = models.PositiveIntegerField(null=True, blank=True)
+    cost = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True, default=None,
+        verbose_name='原価',
+        help_text='シャンパンの歩合計算用。NULL または 0 の場合は売価を使用'
+    )
     apply_service       = models.BooleanField(default=True)
     exclude_from_payout = models.BooleanField(default=False)
     track_stock         = models.BooleanField(default=False)

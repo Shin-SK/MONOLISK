@@ -10,6 +10,7 @@ import json
 from decimal import Decimal, ROUND_FLOOR
 from typing import Dict, List, Any
 from django.utils import timezone
+from billing.services.payout_helper import get_payout_base
 
 
 def build_payroll_snapshot(bill: "Bill") -> Dict[str, Any]:
@@ -252,8 +253,10 @@ def _build_cast_breakdown(
         else:
             # 既定：%, back_rate で計算
             if item.item_master:
+                # シャンパン原価基準対応
+                base, basis, _ = get_payout_base(item, item.item_master)
                 amount = int(
-                    (Decimal(item.subtotal) * Decimal(item.back_rate))
+                    (base * Decimal(item.back_rate))
                     .quantize(0, rounding=ROUND_FLOOR)
                 )
             else:
@@ -268,6 +271,7 @@ def _build_cast_breakdown(
                 "unit_price": int(item.price or 0),
                 "subtotal": int(item.subtotal),
                 "rate": float(item.back_rate or 0),
+                                "basis": basis,
                 "amount": amount,
             })
     

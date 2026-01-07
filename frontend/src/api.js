@@ -41,6 +41,7 @@ api.interceptors.request.use(cfg => {
     path.startsWith('dj-rest-auth') ||
     path.startsWith('auth/') ||
     path.startsWith('me') ||
+     path.startsWith('billing/pl') ||  // ← PL系は常に最新
     path.startsWith('billing/kds/') ||
     /^billing\/bills(\/|$)/.test(path) ||       // ← 伝票リスト/個票は常に最新
     path.startsWith('billing/cast-shifts/')     // ← シフトも常に最新
@@ -187,9 +188,12 @@ export const getStore  = id => api.get(`billing/stores/${id}/`, { cache: false }
 
 //PL
 
-export async function getBillDailyPL(date) {
-	const { data } = await api.get('billing/pl/daily/', { params: { date } })
-  return { sales_cash:0, sales_card:0, sales_total:0, cast_hourly:0, cast_commission:0, cast_labor:0, driver_labor:0, custom_expense:0, gross_profit:0, ...data }
+export async function getBillDailyPL(date, opt = {}) {
+  const cfg = { params: { date } }
+  if (opt.cache === false) cfg.cache = false
+  if (opt.meta) cfg.meta = opt.meta
+  const { data } = await api.get('billing/pl/daily/', cfg)
+  return data
 }
 
 export async function getHourlySales(date, storeId) {
@@ -257,22 +261,31 @@ export const getBillYearlyPL = (year) =>
     })
 
 // ===== オーナー用：店舗IDを明示して叩くヘルパー =====
-export const getBillDailyPLForStore = (date, storeId, opt={}) =>
-  api.get('billing/pl/daily/', {
-    params: { date },
-    headers: { 'X-Store-Id': String(storeId), 'X-Store-ID': String(storeId) },
-    ...(opt.cache === false ? { cache:false } : {}),
-    ...(opt.meta ? { meta: opt.meta } : {}),
-  }).then(r => r.data)
+export const getBillDailyPLForStore = (date, storeId, opt={}) => {
+  const cfg = {
+    params: { date, store_id: Number(storeId) },
+    headers: {
+      'X-Store-Id': String(Number(storeId)),
+      'X-Store-ID': String(Number(storeId)),
+    },
+    cache: false,  // ← 常に最新を取得
+  }
+  if (opt.meta) cfg.meta = opt.meta
+  return api.get('billing/pl/daily/', cfg).then(r => r.data)
+}
 
 export const getBillMonthlyPLForStore = (monthStr, storeId, opt={}) => {
   const [year, month] = String(monthStr).split('-').map(Number)
-  return api.get('billing/pl/monthly/', {
-    params: { year, month },
-    headers: { 'X-Store-Id': String(storeId), 'X-Store-ID': String(storeId) },
-    ...(opt.cache === false ? { cache:false } : {}),
-    ...(opt.meta ? { meta: opt.meta } : {}),
-  }).then(r => {
+  const cfg = {
+    params: { year, month, store_id: Number(storeId) },
+    headers: {
+      'X-Store-Id': String(Number(storeId)),
+      'X-Store-ID': String(Number(storeId)),
+    },
+    cache: false,  // ← 常に最新を取得
+  }
+  if (opt.meta) cfg.meta = opt.meta
+  return api.get('billing/pl/monthly/', cfg).then(r => {
     const days = (r.data.days ?? []).map(d => ({
       sales_cash: 0, sales_card: 0, sales_total: 0,
       cast_labor: 0, driver_labor: 0, custom_expense: 0, gross_profit: 0,
@@ -287,13 +300,18 @@ export const getBillMonthlyPLForStore = (monthStr, storeId, opt={}) => {
   })
 }
 
-export const getBillYearlyPLForStore = (year, storeId, opt={}) =>
-  api.get('billing/pl/yearly/', {
-    params: { year },
-    headers: { 'X-Store-Id': String(storeId), 'X-Store-ID': String(storeId) },
-    ...(opt.cache === false ? { cache:false } : {}),
-    ...(opt.meta ? { meta: opt.meta } : {}),
-  }).then(r => r.data)
+export const getBillYearlyPLForStore = (year, storeId, opt={}) => {
+  const cfg = {
+    params: { year, store_id: Number(storeId) },
+    headers: {
+      'X-Store-Id': String(Number(storeId)),
+      'X-Store-ID': String(Number(storeId)),
+    },
+    cache: false,  // ← 常に最新を取得
+  }
+  if (opt.meta) cfg.meta = opt.meta
+  return api.get('billing/pl/yearly/', cfg).then(r => r.data)
+}
 
 
 // キャスト系

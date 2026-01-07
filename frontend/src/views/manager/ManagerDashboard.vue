@@ -2,8 +2,9 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import dayjs from 'dayjs'
+import { useRoute } from 'vue-router'
 import {
-  getBillDailyPL,
+  getBillDailyPLForStore,
   fetchBills,
   fetchCastShifts,
   fetchStaffShifts,
@@ -16,7 +17,16 @@ import { useProfile } from '@/composables/useProfile'
 import PersonnelExpensesSection from '@/components/expenses/PersonnelExpensesSection.vue'
 
 const user = useUser()
+const route = useRoute()
 const { avatarURL } = useProfile()
+
+/* storeId を localStorage から読む */
+const storeId = computed(() => {
+  const v = localStorage.getItem('store_id')
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+})
+
 
 const userName = computed(() => {
   return user.me?.username || user.me?.email || 'ユーザー'
@@ -80,8 +90,12 @@ async function loadAll(){
   try{
     const d = date.value
 
+    if (!storeId.value) {
+      throw new Error('store_id が見つかりません（localStorage: store_id）')
+    }
+
     // 1) PL（売上）- キャッシュ無効化
-    const pl = await getBillDailyPL(d, { cache: false })
+    const pl = await getBillDailyPLForStore(d, storeId.value, { cache: false })
 
     // 2) 伝票（クライアントで当日抽出）- キャッシュ無効化
     const allBills = await fetchBills({ ordering: '-opened_at' }, { cache: false }).catch(()=>[])
@@ -191,6 +205,10 @@ kpi.value = {
 
 onMounted(loadAll)
 watch(date, loadAll)
+watch(
+  () => route.query._ts,
+  () => { loadAll() }
+)
 
 /* ----------------- CSV（フロント生成） ----------------- */
 const billsCsvHeaders = [

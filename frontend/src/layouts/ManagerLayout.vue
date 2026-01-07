@@ -63,6 +63,20 @@ async function onClickRefresh () {
   }
 }
 
+// ★ Homeへ「キャッシュを使わない」戻り方
+async function goHomeFresh () {
+  try {
+    refreshing.value = true
+
+    await router.push({ name: 'mng-dashboard', query: { _ts: Date.now() } })
+
+    viewKey.value += 1
+    await nextTick()
+  } finally {
+    setTimeout(() => { refreshing.value = false }, SPIN_MS + 100)
+  }
+}
+
 /* ───── テーブルアラート表示 ───── */
 const billsStore = useBills()
 const { getAlertState, urgentBills, urgentCount, cleanup: cleanupAlerts } = useTableAlerts(
@@ -186,7 +200,7 @@ async function logout () {
           <router-view v-slot="{ Component }">
             <Suspense>
               <template #default>
-                <component :is="Component" :key="viewKey" />
+                <component :is="Component" :key="`${route.fullPath}:${viewKey}`" />
               </template>
             </Suspense>
           </router-view>
@@ -200,7 +214,7 @@ async function logout () {
       <button 
         class="df-center flex-column"
         :class="isActiveName('mng-dashboard') ? 'text-dark' : 'text-secondary'"
-        @click="$router.push({ name:'mng-dashboard' })">
+        @click="goHomeFresh">
         <span>
           <IconHomeFilled v-if="isActiveName('mng-dashboard')" />
           <IconHome v-else />
