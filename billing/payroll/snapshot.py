@@ -250,17 +250,19 @@ def _build_cast_breakdown(
         override = engine.item_payout_override(bill, item, stay_type)
         if override is not None:
             amount = int(override)
+            basis_type = "override"
         else:
             # 既定：%, back_rate で計算
             if item.item_master:
                 # シャンパン原価基準対応
-                base, basis, _ = get_payout_base(item, item.item_master)
+                base, basis_type, _ = get_payout_base(item, item.item_master)
                 amount = int(
                     (base * Decimal(item.back_rate))
                     .quantize(0, rounding=ROUND_FLOOR)
                 )
             else:
                 amount = 0
+                basis_type = "unknown"
         
         if amount > 0:
             item_back_amount += amount
@@ -271,7 +273,7 @@ def _build_cast_breakdown(
                 "unit_price": int(item.price or 0),
                 "subtotal": int(item.subtotal),
                 "rate": float(item.back_rate or 0),
-                                "basis": basis,
+                "basis": basis_type,
                 "amount": amount,
             })
     
@@ -399,20 +401,37 @@ def _build_items_info(bill: "Bill", engine) -> List[Dict[str, Any]]:
             override = engine.item_payout_override(bill, item, stay_type)
             if override is not None:
                 amount = int(override)
+                basis_type = "override"
             else:
-                amount = int(
-                    (Decimal(item.subtotal) * Decimal(item.back_rate))
-                    .quantize(0, rounding=ROUND_FLOOR)
-                )
+                # シャンパン原価基準対応
+                if item.item_master:
+                    base, basis, _ = get_payout_base(item, item.item_master)
+                    amount = int(
+                        (base * Decimal(item.back_rate))
+                        .quantize(0, rounding=ROUND_FLOOR)
+                    )
+                    basis_type = basis
+                else:
+                    amount = 0
+                    basis_type = "unknown"
             
             if amount > 0 or item.back_rate != 0:  # amount=0 でも basis を残す
+                # calculation ラベルを basis_type に応じて切り替える
+                if basis_type == "cost":
+                    calc_label = "cost * qty * rate"
+                elif basis_type == "subtotal":
+                    calc_label = "subtotal * rate"
+                else:
+                    calc_label = "calculated"
+                
                 payroll_effects.append({
                     "cast_id": served_by_cast_id,
                     "type": "item_back",
                     "amount": amount,
                     "basis": {
                         "rate": float(item.back_rate),
-                        "calculation": "subtotal * rate",
+                        "calculation": calc_label,
+                        "basis_type": basis_type,
                     }
                 })
         

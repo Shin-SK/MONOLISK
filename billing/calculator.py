@@ -90,6 +90,7 @@ class BillCalculator:
     # --------------- CastPayout ----------------
     def _cast_payouts(self):
         from .models import CastPayout
+        from billing.services.payout_helper import get_payout_base
         totals = {}
 
         engine = get_engine(self.store)
@@ -106,8 +107,12 @@ class BillCalculator:
             if override is not None:
                 amt = int(override)
             else:
-                # ② 既定：％で (price*qty)×back_rate
-                amt = int((Decimal(item.subtotal) * Decimal(item.back_rate)).quantize(0, rounding=ROUND_FLOOR))
+                # ② 既定：原価ベース（シャンパンのみ）or 売価ベース
+                if item.item_master:
+                    base, _, _ = get_payout_base(item, item.item_master)
+                    amt = int((base * Decimal(item.back_rate)).quantize(0, rounding=ROUND_FLOOR))
+                else:
+                    amt = 0
 
             if amt:
                 totals[item.served_by_cast_id] = totals.get(item.served_by_cast_id, 0) + amt

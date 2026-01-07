@@ -299,3 +299,194 @@ class PayrollSnapshotEdgeCaseTestCase(TestCase):
         """snapshot がない Bill は dirty = False"""
         # クローズしない
         self.assertFalse(is_payroll_dirty(self.bill))
+
+
+class PayrollSnapshotChampagneTestCase(TestCase):
+    """給与スナップショット・シャンパン原価基準テスト"""
+
+    def setUp(self):
+        # テスト用店舗
+        self.store = Store.objects.create(
+            name="テスト店舗",
+            slug="test-shop",
+            service_rate=Decimal("10"),
+            tax_rate=Decimal("10"),
+        )
+
+        # テーブル
+        self.table = Table.objects.create(code="1", store=self.store)
+
+        # カテゴリ作成
+        self.cat_champagne = ItemCategory.objects.create(
+            code="champagne",
+            name="シャンパン",
+            major_group="champagne",
+            back_rate_free=Decimal("0.20"),
+        )
+        self.cat_drink = ItemCategory.objects.create(
+            code="drink",
+            name="ドリンク",
+            major_group="drink",
+            back_rate_free=Decimal("0.30"),
+        )
+
+        # キャスト
+        user = User.objects.create_user(username="cast1", password="pass")
+        self.cast = Cast.objects.create(user=user, stage_name="キャスト1", store=self.store)
+
+        # 伝票
+        self.bill = Bill.objects.create(table=self.table)
+
+    def test_snapshot_champagne_with_cost_no_residual(self):
+        """
+        シャンパン原価基準：cost がある場合、
+        snapshot の payroll_effects と breakdown が一致し、
+        residual_from_engine が 0 になることを確認。
+        """
+        item = ItemMaster.objects.create(
+            store=self.store,
+            name="アルマンド（再現ケース）",
+            price_regular=325000,
+            cost=Decimal("10000"),  # 原価 10000
+            category=self.cat_champagne,
+        )
+        bill_item = BillItem.objects.create(
+            bill=self.bill,
+            item_master=item,
+            qty=1,
+            price=325000,
+            served_by_cast=self.cast,
+        )
+
+        # Bill をクローズ
+        self.bill.close()
+
+        # スナップショット生成確認
+        self.assertIsNotNone(self.bill.payroll_snapshot)
+        snapshot = self.bill.payroll_snapshot
+
+        # ─────────────────────────────────────────
+        # 1) items_info で payroll_effects.amount を確認
+        # ─────────────────────────────────────────
+        items = snapshot.get("items", [])
+        self.assertEqual(len(items), 1)
+        
+        item_info = items[0]
+        payroll_effects = item_info.get("payroll_effects", [])
+        self.assertEqual(len(payroll_effects), 1)
+        
+        effect = payroll_effects[0]
+        expected_amount = int(Decimal("10000") * Decimal("0.20"))  # cost * back_rate = 2000
+        self.assertEqual(effect["amount"], expected_amount, 
+                        f"payroll_effects.amount should be {expected_amount} (cost * rate)")
+        self.assertEqual(effect["basis"]["basis_type"], "cost",
+                        "basis_type should be 'cost' for champagne")
+        self.assertEqual(effect["basis"]["calculation"], "cost * qty * rate")
+
+        # ─────────────────────────────────────────
+        # 2) by_cast.breakdown を確認
+        # ─────────────────────────────────────────
+        by_cast = snapshot.get("by_cast", [])
+        self.assertEqual(len(by_cast), 1)
+        
+        cast_entry = by_cast[0]
+        self.assertEqual(cast_entry["amount"], expected_amount,
+                        f"by_cast.amount should match item_back amount")
+        
+        breakdown = cast_entry.get("breakdown", [])
+        
+        # item_back を抽出
+        item_back_entry = None
+        residual_entry = None
+        for entry in breakdown:
+            if entry["type"] == "item_back":
+                item_back_entry = entry
+            elif entry["type"] == "adjustment":
+                residual_entry = entry
+        
+        self.assertIsNotNone(item_back_entry, "breakdown に item_back が必須")
+        self.assertEqual(item_back_entry["amount"], expected_amount,
+                        f"breakdown.item_back.amount should be {expected_amount}")
+        
+        # detail に basis が記録されていること
+        detail = item_back_entry["basis"].get("detail", [])
+        self.assertEqual(len(detail), 1)
+        self.assertEqual(detail[0]["basis"], "cost",
+                        "breakdown.item_back.detail[].basis should be 'cost'")
+
+        # ─────────────────────────────────────────
+        # 3) residual が出ないことを確認
+        # ─────────────────────────────────────────
+        if residual_entry:
+            # residual が記録されている場合、amount が 0 であること
+            self.assertEqual(residual_entry["amount"], 0,
+                           f"residual should be 0 (currently {residual_entry['amount']})")
+
+    def test_snapshot_champagne_without_cost_fallback(self):
+        """
+        シャンパン原価基準：cost がない場合、
+        subtotal にフォールバックして計算されることを確認。
+        """
+        item = ItemMaster.objects.create(
+            store=self.store,
+            name="シャンパンNV",
+            price_regular=15000,
+            cost=None,  # 原価なし
+            category=self.cat_champagne,
+        )
+        bill_item = BillItem.objects.create(
+            bill=self.bill,
+            item_master=item,
+            qty=1,
+            price=15000,
+            served_by_cast=self.cast,
+        )
+
+        # Bill をクローズ
+        self.bill.close()
+        snapshot = self.bill.payroll_snapshot
+
+        # payroll_effects で subtotal で計算されていること
+        items = snapshot.get("items", [])
+        item_info = items[0]
+        effect = item_info.get("payroll_effects", [0])[0]
+        
+        expected_amount = int(Decimal("15000") * Decimal("0.20"))  # subtotal * rate = 3000
+        self.assertEqual(effect["amount"], expected_amount,
+                        f"should fallback to subtotal * rate = {expected_amount}")
+        self.assertEqual(effect["basis"]["basis_type"], "subtotal",
+                        "basis_type should be 'subtotal' when cost is None")
+
+    def test_snapshot_normal_drink_subtotal_basis(self):
+        """
+        通常ドリンク：cost があってもずっと subtotal で計算されることを確認。
+        """
+        item = ItemMaster.objects.create(
+            store=self.store,
+            name="ビール",
+            price_regular=1000,
+            cost=Decimal("300"),  # cost があるが無視される
+            category=self.cat_drink,
+        )
+        bill_item = BillItem.objects.create(
+            bill=self.bill,
+            item_master=item,
+            qty=2,
+            price=1000,
+            served_by_cast=self.cast,
+        )
+
+        # Bill をクローズ
+        self.bill.close()
+        snapshot = self.bill.payroll_snapshot
+
+        # payroll_effects で subtotal で計算されていること
+        items = snapshot.get("items", [])
+        item_info = items[0]
+        effect = item_info.get("payroll_effects", [0])[0]
+        
+        expected_amount = int(Decimal("2000") * Decimal("0.30"))  # subtotal (2000) * rate = 600
+        self.assertEqual(effect["amount"], expected_amount,
+                        f"should use subtotal * rate = {expected_amount}")
+        self.assertEqual(effect["basis"]["basis_type"], "subtotal",
+                        "basis_type should be 'subtotal' for non-champagne")
