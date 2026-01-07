@@ -7,9 +7,9 @@ const route  = useRoute()
 const isRoot = computed(() => route.name === 'settings') // 親そのもの = ハブ表示
 
 const cards = [
-  { to: { name: 'settings-store' },  title: 'ストア',   desc: '営業時間・サービス料・税率・指名プール率' },
+  // { to: { name: 'settings-store' },  title: 'ストア',   desc: '営業時間・サービス料・税率・指名プール率' },
   { to: { name: 'settings-menu' },   title: 'メニュー', desc: 'メニュー（ItemMaster）の追加・編集・在庫フラグ' },
-  { to: { name: 'settings-table' },  title: 'テーブル', desc: 'テーブル番号の追加・並び順' },
+  // { to: { name: 'settings-table' },  title: 'テーブル', desc: 'テーブル番号の追加・並び順' },
   { to: { name: 'settings-staff-list' }, title: 'スタッフ', desc: 'スタッフ一覧・詳細編集' },
   { to: { name: 'settings-cast-list' },  title: 'キャスト', desc: 'キャスト一覧・詳細編集' },
   { to: { name: 'settings-news-list' },  title: 'お知らせ', desc: '店舗からのお知らせ（公開／予約公開／画像1枚）' },
@@ -19,8 +19,6 @@ const cards = [
 <template>
   <div class="py-4">
 
-
-    <!-- ここだけ差し替え -->
     <ul class="nav d-flex gap-2 mb-3 overflow-auto flex-nowrap py-2">
       <li v-for="c in cards" :key="c.title" class="flex-shrink-0">
         <RouterLink :to="c.to" custom v-slot="{ href, navigate, isActive }">
