@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, computed, ref, nextTick, onUnmounted } from 'vue'
+import { reactive, computed, ref, nextTick, onUnmounted, watch } from 'vue'
 
 const cartEl     = ref(null)   // カートDOM
 const showJump   = ref(false)  // 「カートを見る」ボタン表示
@@ -24,6 +24,20 @@ function pokeCartFeedback () {
 
 onUnmounted(() => clearTimeout(hideTimer))
 
+function ensurePendingCastIds() {
+  const list = servedByOptions.value || []
+  const fallbackId = (ed.servedByCastId?.value != null)
+    ? Number(ed.servedByCastId.value)
+    : (list.length ? Number(list[0].id) : null)
+
+  if (!fallbackId || !Array.isArray(ed.pending?.value)) return
+
+  for (const p of ed.pending.value) {
+    if (p && (p.cast_id == null || p.cast_id === '')) {
+      p.cast_id = fallbackId
+    }
+  }
+}
 
 const props = defineProps({
   catOptions:        { type: Array,  default: () => [] }, // [{value,label}]
@@ -54,27 +68,84 @@ const onServedChange = (e) => {
 /* 選択ハイライト：pending に同じ master_id があれば active */
 const isActive = (masterId) => props.pending?.some?.(p => p && p.master_id === masterId)
 
-/*  各アイテムの数量（ローカル） */
-const qtyMap = reactive({})                 // { [masterId]: qty }
-const keyOf  = (id) => String(id)
-const qtyOf  = (id) => qtyMap[keyOf(id)] ?? 0    // ★ 初期値を0に
-const inc    = (id) => qtyMap[keyOf(id)] = qtyOf(id) + 1
-const dec    = (id) => qtyMap[keyOf(id)] = Math.max(0, qtyOf(id) - 1)  // ★ 0未満にしない
-const add    = (id) => {
-	const k = keyOf(id)
-	const q = qtyOf(id)
-	if (q <= 0) return            // ★ 0個のまま「◯+」なら何もしない（←運用に合わせて）
-	emit('addPending', id, q)
-	qtyMap[k] = 0                 // ★ 追加後は0にリセット
-	pokeCartFeedback()
-}
-
 //  親から誤って Ref のまま来ても配列に正規化する保険
 const listServedBy = computed(() => {
   const v = props.servedByOptions
   // 配列ならそのまま、Ref/Computed なら .value、その他は空配列
   return Array.isArray(v) ? v : (Array.isArray(v?.value) ? v.value : [])
 })
+
+function defaultCastId () {
+  // 1) すでに上で選ばれているならそれ
+  if (props.servedByCastId != null) return Number(props.servedByCastId)
+
+  // 2) 選択肢の先頭（=「とりあえず誰か」）
+  const list = listServedBy.value || []
+  if (list.length) return Number(list[0].id)
+
+  // 3) 本当に誰もいない（卓にキャストがいない等）
+  return null
+}
+
+/* ▼ 選択中（詳細カードを開いている）アイテム */
+const activeMasterId = ref(null)     // 今開いてる master_id
+const activeQty      = ref(1)        // 詳細カード内の数量
+const activeCastId   = ref(null)     // 詳細カード内の担当（null=未指定）
+const castTouched    = ref(false)    // ユーザーが担当を操作したか
+
+function openDetail(masterId) {
+  // 同じのを押したら閉じる
+  if (activeMasterId.value === masterId) {
+    activeMasterId.value = null
+    return
+  }
+  activeMasterId.value = masterId
+  activeQty.value = 1
+  castTouched.value = false
+  // 必ず担当を初期選択
+  activeCastId.value = defaultCastId()
+
+  // 開いた直後に見切れないように微スクロールしたいならここに nextTick で処理も可
+}
+
+/**
+ * ★ここが肝：
+ * 詳細が開いてる & activeCastId が null のまま & servedByOptions が後から入ってきた
+ * → 先頭を自動で選ぶ（ただしユーザーが操作済みなら上書きしない）
+ */
+watch(
+  () => listServedBy.value,
+  (list) => {
+    if (activeMasterId.value == null) return
+    if (castTouched.value) return          // ← ここが肝：ユーザー操作後は自動上書きしない
+    if (activeCastId.value != null) return
+    if ((list?.length || 0) === 0) return
+    activeCastId.value = Number(list[0].id)
+  },
+   { immediate: true }
+)
+
+function incActive() { activeQty.value = Math.max(1, Number(activeQty.value || 1) + 1) }
+function decActive() { activeQty.value = Math.max(1, Number(activeQty.value || 1) - 1) }
+
+function confirmAdd(masterId) {
+  const q = Math.max(1, Number(activeQty.value || 1))
+
+  // ★ 最終ガード：未選択なら自動で先頭キャスト
+  const ensured = (activeCastId.value == null) ? defaultCastId() : Number(activeCastId.value)
+  if (ensured == null) {
+    alert('担当できるキャストがいません（先にキャストを着席させてください）')
+    return
+  }
+
+  // ★ 親が cast_id を受け取れるように addPending を拡張する前提
+  //  (現状 emit('addPending', id, q) なので、親も 3引数対応にする)
+  emit('addPending', masterId, q, ensured)
+
+  activeMasterId.value = null
+  pokeCartFeedback()
+}
+
 const k = (v) => (v == null ? '' : String(v))
 
 const yen = (n) => `¥${(Number(n) || 0).toLocaleString()}`
@@ -113,7 +184,7 @@ const cartSubtotal = computed(() =>
       </div>
 
       <!-- 提供者（今ついてる卓の人だけ／未指定含む） -->
-      <div class="served-by mt-3 flex-shrink-0">
+      <!-- <div class="served-by mt-3 flex-shrink-0">
         <label class="served-label"><IconUser /></label>
         <div class="served-pills" role="tablist">
           <button
@@ -134,78 +205,120 @@ const cartSubtotal = computed(() =>
             @click="emit('update:servedByCastId', c.id)"
           >{{ c.label }}</button>
         </div>
-      </div>
+      </div> -->
 
       <!-- 品目リスト（タップで pending へ） -->
       <div
-        class="order-list d-flex flex-column gap-2 flex-grow-1 min-h-0"
+        class="order-list d-flex flex-column gap-2 flex-grow-1 min-h-0 mt-3"
         style="overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;"
         >
         <div
           v-for="m in orderMasters"
           :key="m.id"
-          class="d-flex justify-content-between p-2 bg-light"
+          class="d-flex flex-column gap-2"
         >
-          <!-- 左：アイテム情報 -->
-          <div class="item-area d-flex gap-2 ms-2">
-            <div class="d-flex flex-column flex-wrap justify-content-center">
-              <div class="name fs-md-5 fw-bold">{{ m.name }}</div>
-              <div class="price" v-if="m.price != null">¥{{ Number(m.price).toLocaleString() }}</div>
-            </div>
-          </div>
+          <button type="button" class="btn p-0" @click="openDetail(m.id)">
+            <!-- 行（タップで詳細を開く） -->
+            <div class="d-flex justify-content-between p-2 bg-light">
+              <!-- 左：アイテム情報 -->
+              <div class="item-area d-flex gap-2 ms-2">
+                <div class="d-flex flex-column flex-wrap justify-content-center align-items-start">
+                  <div class="name fs-md-5 fw-bold">{{ m.name }}</div>
+                </div>
+              </div>
 
-          <!-- 右：数量ステッパー & 追加 -->
-          <div class="d-flex align-items-center">
-            <!-- 数量ステッパー -->
-            <div class="cartbutton d-flex align-items-center">
-              <div class="d-flex align-items-center gap-3 bg-white h-auto p-2 m-2" style="border-radius:100px;">
-                <button
-                  type="button"
-                  @click="dec(m.id)"
-                  :class="{ invisible: qtyOf(m.id) === 0 }"
-                >
-                  <IconMinus :size="16" />
-                </button>
-                <span>{{ qtyOf(m.id) }}</span>
-                <button type="button" @click="inc(m.id)"><IconPlus :size="16" /></button>
+              <!-- 右：＋だけ（選択） -->
+              <div class="d-flex align-items-center me-2">
+                  <div class="price me-2" v-if="m.price != null">¥{{ Number(m.price).toLocaleString() }}</div>
+                  <IconCirclePlus />
               </div>
             </div>
-            <div class="addbutton d-flex align-items-center">
-              <button type="button" @click="add(m.id)"><IconCirclePlus /></button>
+          </button>
+          <!-- 詳細カード（このメニューを選んだ時だけ出る） -->
+          <div v-if="activeMasterId === m.id" class="detail-card bg-white border rounded p-3 mx-2">
+            <div class="fw-bold mb-2 d-flex align-items-center justify-content-between">
+              {{ m.name }} <span class="text-muted ms-2" v-if="m.price != null">¥{{ Number(m.price).toLocaleString() }}</span>
             </div>
+            <div class="d-flex align-items-center justify-content-between mb-3">
+              <div class="text-muted small fw-bold text-nowrap">担当</div>
+              <div class="served-pills flex-wrap" role="tablist">
+                <button
+                  type="button"
+                  class="badge bg-light text-secondary rounded-pill"
+                  :class="{ active: activeCastId == null }"
+                  :aria-pressed="activeCastId == null"
+                  @click="() => { castTouched = true; activeCastId = null }"
+                  style="font-size: 1rem;"
+                >未選択</button>
+
+                <button
+                  v-for="c in listServedBy"
+                  :key="String(c.id)"
+                  type="button"
+                  class="badge bg-light text-secondary rounded-pill"
+                  :class="{ active: k(activeCastId) === k(c.id) }"
+                  :aria-pressed="k(activeCastId) === k(c.id)"
+                  @click="() => { castTouched = true; activeCastId = Number(c.id) }"
+                  style="font-size: 1rem;"
+                >{{ c.label }}</button>
+              </div>
+            </div>
+            <div class="d-flex align-items-center justify-content-between mb-3 gap-2">
+              <div class="text-muted small fw-bold">数</div>
+              <div class="d-flex align-items-center gap-3 bg-light p-2 flex-wrap" style="border-radius:999px;">
+                <button type="button" class="btn btn-link p-0" @click="decActive"><IconMinus :size="16" /></button>
+                <span style="min-width: 2ch; text-align:center;">{{ activeQty }}</span>
+                <button type="button" class="btn btn-link p-0" @click="incActive"><IconPlus :size="16" /></button>
+              </div>
+            </div>
+
+
+
+            <button type="button" class="btn btn-sm btn-warning w-100" @click="confirmAdd(m.id)">
+              追加
+            </button>
           </div>
         </div>
       </div>
     </div>
 
     <!-- 下部カート（最小版） -->
-    <div v-if="pending && pending.length" ref="cartEl" class="cart mt-5 flex-shrink-0" :class="{ pulse: cartPulse }">
+    <div v-if="pending && pending.length" ref="cartEl" class="cart mt-5 flex-shrink-0 border p-2 rounded" :class="{ pulse: cartPulse }">
+      <div class="cart-header mb-3">
+        <div class="df-center w-100 py-1 fw-bold gap-2">
+          <IconGardenCart />注文カート
+        </div>
 
+      </div>
       <div class="cart-items">
-        <div v-for="(p,i) in pending" :key="i" class="cart-item d-flex justify-content-between align-items-center">
+        <div v-for="(p,i) in pending" :key="i" class="cart-item d-flex justify-content-between align-items-center p-2 bg-light mb-2">
 
-          <div class="wrap">
-            <div v-if="p.cast_id" class="badge bg-secondary">
-              {{ servedByMap[String(p.cast_id)] || ('cast#' + p.cast_id) }}
-            </div>
-            <div class="d-flex align-items-center gap-2">
+          <div class="df-center gap-2">
+            <button type="button" class="p-0" @click="emit('removePending', i)"><IconX :size="8" class="small"/></button>
+            <div class="box">
               <div class="name fs-md-5 fw-bold">
               {{ masterNameMap[String(p.master_id)]
                 || (orderMasters.find(x => x.id === p.master_id)?.name)
                 || ('#' + p.master_id) }}
               </div>
+              <div v-if="p.cast_id" class="badge bg-secondary">
+                {{ servedByMap[String(p.cast_id)] || ('cast#' + p.cast_id) }}
+              </div>
             </div>
-            <div class="d-flex align-items-center gap-2">
+
+          </div>
+
+          <div class="d-flex align-items-center justify-content-end gap-3">
+            <div class="df-center gap-2">
               <div class="price" v-if="props.masterPriceMap[String(p.master_id)] != null">
                 ¥{{ Number(props.masterPriceMap[String(p.master_id)]).toLocaleString() }}
               </div>
               <div class="qty">
-                <IconX :size="8"/>{{ p.qty }}
+                ×{{ p.qty }}
               </div>
             </div>
           </div>
 
-          <button type="button" class="del" @click="emit('removePending', i)">×</button>
         </div>
       </div>
 
@@ -263,6 +376,18 @@ const cartSubtotal = computed(() =>
   width: 0px;
   padding: 0px 4px;
 }
+
+.detail-card {
+  box-shadow: 0 6px 16px rgba(0,0,0,.06);
+}
+
+/* 担当選択badge */
+.badge.active {
+  background-color: #212529 !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+
 /* 浮遊ボタン */
 .jump-toast{
   position: fixed;
@@ -280,6 +405,10 @@ const cartSubtotal = computed(() =>
 }
 
 /* カート強調（2回点滅） */
+.cart {
+  border-color: #ccc !important;
+}
+
 @keyframes pulseGlow {
   0%   { box-shadow: 0 0 0 0 rgba(255,193,7,.55); }
   100% { box-shadow: 0 0 0 18px rgba(255,193,7,0); }

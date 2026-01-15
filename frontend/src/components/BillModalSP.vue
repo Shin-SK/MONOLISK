@@ -114,12 +114,25 @@ async function initOnOpen() {
   resetPaymentFromProps()
   syncChargeFlagsFromBill()
 
+  ensureServedByDefaultOnOpen()
+
   // tableId 初期化（open時に1回だけ）
   syncingTableInit.value = true
   const initTid = props.bill?.table?.id ?? props.bill?.table ?? null
   if (initTid != null) ed.tableId.value = Number(initTid)
   await nextTick()
   syncingTableInit.value = false
+}
+
+function ensureServedByDefaultOnOpen() {
+  const casts = currentCastsForPanel.value || []
+  if (!casts.length) return
+
+  const ids = casts.map(c => Number(c.id))
+  const cur = Number(ed.servedByCastId?.value || 0) || null
+
+  if (cur && ids.includes(cur)) return
+  if (ed.servedByCastId) ed.servedByCastId.value = ids[0]
 }
 
 // 毎回取り直す関数
@@ -401,6 +414,40 @@ const servedByOptions = computed(() => {
   }))
 })
 const servedByMap = computed(() => { const map = {}; for (const c of servedByOptions.value || []) map[String(c.id)] = c.label; return map })
+
+/* 提供者IDを常に数値/Nullに正規化する */
+const normalizeCastId = (v) => {
+  if (v == null || v === '') return null
+  if (typeof v === 'number' || typeof v === 'string') {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  if (typeof v === 'object') {
+    const cand = v.id ?? v.value ?? v.cast_id ?? null
+    const n = Number(cand)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+// v-model 用に型を矯正して OrderPanel へ渡す
+const servedByCastIdModel = computed({
+  get: () => normalizeCastId(ed.servedByCastId?.value),
+  set: (v) => {
+    const n = normalizeCastId(v)
+    if (ed.servedByCastId) ed.servedByCastId.value = n
+  }
+})
+
+// 入ってきた値がオブジェクトのときに即座に補正する（警告防止）
+watch(
+  () => ed.servedByCastId?.value,
+  (v) => {
+    const n = normalizeCastId(v)
+    if (v !== n && ed.servedByCastId) ed.servedByCastId.value = n
+  },
+  { immediate: true }
+)
 
 /* ========== 税・サービス料トグル ========== */
 function syncChargeFlagsFromBill() {
@@ -904,9 +951,9 @@ watch(() => currentCastsForPanel.value, (casts) => {
 // 注文パネル: キャスト変更時にpending内のnull cast_idを更新（手順に関わらず担当を保存）
 watch(() => ed.servedByCastId?.value, (newCastId) => {
   if (!newCastId || !ed.pending?.value) return
-  // pending内のcast_idがnullの商品を現在のキャストIDで更新
+  // pending内のcast_idがnull/undefinedの商品を現在のキャストIDで更新
   ed.pending.value.forEach(item => {
-    if (item && item.cast_id === null) {
+    if (item && item.cast_id == null) {
       item.cast_id = newCastId
     }
   })
@@ -1101,23 +1148,30 @@ function handleClose() {
       @save="handleSave"
     />
 
-    <OrderPanel
-      v-show="pane==='order'"
-      :cat-options="ed.orderCatOptions.value || []"
-      :selected-cat="ed.selectedOrderCat.value"
-      :order-masters="ed.orderMasters.value || []"
-      v-model:served-by-cast-id="ed.servedByCastId"
-      :pending="ed.pending.value"
-      :master-name-map="masterNameMap"
-      :served-by-map="servedByMap"
-      :served-by-options="servedByOptions"
-      :master-price-map="masterPriceMap"
-      @update:selectedCat="v => (ed.selectedOrderCat.value = v)"
-      @addPending="(id, qty) => ed.addPending(id, qty)"
-      @removePending="i => ed.pending.value.splice(i,1)"
-      @clearPending="() => (ed.pending.value = [])"
-      @placeOrder="handleSave"
-    />
+  <OrderPanel
+    v-show="pane==='order'"
+    :cat-options="ed.orderCatOptions.value || []"
+    :selected-cat="ed.selectedOrderCat.value"
+    :order-masters="ed.orderMasters.value || []"
+    v-model:served-by-cast-id="servedByCastIdModel"
+    :pending="ed.pending.value"
+    :master-name-map="masterNameMap"
+    :served-by-map="servedByMap"
+    :served-by-options="servedByOptions"
+    :master-price-map="masterPriceMap"
+    @update:selectedCat="v => (ed.selectedOrderCat.value = v)"
+    @addPending="(id, qty, castId) => {
+      const q = Math.max(1, Number(qty || 1))
+      ed.pending.value.push({
+        master_id: Number(id),
+        qty: q,
+        cast_id: (castId == null || castId === '') ? null : Number(castId),
+      })
+    }"
+    @removePending="i => ed.pending.value.splice(i,1)"
+    @clearPending="() => (ed.pending.value = [])"
+    @placeOrder="handleSave"
+  />
 
     <PayPanel
        v-show="pane==='pay'"

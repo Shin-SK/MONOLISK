@@ -71,6 +71,16 @@ const hasExistingPayment = computed(() => {
   return (c + k) > 0
 })
 
+const hasPaymentInput = computed(() => {
+  const cash = Number(props.paidCash || 0)
+  const card = Number(props.paidCard || 0)
+  return (cash + card) > 0
+})
+
+const canCloseStrict = computed(() => {
+  return !!props.canClose && hasPaymentInput.value
+})
+
 onMounted(() => {
   if (hasExistingPayment.value) dirtyTotal.value = true
 })
@@ -225,6 +235,45 @@ const isDosukoiMode = computed(() => features.value.discountMode === 'step')
 const savedDiscountAmount = computed(() => 
   savedDiscountRows.value.reduce((s, r) => s + Number(r.amount || 0), 0)
 )
+
+const discountLabel = computed(() => {
+  // まず「保存済み割引」があればそれを最優先で表示
+  if (savedDiscountRows.value && savedDiscountRows.value.length) {
+    const names = [...new Set(
+      savedDiscountRows.value
+        .map(r => String(r.label || '').trim())
+        .filter(Boolean)
+    )]
+    if (!names.length) return '割引'
+    const label = names.slice(0, 2).join('・') + (names.length > 2 ? '…' : '')
+    return `[${label}]割引`
+  }
+
+  // 次に「通常モードの手入力（未保存）」があればそれを表示
+  if (!isDosukoiMode.value && manualDiscountAmount.value > 0) {
+    const names = [...new Set(
+      (manualRows.value || [])
+        .map(r => String(r.label || '').trim())
+        .filter(Boolean)
+    )]
+    if (!names.length) return '割引'
+    const label = names.slice(0, 2).join('・') + (names.length > 2 ? '…' : '')
+    return `[${label}]割引`
+  }
+
+  // 次に「ドスコイのステップ（未保存）」があればそれを表示
+  if (isDosukoiMode.value && dosukoiDiscountAmount.value > 0) {
+    return `手動割引`
+  }
+
+  // 最後に「ルール選択（単発）」があればそれを表示
+  if (selectedDiscountId.value) {
+    const rule = discountRuleMap.value.get(selectedDiscountId.value)
+    if (rule?.name) return `${rule.name}割引`
+  }
+
+  return '割引'
+})
 
 const discountAmount = computed(() => {
   // 保存済み割引(両モード共通)
@@ -817,7 +866,7 @@ function removeSavedDiscount(index) {
         <div class="label">TAX</div>    <div class="value text-end">¥{{ current.tax.toLocaleString() }}</div>
         <div class="label fw-bold fs-5">合計</div><div class="value fw-bold text-end fs-5">¥{{ current.total.toLocaleString() }}</div>
         <template v-if="discountAmount > 0">
-          <div class="label text-danger">割引</div><div class="value text-end text-danger">-¥{{ discountAmount.toLocaleString() }}</div>
+          <div class="label text-danger">{{ discountLabel }}</div><div class="value text-end text-danger">-¥{{ discountAmount.toLocaleString() }}</div>
           <div class="label fw-bold">割引後</div><div class="value fw-bold text-end">¥{{ discountedTotal.toLocaleString() }}</div>
         </template>
       </div>
@@ -882,7 +931,17 @@ function removeSavedDiscount(index) {
 
     <!-- 確定 -->
     <div class="paybutton">
-      <button class="btn btn-primary w-100" type="button" :disabled="!canClose" @click="$emit('confirmClose')">お会計</button>
+      <small v-if="!hasPaymentInput" class="text-danger d-block mb-2 text-center">
+        現金やカードでお預かりした金額を入力してください
+      </small>
+      <button
+        class="btn btn-primary w-100"
+        type="button"
+        :disabled="!canCloseStrict"
+        @click="$emit('confirmClose')"
+      >
+        お会計
+      </button>
     </div>
   </div>
 </div>
