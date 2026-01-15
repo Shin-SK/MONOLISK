@@ -507,34 +507,28 @@ const customerMemo = computed(() => {
 /* 追加（黄色ボタン） */
 function applySet(){
   const m = Number(maleRef.value||0), f = Number(femaleRef.value||0)
-  const total = m + f
-  if (total <= 0) { alert('人数を入力してください'); return }
+  const paxTotal = m + f
+  if (paxTotal <= 0) { alert('人数を入力してください'); return }
   
-  // setQtyMap から数量が1以上のセット商品を取得
+  // setQtyMap から数量が1以上のセット商品を全部拾う（複数対応）
   const selectedSets = Object.entries(setQtyMap.value)
     .filter(([id, qty]) => Number(qty) > 0)
     .map(([id, qty]) => ({ id: String(id), qty: Number(qty) }))
   
   if (selectedSets.length === 0) { alert('セット商品を選択してください'); return }
-  
-  // 最初のセット商品を使用（複数選択の場合は最初のもの）
-  const firstSet = selectedSets[0]
-  const selectedMaster = setMasters.value[firstSet.id]
-  if (!selectedMaster) { alert('セット商品情報が取得できません'); return }
 
-  // ★ セット追加時は opened_at（伝票の開始時刻）をリセットしない
-  // ★ 時間の基準点は bill.opened_at で固定、セット追加は合計分数を延ばすだけ
-  // ★ emit('update-times') を削除し、opened_at をサーバ側の既存値に任せる
+  const lines = []
 
-  // 単一ラベル（選択したセット）のコードを使い、合計人数で1行追加（後段で master_id 解決）
-  const lines = [
-    { type: 'set', code: selectedMaster.code, qty: total }
-  ]
-  if (nightRef.value) {
-    lines.push({ type: 'addon', code: 'addonNight', qty: total })
-  }
-  if (specialRef.value !== 'none') {
-    // 割引は既存 DiscountRule の code を discount_code で伝える（行追加はしない）
+  // ★ セットは「選んだ数」だけ追加する（paxは掛けない）
+  for (const s of selectedSets) {
+    const master = setMasters.value[s.id]
+    if (!master) continue
+    lines.push({ type: 'set', code: master.code, qty: s.qty })
+
+    // ★ 深夜アドオンも「セットと同数」で追加（仕様が人数分ならここは変える）
+    if (nightRef.value) {
+      lines.push({ type: 'addon', code: 'addonNight', qty: s.qty })
+    }
   }
 
   emit('applySet', {
