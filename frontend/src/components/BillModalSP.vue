@@ -13,11 +13,18 @@ import {
   api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts,
   fetchBill, deleteBillItem, patchBillItem, patchBillItemQty, fetchMasters,
   createBill, patchBill,
-  setBillDiscountByCode, updateBillDiscountRule, settleBill, fetchBillTags,  // ← fetchBillTags 追加
+  setBillDiscountByCode, updateBillDiscountRule, settleBill, fetchBillTags,
  } from '@/api'
 
 const { hasRole } = useRoles()
 const canProvisional = computed(() => hasRole(['manager','owner']))
+
+// ===== 【1】ref の先行宣言（参照順依存をゼロにする） =====
+const memoRef = ref('')
+const applyServiceChargeRef = ref(true)
+const applyTaxRef = ref(true)
+const billTags = ref([])
+const selectedTagIds = ref([])
 
 const props = defineProps({
   modelValue: Boolean,
@@ -27,11 +34,93 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue','saved','updated','closed'])
 
+// ===== 【2】stay 形状を吸収するユーティリティ =====
+function getStayCastId(s) {
+  return Number(s?.cast?.id ?? s?.cast_id ?? s?.cast ?? null)
+}
 
-// 店舗ごとにパネル切り替え
-// defineProps の後に追加（既存の storeSlug 定義は置き換え）
+function isActiveStay(s) {
+  return !s?.left_at
+}
+
+function activeStays() {
+  const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
+  return stays.filter(isActiveStay)
+}
+
+function recomputeFreeIds() {
+  return Array.from(new Set(
+    activeStays()
+      .filter(s => s.stay_type === 'free')
+      .map(getStayCastId)
+      .filter(Boolean)
+  ))
+}
+
+function recomputeHelpIds() {
+  return Array.from(new Set(
+    activeStays()
+      .filter(s => s.stay_type === 'free' && s.is_help === true)
+      .map(getStayCastId)
+      .filter(Boolean)
+  ))
+}
+
+// ===== 【5】createBill 後の props.bill 同期は helper にまとめる =====
+function applyBillPatchToLocal(patch) {
+  if (!patch || !props.bill) return
+
+  // identifiers / flags / times
+  if (patch.id != null) props.bill.id = patch.id
+  if (patch.opened_at !== undefined) props.bill.opened_at = patch.opened_at
+  if (patch.expected_out !== undefined) props.bill.expected_out = patch.expected_out
+  if (patch.apply_service_charge !== undefined) props.bill.apply_service_charge = patch.apply_service_charge
+  if (patch.apply_tax !== undefined) props.bill.apply_tax = patch.apply_tax
+
+  // money fields (fetchBill / settleBill の反映)
+  const moneyKeys = [
+    'subtotal', 'service_charge', 'tax',
+    'grand_total', 'total',
+    'paid_cash', 'paid_card',
+    'settled_total'
+  ]
+  for (const k of moneyKeys) {
+    if (patch[k] !== undefined) props.bill[k] = patch[k]
+  }
+
+  // discounts / memo / closed
+  if (patch.discount_rule !== undefined) props.bill.discount_rule = patch.discount_rule
+  if (patch.manual_discounts !== undefined) props.bill.manual_discounts = patch.manual_discounts
+  if (patch.memo !== undefined) props.bill.memo = patch.memo
+  if (patch.closed_at !== undefined) props.bill.closed_at = patch.closed_at
+}
+
+
+// ===== 【4】visible onMounted 周りの初期化を一本化 =====
 const storeSlug = ref('')
 const normalizeSlug = s => String(s || '').trim().toLowerCase().replace(/_/g, '-')
+
+async function initOnOpen() {
+  pane.value = 'base'
+  await refreshStoreSlug()
+  try {
+    billTags.value = await fetchBillTags({ is_active: true })
+  } catch (e) {
+    console.warn('[BillModalSP] fetch bill tags failed', e)
+    billTags.value = []
+  }
+  memoRef.value = props.bill?.memo ?? ''
+  selectedTagIds.value = props.bill?.tags?.map(t => t.id) || []
+  resetPaymentFromProps()
+  syncChargeFlagsFromBill()
+
+  // tableId 初期化（open時に1回だけ）
+  syncingTableInit.value = true
+  const initTid = props.bill?.table?.id ?? props.bill?.table ?? null
+  if (initTid != null) ed.tableId.value = Number(initTid)
+  await nextTick()
+  syncingTableInit.value = false
+}
 
 // 毎回取り直す関数
 async function refreshStoreSlug() {
@@ -48,29 +137,11 @@ async function refreshStoreSlug() {
   }
 }
 
+// onMounted は localStorage 復元だけ（API呼び出しなし）
 onMounted(async () => {
-  // 1) localStorage 優先
   const ls = localStorage.getItem('store_slug')
   if (ls) {
     storeSlug.value = normalizeSlug(ls)
-  } else {
-    // 2) API: /billing/stores/me/（X-Store-Id に紐づく現在の店舗）
-    try {
-      const { data } = await api.get('billing/stores/me/')
-      storeSlug.value = normalizeSlug(data?.slug)
-      if (storeSlug.value) localStorage.setItem('store_slug', storeSlug.value)
-    } catch (e) {
-      console.warn('[storeSlug] fetch failed', e)
-      storeSlug.value = ''
-    }
-  }
-  
-  // billTags を取得
-  try {
-    billTags.value = await fetchBillTags({ is_active: true })
-  } catch (e) {
-    console.warn('[BillModalSP] fetch bill tags failed', e)
-    billTags.value = []
   }
 })
 
@@ -80,13 +151,12 @@ const visible = computed({
 })
 const pane = ref('base')
 
-// モーダルを開いた瞬間にパネルを base にリセット（会計後の再開時対策）
-watch(visible, v => {
+// watch(visible) で true なら initOnOpen() を呼ぶ（immediate: false）
+watch(visible, async v => {
   if (v) {
-    pane.value = 'base'
-    refreshStoreSlug()
+    await initOnOpen()
   }
-}, { immediate: true })
+}, { immediate: false })
 
 // 伝票の store が変わったら取り直す（table.store は数値ID）
 watch(() => props.bill?.table?.store, () => {
@@ -102,12 +172,8 @@ function onSeatTypeChange (v) {
   seatType.value = v || 'main'
 }
 
-watch(visible, v => {
-  if (!v) return
- // bill.table が持っているテーブルIDで ed.tableId を初期化
- const initTid = props.bill?.table?.id ?? props.bill?.table ?? null
- if (initTid != null) ed.tableId.value = Number(initTid)
-})
+/* テーブル初期化フラグ：初期化中は同期watchを無効にする */
+const syncingTableInit = ref(false)
 
 /* テーブル配列から席種候補を自動生成 */
 const seatTypeOptions = computed(() => {
@@ -150,51 +216,69 @@ const getMasterId = (code, ...alts) => {
   return null
 }
 
- // テーブル変更のサーバ同期（既存Billのみ）
- watch(() => ed.tableId.value, async (tid, prev) => {
-   if (!props.bill?.id) return             // 新規は保存時にPOSTで送る
-   const cur = props.bill?.table?.id ?? null
-   if (Number(tid) && Number(tid) !== Number(cur)) {
-     try {
-       await updateBillTable(props.bill.id, Number(tid))          // PATCH /bills/:id/
-       // ローカルBillにも即反映（UIが空表示にならないように）
-       const list = ed.tables.value || []
-       props.bill.table = list.find(t => Number(t.id) === Number(tid)) || { id: Number(tid) }
-     } catch (e) {
-       console.error('[BillModalPC] updateBillTable failed', e)
-       // 失敗したらロールバック
-       ed.tableId.value = cur
-       alert('テーブルの更新に失敗しました')
-     }
-   }
- })
+// テーブル変更の同期：既存はPATCH、新規はローカルだけ更新
+watch(() => ed.tableId.value, async (tid, prev) => {
+  if (syncingTableInit.value) return
+
+  const nextTid = Number(tid) || null
+  if (!nextTid) return
+
+  const cur =
+    Number(props.bill?.table?.id) ||
+    Number(props.bill?.table) ||
+    null
+
+  if (cur && nextTid === cur) return
+
+  if (!props.bill?.id) {
+    const list = ed.tables.value || []
+    props.bill.table = list.find(t => Number(t.id) === nextTid) || { id: nextTid }
+    return
+  }
+
+  try {
+    await updateBillTable(props.bill.id, nextTid)
+    const list = ed.tables.value || []
+    props.bill.table = list.find(t => Number(t.id) === nextTid) || { id: nextTid }
+  } catch (e) {
+    console.error('[BillModalSP] updateBillTable failed', e)
+    ed.tableId.value = cur
+    alert('テーブルの更新に失敗しました')
+  }
+})
 
 /* Bill 確保 → 行追加の順に統一 */
 async function ensureBillId () {
   if (props.bill?.id) return props.bill.id
-  const tableId = props.bill?.table?.id ?? props.bill?.table_id_hint ?? ed.tableId.value ?? null
+
+  const tableId =
+    Number(ed.tableId.value) ||
+    Number(props.bill?.table?.id) ||
+    Number(props.bill?.table) ||
+    Number(props.bill?.table_id_hint) ||
+    null
+
   if (!tableId) { alert('テーブルが未選択です'); throw new Error('no table') }
-  // 開始/終了が編集済みなら一緒に送る（サーバで now に戻されるのを防ぐ）
-  const paxPayload = (
+
+  const paxPayload =
     Number(props.bill?.pax) ||
     Number(ed.pax?.value) ||
     Number(paxFromItems.value) ||
     0
-  )
+
+  // ✅ 確認1: 新規伝票 SET適用
+  // ensureBillId() 内では apply_* を ref ではなく props.bill の値から導出
   const b = await createBill({
     table: tableId,
     opened_at: props.bill?.opened_at ?? null,
     expected_out: props.bill?.expected_out ?? null,
-    pax: paxPayload,  // ★ 人数も保存（手入力優先）
-    apply_service_charge: applyServiceChargeRef.value,
-    apply_tax: applyTaxRef.value,
+    pax: paxPayload,
+    apply_service_charge: props.bill?.apply_service_charge !== false,
+    apply_tax: props.bill?.apply_tax !== false,
   })
-  // 戻り値で補正された場合はローカルにも反映
-  if (b?.opened_at) props.bill.opened_at = b.opened_at
-  if (b?.expected_out) props.bill.expected_out = b.expected_out
-  if (b?.apply_service_charge !== undefined) props.bill.apply_service_charge = b.apply_service_charge
-  if (b?.apply_tax !== undefined) props.bill.apply_tax = b.apply_tax
-  props.bill.id = b.id
+
+  // applyBillPatchToLocal helper を使用
+  applyBillPatchToLocal(b)
   return b.id
 }
 
@@ -237,16 +321,19 @@ async function onApplySet (payload){
     await updateBillDiscountRule(billId, null)
   }
   
-  // ★ 人数を保存（SET追加時に合計人数を反映）
-  const totalPax = paxFromItems.value || 0
-  if (totalPax > 0) {
-    await patchBill(billId, { pax: totalPax })
+  // ★ 人数を保存：payload.lines から set 行の qty 合計を算出
+  const totalPaxFromPayload = payload.lines
+    .filter(l => l.type === 'set')
+    .reduce((sum, l) => sum + Number(l.qty || 0), 0)
+  if (totalPaxFromPayload > 0) {
+    await patchBill(billId, { pax: totalPaxFromPayload })
   }
   
   const fresh = await fetchBill(billId).catch(()=>null)
   if (fresh) {
-    Object.assign(props.bill, fresh)   // Bill本体
-    props.bill.items = fresh.items     // リストは丸ごと
+    // applyBillPatchToLocal で一元管理
+    applyBillPatchToLocal(fresh)
+    props.bill.items = fresh.items
     props.bill.stays = fresh.stays
     emit('updated', fresh)
   }
@@ -262,7 +349,8 @@ async function onSaveDiscount(payload) {
     await settleBill(billId, body)
     const fresh = await fetchBill(billId).catch(()=>null)
     if (fresh) {
-      Object.assign(props.bill, fresh)
+      // applyBillPatchToLocal で一元管理
+      applyBillPatchToLocal(fresh)
       props.bill.items = fresh.items
       props.bill.stays = fresh.stays
       emit('updated', fresh)
@@ -315,9 +403,6 @@ const servedByOptions = computed(() => {
 const servedByMap = computed(() => { const map = {}; for (const c of servedByOptions.value || []) map[String(c.id)] = c.label; return map })
 
 /* ========== 税・サービス料トグル ========== */
-const applyServiceChargeRef = ref(props.bill?.apply_service_charge !== false)
-const applyTaxRef = ref(props.bill?.apply_tax !== false)
-
 function syncChargeFlagsFromBill() {
   const b = props.bill || {}
   applyServiceChargeRef.value = b?.apply_service_charge !== false
@@ -335,7 +420,7 @@ async function patchChargeFlags(payload) {
   if (!props.bill?.id) return null
   const updated = await patchBill(props.bill.id, payload)
   if (updated) {
-    Object.assign(props.bill, updated)
+    applyBillPatchToLocal(updated)
     emit('updated', updated)
   }
   return updated
@@ -460,18 +545,8 @@ const diff        = computed(() => paidTotal.value - targetTotal.value)
 const overPay     = computed(() => Math.max(0, diff.value))
 const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= targetTotal.value)
 const payRef = ref(null)
-const memoRef = ref(props.bill?.memo ?? '')
+
 watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
-
-// タグ関連
-const billTags = ref([])  // 店舗の全タグ
-const selectedTagIds = ref(props.bill?.tags?.map(t => t.id) || [])
-watch(() => props.bill?.tags, (v) => { selectedTagIds.value = v?.map(t => t.id) || [] }, { immediate: true })
-
-watch(visible, v => {
-  if (!v) return
-  memoRef.value = props.bill?.memo ?? ''
-})
 
 // 伝票切替時（ID変化）に支払い入力・メモを初期化
 function resetPaymentFromProps() {
@@ -500,7 +575,14 @@ const incItem = async (it) => {
     it.qty = newQty
     it.subtotal = (masterPriceMap.value[String(it.item_master)] || 0) * newQty
     const fresh = await fetchBill(props.bill.id).catch(()=>null)
-    emit('updated', fresh || props.bill.id)
+    if (fresh) {
+      applyBillPatchToLocal(fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    } else {
+      emit('updated', props.bill.id)
+    }
   }catch(e){ console.error(e); alert('数量を増やせませんでした') }
 }
 const decItem = async (it) => {
@@ -522,7 +604,7 @@ const decItem = async (it) => {
     }
     const fresh = await fetchBill(props.bill.id).catch(()=>null)
     if (fresh) {
-      Object.assign(props.bill, fresh)
+      applyBillPatchToLocal(fresh)
       props.bill.items = fresh.items
       props.bill.stays = fresh.stays
       emit('updated', fresh)
@@ -537,7 +619,7 @@ const changeServedBy = async ({ item, castId }) => {
     await patchBillItem(props.bill.id, item.id, { served_by_cast_id: castId })
     const fresh = await fetchBill(props.bill.id).catch(() => null)
     if (fresh) {
-      Object.assign(props.bill, fresh)
+      applyBillPatchToLocal(fresh)
       props.bill.items = fresh.items
       props.bill.stays = fresh.stays
       emit('updated', fresh)
@@ -551,7 +633,14 @@ const removeItem = async (it) => {
   try{
     await deleteBillItem(props.bill.id, it.id)
     const fresh = await fetchBill(props.bill.id).catch(()=>null)
-    emit('updated', fresh || props.bill.id)
+    if (fresh) {
+      applyBillPatchToLocal(fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    } else {
+      emit('updated', props.bill.id)
+    }
   }catch(e){ console.error(e); alert('削除に失敗しました') }
 }
 
@@ -615,36 +704,41 @@ async function onDiscountRuleChange(ruleId) {
 const historyEvents = computed(() => {
   const b = props.bill || {}
   const out = []
+
   for (const s of (b.stays || [])) {
+    const cid = getStayCastId(s) || 'unknown'
+    const name = s?.cast?.stage_name
+    const avatar = s?.cast?.avatar_url
+
     out.push({
-      key: `in-${s.cast?.id}-${s.entered_at}`,
+      key: `in-${cid}-${s.entered_at}`,
       when: s.entered_at,
-      name: s.cast?.stage_name,
-      avatar: s.cast?.avatar_url,
-      stayTag: s.stay_type,   // 'free'|'in'|'nom'|'dohan'
+      name,
+      avatar,
+      stayTag: s.stay_type,
       ioTag: 'in',
     })
+
     if (s.left_at) {
       out.push({
-        key: `out-${s.cast?.id}-${s.left_at}`,
+        key: `out-${cid}-${s.left_at}`,
         when: s.left_at,
-        name: s.cast?.stage_name,
-        avatar: s.cast?.avatar_url,
+        name,
+        avatar,
         stayTag: s.stay_type,
         ioTag: 'out',
       })
     }
   }
-  // 新しい順に（最新が最後）
-  out.sort((a,b) => new Date(b.when) - new Date(a.when))
-  
-  // デバッグ出力
+
+  out.sort((a, b) => new Date(b.when) - new Date(a.when))
+
   if (import.meta.env.DEV) {
     window.__historyEvents = out
     console.log('[historyEvents] stays:', b.stays)
     console.log('[historyEvents] events:', out)
   }
-  
+
   return out
 })
 
@@ -692,9 +786,8 @@ async function confirmClose(){
     }catch{}
 
     // ② 裏送信（順序安全：patch → close → reconcile）
-    // discount_ruleも保存（閉じた伝票でも割引情報を保持）
-    // ★ 重要: patchBillを先に実行してdiscount_ruleを確実に保存してからcloseBillを実行
-    const discountRuleId = props.bill?.discount_rule ? Number(props.bill.discount_rule) : null
+    // ✅ 確認3: onSetInhouse 後 help_ids から外れる
+    const helpIds = recomputeHelpIds()
     enqueue('patchBill', { id: billId, payload: {
       paid_cash: paidCash,
       paid_card: paidCard,
@@ -702,7 +795,7 @@ async function confirmClose(){
       discount_rule: props.bill?.discount_rule ? Number(props.bill.discount_rule) : null,
       manual_discounts: rows,
       settled_total: settled,
-      help_ids: helpIdsArr.value,
+      help_ids: helpIds,
     }})
     enqueue('closeBill', { id: billId, payload: { settled_total: settled }})
     enqueue('reconcile', { id: billId })
@@ -766,32 +859,35 @@ async function confirmDelete(){
 
 // ヘルプ機能追加
 
-// ヘルプID（伝票閉じたときに送る）
-const helpIdsArr = computed(() =>
-  (props.bill?.stays || [])
-    .filter(s => !s.left_at && s.stay_type === 'free' && s.is_help === true)
-    .map(s => Number(s.cast?.id))
-)
-
 // 伝票のstays→CastsPanel向け配列
 const currentCastsForPanel = computed(() => {
   const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
   const actives = stays.filter(s => !s.left_at)
   const byId = new Map((ed.currentCasts?.value || []).map(c => [Number(c.id), c]))
-  return actives.map(s => {
-    const id = Number(s.cast?.id)
-    const base = byId.get(id) || { id, stage_name: s.cast?.stage_name, avatar_url: null }
-    return {
-      id,
-      stage_name: base.stage_name,
-      avatar_url: base.avatar_url,
-      stay_type: s.stay_type,
-      inhouse: s.stay_type === 'in',
-      dohan:   s.stay_type === 'dohan',
-      is_honshimei: s.stay_type === 'nom',
-      is_help: !!s.is_help,
-    }
-  })
+
+  return actives
+    .map(s => {
+      const id = getStayCastId(s)
+      if (!id) return null
+
+      const base = byId.get(id) || {
+        id,
+        stage_name: s?.cast?.stage_name || `cast#${id}`,
+        avatar_url: s?.cast?.avatar_url || null
+      }
+
+      return {
+        id,
+        stage_name: base.stage_name,
+        avatar_url: base.avatar_url,
+        stay_type: s.stay_type,
+        inhouse: s.stay_type === 'in',
+        dohan: s.stay_type === 'dohan',
+        is_honshimei: s.stay_type === 'nom',
+        is_help: !!s.is_help,
+      }
+    })
+    .filter(Boolean)
 })
 
 // 注文パネル: 最初のキャストを自動選択
@@ -819,7 +915,7 @@ watch(() => ed.servedByCastId?.value, (newCastId) => {
 
 function updateStayLocal(castId, next) {
   const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
-  const t = stays.find(s => !s.left_at && Number(s.cast?.id) === Number(castId))
+  const t = stays.find(s => !s.left_at && getStayCastId(s) === Number(castId))
   const nowISO = new Date().toISOString()
   if (t) {
     t.stay_type = next.stay_type
@@ -849,16 +945,6 @@ async function onSetFree(castId){
   try { await ed.setFree(Number(castId)) } catch {}
 }
 
-function recomputeHelpIds() {
-  return Array.from(
-    new Set(
-      (props.bill?.stays || [])
-        .filter(s => !s.left_at && s.stay_type === 'free' && s.is_help === true)
-        .map(s => Number(s.cast?.id))
-    )
-  )
-}
-
 async function onSetInhouse(castId){
   // UI 楽観：緑にする（ヘルプ解除）
   updateStayLocal(castId, { stay_type:'in', is_help:false })
@@ -868,8 +954,11 @@ async function onSetInhouse(castId){
   } catch {}
 
   // ★ 重要: ヘルプIDを再計算してサーバに反映（castId は含まれないはず）
+  // 【3】onSetInhouse も同様（castIdを別途concatしない。ローカル反映後の再計算結果を送る）
   const nowHelpIds = recomputeHelpIds()
-  enqueue('patchBill', { id: props.bill.id, payload: { help_ids: nowHelpIds } })
+  const nowFreeIds = recomputeFreeIds()
+  if (!props.bill?.id) return
+  enqueue('patchBill', { id: props.bill.id, payload: { free_ids: nowFreeIds, help_ids: nowHelpIds } })
   enqueue('reconcile', { id: props.bill.id })
 }
 
@@ -880,7 +969,7 @@ async function onSetDohan(castId){
 
 async function onRemoveCast(castId){
   const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
-  const t = stays.find(s => !s.left_at && Number(s.cast?.id) === Number(castId))
+  const t = stays.find(s => !s.left_at && getStayCastId(s) === Number(castId))
   if (t) t.left_at = new Date().toISOString()
   try { await ed.removeCast(Number(castId)) } catch {}
 }
@@ -892,15 +981,12 @@ async function onSetHelp(castId) {
   // 紫：free + is_help=true に即時反映
   updateStayLocal(castId, { stay_type:'free', is_help:true })
 
-  // 2 PATCH：free_ids と help_ids を送って確定
-  const freeIds = Array.from(new Set(
-    (props.bill.stays || [])
-      .filter(s => !s.left_at && s.stay_type === 'free')
-      .map(s => Number(s.cast.id))
-      .concat(Number(castId))
-  ))
+  // ✅ 確認2: onSetHelp で例外が出ない
+  // 【3】onSetHelp は updateStayLocal→ enqueue(patchBill {free_ids: recomputeFreeIds(), help_ids: recomputeHelpIds()})
+  const freeIds = recomputeFreeIds()
+  const helpIds = recomputeHelpIds()
 
-  enqueue('patchBill', { id: billId, payload: { free_ids: freeIds, help_ids: [Number(castId)] }})
+  enqueue('patchBill', { id: billId, payload: { free_ids: freeIds, help_ids: helpIds }})
   enqueue('reconcile', { id: billId })
 }
 
@@ -914,7 +1000,8 @@ function normalizeHelpBeforeSave(){
     }
   }
   if (changed) {
-    const ids = recomputeHelpIds() // ← free+help だけのID
+    // 【3】normalizeHelpBeforeSave も同様（recomputeHelpIds()のみ送る）
+    const ids = recomputeHelpIds()
     enqueue('patchBill', { id: props.bill.id, payload: { help_ids: ids } })
     enqueue('reconcile', { id: props.bill.id })
   }
@@ -1019,7 +1106,7 @@ function handleClose() {
       :cat-options="ed.orderCatOptions.value || []"
       :selected-cat="ed.selectedOrderCat.value"
       :order-masters="ed.orderMasters.value || []"
-      v-model:served-by-cast-id="ed.servedByCastId.value"
+      v-model:served-by-cast-id="ed.servedByCastId"
       :pending="ed.pending.value"
       :master-name-map="masterNameMap"
       :served-by-map="servedByMap"
