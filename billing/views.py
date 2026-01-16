@@ -219,7 +219,7 @@ class StoreViewSet(StoreScopedModelViewSet):
 # ────────────────────────────────────────────────────────────────────
 # 商品マスタ / 卓
 # ────────────────────────────────────────────────────────────────────
-class ItemMasterViewSet(CacheListMixin, StoreScopedModelViewSet):
+class ItemMasterViewSet(StoreScopedModelViewSet):
     queryset = ItemMaster.objects.select_related("category")
     serializer_class = ItemMasterSerializer
 
