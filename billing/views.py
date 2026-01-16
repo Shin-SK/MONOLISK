@@ -20,7 +20,7 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
+from django.views.decorators.cache import cache_page, cache_control
 from django.views.decorators.vary import vary_on_headers
 from rest_framework.viewsets import ReadOnlyModelViewSet
 from rest_framework.filters import SearchFilter
@@ -125,7 +125,20 @@ class CacheListMixin:
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-
+class NoStoreListMixin:
+    """
+    認証付きAPIをCDN/ブラウザにキャッシュさせない（即時反映用）
+    """
+    @method_decorator(cache_control(
+        private=True,
+        no_store=True,
+        no_cache=True,
+        must_revalidate=True,
+        max_age=0,
+    ))
+    @method_decorator(vary_on_headers('X-Store-Id', 'Authorization'))
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 # ────────────────────────────────────────────────────────────────────
 # Store スコープ Mixin（あなたの StoreScopedModelViewSet を強化）
@@ -219,12 +232,12 @@ class StoreViewSet(StoreScopedModelViewSet):
 # ────────────────────────────────────────────────────────────────────
 # 商品マスタ / 卓
 # ────────────────────────────────────────────────────────────────────
-class ItemMasterViewSet(StoreScopedModelViewSet):
+class ItemMasterViewSet(NoStoreListMixin, StoreScopedModelViewSet):
     queryset = ItemMaster.objects.select_related("category")
     serializer_class = ItemMasterSerializer
 
 
-class TableViewSet(CacheListMixin, StoreScopedModelViewSet):
+class TableViewSet(NoStoreListMixin, StoreScopedModelViewSet):
     queryset = Table.objects.all()
     serializer_class = TableSerializer
     
@@ -530,12 +543,7 @@ class ItemCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
 
-class BillTagViewSet(CacheListMixin, StoreScopedModelViewSet):
-    """
-    伝票タグ（店舗ごと）
-    GET /api/billing/bill-tags/?_sid=13  店舗13のタグ一覧
-    POST/PUT/PATCH/DELETE も可能（admin 推奨）
-    """
+class BillTagViewSet(NoStoreListMixin, StoreScopedModelViewSet):
     queryset = BillTag.objects.all()
     serializer_class = BillTagSerializer
     permission_classes = [permissions.IsAuthenticated]
