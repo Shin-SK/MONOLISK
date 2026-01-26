@@ -949,6 +949,13 @@ class BillItem(models.Model):
     price = models.PositiveIntegerField(null=True, blank=True)
     qty = models.PositiveSmallIntegerField(default=1)
     served_by_cast = models.ForeignKey('billing.Cast', null=True, blank=True, on_delete=models.SET_NULL, db_index=True)
+    customer = models.ForeignKey(
+        'billing.Customer',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='bill_items',
+        help_text='誰が注文したか（顧客集計用）'
+    )
 
     exclude_from_payout = models.BooleanField(default=False, null=True)
     is_dohan = models.BooleanField(default=False, null=True)  # 同伴料行フラグ（back_rate に 'dohan' を反映）
@@ -956,6 +963,9 @@ class BillItem(models.Model):
     back_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
     is_nomination = models.BooleanField(default=False)
     is_inhouse    = models.BooleanField(default=False)
+    
+    # 注文時刻（本指名期間の卓小計計算用）
+    ordered_at = models.DateTimeField(null=True, blank=True, default=timezone.now, db_index=True)
 
     class Meta:
         ordering = ['id']
@@ -1410,15 +1420,44 @@ class DiscountRule(models.Model):
 class BillCustomer(models.Model):
     bill      = models.ForeignKey('billing.Bill', on_delete=models.CASCADE)
     customer  = models.ForeignKey('billing.Customer', on_delete=models.PROTECT)
-    # 今後用に好きなカラムを足せる（同伴者区分 / ボトル番号 など）
-    # joined_at = models.DateTimeField(default=timezone.now)
+    
+    # 顧客滞在時刻
+    arrived_at = models.DateTimeField(null=True, blank=True, help_text='来店時刻')
+    left_at    = models.DateTimeField(null=True, blank=True, help_text='退店時刻')
 
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=['bill', 'customer'], name='uniq_billcustomer_bill_customer'),
+            models.CheckConstraint(
+                condition=models.Q(arrived_at__isnull=True) | models.Q(left_at__isnull=True) | 
+                          models.Q(left_at__gte=models.F('arrived_at')),
+                name='billcustomer_arrived_before_left'
+            ),
         ]
 
 
+class BillCustomerNomination(models.Model):
+    """
+    本指名紐づけ：bill × customer × cast の組み合わせ
+    複数本指名はレコード複数で表す
+    """
+    bill      = models.ForeignKey('billing.Bill', on_delete=models.CASCADE, related_name='customer_nominations')
+    customer  = models.ForeignKey('billing.Customer', on_delete=models.CASCADE, related_name='bill_nominations')
+    cast      = models.ForeignKey('billing.Cast', on_delete=models.CASCADE, related_name='customer_nominations')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['bill', 'customer', 'cast'],
+                name='uniq_billcustomernomination_bill_customer_cast'
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.bill.id} - {self.customer.display_name} → {self.cast.stage_name}"
 
 
 class StoreNotice(models.Model):

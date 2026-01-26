@@ -291,6 +291,13 @@ class BillItemSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    customer_id = serializers.PrimaryKeyRelatedField(
+        source='customer',
+        queryset=Customer.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
 
     # 互換・便利フィールド（READのみ）
     code = serializers.CharField(source='item_master.code', read_only=True)
@@ -298,6 +305,7 @@ class BillItemSerializer(serializers.ModelSerializer):
 
     # --------------------<<  READ 用  >>---------------------
     served_by_cast = CastMiniSerializer(read_only=True)
+    customer = serializers.SerializerMethodField()
     subtotal = serializers.SerializerMethodField()
     back_rate = serializers.SerializerMethodField()
     bill = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -306,6 +314,16 @@ class BillItemSerializer(serializers.ModelSerializer):
         model = BillItem
         fields = '__all__'
         read_only_fields = ('bill', 'subtotal')
+
+    def get_customer(self, obj):
+        """顧客情報を返す（最低限id, full_name, phoneなど）"""
+        if obj.customer:
+            return {
+                'id': obj.customer.id,
+                'name': obj.customer.display_name,
+                'phone': obj.customer.phone,
+            }
+        return None
 
     def to_representation(self, instance):
         """
@@ -355,6 +373,7 @@ class BillItemSerializer(serializers.ModelSerializer):
         全体整合性 + Store-Locked確認
         - request.store が存在する前提（X-Store-Id必須）
         - item_master / served_by_cast の store を弾く
+        - customer は bill に参加しているか確認（BillCustomerが存在するか）
         - bill は ViewSet が bill=bill を注入する前提なので、ここでは bill の store チェックは「存在する場合のみ」行う
         """
         request = self.context.get('request')
@@ -378,6 +397,16 @@ class BillItemSerializer(serializers.ModelSerializer):
         if served_by_cast is not None:
             if getattr(served_by_cast, 'store_id', None) != store_id:
                 raise serializers.ValidationError({'served_by_cast_id': '他店舗のキャストは指定できません。'})
+
+        # customer は bill に参加しているか確認（BillCustomerが存在するか）
+        customer = attrs.get('customer', None)
+        if customer is not None:
+            bill = attrs.get('bill', None)
+            if bill is not None:
+                # BillCustomerが存在するか確認
+                from .models import BillCustomer
+                if not BillCustomer.objects.filter(bill=bill, customer=customer).exists():
+                    raise serializers.ValidationError({'customer_id': 'この顧客はこの伝票に参加していません。'})
 
         # もし bill が attrs に入ってくるケース（将来/別経路）に備えてチェック
         bill = attrs.get('bill', None)

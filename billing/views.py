@@ -301,55 +301,50 @@ class BillViewSet(viewsets.ModelViewSet):
             bill.refresh_from_db()
             _recalc_bill_after_items_change(bill)
 
-    @action(detail=True, methods=["post"])
-    def close(self, request, pk=None):
-        bill = self.get_object()
-        with transaction.atomic():
-            bill.close(settled_total=request.data.get("settled_total"))
-        return Response(self.get_serializer(bill).data)
-
-    @action(detail=True, methods=["post"], url_path="toggle-inhouse")
-    def toggle_inhouse(self, request, pk=None):
+    @action(detail=True, methods=["get"], url_path="nomination-summaries")
+    def nomination_summaries(self, request, pk=None):
         """
-        cast_id と inhouse(bool) を受け取り、
-        BillCastStay.stay_type を 'in' / 'free' に切替。
-        さらに houseNom-fee 行を差分同期。
-        """
-        bill = self.get_object()
-        cid = int(request.data.get("cast_id"))
-        want_in = bool(request.data.get("inhouse"))
-
-        # ① 変更前の inhouse & main をキャッシュ
-        prev_in = set(
-            bill.stays.filter(stay_type="in", left_at__isnull=True)
-            .values_list("cast_id", flat=True)
-        )
-        prev_main = set(bill.nominated_casts.values_list("id", flat=True))
+        本指名顧客ごとの「滞在期間内の卓小計」を返す
         
-        # in/out 切替では main は変わらない（本指名トグルではない）
-        new_main = prev_main
-
-        stay, _ = BillCastStay.objects.get_or_create(
-            bill=bill, cast_id=cid,
-            defaults=dict(entered_at=timezone.now(), stay_type="free"),
-        )
-        stay.stay_type = "in" if want_in else "free"
-        stay.left_at = None
-        stay.save(update_fields=["stay_type", "left_at"])
-
-        # ② 変更後の inhouse
-        new_in = set(
-            bill.stays.filter(stay_type="in", left_at__isnull=True)
-            .values_list("cast_id", flat=True)
-        )
-
-        # ③ 差分にもとづき fee 行を同期
-        sync_nomination_fees(
-            bill,
-            prev_main, new_main,
-            prev_in, new_in,
-        )
-        return Response({"stay_type": stay.stay_type}, status=status.HTTP_200_OK)
+        GET /api/billing/bills/{bill_id}/nomination-summaries/
+        
+        Returns:
+        {
+            "bill_id": ...,
+            "results": [
+                {
+                    "customer_id": ...,
+                    "customer_name": "...",
+                    "period_start": "2026-01-26T20:30:00Z",
+                    "period_end": "2026-01-26T21:30:00Z",
+                    "period_status": "complete",
+                    "subtotal": "40000.00",
+                    "cast_ids": [1, 2],
+                    "num_casts": 2,
+                    "per_cast_share": "20000.00"
+                },
+                ...
+            ]
+        }
+        """
+        bill = self.get_object()
+        
+        # サービス関数を呼び出す
+        from .services.nomination_summary import build_nomination_summaries
+        now = request.query_params.get("now")
+        if now:
+            try:
+                from django.utils.dateparse import parse_datetime
+                now = parse_datetime(now)
+            except:
+                now = None
+        
+        summaries = build_nomination_summaries(bill, now=now)
+        
+        return Response({
+            "bill_id": bill.id,
+            "results": summaries
+        }, status=status.HTTP_200_OK)
 
 
 # ────────────────────────────────────────────────────────────────────
