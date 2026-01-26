@@ -46,15 +46,17 @@ const props = defineProps({
   servedByOptions:   { type: Array,  default: () => [] }, // [{id,label}]
   servedByCastId:  { type: [Number, String], default: null },
   /* ▼ 追加：pending を受けて“選択済み表示”に使う */
-  pending:           { type: Array,  default: () => [] }, // [{master_id, qty, cast_id}]
+  pending:           { type: Array,  default: () => [] }, // [{master_id, qty, cast_id, customer_id}]
   masterNameMap:     { type: Object, default: () => ({}) },
   servedByMap:       { type: Object, default: () => ({}) },
   masterPriceMap:  { type: Object, default: () => ({}) },
+  billCustomers:     { type: Array,  default: () => [] }, // 本指名顧客一覧
+  selectedCustomerId: { type: [Number, null], default: null },
   readonly: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
-  'update:selectedCat', 'update:servedByCastId',
+  'update:selectedCat', 'update:servedByCastId', 'update:selectedCustomerId',
   'addPending', 'removePending', 'clearPending',
   'placeOrder'
 ])
@@ -262,6 +264,21 @@ const cartSubtotal = computed(() =>
                   style="font-size: 1rem;"
                 >{{ c.label }}</button>
               </div>
+            </div>
+
+            <!-- 顧客選択（オプション） -->
+            <div class="d-flex align-items-center justify-content-between mb-3 gap-2">
+              <label class="text-muted small fw-bold" style="min-width: 60px">顧客</label>
+              <select 
+                class="form-select form-select-sm" 
+                :value="selectedCustomerId"
+                @change="e => emit('update:selectedCustomerId', e.target.value ? Number(e.target.value) : null)"
+              >
+                <option :value="null">未指定</option>
+                <option v-for="bc in billCustomers" :key="bc.id" :value="bc.customer_id">
+                  {{ bc.display_name }}
+                </option>
+              </select>
             </div>
             <div class="d-flex align-items-center justify-content-between mb-3 gap-2">
               <div class="text-muted small fw-bold">数</div>

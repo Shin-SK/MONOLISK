@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
      StoreViewSet, TableViewSet, ItemMasterViewSet,
      BillViewSet, BillItemViewSet, BillStayViewSet,
+     BillCustomerViewSet,
      CastViewSet, CastSalesView, CastSalesSummaryView,
      CastPayoutListView, CastItemDetailView,
      ItemCategoryViewSet, CastShiftViewSet,
@@ -25,6 +26,7 @@ router.register(r"stores",               StoreViewSet,           basename="store
 router.register(r"tables",               TableViewSet,           basename="tables")
 router.register(r"item-masters",         ItemMasterViewSet,      basename="item-masters")
 router.register(r"bills",                BillViewSet,            basename="bills")
+router.register(r"bill-customers",       BillCustomerViewSet,    basename="bill-customers")
 router.register(r"casts",                CastViewSet,            basename="casts")
 router.register(r"item-categories",      ItemCategoryViewSet,    basename="item-categories")
 router.register(r"bill-tags",            BillTagViewSet,         basename="bill-tags")

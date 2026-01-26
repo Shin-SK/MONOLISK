@@ -633,6 +633,9 @@ function removeSavedDiscount(index) {
               {{ it.name || masterNameMap[String(it.item_master)] || ('#'+it.item_master) }}
             </div>
             <div class="price">¥{{ (it.subtotal ?? 0).toLocaleString() }}</div>
+            <div v-if="it.customer" class="badge bg-info text-dark small">
+              {{ it.customer.display_name || it.customer.customer_name || '顧客' }}
+            </div>
           </div>
           <div class="cast d-flex align-items-center gap-2 flex-wrap">
             <IconUser :size="16" />

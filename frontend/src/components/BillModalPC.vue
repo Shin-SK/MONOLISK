@@ -4,6 +4,7 @@ import { reactive, ref, watch, computed, onMounted, toRef, unref } from 'vue'
 import BaseModal      from '@/components/BaseModal.vue'
 import Avatar         from '@/components/Avatar.vue'
 import { useCustomers } from '@/stores/useCustomers'
+import { useBillCustomers } from '@/composables/useBillCustomers'
 import {
   api,
   updateBillTimes,
@@ -26,6 +27,8 @@ import BasicsPanel   from '@/components/panel/BasicsPanel.vue'
 import CustomerPanel from '@/components/CustomerPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel      from '@/components/panel/PayPanel.vue'
+import NominationSummaryPanel from '@/components/billing/NominationSummaryPanel.vue'
+import TableCustomersPanel from '@/components/billing/TableCustomersPanel.vue'
 import { enqueue }   from '@/utils/txQueue'
 
 /* ---------------------------------------------------------
@@ -68,6 +71,9 @@ const onDutySet    = ref(new Set())
 const castKeyword  = ref('')
 const customers    = useCustomers()
 
+/* Bill 顧客リスト（注文時の顧客選択用） */
+const billCustomersComposable = useBillCustomers()
+
 /* PayPanel 参照（割引明細・メモを取り出す） */
 const payRefPc  = ref(null)
 
@@ -98,6 +104,14 @@ watch(visible, v => { if (v) refreshStoreSlug() }, { immediate: true })
 watch(() => props.bill?.table?.store, () => {
   if (visible.value) refreshStoreSlug()
 })
+
+// Bill 顧客リストを取得（伝票ID が変わったら再取得）
+watch(() => props.bill?.id, async (billId) => {
+  if (billId && visible.value) {
+    await billCustomersComposable.fetchBillCustomers(billId)
+    selectedCustomerId.value = null  // 顧客選択をリセット
+  }
+}, { immediate: true })
 
 onMounted(async () => {
   // 1) localStorage 優先
@@ -506,8 +520,14 @@ const orderMastersForPanel = computed(() =>
 )
 
 /* 注文ペンディング */
-const pending = ref([])   // [{ master_id, qty, cast_id }]
-const onAddPending   = (masterId, qty) => pending.value.push({ master_id: masterId, qty: Number(qty)||0, cast_id: servedByCastId.value ?? null })
+const pending = ref([])   // [{ master_id, qty, cast_id, customer_id }]
+const selectedCustomerId = ref(null)  // 注文作成時の顧客選択
+const onAddPending   = (masterId, qty) => pending.value.push({ 
+  master_id: masterId, 
+  qty: Number(qty)||0, 
+  cast_id: servedByCastId.value ?? null,
+  customer_id: selectedCustomerId.value ?? null
+})
 const onRemovePending = (i) => pending.value.splice(i, 1)
 const onClearPending  = () => (pending.value = [])
 const onPlaceOrder    = async () => { await save() }
@@ -785,11 +805,15 @@ async function save () {
 
     // ❸ pending 注文
     for (const it of pending.value) {
-      await addBillItem(billId, {
+      const payload = {
         item_master: it.master_id,
         qty: it.qty,
         served_by_cast_id: it.cast_id ?? undefined
-      })
+      }
+      if (it.customer_id) {
+        payload.customer_id = it.customer_id
+      }
+      await addBillItem(billId, payload)
     }
     pending.value = []
 
@@ -959,9 +983,12 @@ watch(freeCastIds, list => {
               :master-name-map="masterNameMap"
               :served-by-map="servedByMap"
               :master-price-map="masterPriceMap"
+              :bill-customers="billCustomersComposable.customers.value || []"
+              :selected-customer-id="selectedCustomerId"
               :readonly="false"
               @update:selectedCat="v => (selectedCat = v)"
               @update:servedByCastId="v => (servedByCastId = v)"
+              @update:selectedCustomerId="v => (selectedCustomerId = v)"
               @addPending="onAddPending"
               @removePending="onRemovePending"
               @clearPending="onClearPending"
@@ -1007,6 +1034,9 @@ watch(freeCastIds, list => {
             @changeServedBy="onChangeServedBy"
           />
 
+          <NominationSummaryPanel v-if="props.bill?.id" :billId="props.bill.id" />
+
+          <TableCustomersPanel v-if="props.bill?.id" :billId="props.bill.id" />
         </div>
       </div>
 

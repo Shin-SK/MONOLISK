@@ -5,7 +5,10 @@ import BasicsPanel from '@/components/panel/BasicsPanel.vue'
 import CastsPanel  from '@/components/panel/CastsPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel from '@/components/panel/PayPanel.vue'
+import NominationSummaryPanel from '@/components/billing/NominationSummaryPanel.vue'
+import TableCustomersPanel from '@/components/billing/TableCustomersPanel.vue'
 import useBillEditor from '@/composables/useBillEditor'
+import { useBillCustomers } from '@/composables/useBillCustomers'
 import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
 import { useRoles } from '@/composables/useRoles'
 import { enqueue } from '@/utils/txQueue'
@@ -25,6 +28,8 @@ const applyServiceChargeRef = ref(true)
 const applyTaxRef = ref(true)
 const billTags = ref([])
 const selectedTagIds = ref([])
+const selectedCustomerId = ref(null)  // 注文作成時の顧客選択
+const billCustomersComposable = useBillCustomers()
 
 const props = defineProps({
   modelValue: Boolean,
@@ -170,6 +175,14 @@ watch(visible, async v => {
     await initOnOpen()
   }
 }, { immediate: false })
+
+// Bill 顧客リストを取得（伝票ID が変わったら再取得）
+watch(() => props.bill?.id, async (billId) => {
+  if (billId && visible.value) {
+    await billCustomersComposable.fetchBillCustomers(billId)
+    selectedCustomerId.value = null  // 顧客選択をリセット
+  }
+}, { immediate: true })
 
 // 伝票の store が変わったら取り直す（table.store は数値ID）
 watch(() => props.bill?.table?.store, () => {
@@ -1159,13 +1172,17 @@ function handleClose() {
     :served-by-map="servedByMap"
     :served-by-options="servedByOptions"
     :master-price-map="masterPriceMap"
+    :bill-customers="billCustomersComposable.customers.value || []"
+    :selected-customer-id="selectedCustomerId"
     @update:selectedCat="v => (ed.selectedOrderCat.value = v)"
+    @update:selectedCustomerId="v => (selectedCustomerId = v)"
     @addPending="(id, qty, castId) => {
       const q = Math.max(1, Number(qty || 1))
       ed.pending.value.push({
         master_id: Number(id),
         qty: q,
         cast_id: (castId == null || castId === '') ? null : Number(castId),
+        customer_id: selectedCustomerId.value ?? null
       })
     }"
     @removePending="i => ed.pending.value.splice(i,1)"
@@ -1207,6 +1224,10 @@ function handleClose() {
       @update:discountRule="onDiscountRuleChange"
       @saveDiscount="onSaveDiscount"
      />
+
+    <NominationSummaryPanel v-if="props.bill?.id && pane==='pay'" :billId="props.bill.id" />
+
+    <TableCustomersPanel v-if="props.bill?.id && pane==='pay'" :billId="props.bill.id" />
 
     <ProvisionalPanelSP
       v-show="pane==='prov' && canProvisional"

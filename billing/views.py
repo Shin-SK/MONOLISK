@@ -346,6 +346,162 @@ class BillViewSet(viewsets.ModelViewSet):
             "results": summaries
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["get"], url_path="customers")
+    def customers(self, request, pk=None):
+        """
+        この伝票の本指名顧客（BillCustomer）一覧を返す
+        
+        GET /api/billing/bills/{bill_id}/customers/
+        
+        Returns:
+        {
+            "results": [
+                {
+                    "id": 123,
+                    "customer_id": 45,
+                    "customer_name": "田中太郎",
+                    "display_name": "田中太郎",
+                    "arrived_at": "2026-01-26T20:30:00Z",
+                    "left_at": null
+                },
+                ...
+            ]
+        }
+        """
+        bill = self.get_object()
+        
+        from .models import BillCustomer
+        from .serializers_timeline import BillCustomerSerializer
+        
+        bill_customers = BillCustomer.objects.filter(bill=bill).select_related("customer")
+        serializer = BillCustomerSerializer(bill_customers, many=True)
+        
+        return Response({
+            "results": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get", "post"], url_path="nominations")
+    def nominations(self, request, pk=None):
+        """
+        この伝票の本指名設定（BillCustomerNomination）を管理
+        
+        GET  /api/billing/bills/{bill_id}/nominations/
+        POST /api/billing/bills/{bill_id}/nominations/ body: { customer_id, cast_ids: [] }
+        
+        Returns (GET):
+        {
+            "results": [
+                {
+                    "id": 1,
+                    "bill_id": 10,
+                    "customer_id": 45,
+                    "cast_id": 100,
+                    ...
+                },
+                ...
+            ]
+        }
+        """
+        from .models import BillCustomerNomination
+        from .serializers_timeline import BillCustomerNominationSerializer
+        
+        bill = self.get_object()
+        
+        if request.method == "GET":
+            # 指定bill配下の全Nomination を返す
+            nominations = BillCustomerNomination.objects.filter(bill=bill).select_related("customer", "cast")
+            serializer = BillCustomerNominationSerializer(nominations, many=True)
+            return Response({
+                "results": serializer.data
+            }, status=status.HTTP_200_OK)
+        
+        elif request.method == "POST":
+            # 顧客 + キャスト群を POST
+            customer_id = request.data.get("customer_id")
+            cast_ids = request.data.get("cast_ids", [])
+            
+            if not customer_id:
+                return Response(
+                    {"error": "customer_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 既存Nominationを削除して再作成（差分管理しない簡易版）
+            BillCustomerNomination.objects.filter(
+                bill=bill,
+                customer_id=customer_id
+            ).delete()
+            
+            # 新規Nominationを作成
+            from .models import Cast
+            created = []
+            for cast_id in cast_ids:
+                try:
+                    cast = Cast.objects.get(id=cast_id)
+                    nom = BillCustomerNomination.objects.create(
+                        bill=bill,
+                        customer_id=customer_id,
+                        cast=cast
+                    )
+                    created.append(nom)
+                except Cast.DoesNotExist:
+                    pass
+            
+            serializer = BillCustomerNominationSerializer(created, many=True)
+            return Response({
+                "results": serializer.data
+            }, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=["delete"], url_path="nominations/(?P<nomination_id>[^/.]+)")
+    def delete_nomination(self, request, pk=None, nomination_id=None):
+        """
+        特定の Nomination を削除
+        
+        DELETE /api/billing/bills/{bill_id}/nominations/{nomination_id}/
+        """
+        from .models import BillCustomerNomination
+        
+        bill = self.get_object()
+        
+        try:
+            nom = BillCustomerNomination.objects.get(id=nomination_id, bill=bill)
+            nom.delete()
+            return Response({"success": True}, status=status.HTTP_204_NO_CONTENT)
+        except BillCustomerNomination.DoesNotExist:
+            return Response(
+                {"error": "Nomination not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+# ────────────────────────────────────────────────────────────────────
+# BillCustomer nested endpoint（arrived_at/left_at更新用）
+# ────────────────────────────────────────────────────────────────────
+class BillCustomerViewSet(viewsets.ModelViewSet):
+    """
+    BillCustomer（伝票内の顧客）を管理
+    
+    PATCH /api/billing/bill-customers/{id}/ で arrived_at/left_at を更新可能
+    """
+    serializer_class = None  # 後で定義
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        sid = StoreScopedModelViewSet.require_store(self, self.request)
+        from .models import BillCustomer
+        return (
+            BillCustomer.objects
+            .select_related("bill", "bill__table", "customer")
+            .filter(bill__table__store_id=sid)
+        )
+    
+    def get_serializer_class(self):
+        from .serializers_timeline import BillCustomerSerializer
+        return BillCustomerSerializer
+    
+    def perform_update(self, serializer):
+        serializer.save()
+
 
 # ────────────────────────────────────────────────────────────────────
 # 伝票明細
