@@ -5,7 +5,6 @@ import { useBillCustomers } from '@/composables/useBillCustomers'
 import { useBillCustomerTimeline } from '@/composables/useBillCustomerTimeline'
 import { useNominations } from '@/composables/useNominations'
 import { useCasts } from '@/stores/useCasts'
-import { api } from '@/api'
 
 const props = defineProps({
   billId: {
@@ -24,6 +23,10 @@ const castsStore = useCasts()
 const casts = ref([])
 const selectedCastsByCustomer = ref({})  // { customer_id: [cast_id, ...] }
 const loadingNominations = ref(false)
+const addingCustomer = ref(false)
+const savingMap = ref({}) // { [bcId]: boolean }
+const editArrived = ref({}) // { [bcId]: 'YYYY-MM-DDTHH:mm' }
+const editLeft = ref({}) // { [bcId]: 'YYYY-MM-DDTHH:mm' }
 
 onMounted(async () => {
   // キャスト一覧を取得
@@ -49,6 +52,16 @@ const reload = async (billId) => {
     }
   })
   selectedCastsByCustomer.value = grouped
+
+  // 編集用の時刻初期化（datetime-local形式に）
+  const ea = {}
+  const el = {}
+  billCustomersComposable.customers.value?.forEach(bc => {
+    ea[bc.id] = bc.arrived_at ? dayjs(bc.arrived_at).format('YYYY-MM-DDTHH:mm') : ''
+    el[bc.id] = bc.left_at ? dayjs(bc.left_at).format('YYYY-MM-DDTHH:mm') : ''
+  })
+  editArrived.value = ea
+  editLeft.value = el
 }
 
 // billId watcher
@@ -61,19 +74,25 @@ watch(() => props.billId, (billId) => {
  * 顧客を追加（arrived_at = now）
  */
 const addCustomer = async () => {
-  const customerId = prompt('顧客IDを入力してください:')
-  if (!customerId) return
-  
+  addingCustomer.value = true
   try {
-    await api.post(`/billing/bills/${props.billId}/customers/`, {
-      customer_id: Number(customerId),
-      arrived_at: dayjs().toISOString()
-    })
-    
-    // 再読み込み
-    await reload(props.billId)
+    // 最小ペイロードで作成（backendで Guest 作成＆arrived_at 自動IN）
+    await billCustomersComposable.createBillCustomer(props.billId, {})
   } catch (e) {
-    alert('顧客追加に失敗しました: ' + e.message)
+    // 必須エラーなどの場合はフォールバックで顧客ID入力
+    const customerId = prompt('顧客IDを入力してください（未入力ならキャンセル）:')
+    if (customerId) {
+      try {
+        await billCustomersComposable.createBillCustomer(props.billId, {
+          customer_id: Number(customerId)
+        })
+      } catch (e2) {
+        alert('顧客追加に失敗しました: ' + (e2?.message || e2))
+      }
+    }
+  } finally {
+    addingCustomer.value = false
+    await reload(props.billId)
   }
 }
 
@@ -154,6 +173,34 @@ const getStatusBadgeClass = (bc) => {
   if (bc.left_at) return 'bg-danger'
   return 'bg-success'
 }
+
+/**
+ * datetime-local 文字列を JST(+09:00) 付きISOへ
+ */
+const toJstIso = (dtLocal) => {
+  if (!dtLocal) return null
+  const base = dayjs(dtLocal).format('YYYY-MM-DDTHH:mm:ss')
+  return `${base}+09:00`
+}
+
+/**
+ * 行ごとの arrived_at/left_at を保存
+ */
+const saveTimes = async (bcId) => {
+  savingMap.value[bcId] = true
+  try {
+    const payload = {}
+    // 空文字は null として送る
+    payload.arrived_at = editArrived.value[bcId] ? toJstIso(editArrived.value[bcId]) : null
+    payload.left_at = editLeft.value[bcId] ? toJstIso(editLeft.value[bcId]) : null
+    await billCustomersComposable.updateBillCustomer(bcId, payload)
+    await reload(props.billId)
+  } catch (e) {
+    alert('時刻保存に失敗しました: ' + (e?.message || e))
+  } finally {
+    savingMap.value[bcId] = false
+  }
+}
 </script>
 
 <template>
@@ -161,7 +208,7 @@ const getStatusBadgeClass = (bc) => {
     <div class="card">
       <div class="card-header bg-light d-flex justify-content-between align-items-center">
         <h6 class="mb-0">テーブル内の顧客</h6>
-        <button type="button" class="btn btn-sm btn-outline-primary" @click="addCustomer">
+        <button type="button" class="btn btn-sm btn-outline-primary" @click="addCustomer" :disabled="addingCustomer">
           + 顧客追加
         </button>
       </div>
@@ -214,6 +261,39 @@ const getStatusBadgeClass = (bc) => {
               >
                 OUT解除
               </button>
+            </div>
+
+            <!-- 到着/退店時刻の手入力（仮UI） -->
+            <div class="border rounded p-2 mb-2 bg-white">
+              <small class="text-muted d-block mb-2">時刻入力（手動編集）</small>
+              <div class="row g-2 align-items-center">
+                <div class="col-12 col-md-6">
+                  <label class="form-label small mb-1">到着時刻（arrived_at）</label>
+                  <input
+                    type="datetime-local"
+                    class="form-control form-control-sm"
+                    v-model="editArrived[bc.id]"
+                  />
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label small mb-1">退店時刻（left_at）</label>
+                  <input
+                    type="datetime-local"
+                    class="form-control form-control-sm"
+                    v-model="editLeft[bc.id]"
+                  />
+                </div>
+              </div>
+              <div class="mt-2">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  @click="saveTimes(bc.id)"
+                  :disabled="savingMap[bc.id]"
+                >
+                  時刻を保存
+                </button>
+              </div>
             </div>
 
             <!-- 本指名キャスト設定（仮UI） -->

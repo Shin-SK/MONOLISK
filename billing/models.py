@@ -1422,7 +1422,7 @@ class BillCustomer(models.Model):
     customer  = models.ForeignKey('billing.Customer', on_delete=models.PROTECT)
     
     # 顧客滞在時刻
-    arrived_at = models.DateTimeField(null=True, blank=True, help_text='来店時刻')
+    arrived_at = models.DateTimeField(null=True, blank=True, default=timezone.now, db_index=True, help_text='来店時刻')
     left_at    = models.DateTimeField(null=True, blank=True, help_text='退店時刻')
 
     class Meta:

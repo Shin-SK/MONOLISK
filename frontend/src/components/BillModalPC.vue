@@ -27,8 +27,6 @@ import BasicsPanel   from '@/components/panel/BasicsPanel.vue'
 import CustomerPanel from '@/components/CustomerPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel      from '@/components/panel/PayPanel.vue'
-import NominationSummaryPanel from '@/components/billing/NominationSummaryPanel.vue'
-import TableCustomersPanel from '@/components/billing/TableCustomersPanel.vue'
 import { enqueue }   from '@/utils/txQueue'
 
 /* ---------------------------------------------------------
@@ -910,6 +908,7 @@ watch(freeCastIds, list => {
 
             <!-- ▼ パネル群（PCは常時 / SPはpaneで出し分け） -->
             <BasicsPanel
+              :bill-id="bill?.id"
               :active-pane="pane"
               :tables="tables"
               :table-id="form.table_id"
@@ -998,6 +997,7 @@ watch(freeCastIds, list => {
 
         <div class="summary" v-if="isBillTab">
           <PayPanel
+            :bill-id="props.bill?.id"
             :items="props.bill.items || []"
             :master-name-map="masterNameMap"
             :served-by-map="servedByMap"
@@ -1034,9 +1034,6 @@ watch(freeCastIds, list => {
             @changeServedBy="onChangeServedBy"
           />
 
-          <NominationSummaryPanel v-if="props.bill?.id" :billId="props.bill.id" />
-
-          <TableCustomersPanel v-if="props.bill?.id" :billId="props.bill.id" />
         </div>
       </div>
 

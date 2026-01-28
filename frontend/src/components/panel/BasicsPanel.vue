@@ -4,9 +4,12 @@ import dayjs from 'dayjs'
 import Avatar from '@/components/Avatar.vue'
 import Multiselect from 'vue-multiselect'
 import 'vue-multiselect/dist/vue-multiselect.css'
-import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings, fetchMasters, fetchBillTags } from '@/api'  // ← fetchBillTags 追加
+import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings, fetchMasters, fetchBillTags, fetchCustomers } from '@/api'  // ← fetchCustomers 追加
+import { useBillCustomers } from '@/composables/useBillCustomers'
+import { useBillCustomerTimeline } from '@/composables/useBillCustomerTimeline'
 
 const props = defineProps({
+  billId: { type: [Number, null], default: null },
   tables: { type: Array, default: () => [] },
   tableId: { type: [Number, null], default: null },
 
@@ -121,6 +124,170 @@ const seatTypeIdByCode = computed(() => {
     if (code && Number.isFinite(id)) m.set(code, id)
   }
   return m
+})
+
+// Bill customers management
+const billCustomersComp = useBillCustomers()
+const timelineComp = useBillCustomerTimeline()
+
+const billCustomers = ref([])
+const loadingBillCustomers = ref(false)
+const billCustomersError = ref('')
+
+const editArrivedLocal = ref({})
+const editLeftLocal = ref({})
+const editingBillCustomerArrived = ref({})  // bcId -> true/false（入店）
+const editingBillCustomerLeft = ref({})     // bcId -> true/false（退店）
+
+function toLocalInput(iso) {
+  return iso ? dayjs(iso).format('YYYY-MM-DDTHH:mm') : ''
+}
+function toISOFromLocal(v) {
+  return v ? dayjs(v).toISOString() : null
+}
+
+function beginEditBillCustomerArrived(bcId) {
+  editingBillCustomerArrived.value[bcId] = true
+}
+
+function cancelEditBillCustomerArrived(bcId) {
+  const bc = billCustomers.value.find(b => b.id === bcId)
+  if (bc) {
+    editArrivedLocal.value[bcId] = toLocalInput(bc.arrived_at)
+  }
+  editingBillCustomerArrived.value[bcId] = false
+}
+
+function beginEditBillCustomerLeft(bcId) {
+  editingBillCustomerLeft.value[bcId] = true
+}
+
+function cancelEditBillCustomerLeft(bcId) {
+  const bc = billCustomers.value.find(b => b.id === bcId)
+  if (bc) {
+    editLeftLocal.value[bcId] = toLocalInput(bc.left_at)
+  }
+  editingBillCustomerLeft.value[bcId] = false
+}
+
+async function refreshBillCustomers() {
+  if (!props.billId) return
+  loadingBillCustomers.value = true
+  billCustomersError.value = ''
+  try {
+    await billCustomersComp.fetchBillCustomers(props.billId)
+    billCustomers.value = billCustomersComp.customers.value || []
+  } catch (e) {
+    console.warn('[BasicsPanel] fetch bill customers failed', e)
+    billCustomersError.value = '顧客の取得に失敗しました'
+    billCustomers.value = []
+  } finally {
+    loadingBillCustomers.value = false
+  }
+}
+
+watch(() => props.billId, async (id) => {
+  if (!id) return
+  await refreshBillCustomers()
+}, { immediate: true })
+
+watch(billCustomers, async (list) => {
+  const a = {}
+  const l = {}
+  for (const bc of (list || [])) {
+    a[bc.id] = toLocalInput(bc.arrived_at)
+    l[bc.id] = toLocalInput(bc.left_at)
+  }
+  editArrivedLocal.value = a
+  editLeftLocal.value = l
+  
+  // 初期状態で最初の顧客を自動選択（未選択の場合）
+  if (!selectedBillCustomer.value && list.length > 0) {
+    await selectBillCustomer(list[0])
+  }
+}, { deep: true })
+
+const addingGuest = ref(false)
+
+function addGuestToBill() {
+  // フェーズ1：confirm で注意を表示して初期入力タブへ誘導
+  const confirmed = confirm(
+    'お客様を増やすとSET（料金）も増やす必要があります。\n\n' +
+    '先に「初期入力」で人数とSETを増やしてから追加してください。\n\n' +
+    '初期入力に移動しますか？'
+  )
+  
+  if (confirmed) {
+    switchTab('first')
+  }
+}
+
+async function saveCustomerTimes(bcId) {
+  const arrived_at = toISOFromLocal(editArrivedLocal.value[bcId])
+  const left_at = toISOFromLocal(editLeftLocal.value[bcId])
+  try {
+    await billCustomersComp.updateBillCustomer(bcId, { arrived_at, left_at })
+    await refreshBillCustomers()
+  } catch (e) {
+    alert('時刻の保存に失敗しました（INより前にOUTなど）')
+  }
+}
+
+// 顧客差し替え機能
+const allCustomersForReplace = ref([])
+const replaceCustomerMap = ref({})  // bcId -> customerId
+const replacingBillCustomerId = ref(null)
+const editingReplaceCustomer = ref({})  // bcId -> boolean（編集モード）
+
+// 既存顧客リストを取得（初回のみ）
+async function loadCustomersForReplace() {
+  try {
+    const data = await fetchCustomers()
+    // results か直接の配列か判定
+    allCustomersForReplace.value = data.results || data || []
+  } catch (e) {
+    console.warn('[BasicsPanel] load customers for replace failed', e)
+    allCustomersForReplace.value = []
+  }
+}
+
+function beginEditReplaceCustomer(bcId) {
+  editingReplaceCustomer.value[bcId] = true
+}
+
+function cancelEditReplaceCustomer(bcId) {
+  replaceCustomerMap.value[bcId] = ''
+  editingReplaceCustomer.value[bcId] = false
+}
+
+function updateReplaceCustomer(bcId) {
+  // dropdown が変わったら、新しい customer を select（既に replaceCustomerMap に反映）
+  // 特に処理なし（差し替えボタンを押すまで待つ）
+}
+
+async function replaceCustomer(bcId) {
+  const newCustomerId = replaceCustomerMap.value[bcId]
+  if (!newCustomerId) return
+
+  replacingBillCustomerId.value = bcId
+
+  try {
+    await billCustomersComp.updateBillCustomer(bcId, { customer: newCustomerId })
+    replaceCustomerMap.value[bcId] = ''  // reset dropdown
+    editingReplaceCustomer.value[bcId] = false  // 編集モード解除
+    await refreshBillCustomers()
+    alert('顧客を差し替えました')
+  } catch (e) {
+    console.error('[BasicsPanel] replace customer failed', e)
+    alert(`顧客の差し替えに失敗しました: ${e?.response?.data?.customer?.[0] || e?.message || ''}`)
+  } finally {
+    replacingBillCustomerId.value = null
+  }
+}
+
+onMounted(async () => {
+  // 顧客リスト読み込み（差し替え用）
+  await loadCustomersForReplace()
 })
 
 onMounted(async () => {
@@ -463,43 +630,79 @@ const subtotalFormatted = computed(() => {
 
 // 顧客情報表示用
 const customerDisplayName = computed(() => {
+  if (selectedBillCustomer.value) return selectedBillCustomer.value.alias || selectedBillCustomer.value.full_name || `#${selectedBillCustomer.value.id}`
   if (selectedCustomer.value) return selectedCustomer.value.alias || selectedCustomer.value.full_name || `#${selectedCustomer.value.id}`
   if (!props.customer) return 'ご新規様'
   return props.customer.alias || props.customer.full_name || `#${props.customer.id}`
 })
 
+// 代表顧客（優先順位：props.customer → billCustomers[0] → null）
+const representativeCustomer = computed(() => {
+  // 1. 顧客マスタが選択されている場合はそれを優先
+  if (props.customer || selectedCustomer.value) return null // props.customer優先なのでnullを返す（表示は従来通り）
+  // 2. 卓内の客が存在する場合は先頭を代表として扱う
+  if (billCustomers.value && billCustomers.value.length > 0) {
+    return billCustomers.value[0]
+  }
+  // 3. どちらも無ければnull
+  return null
+})
+
+// 代表顧客の表示名
+const representativeCustomerDisplay = computed(() => {
+  const bc = representativeCustomer.value
+  if (!bc) return null
+  // BillCustomerの表示名またはGuest-XXXXXX
+  const cid = bc.customer || bc.customer_id
+  return bc.display_name || bc.customer_name || (cid != null ? `Guest-${String(cid).padStart(6, '0')}` : 'Guest')
+})
+
+// 代表顧客の入店時刻（BillCustomer由来の場合のみ）
+const representativeArrivedAt = computed(() => {
+  const bc = representativeCustomer.value
+  if (!bc || !bc.arrived_at) return null
+  return bc.arrived_at
+})
+
+// 代表顧客の退店時刻（BillCustomer由来の場合のみ）
+const representativeLeftAt = computed(() => {
+  const bc = representativeCustomer.value
+  if (!bc || !bc.left_at) return null
+  return bc.left_at
+})
+
 const customerFullName = computed(() => {
-  if (selectedCustomer.value) return selectedCustomer.value.full_name || '-'
-  if (!props.customer) return '-'
-  return props.customer.full_name || '-'
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
+  if (!c) return '-'
+  return c.full_name || '-'
 })
 
 const customerBirthday = computed(() => {
-  const c = selectedCustomer.value || props.customer
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
   if (!c?.birthday) return '-'
   return dayjs(c.birthday).format('YYYY年MM月DD日')
 })
 
 const customerLastOrder = computed(() => {
-  const c = selectedCustomer.value || props.customer
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
   if (!c?.last_order) return '-'
   return c.last_order
 })
 
 const customerLastVisit = computed(() => {
-  const c = selectedCustomer.value || props.customer
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
   if (!c?.last_visit_at) return '-'
   return dayjs(c.last_visit_at).format('YYYY/MM/DD HH:mm')
 })
 
 const customerLastCast = computed(() => {
-  const c = selectedCustomer.value || props.customer
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
   if (!c?.last_cast_name) return '-'
   return c.last_cast_name
 })
 
 const customerMemo = computed(() => {
-  const c = selectedCustomer.value || props.customer
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
   if (!c?.memo) return 'メモなし'
   return c.memo
 })
@@ -548,12 +751,41 @@ const doSearch = () => emit('searchCustomer', q.value.trim())
 // Multiselect 用の顧客検索
 const selectedCustomer = ref(null)
 
+// 顧客ブロックから選択した顧客（詳細情報取得済み）
+const selectedBillCustomer = ref(null)
+
 // props.customer が変更されたら selectedCustomer に反映
 watch(() => props.customer, (newCustomer) => {
   if (newCustomer && !selectedCustomer.value) {
     selectedCustomer.value = newCustomer
   }
 }, { immediate: true })
+
+// 顧客ブロックの名前をタップして顧客情報を詳細表示
+async function selectBillCustomer(bc) {
+  try {
+    // 顧客マスタから詳細情報を取得
+    const customerId = bc.customer || bc.customer_id
+    if (!customerId) {
+      selectedBillCustomer.value = null
+      return
+    }
+    
+    // fetchCustomers で全顧客を取得して該当を探す
+    const data = await fetchCustomers()
+    const customers = data.results || data || []
+    const customer = customers.find(c => Number(c.id) === Number(customerId))
+    
+    if (customer) {
+      selectedBillCustomer.value = customer
+    } else {
+      selectedBillCustomer.value = null
+    }
+  } catch (e) {
+    console.warn('[BasicsPanel] selectBillCustomer failed', e)
+    selectedBillCustomer.value = null
+  }
+}
 
 function onCustomerSearch(query) {
   if (query && query.length > 0) {
@@ -615,6 +847,12 @@ function customLabel(customer) {
     class="wrap"
     style="height: calc( 100vh - 80px);"
     id="first">
+      <div v-if="props.openedAt" class="alert alert-info alert-sm my-2 mx-2 p-2" role="alert">
+        <small>
+          <strong>お客様を増やす場合：</strong> 人数とSETを増やしてから「伝票を作成」を押してください。
+        </small>
+      </div>
+
       <h2 class="text-center my-3 fs-5"> 
         初期入力をして<br>
         伝票を作成してください</h2>
@@ -741,8 +979,10 @@ function customLabel(customer) {
         <textarea class="form-control" rows="3" v-model="memoLocal" placeholder="伝票情報や割引などをメモしてください"></textarea>
       </div>
 
-
-      <div class="area mt-auto">
+      <div v-if="props.openedAt" class="area mt-auto">
+        <button class="btn btn-warning w-100 my-2" @click="applySet">更新</button>
+      </div>
+      <div v-else class="area mt-auto">
         <button class="btn btn-warning w-100 my-2" @click="applySet">伝票を作成</button>
       </div>
     </div>
@@ -869,20 +1109,44 @@ function customLabel(customer) {
         </div>
 
         <!-- 顧客 -->
-        <div class="row align-items-center">
+        <div class="row align-items-start">
           <div class="col-3">
             <h3 class="m-0"><IconUser />顧客</h3>
           </div>
-          <div class="col-6">
-            <span class="fs-4 fw-bold">{{ customerName || '未選択' }}</span>
-          </div>
-          <div class="col-3">
-            <button class="btn btn-outline-danger btn-sm df-center gap-1 w-100" @click="beginEditCustomer">
+          <div class="col-9">
+            <div v-if="!billCustomers.length" class="text-muted small">
+              {{ customerName || '未選択' }}
+            </div>
+            <div v-else class="d-flex flex-column gap-2">
+              <div v-for="bc in billCustomers" :key="bc.id" class="border-bottom pb-2">
+                <div class="fw-bold mb-1">{{ bc.display_name || bc.customer_name || '未選択' }}様</div>
+                <span v-if="bc.arrived_at" class="d-flex align-items-center gap-1 small">
+                  <span class="badge bg-secondary text-white">入店</span>{{ dayjs(bc.arrived_at).format('HH:mm') }}
+                </span>
+                <span v-if="bc.left_at" class="d-flex align-items-center gap-1 small">
+                  <span class="badge bg-primary text-white">退店</span>{{ dayjs(bc.left_at).format('HH:mm') }}
+                </span>
+              </div>
+            </div>
+            <button class="btn btn-outline-danger btn-sm df-center gap-1 w-100 mt-2" @click="beginEditCustomer">
               <IconPencil />編集
             </button>
           </div>
         </div>
 
+        <!-- 卓内の客（追加 / IN-OUT編集） -->
+        <div class="border-top pt-3 mt-2">
+          <div class="d-flex align-items-center justify-content-between">
+            <button
+              class="btn btn-warning btn-sm w-100"
+              type="button"
+              :disabled="!props.billId"
+              @click="addGuestToBill"
+            >
+              ＋お客様を追加
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="bg-light py-3 mt-3">
@@ -896,10 +1160,175 @@ function customLabel(customer) {
     </div>
 
 
-    <div v-show="activeTab === 'customer'" class="wrap p-3" id="customer">
+    <div v-show="activeTab === 'customer'" class="wrap" id="customer">
+      <!-- 卓内の客一覧（IN/OUT編集） -->
+      <div class="mb-4">
+        <h5 class="fw-bold mb-3"><IconUsers /> 着席中のお客様</h5>
+        <div v-if="loadingBillCustomers" class="text-muted small">読み込み中...</div>
+        <div v-else-if="!billCustomers.length" class="text-muted small">お客様がいません</div>
+        <div v-else class="d-flex flex-column gap-3">
+          <div v-for="bc in billCustomers" :key="bc.id" class="area my-2 d-flex flex-column gap-3">
+            <!-- <div class="small text-muted mb-2">顧客ID: {{ bc.customer || bc.customer_id }}</div> -->
+            <div class="row align-items-center border-bottom pb-2">
+              <div class="col-2">
+                名前
+              </div>
+              <div class="col-7">
+                <!-- ※ここをタップしたら下の情報が変わる -->
+                <div 
+                  class="fw-bold fs-5 cursor-pointer text-primary"
+                  @click="selectBillCustomer(bc)"
+                  style="cursor: pointer; text-decoration: underline;">
+                 {{ customerName || representativeCustomerDisplay || '未選択' }}様
+                </div>
+                
+                <div v-if="editingReplaceCustomer[bc.id]" class="d-flex gap-2 align-items-center flex-column mt-2">
+                  <Multiselect
+                    :model-value="replaceCustomerMap[bc.id] ? allCustomersForReplace.find(c => String(c.id) === String(replaceCustomerMap[bc.id])) : null"
+                    :options="allCustomersForReplace"
+                    :custom-label="customLabel"
+                    placeholder="既存顧客から検索＆選択"
+                    label="alias"
+                    track-by="id"
+                    :searchable="true"
+                    :internal-search="true"
+                    :clear-on-select="true"
+                    :close-on-select="true"
+                    :options-limit="20"
+                    :show-no-results="true"
+                    select-label=""
+                    deselect-label=""
+                    @update:model-value="(cust) => { replaceCustomerMap[bc.id] = cust ? String(cust.id) : '' }"
+                  >
+                    <template #noResult>検索結果がありません</template>
+                    <template #noOptions>顧客が見つかりません</template>
+                  </Multiselect>
+                  <button
+                    v-if="replaceCustomerMap[bc.id]"
+                    class="btn btn-warning btn-sm whitespace-nowrap w-100"
+                    type="button"
+                    @click="replaceCustomer(bc.id)"
+                    :disabled="replacingBillCustomerId === bc.id"
+                  >
+                    {{ replacingBillCustomerId === bc.id ? '変更中...' : '差し替え' }}
+                  </button>
+                </div>
+              </div>
+              <div class="col-3">
+                <button
+                  v-if="!editingReplaceCustomer[bc.id]"
+                  class="btn btn-outline-danger btn-sm w-100"
+                  type="button"
+                  @click="beginEditReplaceCustomer(bc.id)"
+                >
+                  編集
+                </button>
+                <button
+                  v-else
+                  class="btn btn-outline-secondary btn-sm w-100 px-0"
+                  type="button"
+                  @click="cancelEditReplaceCustomer(bc.id)"
+                >
+                  キャンセル
+                </button>
+              </div>
+            </div>
+
+            <!-- 入店 -->
+            <div class="row align-items-center border-bottom pb-2">
+              <div class="col-2">
+                <span>入店</span>
+              </div>
+              <div class="col-7">
+                <span v-if="!editingBillCustomerArrived[bc.id]" class="fw-bold fs-1">
+                  {{ editArrivedLocal[bc.id] ? dayjs(editArrivedLocal[bc.id]).format('HH:mm') : '-' }}
+                </span>
+                <input
+                  v-else
+                  type="datetime-local"
+                  class="form-control form-control-sm"
+                  v-model="editArrivedLocal[bc.id]"
+                />
+              </div>
+              <div class="col-3">
+                <button 
+                  v-if="!editingBillCustomerArrived[bc.id]"
+                  class="btn btn-outline-danger btn-sm w-100" 
+                  type="button"
+                  @click="beginEditBillCustomerArrived(bc.id)"
+                >
+                  編集
+                </button>
+                <button 
+                  v-else
+                  class="btn btn-success btn-sm w-100" 
+                  type="button"
+                  @click="saveCustomerTimes(bc.id); editingBillCustomerArrived[bc.id] = false"
+                >
+                  保存
+                </button>
+              </div>
+            </div>
+
+            <!-- 退店 -->
+            <div class="row align-items-center border-bottom pb-2">
+              <div class="col-2">
+                <span>退店</span>
+              </div>
+              <div class="col-7">
+                <span v-if="!editingBillCustomerLeft[bc.id]" class="fw-bold fs-1">
+                  {{ editLeftLocal[bc.id] ? dayjs(editLeftLocal[bc.id]).format('HH:mm') : '-' }}
+                </span>
+                <input
+                  v-else
+                  type="datetime-local"
+                  class="form-control form-control-sm"
+                  v-model="editLeftLocal[bc.id]"
+                />
+              </div>
+              <div class="col-3">
+                <button 
+                  v-if="!editingBillCustomerLeft[bc.id]"
+                  class="btn btn-outline-danger btn-sm w-100" 
+                  type="button"
+                  @click="beginEditBillCustomerLeft(bc.id)"
+                >
+                  編集
+                </button>
+                <button 
+                  v-else
+                  class="btn btn-success btn-sm w-100" 
+                  type="button"
+                  @click="saveCustomerTimes(bc.id); editingBillCustomerLeft[bc.id] = false"
+                >
+                  保存
+                </button>
+              </div>
+            </div>
+
+
+            <div class="d-flex gap-2 flex-wrap">
+              <button class="btn btn-outline-secondary btn-sm" type="button" @click="timelineComp.markArrived(bc.id).then(refreshBillCustomers)">
+                今入店
+              </button>
+              <button class="btn btn-outline-secondary btn-sm" type="button" @click="timelineComp.markLeft(bc.id).then(refreshBillCustomers)">
+                今退店
+              </button>
+              <button class="btn btn-outline-secondary btn-sm" type="button" @click="timelineComp.clearLeft(bc.id).then(refreshBillCustomers)">
+                退店解除
+              </button>
+              <button class="btn btn-success btn-sm" type="button" @click="saveCustomerTimes(bc.id)">
+                保存
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
 
       <!-- 選択中の顧客情報 -->
-      <div class="bg-light rounded p-2">
+
+      <div class="bg-light rounded p-2 mb-5">
         <div class="text-center fs-5 fw-bold pt-2 mb-3 pb-3 border-bottom">
           <IconUserScan /> 選択中の顧客
         </div>
@@ -930,44 +1359,7 @@ function customLabel(customer) {
         </dl>
       </div>
 
-      <!-- 顧客検索 UI (Vue Multiselect) -->
-      <div class="mt-4">
-        <div class="text-center fs-5 fw-bold mb-3">
-          <IconUserScan />顧客を検索＆選択し直す
-        </div>
-        <Multiselect
-          v-model="selectedCustomer"
-          :options="customerResults"
-          :custom-label="customLabel"
-          placeholder="名前・TEL・あだ名で検索"
-          label="alias"
-          track-by="id"
-          :searchable="true"
-          :internal-search="false"
-          :loading="customerSearching"
-          :clear-on-select="false"
-          :close-on-select="true"
-          :options-limit="20"
-          :show-no-results="true"
-          select-label=""
-          deselect-label=""
-          @search-change="onCustomerSearch"
-          @select="onCustomerSelect"
-        >
-          <template #noResult>検索結果がありません</template>
-          <template #noOptions>...</template>
-        </Multiselect>
-        
-        <button 
-          v-if="selectedCustomer"
-          class="btn btn-primary w-100 mt-3"
-          @click="saveSelectedCustomer">
-          <IconDeviceFloppy /> この顧客を保存
-        </button>
-      </div>
-
     </div>
-
 
   </div>
 

@@ -5,8 +5,6 @@ import BasicsPanel from '@/components/panel/BasicsPanel.vue'
 import CastsPanel  from '@/components/panel/CastsPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel from '@/components/panel/PayPanel.vue'
-import NominationSummaryPanel from '@/components/billing/NominationSummaryPanel.vue'
-import TableCustomersPanel from '@/components/billing/TableCustomersPanel.vue'
 import useBillEditor from '@/composables/useBillEditor'
 import { useBillCustomers } from '@/composables/useBillCustomers'
 import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
@@ -1103,6 +1101,7 @@ function handleClose() {
     </template>
 
     <BasicsPanel
+      :bill-id="props.bill?.id"
       v-show="pane==='base'"
       :tables="ed.tables.value || []"
       :table-id="ed.tableId.value"
@@ -1193,6 +1192,9 @@ function handleClose() {
     <PayPanel
        v-show="pane==='pay'"
        ref="payRef"
+       :bill-id="props.bill?.id"
+       :bill="props.bill"
+       :pane="pane"
        :items="bill.items || []"
        :master-name-map="masterNameMap"
        :served-by-map="servedByMap"
@@ -1224,10 +1226,6 @@ function handleClose() {
       @update:discountRule="onDiscountRuleChange"
       @saveDiscount="onSaveDiscount"
      />
-
-    <NominationSummaryPanel v-if="props.bill?.id && pane==='pay'" :billId="props.bill.id" />
-
-    <TableCustomersPanel v-if="props.bill?.id && pane==='pay'" :billId="props.bill.id" />
 
     <ProvisionalPanelSP
       v-show="pane==='prov' && canProvisional"

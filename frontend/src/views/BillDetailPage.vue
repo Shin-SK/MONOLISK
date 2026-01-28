@@ -4,8 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { fetchBill } from '@/api'
 import PayrollSnapshotPanel from '@/components/expenses/PayrollSnapshotPanel.vue'
-import NominationSummaryPanel from '@/components/billing/NominationSummaryPanel.vue'
-import TableCustomersPanel from '@/components/billing/TableCustomersPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -98,10 +96,6 @@ onMounted(load)
             :bill-id="bill?.id"
           />
         </div>
-
-        <NominationSummaryPanel :billId="bill?.id" />
-
-        <TableCustomersPanel :billId="bill?.id" />
       </div>
     </div>
   </div>

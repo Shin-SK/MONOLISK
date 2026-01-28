@@ -29,18 +29,23 @@ export function useBillCustomers() {
     customers.value = []
 
     try {
-      const response = await api.get(`/billing/bills/${billId}/customers/`)
+      // キャッシュを明示的に無効化（pax更新後の同期確認のため）
+      const response = await api.get(`/billing/bills/${billId}/customers/`, { cache: false })
       const data = response.data?.results || []
-      
-      // 整形：display_name がない場合は customer_name を使う
-      customers.value = data.map(bc => ({
-        id: bc.id,
-        customer_id: bc.customer_id,
-        customer_name: bc.customer_name || bc.display_name || `顧客 ${bc.customer_id}`,
-        display_name: bc.display_name || bc.customer_name || `顧客 ${bc.customer_id}`,
-        arrived_at: bc.arrived_at,
-        left_at: bc.left_at
-      }))
+
+      // 整形：display_name がない場合は Guest-XXXXXX を使う（6桁ゼロ埋め）
+      customers.value = data.map(bc => {
+        const cid = bc.customer_id ?? bc.customer
+        const guestName = cid != null ? `Guest-${String(cid).padStart(6, '0')}` : 'Guest'
+        return {
+          id: bc.id,
+          customer_id: cid,
+          customer_name: bc.customer_name || bc.display_name || guestName,
+          display_name: bc.display_name || bc.customer_name || guestName,
+          arrived_at: bc.arrived_at,
+          left_at: bc.left_at
+        }
+      })
     } catch (e) {
       console.error('[useBillCustomers] Error fetching:', e)
       error.value = e
@@ -57,11 +62,35 @@ export function useBillCustomers() {
     await fetchBillCustomers(billId)
   }
 
+  /**
+   * BillCustomer を作成
+   * @param {number} billId
+   * @param {object} payload
+   * @returns {Promise<object>} created BillCustomer
+   */
+  async function createBillCustomer(billId, payload = {}) {
+    const response = await api.post(`/billing/bills/${billId}/customers/`, payload)
+    return response.data
+  }
+
+  /**
+   * BillCustomer を更新（PATCH）
+   * @param {number} billCustomerId
+   * @param {object} payload
+   * @returns {Promise<object>} updated BillCustomer
+   */
+  async function updateBillCustomer(billCustomerId, payload = {}) {
+    const response = await api.patch(`/billing/bill-customers/${billCustomerId}/`, payload)
+    return response.data
+  }
+
   return {
     loading,
     error,
     customers,
     fetchBillCustomers,
-    refresh
+    refresh,
+    createBillCustomer,
+    updateBillCustomer
   }
 }

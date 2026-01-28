@@ -93,6 +93,22 @@ class TestBillCustomerTimeline:
         refreshed = BillCustomer.objects.get(id=bc.id)
         assert refreshed.arrived_at is None
         assert refreshed.left_at is None
+    
+    def test_billcustomer_auto_arrived_at_on_create(self):
+        """arrived_at 未指定で BillCustomer を作成したとき、自動で現在時刻が入る"""
+        store = Store.objects.create(name='Test Store', slug='test-store')
+        table = Table.objects.create(store=store, code='T01')
+        bill = Bill.objects.create(table=table)
+        customer = Customer.objects.create(full_name='Auto Arrived Customer', phone='+81901234999')
+        
+        # arrived_at を指定せずに作成
+        bc = BillCustomer.objects.create(bill=bill, customer=customer)
+        
+        # arrived_at が自動で入っていることを確認
+        assert bc.arrived_at is not None
+        # 作成時刻から1秒以内であることを確認（妥当性チェック）
+        now = timezone.now()
+        assert abs((bc.arrived_at - now).total_seconds()) < 1
 
 
 @pytest.mark.django_db
@@ -263,3 +279,113 @@ class TestBillCustomerNomination:
         
         nominations = d['cast1'].customer_nominations.all()
         assert nominations.count() == 2
+
+@pytest.mark.django_db
+class TestBillCustomerReplaceAPI:
+    """BillCustomer の customer 差し替え API テスト"""
+    
+    @pytest.fixture
+    def api_setup(self):
+        """API テスト用の準備"""
+        from rest_framework.test import APIClient
+        from accounts.models import User
+        
+        store = Store.objects.create(name='Test Store', slug='test-store')
+        user = User.objects.create_user(username='testuser', password='testpass')
+        
+        table = Table.objects.create(store=store, code='T01')
+        bill = Bill.objects.create(table=table)
+        
+        # 顧客を3人作成
+        customer1 = Customer.objects.create(full_name='Customer 1', phone='+81901234567')
+        customer2 = Customer.objects.create(full_name='Customer 2', phone='+81901234568')
+        customer3 = Customer.objects.create(full_name='Customer 3', phone='+81901234569')
+        
+        # BillCustomer を作成（customer1 を参加させる）
+        bill_customer = BillCustomer.objects.create(bill=bill, customer=customer1)
+        
+        client = APIClient()
+        client.force_authenticate(user=user)
+        client.defaults['HTTP_X_STORE_ID'] = str(store.id)
+        
+        return {
+            'store': store,
+            'user': user,
+            'bill': bill,
+            'customer1': customer1,
+            'customer2': customer2,
+            'customer3': customer3,
+            'bill_customer': bill_customer,
+            'client': client,
+        }
+    
+    def test_patch_billcustomer_replace_customer(self, api_setup):
+        """PATCH /api/billing/bill-customers/{id}/ で customer を差し替える"""
+        d = api_setup
+        
+        # customer1 → customer2 に差し替え
+        url = f'/api/billing/bill-customers/{d["bill_customer"].id}/'
+        data = {'customer': d['customer2'].id}
+        
+        response = d['client'].patch(url, data, format='json')
+        assert response.status_code == 200
+        
+        # DB で確認
+        updated = BillCustomer.objects.get(id=d['bill_customer'].id)
+        assert updated.customer == d['customer2']
+        assert updated.arrived_at is not None  # arrived_at は変わらない
+    
+    def test_patch_billcustomer_duplicate_customer_reject(self, api_setup):
+        """同じ bill に同じ customer が既に存在する場合、差し替えを拒否"""
+        d = api_setup
+        
+        # customer2 を同じ bill に追加
+        BillCustomer.objects.create(bill=d['bill'], customer=d['customer2'])
+        
+        # customer1 → customer2 に差し替えようとする（customer2 は既に参加）
+        url = f'/api/billing/bill-customers/{d["bill_customer"].id}/'
+        data = {'customer': d['customer2'].id}
+        
+        response = d['client'].patch(url, data, format='json')
+        assert response.status_code == 400
+        # unique constraint またはバリデーション エラーが返される
+        assert 'customer' in response.data or 'non_field_errors' in response.data
+    
+    def test_patch_billcustomer_self_replace_allowed(self, api_setup):
+        """自分自身の customer を指定する場合は OK（冪等性）"""
+        d = api_setup
+        
+        # customer1 → customer1 に差し替え（自分自身）
+        url = f'/api/billing/bill-customers/{d["bill_customer"].id}/'
+        data = {'customer': d['customer1'].id}
+        
+        response = d['client'].patch(url, data, format='json')
+        assert response.status_code == 200
+        
+        # 変わらないはず
+        updated = BillCustomer.objects.get(id=d['bill_customer'].id)
+        assert updated.customer == d['customer1']
+    
+    def test_patch_billcustomer_preserve_times(self, api_setup):
+        """customer を差し替える際、arrived_at/left_at は保持される"""
+        d = api_setup
+        
+        # 既に IN/OUT がある状態
+        arrived = timezone.now()
+        left = arrived + timedelta(hours=2)
+        d['bill_customer'].arrived_at = arrived
+        d['bill_customer'].left_at = left
+        d['bill_customer'].save()
+        
+        # customer を差し替え
+        url = f'/api/billing/bill-customers/{d["bill_customer"].id}/'
+        data = {'customer': d['customer2'].id}
+        
+        response = d['client'].patch(url, data, format='json')
+        assert response.status_code == 200
+        
+        # 時刻は保持されるはず
+        updated = BillCustomer.objects.get(id=d['bill_customer'].id)
+        assert updated.customer == d['customer2']
+        assert updated.arrived_at == arrived
+        assert updated.left_at == left

@@ -278,7 +278,11 @@ class BillViewSet(viewsets.ModelViewSet):
         table = serializer.validated_data.get("table")
         if not table or table.store_id != sid:
             raise ValidationError({"table": "他店舗の卓は指定できません。"})
-        serializer.save()
+        bill = serializer.save()
+        
+        # pax が指定されていれば、BillCustomer を同期
+        from .services.bill_customer_sync import ensure_bill_customers_for_pax
+        ensure_bill_customers_for_pax(bill)
 
     def perform_update(self, serializer):
         sid = self._sid()
@@ -291,9 +295,16 @@ class BillViewSet(viewsets.ModelViewSet):
         discount_rule_updated = 'discount_rule' in serializer.validated_data
         service_toggle_updated = 'apply_service_charge' in serializer.validated_data
         tax_toggle_updated = 'apply_tax' in serializer.validated_data
+        pax_updated = 'pax' in serializer.validated_data
         old_discount_rule_id = bill.discount_rule_id if hasattr(bill, 'discount_rule_id') else None
 
         serializer.save()
+
+        # pax が更新された場合、BillCustomer を同期
+        if pax_updated:
+            bill.refresh_from_db()
+            from .services.bill_customer_sync import ensure_bill_customers_for_pax
+            ensure_bill_customers_for_pax(bill)
 
         # discount_ruleが変更された場合、金額を再計算
         if discount_rule_updated or service_toggle_updated or tax_toggle_updated:
@@ -373,7 +384,7 @@ class BillViewSet(viewsets.ModelViewSet):
         from .models import BillCustomer
         from .serializers_timeline import BillCustomerSerializer
         
-        bill_customers = BillCustomer.objects.filter(bill=bill).select_related("customer")
+        bill_customers = BillCustomer.objects.filter(bill=bill).select_related("customer").order_by('id')
         serializer = BillCustomerSerializer(bill_customers, many=True)
         
         return Response({

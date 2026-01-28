@@ -1,12 +1,19 @@
 <script setup>
 import { ref, watch, computed, onMounted, nextTick } from 'vue'
 import dayjs from 'dayjs'
+import { useBillCustomers } from '@/composables/useBillCustomers'
+import { useNominations } from '@/composables/useNominations'
 import { fetchDiscountRules } from '@/api'
+import TableCustomersPanel from '@/components/billing/TableCustomersPanel.vue'
+import NominationSummaryPanel from '@/components/billing/NominationSummaryPanel.vue'
 
 /* ---------------------------------------------------------
  * Props / Emits
  * --------------------------------------------------------- */
 const props = defineProps({
+  // 伝票ID（顧客/本指名パネル用）
+  billId: { type: [Number, null], default: null },
+
   // 履歴・表示用
   items: { type: Array, default: () => [] },
   masterNameMap: { type: Object, default: () => ({}) },
@@ -41,7 +48,8 @@ const props = defineProps({
 
   // 店舗識別（親から slug を渡す）
   storeSlug: { type: String, default: '' },
-
+  // パネル管理
+  pane: { type: String, default: 'base' },
   // （互換）単位指定：現行の“ステップ割引”では Admin 側ルールを使うため未使用だが props として残す
   dosukoiDiscountUnit: { type: Number, default: 1000 },
 })
@@ -65,6 +73,59 @@ const emit = defineEmits([
  * --------------------------------------------------------- */
 const dirtyTotal = ref(false)
 
+/* 顧客・本指名パネルのアコーディオン状態 */
+const showNominationPanel = ref(false)
+
+// 本指名タグ用データ
+const billCustomersComp = useBillCustomers()
+const nominationsComp = useNominations()
+const nominationIntervals = ref([]) // [{ customer_id, start:dayjs, end:dayjs, label }]
+
+function buildNominationIntervals() {
+  const custs = billCustomersComp.customers.value || []
+  const noms = nominationsComp.nominations.value || []
+  if (!custs.length || !noms.length) {
+    nominationIntervals.value = []
+    return
+  }
+
+  // 本指名顧客の集合（customer_id）
+  const nominatedSet = new Set(
+    noms
+      .map(n => n?.customer_id)
+      .filter(id => id != null)
+  )
+
+  const intervals = []
+  const now = dayjs()
+  for (const bc of custs) {
+    const cid = bc.customer_id ?? bc.customer
+    if (!nominatedSet.has(cid)) continue
+    if (!bc.arrived_at) continue // 到着なしは区間なし
+    const start = dayjs(bc.arrived_at)
+    const end = bc.left_at ? dayjs(bc.left_at) : now
+    const guestName = cid != null ? `Guest-${String(cid).padStart(6, '0')}` : 'Guest'
+    const label = bc.display_name || bc.customer_name || guestName
+    intervals.push({ customer_id: cid, start, end, label })
+  }
+  nominationIntervals.value = intervals
+}
+
+function matchNominationLabelsForItem(it) {
+  const tStr = pickTime(it)
+  if (!tStr) return []
+  const t = dayjs(tStr)
+  const labels = []
+  for (const w of nominationIntervals.value) {
+    if (!w.start || !w.end) continue
+    // [start, end) 区間判定
+    if (!t.isBefore(w.end) || !t.isAfter(w.start) && !t.isSame(w.start)) continue
+    // 上の条件だと inclusive start, exclusive end を再現
+    labels.push(w.label)
+  }
+  return labels
+}
+
 const hasExistingPayment = computed(() => {
   const c = Number(props.paidCash || 0)
   const k = Number(props.paidCard || 0)
@@ -85,10 +146,46 @@ onMounted(() => {
   if (hasExistingPayment.value) dirtyTotal.value = true
 })
 
+// billId に応じてデータ取得
+watch(() => props.billId, async (id) => {
+  if (!id) {
+    nominationIntervals.value = []
+    return
+  }
+  try {
+    await billCustomersComp.fetchBillCustomers(id)
+    await nominationsComp.fetchNominations(id)
+  } finally {
+    buildNominationIntervals()
+  }
+}, { immediate: true })
+
 /* 時刻表示など（履歴カード用） */
 const pickTime = (it) =>
   it?.ordered_at || it?.served_at || it?.created_at || it?.updated_at || props.billOpenedAt || null
 const fmtTime  = (t) => t ? dayjs(t).format('YYYY/M/D HH:mm') : ''
+
+/* 顧客/担当の表示ラベル */
+function getCustomerBadgeText(it) {
+  const c = it?.customer
+  if (!c) return null
+  const name = c.display_name || c.customer_name || c.name
+  if (name) return name
+  const id = (typeof c === 'object') ? c.id : c
+  if (id != null) return `Guest-${String(id).padStart(6, '0')}`
+  return 'Guest'
+}
+
+function getServedByName(it) {
+  // 優先: オブジェクト上の stage_name
+  const cast = it?.served_by_cast
+  if (cast?.stage_name) return cast.stage_name
+  // 次: servedByMap から解決
+  const id = Number(it?.served_by_cast_id ?? cast?.id)
+  const key = String(Number.isFinite(id) ? id : '')
+  if (key && props.servedByMap && props.servedByMap[key]) return props.servedByMap[key]
+  return null
+}
 
 /* ---------------------------------------------------------
  * 会計金額の自動追従（サーバ計算→クライアント settledTotal へ）
@@ -618,9 +715,40 @@ function removeSavedDiscount(index) {
 <template>
 <div class="panel pay">
   <div class="d-flex flex-column gap-4">
+
+    <!-- 顧客・本指名パネル（アコーディオン） -->
+    <div v-if="props.billId" class="card border">
+      <div class="card-header p-0">
+        <button
+          class="btn btn-link w-100 text-start d-flex align-items-center justify-content-between p-2"
+          type="button"
+          @click="showNominationPanel = !showNominationPanel"
+        >
+          <span class="fw-bold">顧客・本指名管理</span>
+          <IconChevronUp :class="{'rotate-180': showNominationPanel}" :size="20" />
+        </button>
+      </div>
+      <div class="card-body p-2" v-show="showNominationPanel">
+        <!-- 顧客パネル -->
+        <div class="mb-3">
+          <TableCustomersPanel :billId="props.billId" />
+        </div>
+        
+        <!-- 本指名サマリー -->
+        <div>
+          <NominationSummaryPanel :billId="props.billId" />
+        </div>
+      </div>
+    </div>
+
     <!-- 履歴 -->
     <div class="history-list d-flex flex-column gap-3">
-      <div v-for="it in items" :key="it.id" class="card bg-light d-flex flex-row justify-content-between">
+      <div
+        v-for="it in items"
+        :key="it.id"
+        class="card bg-light d-flex flex-row justify-content-between"
+        :class="{ 'is-nomination-window': matchNominationLabelsForItem(it).length > 0 }"
+      >
         <div class="item-area p-2 d-flex flex-column gap-2 flex-grow-1">
           <div class="d-flex align-items-center gap-2 text-secondary" style="font-size:1rem;">
             <div class="id">#{{ it.id }}</div>
@@ -633,12 +761,29 @@ function removeSavedDiscount(index) {
               {{ it.name || masterNameMap[String(it.item_master)] || ('#'+it.item_master) }}
             </div>
             <div class="price">¥{{ (it.subtotal ?? 0).toLocaleString() }}</div>
-            <div v-if="it.customer" class="badge bg-info text-dark small">
-              {{ it.customer.display_name || it.customer.customer_name || '顧客' }}
-            </div>
+            <span v-if="it.customer" class="badge bg-info text-dark small">
+              客：{{ getCustomerBadgeText(it) }}
+            </span>
+
+            <!-- 本指名期間タグ（赤系バッジ・複数対応） -->
+            <template v-if="matchNominationLabelsForItem(it).length">
+              <span
+                v-for="name in matchNominationLabelsForItem(it)"
+                :key="name"
+                class="badge bg-danger text-white small"
+              >
+                本指名期間：{{ name }}
+              </span>
+            </template>
           </div>
           <div class="cast d-flex align-items-center gap-2 flex-wrap">
             <IconUser :size="16" />
+
+            <!-- 担当キャストの明示表示（選択UIとは別に） -->
+            <span v-if="getServedByName(it)" class="badge bg-secondary small d-inline-flex align-items-center gap-1">
+              <IconUser :size="14" />
+              担当：{{ getServedByName(it) }}
+            </span>
 
             <select
               class="form-select form-select-sm w-auto"
@@ -968,5 +1113,10 @@ function removeSavedDiscount(index) {
 .form-control.meisai::-webkit-input-placeholder { font-size: .8rem !important; }
 /* Firefox */
 .form-control.meisai::-moz-placeholder          { font-size: .8rem !important; }
+
+.is-nomination-window {
+  border: 2px solid #dc3545; /* 赤枠（仮） */
+  background-color: rgba(220, 53, 69, 0.06); /* 薄い赤背景（視認性UP） */
+}
 
 </style>

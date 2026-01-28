@@ -78,11 +78,30 @@ export function useBillCustomerTimeline() {
     }
   }
 
+  /**
+   * arrived_at/left_at を手動更新
+   */
+  async function updateTimes(billCustomerId, payload) {
+    loading.value = true
+    error.value = null
+
+    try {
+      await api.patch(`/billing/bill-customers/${billCustomerId}/`, payload)
+    } catch (e) {
+      console.error('[useBillCustomerTimeline.updateTimes]', e)
+      error.value = e
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
     markArrived,
     markLeft,
-    clearLeft
+    clearLeft,
+    updateTimes
   }
 }
