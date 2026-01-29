@@ -4,7 +4,7 @@ import dayjs from 'dayjs'
 import Avatar from '@/components/Avatar.vue'
 import Multiselect from 'vue-multiselect'
 import 'vue-multiselect/dist/vue-multiselect.css'
-import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings, fetchMasters, fetchBillTags, fetchCustomers } from '@/api'  // ← fetchCustomers 追加
+import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings, fetchMasters, fetchBillTags, fetchCustomers, patchBill, api } from '@/api'  // ← api 追加
 import { useBillCustomers } from '@/composables/useBillCustomers'
 import { useBillCustomerTimeline } from '@/composables/useBillCustomerTimeline'
 
@@ -66,6 +66,9 @@ const props = defineProps({
   // タグ
   tags: { type: Array, default: () => [] },  // BillTag オブジェクトの配列
   selectedTagIds: { type: Array, default: () => [] },  // 選択済みのタグ ID リスト
+  
+  // 親から渡された bill customers（優先使用）
+  billCustomersFromParent: { type: Array, default: null },
 })
 
 const emit = defineEmits([
@@ -172,11 +175,41 @@ function cancelEditBillCustomerLeft(bcId) {
 
 async function refreshBillCustomers() {
   if (!props.billId) return
+  
+  // 【修正】親からbillCustomersが渡されている場合はそれを使用
+  if (props.billCustomersFromParent !== null && Array.isArray(props.billCustomersFromParent)) {
+    billCustomers.value = [...props.billCustomersFromParent]
+    
+    if (import.meta.env.DEV) {
+      console.log(`[BasicsPanel] 親からのbillCustomersを使用:`, {
+        billId: props.billId,
+        '顧客数': billCustomers.value.length,
+        '顧客ID一覧': billCustomers.value.map(bc => bc.id)
+      })
+    }
+    return
+  }
+  
+  // 親から渡されていない場合は自分で取得
   loadingBillCustomers.value = true
   billCustomersError.value = ''
   try {
     await billCustomersComp.fetchBillCustomers(props.billId)
-    billCustomers.value = billCustomersComp.customers.value || []
+    
+    // 【フェーズ5】明示的に新しい配列を作成してリアクティビティを確実にする
+    const freshList = billCustomersComp.customers.value || []
+    billCustomers.value = [...freshList]  // スプレッド演算子で新配列作成
+    
+    // 【フェーズ5】詳細デバッグログ（DEV環境のみ）
+    if (import.meta.env.DEV) {
+      console.log(`[フェーズ5] refreshBillCustomers完了:`, {
+        billId: props.billId,
+        'billCustomers.length': billCustomers.value.length,
+        'APIから取得した件数': freshList.length,
+        '配列が更新されたか': billCustomers.value !== freshList,
+        '顧客ID一覧': billCustomers.value.map(bc => bc.id)
+      })
+    }
   } catch (e) {
     console.warn('[BasicsPanel] fetch bill customers failed', e)
     billCustomersError.value = '顧客の取得に失敗しました'
@@ -191,7 +224,27 @@ watch(() => props.billId, async (id) => {
   await refreshBillCustomers()
 }, { immediate: true })
 
-watch(billCustomers, async (list) => {
+// 親からbillCustomersが渡された場合はそれを反映
+watch(() => props.billCustomersFromParent, (newVal) => {
+  if (newVal !== null && Array.isArray(newVal)) {
+    billCustomers.value = [...newVal]
+    if (import.meta.env.DEV) {
+      console.log('[BasicsPanel] billCustomersFromParentが更新されました:', newVal.length)
+    }
+  }
+}, { deep: true })
+
+watch(billCustomers, async (list, oldList) => {
+  // 【フェーズ5】watch発火のデバッグログ
+  if (import.meta.env.DEV) {
+    console.log(`[フェーズ5] watch(billCustomers)発火:`, {
+      '新しい件数': list?.length || 0,
+      '前回の件数': oldList?.length || 0,
+      '増減': (list?.length || 0) - (oldList?.length || 0),
+      '顧客ID一覧': list?.map(bc => bc.id) || []
+    })
+  }
+  
   const a = {}
   const l = {}
   for (const bc of (list || [])) {
@@ -201,9 +254,17 @@ watch(billCustomers, async (list) => {
   editArrivedLocal.value = a
   editLeftLocal.value = l
   
-  // 初期状態で最初の顧客を自動選択（未選択の場合）
-  if (!selectedBillCustomer.value && list.length > 0) {
-    await selectBillCustomer(list[0])
+  // 【フェーズ2】初期状態で最初の顧客を自動選択（未選択の場合）
+  if (list.length > 0) {
+    // 選択中のIDが存在しない、またはリストに含まれない場合は先頭を選択
+    const hasSelected = list.some(bc => bc.id === selectedBillCustomerId.value)
+    if (!hasSelected) {
+      selectedBillCustomerId.value = list[0].id
+      await selectBillCustomer(list[0])
+    }
+  } else {
+    selectedBillCustomerId.value = null
+    selectedBillCustomer.value = null
   }
 }, { deep: true })
 
@@ -376,12 +437,8 @@ const totalGuests = computed(() =>
   (Number(maleRef.value)||0) + (Number(femaleRef.value)||0)
 )
 
-// 男/女変更時に親へ pax 同期（男+女が0なら上書きしない）
-watch([maleRef, femaleRef], ([m, f]) => {
-  const total = (Number(m) || 0) + (Number(f) || 0)
-  if (total === 0) return
-  emit('update:pax', total)
-}, { immediate: true })
+// 【フェーズ1】男/女変更時は即座に親に通知しない（ローカル状態のみ更新）
+// pax反映は「更新」ボタン押下時のみ行う
 
 const qtyOf = (k) => (k==='male' ? Number(maleRef.value)||0 : Number(femaleRef.value)||0)
 function inc(k, id){ 
@@ -578,9 +635,36 @@ function beginEditPax() {
   editPaxLocal.value = Number(props.pax) || 0
   editingPax.value = true
 }
-function saveEditPax() {
-  emit('update:pax', Number(editPaxLocal.value) || 0)
+async function saveEditPax() {
+  const newPax = Number(editPaxLocal.value) || 0
   editingPax.value = false
+  
+  // 【フェーズ1】既存伝票の場合は即座にAPI更新
+  if (props.billId) {
+    try {
+      await patchBill(props.billId, { pax: newPax })
+      emit('update:pax', newPax)
+      
+      // 【フェーズ1】pax更新後に顧客リストを再取得
+      await refreshBillCustomers()
+      
+      if (import.meta.env.DEV) {
+        console.log(`[フェーズ1] 人数編集保存完了:`, {
+          billId: props.billId,
+          newPax,
+          '顧客数': billCustomers.value.length
+        })
+      }
+    } catch (e) {
+      console.error('[BasicsPanel] pax update failed:', e)
+      alert('人数の更新に失敗しました')
+    }
+  } else {
+    // 新規伝票の場合はローカル状態のみ更新
+    emit('update:pax', newPax)
+  }
+  
+  // 【フェーズ0】pax更新後の真実確認ログは削除（フェーズ1で統合）
 }
 
 // 延長→会計パネルへ
@@ -734,8 +818,10 @@ function applySet(){
     }
   }
 
+  // 【フェーズ1】paxも一緒に送信
   emit('applySet', {
     lines,
+    pax: paxTotal,  // 人数を含める
     config: { night: !!nightRef.value },
     discount_code: (specialRef.value !== 'none') ? String(specialRef.value) : null,
   })
@@ -754,6 +840,9 @@ const selectedCustomer = ref(null)
 // 顧客ブロックから選択した顧客（詳細情報取得済み）
 const selectedBillCustomer = ref(null)
 
+// 【フェーズ2】選択中のBillCustomer ID（ラジオ的選択）
+const selectedBillCustomerId = ref(null)
+
 // props.customer が変更されたら selectedCustomer に反映
 watch(() => props.customer, (newCustomer) => {
   if (newCustomer && !selectedCustomer.value) {
@@ -761,9 +850,12 @@ watch(() => props.customer, (newCustomer) => {
   }
 }, { immediate: true })
 
-// 顧客ブロックの名前をタップして顧客情報を詳細表示
+// 【フェーズ2】顧客ブロックの名前をタップして顧客情報を詳細表示
 async function selectBillCustomer(bc) {
   try {
+    // 【フェーズ2】選択状態を更新（ラジオ的）
+    selectedBillCustomerId.value = bc.id
+    
     // 顧客マスタから詳細情報を取得
     const customerId = bc.customer || bc.customer_id
     if (!customerId) {
@@ -771,15 +863,17 @@ async function selectBillCustomer(bc) {
       return
     }
     
-    // fetchCustomers で全顧客を取得して該当を探す
-    const data = await fetchCustomers()
-    const customers = data.results || data || []
-    const customer = customers.find(c => Number(c.id) === Number(customerId))
-    
-    if (customer) {
-      selectedBillCustomer.value = customer
-    } else {
-      selectedBillCustomer.value = null
+    // 【フェーズ2】fetchCustomer単体取得を試みる（軽量化）
+    // api.jsに単体取得がない場合は全件取得にフォールバック
+    try {
+      const { data } = await api.get(`/billing/customers/${customerId}/`)
+      selectedBillCustomer.value = data
+    } catch (e) {
+      // フォールバック: 全件取得して探す
+      const data = await fetchCustomers()
+      const customers = data.results || data || []
+      const customer = customers.find(c => Number(c.id) === Number(customerId))
+      selectedBillCustomer.value = customer || null
     }
   } catch (e) {
     console.warn('[BasicsPanel] selectBillCustomer failed', e)
@@ -1117,16 +1211,19 @@ function customLabel(customer) {
             <div v-if="!billCustomers.length" class="text-muted small">
               {{ customerName || '未選択' }}
             </div>
-            <div v-else class="d-flex flex-column gap-2">
-              <div v-for="bc in billCustomers" :key="bc.id" class="border-bottom pb-2">
-                <div class="fw-bold mb-1">{{ bc.display_name || bc.customer_name || '未選択' }}様</div>
-                <span v-if="bc.arrived_at" class="d-flex align-items-center gap-1 small">
-                  <span class="badge bg-secondary text-white">入店</span>{{ dayjs(bc.arrived_at).format('HH:mm') }}
-                </span>
-                <span v-if="bc.left_at" class="d-flex align-items-center gap-1 small">
-                  <span class="badge bg-primary text-white">退店</span>{{ dayjs(bc.left_at).format('HH:mm') }}
-                </span>
-              </div>
+            <!-- 【フェーズ2】ラジオ風チップ表示 -->
+            <div v-else class="d-flex flex-wrap gap-2">
+              <button
+                v-for="bc in billCustomers"
+                :key="bc.id"
+                type="button"
+                class="btn btn-sm"
+                :class="selectedBillCustomerId === bc.id ? 'btn-primary' : 'btn-outline-secondary'"
+                @click="selectBillCustomer(bc)"
+              >
+                <span class="fw-bold">{{ bc.display_name || bc.customer_name || 'Guest' }}</span>
+                <span v-if="bc.arrived_at" class="ms-1 small">({{ dayjs(bc.arrived_at).format('HH:mm') }}~)</span>
+              </button>
             </div>
             <button class="btn btn-outline-danger btn-sm df-center gap-1 w-100 mt-2" @click="beginEditCustomer">
               <IconPencil />編集
@@ -1174,12 +1271,14 @@ function customLabel(customer) {
                 名前
               </div>
               <div class="col-7">
-                <!-- ※ここをタップしたら下の情報が変わる -->
+                <!-- 【フェーズ2】タップで選択、選択中をハイライト -->
                 <div 
-                  class="fw-bold fs-5 cursor-pointer text-primary"
+                  class="fw-bold fs-5 cursor-pointer"
+                  :class="selectedBillCustomerId === bc.id ? 'text-primary' : 'text-secondary'"
                   @click="selectBillCustomer(bc)"
                   style="cursor: pointer; text-decoration: underline;">
-                 {{ customerName || representativeCustomerDisplay || '未選択' }}様
+                 {{ bc.display_name || bc.customer_name || 'Guest' }}様
+                 <span v-if="selectedBillCustomerId === bc.id" class="badge bg-primary ms-2">選択中</span>
                 </div>
                 
                 <div v-if="editingReplaceCustomer[bc.id]" class="d-flex gap-2 align-items-center flex-column mt-2">

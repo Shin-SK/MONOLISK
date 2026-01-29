@@ -383,9 +383,20 @@ class BillViewSet(viewsets.ModelViewSet):
         
         from .models import BillCustomer
         from .serializers_timeline import BillCustomerSerializer
+        import logging
+        logger = logging.getLogger(__name__)
         
         bill_customers = BillCustomer.objects.filter(bill=bill).select_related("customer").order_by('id')
+        
+        # デバッグログ：実際のクエリ結果を確認
+        logger.info(f"[customers API] bill_id={bill.id}, queryset count={bill_customers.count()}")
+        for bc in bill_customers:
+            logger.info(f"  - BillCustomer id={bc.id}, customer_id={bc.customer_id}, arrived_at={bc.arrived_at}, left_at={bc.left_at}")
+        
         serializer = BillCustomerSerializer(bill_customers, many=True)
+        
+        # デバッグログ：シリアライズ後の件数
+        logger.info(f"[customers API] serialized data count={len(serializer.data)}")
         
         return Response({
             "results": serializer.data

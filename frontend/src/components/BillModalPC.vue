@@ -206,6 +206,15 @@ const applyTax = ref(props.bill?.apply_tax !== false)
 watch(() => props.bill?.apply_service_charge, v => { applyServiceCharge.value = v !== false })
 watch(() => props.bill?.apply_tax, v => { applyTax.value = v !== false })
 
+// 【フェーズ1】人数状態を items から計算（BillModalSP.vue と同様）
+const maleFromItems = computed(() =>
+  (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setMale' ? Number(it.qty||0) : 0), 0)
+)
+const femaleFromItems = computed(() =>
+  (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setFemale' ? Number(it.qty||0) : 0), 0)
+)
+const paxFromItems = computed(() => maleFromItems.value + femaleFromItems.value)
+
 async function onApplyServiceChangePc(v) {
   const next = !!v
   const prev = applyServiceCharge.value
@@ -244,9 +253,49 @@ async function onApplyTaxChangePc(v) {
   }
 }
 
-function onApplySet(payload){
+async function onApplySet(payload){
   const lines = Array.isArray(payload?.lines) ? payload.lines : []
   const discountCode = payload?.discount_code || null
+  const pax = Number(payload?.pax) || 0
+  
+  // 【フェーズ1】pax更新がある場合は先にAPI反映
+  if (pax > 0 && props.bill?.id) {
+    try {
+      await patchBill(props.bill.id, { pax })
+      if (props.bill) props.bill.pax = pax
+      
+      // 【フェーズ1】pax更新後に顧客リストを再取得
+      await billCustomersComposable.fetchBillCustomers(props.bill.id)
+      
+      // 【フェーズ5】より詳細なログで切り分け可能にする
+      if (import.meta.env.DEV) {
+        console.log(`[フェーズ5] pax更新完了 → 顧客再取得:`, {
+          billId: props.bill.id,
+          '更新後のpax': pax,
+          'API応答の顧客数': billCustomersComposable.customers.value?.length || 0,
+          '顧客ID一覧': (billCustomersComposable.customers.value || []).map(bc => bc.id),
+          'タイムスタンプ': new Date().toISOString()
+        })
+        
+        // 【フェーズ5】期待値チェック
+        const expectedCount = pax
+        const actualCount = billCustomersComposable.customers.value?.length || 0
+        if (expectedCount !== actualCount) {
+          console.warn(`[フェーズ5] ⚠️ 顧客数不一致検出:`, {
+            '期待値(pax)': expectedCount,
+            '実際の顧客数': actualCount,
+            '差分': actualCount - expectedCount,
+            '問題': actualCount < expectedCount ? 'API側で顧客が作成されていない可能性' : 'pax より多い顧客が存在'
+          })
+        }
+      }
+    } catch (e) {
+      console.error('[applySet] pax update failed:', e)
+      alert('人数の更新に失敗しました')
+      return
+    }
+  }
+  
   if (!lines.length && !discountCode) return
 
   const byCat  = new Map((masters.value || []).map(m => [String(m?.category?.code || ''), m]))
@@ -520,11 +569,12 @@ const orderMastersForPanel = computed(() =>
 /* 注文ペンディング */
 const pending = ref([])   // [{ master_id, qty, cast_id, customer_id }]
 const selectedCustomerId = ref(null)  // 注文作成時の顧客選択
-const onAddPending   = (masterId, qty) => pending.value.push({ 
+// 【フェーズ3】castId と customerId を引数で受け取る
+const onAddPending   = (masterId, qty, castId, customerId) => pending.value.push({ 
   master_id: masterId, 
   qty: Number(qty)||0, 
-  cast_id: servedByCastId.value ?? null,
-  customer_id: selectedCustomerId.value ?? null
+  cast_id: castId ?? servedByCastId.value ?? null,
+  customer_id: customerId ?? selectedCustomerId.value ?? null
 })
 const onRemovePending = (i) => pending.value.splice(i, 1)
 const onClearPending  = () => (pending.value = [])
@@ -922,7 +972,6 @@ watch(freeCastIds, list => {
               v-model:seatType="seatType"
 
               @update:tableId="v => (form.table_id = v)"
-              @update:pax="v => (pax = v)"
               @update:applyService="onApplyServiceChangePc"
               @update:applyTax="onApplyTaxChangePc"
               @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"

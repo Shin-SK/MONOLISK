@@ -997,6 +997,88 @@ async function onSetMain(castId){
   try { await ed.setMain(Number(castId)) } catch {}
 }
 
+// 【本指×顧客機能】顧客選択モーダルから確定された本指名
+async function onSetMainWithCustomer(payload){
+  const { castId, customerId } = payload
+  
+  // 【調査A】UIイベント確認ログ
+  console.log('[BillModalSP] onSetMainWithCustomer 呼び出し:', {
+    billId: props.bill?.id,
+    castId,
+    customerId,
+    payload
+  })
+  
+  if (!castId || !customerId) {
+    console.warn('[BillModalSP] castId または customerId が不正:', { castId, customerId })
+    return
+  }
+
+  // ① 楽観的UI更新（赤くする）
+  console.log('[BillModalSP] 楽観的UI更新実行')
+  updateStayLocal(castId, { stay_type:'nom', is_help:false })
+  
+  // ★ 重要: ed.mainIds も同期（ed.save() で正しく認識させる）
+  if (ed.mainIds && !ed.mainIds.value.includes(Number(castId))) {
+    ed.mainIds.value = [...ed.mainIds.value, Number(castId)]
+  }
+  // freeIds から除外（本指名はフリーではない）
+  if (ed.freeIds) {
+    ed.freeIds.value = ed.freeIds.value.filter(id => Number(id) !== Number(castId))
+  }
+  // dohanIds から除外（本指名は同伴ではない）
+  if (ed.dohanIds) {
+    ed.dohanIds.value = ed.dohanIds.value.filter(id => Number(id) !== Number(castId))
+  }
+
+  // ② nominations API を叩く（正しいペイロード形式）
+  if (props.bill?.id) {
+    const requestPayload = {
+      customer_id: Number(customerId),
+      cast_ids: [Number(castId)],
+    }
+    
+    console.log('[BillModalSP] POST nominations 送信開始:', {
+      url: `/billing/bills/${props.bill.id}/nominations/`,
+      payload: requestPayload
+    })
+    
+    try {
+      const response = await api.post(`/billing/bills/${props.bill.id}/nominations/`, requestPayload)
+      
+      // 【調査B】Network結果確認
+      console.log('[BillModalSP] POST nominations 成功:', {
+        status: response.status,
+        data: response.data
+      })
+      
+      // ③【オプション】BasicsPanel の初期選択顧客を更新したい場合
+      // ed.selectedCustomerId.value = Number(customerId)
+    } catch (e) {
+      // 【調査B】エラー詳細確認
+      console.error('[BillModalSP] POST nominations 失敗:', {
+        status: e.response?.status,
+        statusText: e.response?.statusText,
+        data: e.response?.data,
+        error: e
+      })
+      alert('本指名の登録に失敗しました')
+      // 楽観更新をロールバック
+      updateStayLocal(castId, { stay_type:'free', is_help:false })
+      // ed.mainIds もロールバック
+      if (ed.mainIds) {
+        ed.mainIds.value = ed.mainIds.value.filter(id => Number(id) !== Number(castId))
+      }
+      // freeIds に戻す
+      if (ed.freeIds && !ed.freeIds.value.includes(Number(castId))) {
+        ed.freeIds.value = [...ed.freeIds.value, Number(castId)]
+      }
+    }
+  } else {
+    console.warn('[BillModalSP] bill.id が存在しないため、API呼び出しをスキップ')
+  }
+}
+
 async function onSetFree(castId){
   // 青：free + is_help=false に即時反映
   updateStayLocal(castId, { stay_type:'free', is_help:false })
@@ -1068,10 +1150,22 @@ function normalizeHelpBeforeSave(){
 const saving = ref(false)
 async function handleSave(){
   if (saving.value) return
+  
+  // 【調査C】保存前の状態確認
+  console.log('[BillModalSP] handleSave 開始:', {
+    billId: props.bill?.id,
+    'stays数': props.bill?.stays?.length,
+    'nom stays': props.bill?.stays?.filter(s => s.stay_type === 'nom' && !s.left_at).length
+  })
+  
   saving.value = true
   try{
     normalizeHelpBeforeSave()
+    
+    console.log('[BillModalSP] ed.save() 実行前')
     const optimistic = await ed.save()
+    
+    console.log('[BillModalSP] ed.save() 完了:', optimistic)
     emit('saved', optimistic)
   }finally{
     saving.value = false
@@ -1127,6 +1221,7 @@ function handleClose() {
       :tags="billTags"
       :selected-tag-ids="selectedTagIds"
       :history-events="historyEvents"
+      :bill-customers-from-parent="(billCustomersComposable.customers.value?.length > 0) ? billCustomersComposable.customers.value : null"
       @update-times="onUpdateTimes"
       @update:seatType="onSeatTypeChange" 
       @update:tableId="v => (ed.tableId.value = v)"
@@ -1150,11 +1245,14 @@ function handleClose() {
       :on-duty-ids="onDutyIds"
       :keyword="ed.castKeyword.value"
       :history-events="historyEvents"
+      :bill-id="props.bill?.id"
+      :bill-customers="billCustomersComposable.customers.value || []"
       @update:keyword="v => (ed.castKeyword.value = v)"
       @setFree="onSetFree"
       @setInhouse="onSetInhouse"
       @setDohan="onSetDohan"
       @setMain="onSetMain"
+      @setMainWithCustomer="onSetMainWithCustomer"
       @removeCast="onRemoveCast"
       @setHelp="onSetHelp"
       @save="handleSave"

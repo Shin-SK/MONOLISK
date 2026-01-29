@@ -33,6 +33,14 @@ export function useBillCustomers() {
       const response = await api.get(`/billing/bills/${billId}/customers/`, { cache: false })
       const data = response.data?.results || []
 
+      // 【フェーズ0】API応答の生データをログ出力（DEV環境のみ）
+      if (import.meta.env?.DEV) {
+        console.log(`[フェーズ0] GET /bills/${billId}/customers/ 応答:`, {
+          'results件数': data.length,
+          'response.data全体': response.data
+        })
+      }
+
       // 整形：display_name がない場合は Guest-XXXXXX を使う（6桁ゼロ埋め）
       customers.value = data.map(bc => {
         const cid = bc.customer_id ?? bc.customer

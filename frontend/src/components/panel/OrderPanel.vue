@@ -140,9 +140,9 @@ function confirmAdd(masterId) {
     return
   }
 
-  // ★ 親が cast_id を受け取れるように addPending を拡張する前提
-  //  (現状 emit('addPending', id, q) なので、親も 3引数対応にする)
-  emit('addPending', masterId, q, ensured)
+  // 【フェーズ3】顧客IDも一緒に送信（親側で customer_id として保持される）
+  // emit('addPending', masterId, qty, castId, customerId)
+  emit('addPending', masterId, q, ensured, props.selectedCustomerId)
 
   activeMasterId.value = null
   pokeCartFeedback()
@@ -151,6 +151,17 @@ function confirmAdd(masterId) {
 const k = (v) => (v == null ? '' : String(v))
 
 const yen = (n) => `¥${(Number(n) || 0).toLocaleString()}`
+
+// 【フェーズ3】顧客ID → 表示名のマップ
+const billCustomersMap = computed(() => {
+  const map = {}
+  for (const bc of (props.billCustomers || [])) {
+    if (bc && bc.customer_id) {
+      map[String(bc.customer_id)] = bc.display_name || bc.customer_name || `Guest-${String(bc.customer_id).padStart(6, '0')}`
+    }
+  }
+  return map
+})
 
 const priceOf = (id) => {
   const key = String(id)
@@ -318,8 +329,14 @@ const cartSubtotal = computed(() =>
                 || (orderMasters.find(x => x.id === p.master_id)?.name)
                 || ('#' + p.master_id) }}
               </div>
-              <div v-if="p.cast_id" class="badge bg-secondary">
-                {{ servedByMap[String(p.cast_id)] || ('cast#' + p.cast_id) }}
+              <!-- 【フェーズ3】担当と顧客を横並び表示 -->
+              <div class="d-flex gap-2 flex-wrap mt-1">
+                <div v-if="p.cast_id" class="badge bg-secondary">
+                  担当：{{ servedByMap[String(p.cast_id)] || ('cast#' + p.cast_id) }}
+                </div>
+                <div v-if="p.customer_id" class="badge bg-info text-dark">
+                  顧客：{{ billCustomersMap[String(p.customer_id)] || ('Guest-' + String(p.customer_id).padStart(6, '0')) }}
+                </div>
               </div>
             </div>
 

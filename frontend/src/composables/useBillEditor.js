@@ -65,12 +65,16 @@ export default function useBillEditor(billObjRef){
   })
 
   const servedByCastId = ref(null)   // 提供者（未指定はnull）
-  function addPending(masterId, qty = 1){
+  const selectedCustomerId = ref(null)  // 【フェーズ3】注文時の顧客ID
+  
+  // 【フェーズ3】castId と customerId を引数で受け取る
+  function addPending(masterId, qty = 1, castId = null, customerId = null){
     if (!masterId) return
     pending.value.push({
       master_id: masterId,
       qty,
-      cast_id: servedByCastId.value || null,
+      cast_id: castId ?? servedByCastId.value ?? null,
+      customer_id: customerId ?? selectedCustomerId.value ?? null,
     })
   }
 
@@ -517,7 +521,7 @@ async function chooseCourse(opt){
     // Order
 
     orderCatOptions, selectedOrderCat, orderMasters,
-    servedByCastId, addPending,
+    servedByCastId, selectedCustomerId, addPending,  // 【フェーズ3】selectedCustomerId を追加
     pending,  // 既存をここでも返しておく（保存で使う）
 
     // SP: 顧客インライン検索

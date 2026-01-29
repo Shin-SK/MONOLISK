@@ -761,9 +761,6 @@ function removeSavedDiscount(index) {
               {{ it.name || masterNameMap[String(it.item_master)] || ('#'+it.item_master) }}
             </div>
             <div class="price">¥{{ (it.subtotal ?? 0).toLocaleString() }}</div>
-            <span v-if="it.customer" class="badge bg-info text-dark small">
-              客：{{ getCustomerBadgeText(it) }}
-            </span>
 
             <!-- 本指名期間タグ（赤系バッジ・複数対応） -->
             <template v-if="matchNominationLabelsForItem(it).length">
@@ -776,6 +773,7 @@ function removeSavedDiscount(index) {
               </span>
             </template>
           </div>
+          <!-- 【フェーズ4】担当と顧客を同じ行に固定配置 -->
           <div class="cast d-flex align-items-center gap-2 flex-wrap">
             <IconUser :size="16" />
 
@@ -783,6 +781,12 @@ function removeSavedDiscount(index) {
             <span v-if="getServedByName(it)" class="badge bg-secondary small d-inline-flex align-items-center gap-1">
               <IconUser :size="14" />
               担当：{{ getServedByName(it) }}
+            </span>
+            
+            <!-- 【フェーズ4】顧客バッジを担当の横に配置 -->
+            <span v-if="it.customer" class="badge bg-info text-dark small d-inline-flex align-items-center gap-1">
+              <IconUser :size="14" />
+              顧客：{{ getCustomerBadgeText(it) }}
             </span>
 
             <select
