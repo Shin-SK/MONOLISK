@@ -10,6 +10,7 @@ import json
 from decimal import Decimal, ROUND_FLOOR
 from typing import Dict, List, Any
 from django.utils import timezone
+from django.conf import settings
 from billing.services.payout_helper import get_payout_base
 
 
@@ -110,17 +111,13 @@ def build_payroll_snapshot(bill: "Bill") -> Dict[str, Any]:
     calc = BillCalculator(bill)
     result = calc.execute()
     
-    # 店舗情報取得
+    # 店舗情報取得（Phase 8-1：bill.table.store 直接使用）
     store = None
-    if bill.table and bill.table.store:
+    if getattr(bill, "table", None) and getattr(bill.table, "store", None):
         store = bill.table.store
-    else:
-        # フォールバック
-        stay = bill.stays.select_related("bill__table__store").first()
-        if stay and stay.bill.table:
-            store = stay.bill.table.store
     
     store_slug = store.slug if store else "unknown"
+    store_id = store.id if store else None
     engine = get_engine(store)
     
     # ─────────────────────────────────────────
@@ -141,7 +138,21 @@ def build_payroll_snapshot(bill: "Bill") -> Dict[str, Any]:
     # ─────────────────────────────────────────
     # スナップショット構築
     # ─────────────────────────────────────────
+    
+    # meta情報の構築（Phase 7-4・8-1）
+    use_timeboxed = getattr(settings, "USE_TIMEBOXED_NOM_POOL", False)
+    meta = {
+        "snapshot_version": 2,
+        "generated_at": timezone.now().isoformat(),
+        "use_timeboxed_nom_pool": use_timeboxed,
+        "nom_pool_mode": "timeboxed" if use_timeboxed else "legacy",
+        "engine": engine.__class__.__name__,
+        "store_id": store_id,
+        "store_slug": store_slug,
+    }
+    
     snapshot = {
+        "meta": meta,
         "version": 1,
         "bill_id": bill.id,
         "store_slug": store_slug,
@@ -572,3 +583,52 @@ def is_payroll_dirty(bill: "Bill") -> bool:
     
     current_hash = compute_current_hash(bill)
     return current_hash != snapshot_hash
+
+
+def snapshot_is_stale(bill: "Bill") -> bool:
+    """
+    Bill の payroll_snapshot が古い（設定変更により再生成が必要）かどうかを判定。
+    
+    判定条件（いずれかに該当したら stale）:
+    1. snapshot が存在しない
+    2. snapshot に meta 情報がない（旧フォーマット）
+    3. use_timeboxed_nom_pool が現在の settings とズレている
+    4. engine class が異なる（店舗のengineが変わった）
+    
+    Returns:
+        True: stale（再生成が必要）、False: fresh（最新の条件で生成されている）
+    """
+    if not bill.payroll_snapshot:
+        # snapshotがない = stale ではなく「未生成」だが、便宜上 stale 判定
+        return False
+    
+    snapshot = bill.payroll_snapshot
+    meta = snapshot.get("meta") or {}
+    
+    # meta がない（旧フォーマット）= stale
+    if not meta:
+        return True
+    
+    # snapshot_version チェック
+    snap_version = meta.get("snapshot_version", 1)
+    if snap_version < 2:
+        # 古いバージョン = stale
+        return True
+    
+    # use_timeboxed_nom_pool の一致確認
+    current_use_timeboxed = getattr(settings, "USE_TIMEBOXED_NOM_POOL", False)
+    stored_use_timeboxed = meta.get("use_timeboxed_nom_pool")
+    
+    if stored_use_timeboxed is None:
+        return True  # meta に記録されていない = stale
+    
+    if bool(stored_use_timeboxed) != bool(current_use_timeboxed):
+        return True  # 設定が変わった = stale
+    
+    # Phase 8-2：engine比較を外す（方針A：シンプル）
+    # snapshot_version + use_timeboxed 一致の2点で十分
+    # engine は meta に記録するが、stale判定には使わない
+    
+    # 全てOK = fresh
+    return False
+

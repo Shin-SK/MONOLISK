@@ -273,6 +273,10 @@ LOGGING = {
 PL_DRINK_CATEGORY_CODES = {"cast-drink"}   # 今はこれだけ
 PL_DRINK_ITEM_PREFIXES  = set()            # 使わない
 
+# ── Feature Flags ───────────────────────────────────────────────────
+# timeboxed 本指名プールを使うか（Phase 5-3 で段階切替）
+USE_TIMEBOXED_NOM_POOL = True
+
 # ── Test Environment ─────────────────────────────────────────────────
 # tests use Host: "testserver"
 import sys
