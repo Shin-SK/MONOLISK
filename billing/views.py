@@ -312,6 +312,22 @@ class BillViewSet(viewsets.ModelViewSet):
             bill.refresh_from_db()
             _recalc_bill_after_items_change(bill)
 
+    @action(detail=True, methods=["post"], url_path="close")
+    def close(self, request, pk=None):
+        bill = self.get_object()
+
+        if getattr(bill, "closed_at", None):
+            return Response({"detail": "already closed"}, status=status.HTTP_200_OK)
+
+        if getattr(bill, "opened_at", None) is None:
+            bill.opened_at = timezone.now()
+
+        if hasattr(bill, "closed_at"):
+            bill.closed_at = timezone.now()
+
+        bill.save()
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=["get"], url_path="nomination-summaries")
     def nomination_summaries(self, request, pk=None):
         """

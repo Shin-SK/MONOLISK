@@ -927,9 +927,15 @@ class BillSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # opened_at の更新許可＋ロールに応じた最小ガード
         req = self.context.get('request')
-        new_opened_at = validated_data.get('opened_at', None)
+        _missing = object()
+        new_opened_at = validated_data.get('opened_at', _missing)
 
-        if new_opened_at is not None and req is not None:
+        # opened_at を null にする更新を禁止（事故防止）
+        if new_opened_at is None:
+            validated_data['opened_at'] = instance.opened_at or timezone.now()
+            new_opened_at = validated_data['opened_at']
+
+        if new_opened_at is not _missing and req is not None:
             try:
                 is_staff_user = Staff.objects.filter(user=req.user).exists()
             except Exception:
