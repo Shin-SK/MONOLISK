@@ -448,22 +448,41 @@ class BillViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # 既存Nominationを削除して再作成（差分管理しない簡易版）
-            BillCustomerNomination.objects.filter(
+            now = timezone.now()
+
+            existing_qs = BillCustomerNomination.objects.filter(
                 bill=bill,
                 customer_id=customer_id
-            ).delete()
-            
-            # 新規Nominationを作成
+            ).select_related("cast")
+
+            existing_by_cast = {n.cast_id: n for n in existing_qs}
+            requested_cast_ids = set(cast_ids)
+
+            # 既存のうち外れたものは終了扱い
+            to_end = [n.id for n in existing_qs if n.cast_id not in requested_cast_ids and n.ended_at is None]
+            if to_end:
+                BillCustomerNomination.objects.filter(id__in=to_end).update(ended_at=now)
+
+            # 追加・復帰分
             from .models import Cast
             created = []
-            for cast_id in cast_ids:
+            for cast_id in requested_cast_ids:
+                existing = existing_by_cast.get(cast_id)
+                if existing:
+                    # 既存が終了していたら再開（履歴は残らないが現行整合を優先）
+                    if existing.ended_at is not None:
+                        existing.started_at = now
+                        existing.ended_at = None
+                        existing.save(update_fields=["started_at", "ended_at", "updated_at"])
+                    continue
+
                 try:
                     cast = Cast.objects.get(id=cast_id)
                     nom = BillCustomerNomination.objects.create(
                         bill=bill,
                         customer_id=customer_id,
-                        cast=cast
+                        cast=cast,
+                        started_at=now
                     )
                     created.append(nom)
                 except Cast.DoesNotExist:
@@ -487,7 +506,9 @@ class BillViewSet(viewsets.ModelViewSet):
         
         try:
             nom = BillCustomerNomination.objects.get(id=nomination_id, bill=bill)
-            nom.delete()
+            if nom.ended_at is None:
+                nom.ended_at = timezone.now()
+                nom.save(update_fields=["ended_at", "updated_at"])
             return Response({"success": True}, status=status.HTTP_204_NO_CONTENT)
         except BillCustomerNomination.DoesNotExist:
             return Response(

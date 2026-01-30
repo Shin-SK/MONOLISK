@@ -83,7 +83,8 @@ class TestNominationSummaryService:
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer_a'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=d['arrived_at']
         )
         
         # BillItemを3個作成：区間内2個、区間外1個
@@ -147,12 +148,14 @@ class TestNominationSummaryService:
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer_a'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=d['arrived_at']
         )
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer_a'],
-            cast=d['cast2']
+            cast=d['cast2'],
+            started_at=d['arrived_at']
         )
         
         # BillItemを作成：区間内40000
@@ -187,7 +190,8 @@ class TestNominationSummaryService:
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer_a'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=d['arrived_at']
         )
         
         # BillItem作成
@@ -238,7 +242,8 @@ class TestNominationSummaryService:
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=customer_b,
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=d['arrived_at']
         )
         
         results = build_nomination_summaries(d['bill'])
@@ -264,9 +269,9 @@ class TestNominationSummaryService:
         cast_user3 = User.objects.create_user(username='cast3', password='pass')
         cast3 = Cast.objects.create(user=cast_user3, stage_name='Cast 3', store=d['store'])
         
-        BillCustomerNomination.objects.create(bill=d['bill'], customer=d['customer_a'], cast=d['cast1'])
-        BillCustomerNomination.objects.create(bill=d['bill'], customer=d['customer_a'], cast=d['cast2'])
-        BillCustomerNomination.objects.create(bill=d['bill'], customer=d['customer_a'], cast=cast3)
+        BillCustomerNomination.objects.create(bill=d['bill'], customer=d['customer_a'], cast=d['cast1'], started_at=d['arrived_at'])
+        BillCustomerNomination.objects.create(bill=d['bill'], customer=d['customer_a'], cast=d['cast2'], started_at=d['arrived_at'])
+        BillCustomerNomination.objects.create(bill=d['bill'], customer=d['customer_a'], cast=cast3, started_at=d['arrived_at'])
         
         # BillItem：10000（3で割ると 3333.333...）
         BillItem.objects.create(

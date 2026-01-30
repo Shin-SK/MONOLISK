@@ -158,7 +158,8 @@ class TestBillCustomerNomination:
         nomination = BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer1'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=timezone.now()
         )
         
         assert nomination.bill == d['bill']
@@ -174,14 +175,16 @@ class TestBillCustomerNomination:
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer1'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=timezone.now()
         )
         
         with pytest.raises(IntegrityError):
             BillCustomerNomination.objects.create(
                 bill=d['bill'],
                 customer=d['customer1'],
-                cast=d['cast1']
+                cast=d['cast1'],
+                started_at=timezone.now()
             )
     
     def test_nomination_same_customer_different_cast(self, bill_with_customers_and_casts):
@@ -191,13 +194,15 @@ class TestBillCustomerNomination:
         nom1 = BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer1'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=timezone.now()
         )
         
         nom2 = BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer1'],
-            cast=d['cast2']
+            cast=d['cast2'],
+            started_at=timezone.now()
         )
         
         assert nom1.cast != nom2.cast
@@ -213,13 +218,15 @@ class TestBillCustomerNomination:
         nom1 = BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer1'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=timezone.now()
         )
         
         nom2 = BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer2'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=timezone.now()
         )
         
         assert nom1.customer != nom2.customer
@@ -235,13 +242,15 @@ class TestBillCustomerNomination:
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer1'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=timezone.now()
         )
         
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer2'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=timezone.now()
         )
         
         nominations = d['bill'].customer_nominations.all()
@@ -254,7 +263,8 @@ class TestBillCustomerNomination:
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer1'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=timezone.now()
         )
         
         nominations = d['customer1'].bill_nominations.all()
@@ -268,13 +278,15 @@ class TestBillCustomerNomination:
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer1'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=timezone.now()
         )
         
         BillCustomerNomination.objects.create(
             bill=d['bill'],
             customer=d['customer2'],
-            cast=d['cast1']
+            cast=d['cast1'],
+            started_at=timezone.now()
         )
         
         nominations = d['cast1'].customer_nominations.all()

@@ -135,12 +135,14 @@ class TestF3TimelineAndNominationsAPI:
         nom = BillCustomerNomination.objects.create(
             bill=setup['bill'],
             customer=setup['customer_a'],
-            cast=setup['cast1']
+            cast=setup['cast1'],
+            started_at=timezone.now()
         )
         
         url = f'/api/billing/bills/{setup["bill"].id}/nominations/{nom.id}/'
         response = client.delete(url)
         assert response.status_code == 204
         
-        # 削除されたことを確認
-        assert not BillCustomerNomination.objects.filter(id=nom.id).exists()
+        # 終了扱いになったことを確認
+        nom.refresh_from_db()
+        assert nom.ended_at is not None

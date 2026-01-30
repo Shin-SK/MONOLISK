@@ -264,6 +264,10 @@ class ItemCategory(models.Model):
         default=ROUTE_NONE, db_index=True,
         help_text='このカテゴリのKDS行き先（フード=キッチン、ドリンク=ドリンカー等）'
     )
+    exclude_from_nom_pool = models.BooleanField(
+        default=False,
+        help_text='本指名プールから除外（例: TC）'
+    )
 
     def __str__(self): return self.name
 
@@ -1445,6 +1449,9 @@ class BillCustomerNomination(models.Model):
     customer  = models.ForeignKey('billing.Customer', on_delete=models.CASCADE, related_name='bill_nominations')
     cast      = models.ForeignKey('billing.Cast', on_delete=models.CASCADE, related_name='customer_nominations')
     
+    started_at = models.DateTimeField(null=False, blank=False, db_index=True, help_text='指名開始時刻（必須）')
+    ended_at   = models.DateTimeField(null=True, blank=True, db_index=True, help_text='指名終了時刻（NULL=継続中）')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1453,6 +1460,10 @@ class BillCustomerNomination(models.Model):
             models.UniqueConstraint(
                 fields=['bill', 'customer', 'cast'],
                 name='uniq_billcustomernomination_bill_customer_cast'
+            ),
+            models.CheckConstraint(
+                condition=Q(ended_at__isnull=True) | Q(ended_at__gte=F('started_at')),
+                name='nomination_started_before_ended'
             ),
         ]
 

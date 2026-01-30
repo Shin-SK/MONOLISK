@@ -1,8 +1,17 @@
 # billing/payroll/engines/base.py
 from decimal import Decimal, ROUND_FLOOR
+from billing.payroll.nom_pool_filter import should_exclude_from_nom_pool
 
 class BaseEngine:
     def __init__(self, store): self.store = store
+
+    def _pool_items_all_included(self, bill):
+        """
+        フェーズ2：除外判定フックを通すための土台。
+        まだ除外ルールは常にFalseなので、実質 bill.items と同じ。
+        """
+        items = bill.items.select_related('item_master__category').all()
+        return [it for it in items if not should_exclude_from_nom_pool(it)]
 
     def nomination_payouts(self, bill) -> dict[int, int]:
         """
@@ -10,7 +19,8 @@ class BaseEngine:
         店ごとに上書き可。返り値は {cast_id: amount}
         """
         totals = {}
-        pool_total = sum(it.subtotal for it in bill.items.all() if it.is_nomination)
+        items_for_pool = self._pool_items_all_included(bill)
+        pool_total = sum(it.subtotal for it in items_for_pool if it.is_nomination)
         if not pool_total:
             return totals
 

@@ -272,3 +272,12 @@ LOGGING = {
 
 PL_DRINK_CATEGORY_CODES = {"cast-drink"}   # 今はこれだけ
 PL_DRINK_ITEM_PREFIXES  = set()            # 使わない
+
+# ── Test Environment ─────────────────────────────────────────────────
+# tests use Host: "testserver"
+import sys
+
+if any(arg in sys.argv for arg in ["test", "pytest"]):
+    ALLOWED_HOSTS = list(ALLOWED_HOSTS) if isinstance(ALLOWED_HOSTS, (list, tuple)) else []
+    if "testserver" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append("testserver")

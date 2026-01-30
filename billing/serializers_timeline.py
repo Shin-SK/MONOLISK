@@ -101,8 +101,8 @@ class BillCustomerNominationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = BillCustomerNomination
-        fields = ['id', 'bill', 'customer', 'cast', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'bill', 'customer', 'cast', 'started_at', 'ended_at', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'started_at', 'ended_at', 'created_at', 'updated_at']
 
     def validate(self, attrs):
         """
