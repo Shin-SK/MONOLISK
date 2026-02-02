@@ -589,6 +589,22 @@ class Bill(models.Model):
     )
     paid_cash = models.PositiveIntegerField(default=0)  # 現金受領
     paid_card = models.PositiveIntegerField(default=0)  # カード請求
+    # カード種別（カード決済時のみ）
+    CARD_BRAND_CHOICES = [
+        ("visa", "VISA"),
+        ("mastercard", "MasterCard"),
+        ("jcb", "JCB"),
+        ("amex", "AMEX"),
+        ("diners", "Diners"),
+    ]
+    card_brand = models.CharField(
+        max_length=16,
+        choices=CARD_BRAND_CHOICES,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="カード種別（カード決済時のみ）",
+    )
     
     # ─── 給与計算の予防線（スナップショット） ──────
     payroll_snapshot = models.JSONField(

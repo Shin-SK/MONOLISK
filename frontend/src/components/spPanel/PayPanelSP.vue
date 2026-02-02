@@ -12,6 +12,7 @@ const props = defineProps({
   settledTotal: { type: Number, default: 0 },
   paidCash:     { type: Number, default: 0 },
   paidCard:     { type: Number, default: 0 },
+  cardBrand:    { type: [String, null], default: null },
   billOpenedAt: { type: String, default: '' },
   diff:     { type: Number, default: 0 },
   overPay:  { type: Number, default: 0 },
@@ -20,7 +21,7 @@ const props = defineProps({
   discountRuleId: { type: [Number, null], default: null }, // 現在選択中の割引ルールID
 })
 const emit = defineEmits([
-  'update:settledTotal','update:paidCash','update:paidCard',
+  'update:settledTotal','update:paidCash','update:paidCard','update:cardBrand',
   'useGrandTotal','fillRemainderToCard','confirmClose',
   'incItem','decItem','deleteItem',
   'update:discountRule', // 割引ルール変更時にemit
@@ -107,6 +108,15 @@ const paidCashModel = computed({
 const paidCardModel = computed({
 	get: () => toNum(props.paidCard),
 	set: (v) => emit('update:paidCard', toNum(v))
+})
+const cardBrandModel = computed({
+	get: () => props.cardBrand ?? null,
+	set: (v) => emit('update:cardBrand', v ?? null)
+})
+const isCardPayment = computed(() => toNum(props.paidCard) > 0)
+
+watch(paidCardModel, (v) => {
+  if (!Number(v)) emit('update:cardBrand', null)
 })
 
 const memoLocal = ref(String(props.memo ?? ''))
@@ -365,6 +375,18 @@ watch(
         </div>
 
         <div class="d-flex">
+          <label class="d-flex align-items-center" style="width: 100px;">カード種別</label>
+          <select class="form-select" v-model="cardBrandModel">
+            <option :value="null">未選択</option>
+            <option value="visa">VISA</option>
+            <option value="mastercard">MasterCard</option>
+            <option value="jcb">JCB</option>
+            <option value="amex">AMEX</option>
+            <option value="diners">Diners</option>
+          </select>
+        </div>
+
+        <div class="d-flex">
           <label class="d-flex align-items-center" style="width: 100px;">カード</label>
 		  	<div class="position-relative w-100">
 				<input class="form-control" type="number" v-model="paidCardModel" />
@@ -372,6 +394,18 @@ watch(
 					<IconCalculator :size="16" />
 				</button>
 			</div>
+        </div>
+
+        <div class="d-flex" v-if="isCardPayment">
+          <label class="d-flex align-items-center" style="width: 100px;">カード種別</label>
+          <select class="form-select" v-model="cardBrandModel">
+            <option :value="null">未選択</option>
+            <option value="visa">VISA</option>
+            <option value="mastercard">MasterCard</option>
+            <option value="jcb">JCB</option>
+            <option value="amex">AMEX</option>
+            <option value="diners">Diners</option>
+          </select>
         </div>
 
         <div class="small text-muted">

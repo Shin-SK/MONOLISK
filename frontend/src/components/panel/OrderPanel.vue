@@ -92,8 +92,8 @@ function defaultCastId () {
 /* ▼ 選択中（詳細カードを開いている）アイテム */
 const activeMasterId = ref(null)     // 今開いてる master_id
 const activeQty      = ref(1)        // 詳細カード内の数量
-const activeCastId   = ref(null)     // 詳細カード内の担当（null=未指定）
-const castTouched    = ref(false)    // ユーザーが担当を操作したか
+const activeCastId   = ref(defaultCastId())  // 詳細カード内の担当（null禁止：必ず誰か）
+const activeCustomerId = ref(null)   // 詳細カード内の顧客（一時選択）
 
 function openDetail(masterId) {
   // 同じのを押したら閉じる
@@ -103,28 +103,37 @@ function openDetail(masterId) {
   }
   activeMasterId.value = masterId
   activeQty.value = 1
-  castTouched.value = false
-  // 必ず担当を初期選択
-  activeCastId.value = defaultCastId()
+  activeCastId.value = defaultCastId() // 必ず誰か
+
+  // 顧客をデフォルトで最初の顧客に設定
+  const firstCustomer = (props.billCustomers && props.billCustomers.length) ? props.billCustomers[0].customer_id : null
+  activeCustomerId.value = firstCustomer
+  emit('update:selectedCustomerId', firstCustomer)
 
   // 開いた直後に見切れないように微スクロールしたいならここに nextTick で処理も可
 }
 
 /**
  * ★ここが肝：
- * 詳細が開いてる & activeCastId が null のまま & servedByOptions が後から入ってきた
- * → 先頭を自動で選ぶ（ただしユーザーが操作済みなら上書きしない）
+ * 詳細が開いてる & activeCastId が無効（null/存在しない）& servedByOptions が後から入ってきた
+ * → 先頭を自動で選ぶ（必ず誰か決まっている状態を保証）
  */
 watch(
   () => listServedBy.value,
   (list) => {
     if (activeMasterId.value == null) return
-    if (castTouched.value) return          // ← ここが肝：ユーザー操作後は自動上書きしない
-    if (activeCastId.value != null) return
-    if ((list?.length || 0) === 0) return
-    activeCastId.value = Number(list[0].id)
+    const ids = new Set((list || []).map(x => String(x.id)))
+
+    // 1) 候補が空なら何もしない（UIで「キャストがいません」を出す）
+    if (ids.size === 0) return
+
+    // 2) 現在選択が空 or 候補に存在しないなら先頭に矯正
+    const cur = activeCastId.value
+    if (cur == null || !ids.has(String(cur))) {
+      activeCastId.value = Number(list[0].id)
+    }
   },
-   { immediate: true }
+  { immediate: true }
 )
 
 function incActive() { activeQty.value = Math.max(1, Number(activeQty.value || 1) + 1) }
@@ -133,16 +142,15 @@ function decActive() { activeQty.value = Math.max(1, Number(activeQty.value || 1
 function confirmAdd(masterId) {
   const q = Math.max(1, Number(activeQty.value || 1))
 
-  // ★ 最終ガード：未選択なら自動で先頭キャスト
-  const ensured = (activeCastId.value == null) ? defaultCastId() : Number(activeCastId.value)
-  if (ensured == null) {
+  // 最終ガード：担当必須（通常は null にならないが念のため）
+  const ensured = Number(activeCastId.value || 0)
+  if (!ensured) {
     alert('担当できるキャストがいません（先にキャストを着席させてください）')
     return
   }
 
   // 【フェーズ3】顧客IDも一緒に送信（親側で customer_id として保持される）
-  // emit('addPending', masterId, qty, castId, customerId)
-  emit('addPending', masterId, q, ensured, props.selectedCustomerId)
+  emit('addPending', masterId, q, ensured, activeCustomerId.value)
 
   activeMasterId.value = null
   pokeCartFeedback()
@@ -196,30 +204,6 @@ const cartSubtotal = computed(() =>
         </button>
       </div>
 
-      <!-- 提供者（今ついてる卓の人だけ／未指定含む） -->
-      <!-- <div class="served-by mt-3 flex-shrink-0">
-        <label class="served-label"><IconUser /></label>
-        <div class="served-pills" role="tablist">
-          <button
-            type="button"
-            class="pill"
-            :class="{ active: servedByCastId == null }"
-            :aria-pressed="servedByCastId == null"
-            @click="emit('update:servedByCastId', null)"
-          >未指定</button>
-
-          <button
-            v-for="c in listServedBy"
-            :key="String(c.id)"
-            type="button"
-            class="pill"
-            :class="{ active: k(servedByCastId) === k(c.id) }"
-            :aria-pressed="k(servedByCastId) === k(c.id)"
-            @click="emit('update:servedByCastId', c.id)"
-          >{{ c.label }}</button>
-        </div>
-      </div> -->
-
       <!-- 品目リスト（タップで pending へ） -->
       <div
         class="order-list d-flex flex-column gap-2 flex-grow-1 min-h-0 mt-3"
@@ -255,41 +239,48 @@ const cartSubtotal = computed(() =>
             <div class="d-flex align-items-center justify-content-between mb-3">
               <div class="text-muted small fw-bold text-nowrap">担当</div>
               <div class="served-pills flex-wrap" role="tablist">
-                <button
-                  type="button"
-                  class="badge bg-light text-secondary rounded-pill"
-                  :class="{ active: activeCastId == null }"
-                  :aria-pressed="activeCastId == null"
-                  @click="() => { castTouched = true; activeCastId = null }"
-                  style="font-size: 1rem;"
-                >未選択</button>
-
-                <button
-                  v-for="c in listServedBy"
-                  :key="String(c.id)"
-                  type="button"
-                  class="badge bg-light text-secondary rounded-pill"
-                  :class="{ active: k(activeCastId) === k(c.id) }"
-                  :aria-pressed="k(activeCastId) === k(c.id)"
-                  @click="() => { castTouched = true; activeCastId = Number(c.id) }"
-                  style="font-size: 1rem;"
-                >{{ c.label }}</button>
+                <template v-if="listServedBy.length">
+                  <button
+                    v-for="c in listServedBy"
+                    :key="String(c.id)"
+                    type="button"
+                    class="badge bg-light text-secondary rounded-pill"
+                    :class="{ active: k(activeCastId) === k(c.id) }"
+                    :aria-pressed="k(activeCastId) === k(c.id)"
+                    @click="() => { activeCastId = Number(c.id) }"
+                    style="font-size: 1rem;"
+                  >{{ c.label }}</button>
+                </template>
+                <div v-else class="text-danger small">
+                  担当できるキャストがいません（先にキャストを着席させてください）
+                </div>
               </div>
             </div>
 
             <!-- 顧客選択（オプション） -->
-            <div class="d-flex align-items-center justify-content-between mb-3 gap-2">
-              <label class="text-muted small fw-bold" style="min-width: 60px">顧客</label>
-              <select 
-                class="form-select form-select-sm" 
-                :value="selectedCustomerId"
-                @change="e => emit('update:selectedCustomerId', e.target.value ? Number(e.target.value) : null)"
-              >
-                <option :value="null">未指定</option>
-                <option v-for="bc in billCustomers" :key="bc.id" :value="bc.customer_id">
-                  {{ bc.display_name }}
-                </option>
-              </select>
+            <div class="d-flex align-items-center justify-content-between mb-3">
+              <label class="text-muted small fw-bold text-nowrap">顧客</label>
+              <div class="served-pills flex-wrap" role="tablist">
+                <button
+                  type="button"
+                  class="badge bg-light text-secondary rounded-pill"
+                  :class="{ active: activeCustomerId == null }"
+                  :aria-pressed="activeCustomerId == null"
+                  @click="() => { activeCustomerId = null; emit('update:selectedCustomerId', null) }"
+                  style="font-size: 1rem;"
+                >未指定</button>
+
+                <button
+                  v-for="bc in billCustomers"
+                  :key="bc.id"
+                  type="button"
+                  class="badge bg-light text-secondary rounded-pill"
+                  :class="{ active: activeCustomerId === bc.customer_id }"
+                  :aria-pressed="activeCustomerId === bc.customer_id"
+                  @click="() => { activeCustomerId = bc.customer_id; emit('update:selectedCustomerId', bc.customer_id) }"
+                  style="font-size: 1rem;"
+                >{{ bc.display_name }}</button>
+              </div>
             </div>
             <div class="d-flex align-items-center justify-content-between mb-3 gap-2">
               <div class="text-muted small fw-bold">数</div>
@@ -329,13 +320,12 @@ const cartSubtotal = computed(() =>
                 || (orderMasters.find(x => x.id === p.master_id)?.name)
                 || ('#' + p.master_id) }}
               </div>
-              <!-- 【フェーズ3】担当と顧客を横並び表示 -->
               <div class="d-flex gap-2 flex-wrap mt-1">
                 <div v-if="p.cast_id" class="badge bg-secondary">
-                  担当：{{ servedByMap[String(p.cast_id)] || ('cast#' + p.cast_id) }}
-                </div>
-                <div v-if="p.customer_id" class="badge bg-info text-dark">
-                  顧客：{{ billCustomersMap[String(p.customer_id)] || ('Guest-' + String(p.customer_id).padStart(6, '0')) }}
+                  {{ servedByMap[String(p.cast_id)] || ('cast#' + p.cast_id) }}
+                  <template v-if="p.customer_id != null && p.customer_id !== ''">
+                    / {{ billCustomersMap[String(p.customer_id)] || ('Guest-' + String(p.customer_id).padStart(6, '0')) }}
+                  </template>
                 </div>
               </div>
             </div>

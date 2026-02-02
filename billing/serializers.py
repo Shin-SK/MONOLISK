@@ -740,7 +740,7 @@ class BillSerializer(serializers.ModelSerializer):
             "id", "table", "table_id", "opened_at", "closed_at","memo", "pax",
             # ---- 金額 ----
             "subtotal", "service_charge", "tax", "apply_service_charge", "apply_tax", "grand_total", "total",
-            "paid_cash","paid_card","paid_total","change_due",
+            "paid_cash","paid_card","card_brand","paid_total","change_due",
             # ---- 関連 ----
             "items", "stays","expected_out",
             "nominated_casts",            # READ (depth=2)
@@ -832,6 +832,18 @@ class BillSerializer(serializers.ModelSerializer):
         # 支払額が grand_total を BILL_OVERPAY_TOLERANCE 以上超えないかチェック
         if paid_total > grand_total + BILL_OVERPAY_TOLERANCE:
             raise serializers.ValidationError(ERROR_MESSAGES['bill_overpaid'])
+
+        # --- card_brand 自動 null 化 ---
+        # このコードベースでは支払方法を示す独立フィールドがないため、
+        # 実際のカード利用有無は paid_card の有無 (>0) で判定する。
+        if self.instance:
+            eff_paid_card = data.get('paid_card') if data.get('paid_card') is not None else (self.instance.paid_card or 0)
+        else:
+            eff_paid_card = data.get('paid_card') or 0
+
+        if not eff_paid_card:
+            # カード支払いでないなら card_brand は必ず null にする（互換目的）
+            data['card_brand'] = None
 
         return data
 

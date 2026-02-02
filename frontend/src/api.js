@@ -523,7 +523,7 @@ export const updateBillManualDiscounts = (billId, rows = []) => {
 
 /**
  * 会計関連のパッチをまとめて送るユーティリティ
- * 例）settleBill(123, { memo, discount_rule, manual_discounts, settled_total, paid_cash, paid_card })
+ * 例）settleBill(123, { memo, discount_rule, manual_discounts, settled_total, paid_cash, paid_card, card_brand })
  */
 export const settleBill = (billId, payload = {}) => {
   const body = {}
@@ -542,13 +542,14 @@ export const settleBill = (billId, payload = {}) => {
   if (payload.settled_total != null)   body.settled_total = Number(payload.settled_total)
   if (payload.paid_cash  != null)      body.paid_cash     = Number(payload.paid_cash)
   if (payload.paid_card  != null)      body.paid_card     = Number(payload.paid_card)
+  if (payload.card_brand !== undefined) body.card_brand    = payload.card_brand ?? null
   return patchBill(billId, body)
 }
 
 
 /**
  * ① settleBill（PATCH）→ ② closeBill（POST） の順で会計確定
- *   payload は settleBill と同じ形（memo/discount_rule/manual_discounts/settled_total/paid_*）
+ *   payload は settleBill と同じ形（memo/discount_rule/manual_discounts/settled_total/paid_cash/paid_card/card_brand）
  */
 export const patchAndCloseBill = async (billId, payload = {}) => {
   await settleBill(billId, payload)

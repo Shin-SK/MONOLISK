@@ -28,6 +28,7 @@ const props = defineProps({
   settledTotal: { type: Number, default: 0 },
   paidCash:     { type: Number, default: 0 },
   paidCard:     { type: Number, default: 0 },
+  cardBrand:    { type: [String, null], default: null },
 
   // 表示補助
   billOpenedAt: { type: String, default: '' },
@@ -58,6 +59,7 @@ const emit = defineEmits([
   'update:settledTotal',
   'update:paidCash',
   'update:paidCard',
+  'update:cardBrand',
   'fillRemainderToCard',
   'confirmClose',
   'incItem',
@@ -516,6 +518,15 @@ const paidCardModel = computed({
   get: () => toNum(props.paidCard),
   set: (v) => emit('update:paidCard', toNum(v))
 })
+const cardBrandModel = computed({
+  get: () => props.cardBrand ?? null,
+  set: (v) => emit('update:cardBrand', v ?? null)
+})
+const isCardPayment = computed(() => toNum(props.paidCard) > 0)
+
+watch(paidCardModel, (v) => {
+  if (!Number(v)) emit('update:cardBrand', null)
+})
 
 /* ワンタップで全額現金/カードに割り当て */
 const setExactCash = () => {
@@ -538,6 +549,18 @@ const getMemo = () => String(memoLocal.value || '')
 
 /* 担当変更用の選択状態（item.id -> cast_id） */
 const servedBySelection = ref({})
+const editingItemId = ref(null)
+
+function toggleEditItem(it) {
+  const id = it?.id
+  if (!id) return
+  editingItemId.value = (editingItemId.value === id) ? null : id
+}
+
+function isEditing(it) {
+  return editingItemId.value === (it?.id ?? null)
+}
+
 watch(() => props.items, (list = []) => {
   const next = {}
   for (const it of list) {
@@ -552,10 +575,25 @@ watch(() => props.servedByOptions, (opts) => {
   console.log('[PayPanel] servedByOptions received:', opts)
 }, { immediate: true })
 
+// デバッグ：items の customer フィールドを監視
+watch(() => props.items, (items) => {
+  console.log('[PayPanel] items received:', items)
+  if (items && items.length) {
+    console.log('[PayPanel] 最初のアイテムの構造:', items[0])
+    console.log('[PayPanel] 最初のアイテムの customer:', items[0]?.customer)
+  }
+}, { immediate: true, deep: true })
+
 function onSelectServedBy(it, val){
-  const castId = val === '' ? null : Number(val)
   servedBySelection.value = { ...servedBySelection.value, [it.id]: val }
+  // 保存ボタンで emit する（ここでは emit しない）
+}
+
+function saveEditedItem(it) {
+  const raw = servedBySelection.value?.[it.id] ?? ''
+  const castId = (raw === '' || raw == null) ? null : Number(raw)
   emit('changeServedBy', { item: it, castId })
+  editingItemId.value = null
 }
 
 /* 親へ割引明細を返すエクスポート関数
@@ -716,52 +754,35 @@ function removeSavedDiscount(index) {
 <div class="panel pay">
   <div class="d-flex flex-column gap-4">
 
-    <!-- 顧客・本指名パネル（アコーディオン） -->
-    <div v-if="props.billId" class="card border">
-      <div class="card-header p-0">
-        <button
-          class="btn btn-link w-100 text-start d-flex align-items-center justify-content-between p-2"
-          type="button"
-          @click="showNominationPanel = !showNominationPanel"
-        >
-          <span class="fw-bold">顧客・本指名管理</span>
-          <IconChevronUp :class="{'rotate-180': showNominationPanel}" :size="20" />
-        </button>
-      </div>
-      <div class="card-body p-2" v-show="showNominationPanel">
-        <!-- 顧客パネル -->
-        <div class="mb-3">
-          <TableCustomersPanel :billId="props.billId" />
-        </div>
-        
-        <!-- 本指名サマリー -->
-        <div>
-          <NominationSummaryPanel :billId="props.billId" />
-        </div>
-      </div>
-    </div>
-
     <!-- 履歴 -->
     <div class="history-list d-flex flex-column gap-3">
       <div
         v-for="it in items"
         :key="it.id"
-        class="card bg-light d-flex flex-row justify-content-between"
-        :class="{ 'is-nomination-window': matchNominationLabelsForItem(it).length > 0 }"
+        class="card bg-light border"
+        :class="{ 'border-danger': matchNominationLabelsForItem(it).length > 0 }"
       >
-        <div class="item-area p-2 d-flex flex-column gap-2 flex-grow-1">
-          <div class="d-flex align-items-center gap-2 text-secondary" style="font-size:1rem;">
-            <div class="id">#{{ it.id }}</div>
-            <div class="time d-flex align-items-center gap-1 small text-muted">
-              <IconClock :size="16" />{{ fmtTime(pickTime(it)) }}
+        <div class="card-header bg-light text-muted">
+          <div class="d-flex align-items-center justify-content-between gap-2 text-secondary">
+            <div class="d-flex align-items-center gap-2">
+              <div class="id small">#{{ it.id }}</div>
+              <div class="time d-flex align-items-center gap-1 small">
+                <IconClock :size="16" />{{ fmtTime(pickTime(it)) }}
+              </div>
             </div>
+            <button class="btn btn-sm p-0 border-0 text-danger d-flex align-items-center" type="button" @click="toggleEditItem(it)">
+              <IconPencil v-if="!isEditing(it)" />
+              <IconArrowBackUp v-else />
+            </button>
           </div>
-          <div class="d-flex align-items-center gap-3 flex-wrap">
-            <div class="name fs-5 fw-bold">
-              {{ it.name || masterNameMap[String(it.item_master)] || ('#'+it.item_master) }}
-            </div>
-            <div class="price">¥{{ (it.subtotal ?? 0).toLocaleString() }}</div>
 
+        </div>
+        <div class="card-body item-area p-2 d-flex flex-column gap-2 flex-grow-1">
+          <div class="d-flex align-items-center justify-content-between flex-wrap py-2">
+              <div class="name fs-5 fw-bold">
+                {{ it.name || masterNameMap[String(it.item_master)] || ('#'+it.item_master) }}
+              </div>
+              <div class="price">¥{{ (it.subtotal ?? 0).toLocaleString() }}</div>
             <!-- 本指名期間タグ（赤系バッジ・複数対応） -->
             <template v-if="matchNominationLabelsForItem(it).length">
               <span
@@ -773,48 +794,50 @@ function removeSavedDiscount(index) {
               </span>
             </template>
           </div>
-          <!-- 【フェーズ4】担当と顧客を同じ行に固定配置 -->
-          <div class="cast d-flex align-items-center gap-2 flex-wrap">
-            <IconUser :size="16" />
-
+        </div>
+        <div class="card-footer py-0 pb-2 bg-light px-1 d-flex align-items-center gap-2 text-muted">
             <!-- 担当キャストの明示表示（選択UIとは別に） -->
-            <span v-if="getServedByName(it)" class="badge bg-secondary small d-inline-flex align-items-center gap-1">
-              <IconUser :size="14" />
-              担当：{{ getServedByName(it) }}
-            </span>
-            
-            <!-- 【フェーズ4】顧客バッジを担当の横に配置 -->
-            <span v-if="it.customer" class="badge bg-info text-dark small d-inline-flex align-items-center gap-1">
-              <IconUser :size="14" />
-              顧客：{{ getCustomerBadgeText(it) }}
-            </span>
-
-            <select
-              class="form-select form-select-sm w-auto"
-              :disabled="!servedByOptions || !servedByOptions.length"
-              :value="servedBySelection[it.id] ?? ''"
-              @change="onSelectServedBy(it, $event.target.value)"
-            >
-              <option value="">担当なし</option>
-              <option v-for="c in servedByOptions" :key="c.id" :value="c.id">
-                {{ c.label }}
-              </option>
-            </select>
+          <span v-if="getServedByName(it)" class="small d-inline-flex align-items-center gap-0 text-nowrap">
+            <IconUser :size="14" />
+            {{ getServedByName(it) }}
+          </span>
+          <!-- 【フェーズ4】顧客バッジを担当の横に配置 -->
+          <span v-if="it.customer" class="small d-inline-flex align-items-center gap-0 text-nowrap">
+            <IconUserScan :size="14" />
+            {{ getCustomerBadgeText(it) }}
+          </span>
+        </div>
+            <!-- 編集モードの時だけ select/数量/保存 を表示 -->
+          <div v-if="isEditing(it)" class="p-2">
+            <div class="cast d-flex align-items-center gap-2 flex-wrap">
+              <IconUser :size="16" />
+              <select
+                class="form-select form-select-sm w-auto"
+                :disabled="!servedByOptions || !servedByOptions.length"
+                :value="servedBySelection[it.id] ?? ''"
+                @change="onSelectServedBy(it, $event.target.value)"
+              >
+                <option value="">担当なし</option>
+                <option v-for="c in servedByOptions" :key="c.id" :value="c.id">
+                  {{ c.label }}
+                </option>
+              </select>
+              <div class="d-flex align-items-center">
+                <div class="d-flex align-items-center gap-3 bg-white h-auto p-2 m-2" style="border-radius:100px;">
+                  <button type="button" @click="$emit('decItem', it)"><IconMinus :size="16" /></button>
+                  <span>{{ it.qty }}</span>
+                  <button type="button" @click="$emit('incItem', it)"><IconPlus :size="16" /></button>
+                </div>
+              </div>
+              <button class="btn btn-sm btn-success" type="button" @click="saveEditedItem(it)">
+                保存
+              </button>
+            </div>
 
             <span v-if="!servedByOptions || !servedByOptions.length" class="text-muted small">
               （担当候補が未取得）
             </span>
           </div>
-        </div>
-        <div class="d-flex align-items-center">
-          <div class="cartbutton d-flex align-items-center">
-            <div class="d-flex align-items-center gap-3 bg-white h-auto p-2 m-2" style="border-radius:100px;">
-              <button type="button" @click="$emit('decItem', it)"><IconMinus :size="16" /></button>
-              <span>{{ it.qty }}</span>
-              <button type="button" @click="$emit('incItem', it)"><IconPlus :size="16" /></button>
-            </div>
-          </div>
-        </div>
       </div>
       <div v-if="!items || !items.length" class="text-muted small">履歴はありません</div>
     </div>
@@ -922,7 +945,7 @@ function removeSavedDiscount(index) {
         </div>
         </div>
       </div>
-      <button class="btn btn-secondary mt-2" type="button"
+      <button class="btn btn-sm btn-secondary mt-2" type="button"
           :disabled="manualDiscountAmount<=0"
           @click="onSaveDiscount">
         割引を保存
@@ -1049,19 +1072,26 @@ function removeSavedDiscount(index) {
 
       <div class="d-flex">
         <label class="d-flex align-items-center" style="width: 100px;">カード</label>
-        <div class="position-relative w-100">
-          <input class="form-control" type="number" v-model="paidCardModel" />
-          <button class="position-absolute end-0 top-0 bottom-0" type="button" @click="$emit('fillRemainderToCard')">
-            <IconCalculator :size="16" />
-          </button>
+        <div class="w-100">
+          <div class="position-relative w-100">
+            <input class="form-control" type="number" v-model="paidCardModel" />
+            <button class="position-absolute end-0 top-0 bottom-0" type="button" @click="$emit('fillRemainderToCard')">
+              <IconCalculator :size="16" />
+            </button>
+          </div>
+          <div class="d-flex column-gap-2 row-gap-1 flex-wrap flex-grow-1 align-items-center justify-content-end mt-2">
+            <button
+              v-for="brand in [null, 'visa', 'mastercard', 'jcb', 'amex', 'diners']"
+              :key="brand"
+              type="button"
+              class="badge text-light"
+              :class="cardBrandModel === brand ? 'bg-primary' : 'bg-secondary'"
+              @click="cardBrandModel = brand"
+            >
+              {{ brand === null ? '未選択' : brand.charAt(0).toUpperCase() + brand.slice(1) }}
+            </button>
+          </div>
         </div>
-      </div>
-
-      <div class="small text-muted">
-        会計金額: ¥{{ discountedTotal.toLocaleString() }} /
-        受領合計: ¥{{ (Number(paidCash||0)+Number(paidCard||0)).toLocaleString() }} /
-        差額: <span :class="diff===0 ? 'ok' : 'neg'">¥{{ diff.toLocaleString() }}</span>
-        <span v-if="overPay>0" class="text-danger ms-1">（お釣り: ¥{{ overPay.toLocaleString() }}）</span>
       </div>
     </div>
     <div class="tag">
@@ -1081,6 +1111,41 @@ function removeSavedDiscount(index) {
       <textarea class="form-control" rows="3" v-model="memoLocal" placeholder="備考メモ"></textarea>
     </div>
 
+    <div class="last-check">
+      <div class="fw-bold df-center text-danger">最終確認</div>
+    <div class="row g-2">
+      <div class="col-3">会計金額</div>
+      <div class="col-9 text-end fw-bold">¥{{ discountedTotal.toLocaleString() }}</div>
+      <div class="col-3">受領方法</div>
+      <!-- ✅ PayPanel.vue：最終確認の「受領方法」欄にそのまま貼るだけ -->
+
+      <div class="col-9 text-end fw-bold">
+        <template v-if="Number(paidCash || 0) > 0 && Number(paidCard || 0) > 0">
+          現金 ¥{{ Number(paidCash || 0).toLocaleString() }}＋カード（{{ cardBrand || '未選択' }}）¥{{ Number(paidCard || 0).toLocaleString() }}
+        </template>
+
+        <template v-else-if="Number(paidCash || 0) > 0">
+          現金
+        </template>
+
+        <template v-else-if="Number(paidCard || 0) > 0">
+          カード（{{ cardBrand || '未選択' }}）
+        </template>
+
+        <template v-else>
+          未入力
+        </template>
+      </div>
+      <div class="col-3">受領合計</div>
+      <div class="col-9 text-end fw-bold">¥{{ (Number(paidCash||0)+Number(paidCard||0)).toLocaleString() }}</div>
+      <div class="col-3">差額</div>
+      <div class="col-9 text-end fw-bold">
+        <span :class="diff===0 ? 'ok' : 'neg'">¥{{ diff.toLocaleString() }}</span>
+        <span v-if="overPay>0" class="text-danger ms-1">（お釣り: ¥{{ overPay.toLocaleString() }}）</span>
+      </div>
+    </div>
+
+    </div>
     <!-- 確定 -->
     <div class="paybutton">
       <small v-if="!hasPaymentInput" class="text-danger d-block mb-2 text-center">
@@ -1118,9 +1183,8 @@ function removeSavedDiscount(index) {
 /* Firefox */
 .form-control.meisai::-moz-placeholder          { font-size: .8rem !important; }
 
-.is-nomination-window {
-  border: 2px solid #dc3545; /* 赤枠（仮） */
-  background-color: rgba(220, 53, 69, 0.06); /* 薄い赤背景（視認性UP） */
+.card.border-danger {
+  border-width: 2px !important;
 }
 
 </style>

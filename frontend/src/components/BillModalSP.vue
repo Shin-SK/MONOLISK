@@ -596,6 +596,7 @@ const payCurrent = computed(() => {
 })
 const paidCashRef     = ref(props.bill?.paid_cash ?? 0)
 const paidCardRef     = ref(props.bill?.paid_card ?? 0)
+const cardBrandRef    = ref(props.bill?.card_brand ?? null)
 const settledTotalRef = ref(props.bill?.settled_total ?? (props.bill?.grand_total || 0))
 const paidTotal   = computed(() => (Number(paidCashRef.value)||0) + (Number(paidCardRef.value)||0))
 const targetTotal = computed(() => Number(settledTotalRef.value) || Number(displayGrandTotal.value) || 0)
@@ -611,6 +612,7 @@ function resetPaymentFromProps() {
   const b = props.bill || {}
   paidCashRef.value     = Number(b.paid_cash ?? 0) || 0
   paidCardRef.value     = Number(b.paid_card ?? 0) || 0
+  cardBrandRef.value    = b.card_brand ?? null
   settledTotalRef.value = Number(b.settled_total ?? (b.grand_total || 0)) || 0
   memoRef.value         = b.memo ?? ''
   selectedTagIds.value  = b.tags?.map(t => t.id) || []
@@ -818,11 +820,13 @@ async function confirmClose(){
     const settled  = Number(settledTotalRef.value) || Number(displayGrandTotal.value) || 0
     const paidCash = Number(paidCashRef.value) || 0
     const paidCard = Number(paidCardRef.value) || 0
+    const cardBrand = cardBrandRef.value ?? null
     const rows = payRef.value?.getManualDiscounts?.() || []
 
     // ① 楽観反映（UI即更新）
     props.bill.paid_cash     = paidCash
     props.bill.paid_card     = paidCard
+    props.bill.card_brand    = cardBrand
     props.bill.settled_total = settled
     props.bill.memo          = memoStr
     props.bill.closed_at     = new Date().toISOString()   // “閉店”を即時表示
@@ -834,7 +838,7 @@ async function confirmClose(){
       if (i >= 0) {
         const nowISO = new Date().toISOString()
         bs.list[i] = { ...bs.list[i],
-          paid_cash: paidCash, paid_card: paidCard, settled_total: settled,
+          paid_cash: paidCash, paid_card: paidCard, card_brand: cardBrand, settled_total: settled,
           memo: memoStr,
           closed_at: nowISO,
           // ★ ゴースト消し：UI用に“座ってる人”全員を即退席にする
@@ -849,6 +853,7 @@ async function confirmClose(){
     enqueue('patchBill', { id: billId, payload: {
       paid_cash: paidCash,
       paid_card: paidCard,
+      card_brand: cardBrand,
       memo: memoStr,
       discount_rule: props.bill?.discount_rule ? Number(props.bill.discount_rule) : null,
       manual_discounts: rows,
@@ -1273,13 +1278,13 @@ function handleClose() {
     :selected-customer-id="selectedCustomerId"
     @update:selectedCat="v => (ed.selectedOrderCat.value = v)"
     @update:selectedCustomerId="v => (selectedCustomerId = v)"
-    @addPending="(id, qty, castId) => {
+    @addPending="(id, qty, castId, customerId) => {
       const q = Math.max(1, Number(qty || 1))
       ed.pending.value.push({
         master_id: Number(id),
         qty: q,
         cast_id: (castId == null || castId === '') ? null : Number(castId),
-        customer_id: selectedCustomerId.value ?? null
+        customer_id: (customerId == null || customerId === '') ? null : Number(customerId)
       })
     }"
     @removePending="i => ed.pending.value.splice(i,1)"
@@ -1305,6 +1310,7 @@ function handleClose() {
       :settled-total="settledTotalRef"
       :paid-cash="paidCashRef"
       :paid-card="paidCardRef"
+      :card-brand="cardBrandRef"
       :diff="diff"
       :over-pay="overPay"
       :can-close="canClose"
@@ -1315,6 +1321,7 @@ function handleClose() {
       @update:settledTotal="setSettledTotal"
       @update:paidCash="setPaidCash"
       @update:paidCard="setPaidCard"
+      @update:cardBrand="v => (cardBrandRef = v)"
       @fillRemainderToCard="fillRemainderToCard"
       @confirmClose="confirmClose"
       @incItem="incItem"

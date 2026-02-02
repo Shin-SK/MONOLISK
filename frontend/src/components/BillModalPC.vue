@@ -705,6 +705,7 @@ const form = reactive({
   inhouse_casts: [],
   paid_cash: props.bill?.paid_cash ?? 0,
   paid_card: props.bill?.paid_card ?? 0,
+  card_brand: props.bill?.card_brand ?? null,
   settled_total: props.bill?.settled_total ?? (props.bill?.grand_total || 0),
 })
 
@@ -744,11 +745,12 @@ async function confirmClose(){
     const settled  = form.settled_total || displayGrandTotal.value
     const paidCash = form.paid_cash || 0
     const paidCard = form.paid_card || 0
+    const cardBrand = form.card_brand ?? null
     const rows = payRefPc.value?.getManualDiscounts?.() || []
 
     // 楽観反映
     Object.assign(props.bill, {
-      paid_cash: paidCash, paid_card: paidCard,
+      paid_cash: paidCash, paid_card: paidCard, card_brand: cardBrand,
       settled_total: settled, memo: memoStr,
       closed_at: new Date().toISOString(),
     })
@@ -764,6 +766,7 @@ async function confirmClose(){
           ...bs.list[i],
           paid_cash: paidCash,
           paid_card: paidCard,
+          card_brand: cardBrand,
           settled_total: settled,
           memo: memoStr,
           closed_at: nowISO,
@@ -776,6 +779,7 @@ async function confirmClose(){
    enqueue('patchBill', { id: billId, payload: {
      paid_cash: paidCash,
      paid_card: paidCard,
+     card_brand: cardBrand,
      memo: memoStr,
      discount_rule: props.bill?.discount_rule ?? null, // ルールも維持
      manual_discounts: rows,                            // ★ 追加：手入力割引を保存
@@ -899,6 +903,7 @@ watch(
     form.table_id     = b.table?.id ?? b.table_id_hint ?? null
     form.paid_cash     = b.paid_cash ?? 0
     form.paid_card     = b.paid_card ?? 0
+    form.card_brand    = b.card_brand ?? null
     form.settled_total = b.settled_total ?? b.grand_total ?? 0
     if (Array.isArray(b.customers)) b.customers = b.customers.map(asId)
 
@@ -1058,6 +1063,7 @@ watch(freeCastIds, list => {
             :settled-total="form.settled_total"
             :paid-cash="form.paid_cash"
             :paid-card="form.paid_card"
+            :card-brand="form.card_brand"
             :bill-opened-at="props.bill.opened_at || ''"
 
             :diff="diff"
@@ -1073,6 +1079,7 @@ watch(freeCastIds, list => {
             @update:settledTotal="v => (form.settled_total = v)"
             @update:paidCash="v => (form.paid_cash = v)"
             @update:paidCard="v => (form.paid_card = v)"
+            @update:cardBrand="v => (form.card_brand = v)"
             @fillRemainderToCard="fillRemainderToCard"
             @confirmClose="confirmClose"
             @update:discountRule="handleUpdateDiscountRule"

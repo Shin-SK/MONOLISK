@@ -493,7 +493,15 @@ async function chooseCourse(opt){
     } catch(e){ /* noop */ }
 
     for (const it of pending.value || []){
-      enqueue('addBillItem', { id: optimisticId, item: { item_master: it.master_id, qty: it.qty, served_by_cast_id: it.cast_id ?? undefined } })
+      enqueue('addBillItem', { 
+        id: optimisticId, 
+        item: { 
+          item_master: it.master_id, 
+          qty: it.qty, 
+          served_by_cast_id: it.cast_id ?? undefined,
+          customer_id: it.customer_id ?? undefined
+        } 
+      })
     }
     pending.value = []
 
