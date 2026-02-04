@@ -666,7 +666,7 @@ class BillSerializer(serializers.ModelSerializer):
     grand_total     = serializers.SerializerMethodField()
 
     inhouse_casts = CastSerializer(many=True, read_only=True)
-    opened_at     = serializers.DateTimeField(required=False, allow_null=True)
+    opened_at     = serializers.DateTimeField(required=False, allow_null=False)
     expected_out  = serializers.DateTimeField(required=False, allow_null=True)
     set_rounds    = serializers.IntegerField(read_only=True)
     ext_minutes   = serializers.IntegerField(read_only=True)
@@ -690,11 +690,21 @@ class BillSerializer(serializers.ModelSerializer):
     customers = CustomerSerializer(many=True, read_only=True)
     customer_display_name = serializers.SerializerMethodField()
 
-    # WRITE: 卓
+    # WRITE: 卓（単数・互換性維持）
     table_id = serializers.PrimaryKeyRelatedField(
         source='table',
         queryset=Table.objects.all(),
         allow_null=True, required=False, write_only=True,
+    )
+
+    # Phase2: M2M 卓対応
+    table_atoms = serializers.SerializerMethodField()  # read-only: ['A', 'B']
+    table_label = serializers.SerializerMethodField()  # read-only: 'AB'
+    table_atom_ids = serializers.SerializerMethodField()  # read-only: [1, 2] (FE初期化用ID配列)
+    # WRITE: 卓（複数・M2M対応）
+    table_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False, write_only=True, allow_empty=True
     )
 
     # WRITE: 場内/フリー 他
@@ -737,7 +747,7 @@ class BillSerializer(serializers.ModelSerializer):
         model = Bill
         fields = (
             # ---- 基本 ----
-            "id", "table", "table_id", "opened_at", "closed_at","memo", "pax",
+            "id", "table", "table_id", "table_atoms", "table_label", "table_atom_ids", "table_ids", "opened_at", "closed_at","memo", "pax",
             # ---- 金額 ----
             "subtotal", "service_charge", "tax", "apply_service_charge", "apply_tax", "grand_total", "total",
             "paid_cash","paid_card","card_brand","paid_total","change_due",
@@ -765,6 +775,7 @@ class BillSerializer(serializers.ModelSerializer):
             "paid_total","change_due",
             "manual_discount_total",
             "payroll_snapshot", "payroll_dirty",
+            "table_atoms", "table_label", "table_atom_ids",  # Phase2: read-only
         )
         depth = 2
 
@@ -776,6 +787,59 @@ class BillSerializer(serializers.ModelSerializer):
         if req and getattr(req, 'store', None):
             qs = qs.filter(store=req.store)
         self.fields['discount_rule'].queryset = qs
+
+    # ---- Phase2: M2M 卓対応 ----
+    def get_table_atoms(self, obj):
+        """卓のコードリストを返す（例: ['A', 'B']）"""
+        return list(obj.tables.values_list('code', flat=True))
+
+    def get_table_label(self, obj):
+        """卓のコードを連結した文字列を返す（例: 'AB'）"""
+        return ''.join(obj.tables.values_list('code', flat=True))
+
+    def get_table_atom_ids(self, obj):
+        """卓の ID 配列を返す（FE初期化用）"""
+        return list(obj.tables.values_list('id', flat=True))
+
+    def validate_table_ids(self, ids):
+        """table_ids のバリデーション"""
+        if ids is None:
+            return ids
+        
+        req = self.context.get('request')
+        if not req or not getattr(req, 'store', None):
+            return ids
+        
+        # store に属する Table のみを許可
+        from .models import Table
+        valid_qs = Table.objects.filter(store_id=req.store.id, id__in=ids)
+        if len(set(ids)) != valid_qs.count():
+            raise serializers.ValidationError('Invalid table id(s) for this store')
+        return ids
+
+    def _assign_tables(self, bill, ids):
+        """M2M tables を設定"""
+        if ids is None:
+            return
+        # table_ids が指定されている場合はそれで置換
+        bill.tables.set(ids)
+
+    def to_internal_value(self, data):
+        """Phase2: deprecation warning for legacy table/table_id fields"""
+        from django.conf import settings
+        import logging
+        
+        if settings.DEBUG:
+            logger = logging.getLogger(__name__)
+            if isinstance(data, dict):
+                if 'table' in data or 'table_id' in data:
+                    logger.warning(
+                        "Deprecated: 'table'/'table_id' field is used. "
+                        "Please use 'table_ids' (array) instead. "
+                        "(will be removed in Phase 3)"
+                    )
+        
+        return super().to_internal_value(data)
 
     # ---- バリデーション ----
     def validate_paid_cash(self, value):
@@ -914,6 +978,7 @@ class BillSerializer(serializers.ModelSerializer):
         inhouse   = validated_data.pop("inhouse_casts_w", [])
         cust_ids  = validated_data.pop('customer_ids', None)
         rows      = validated_data.pop('manual_discounts', None)
+        table_ids = validated_data.pop('table_ids', None)  # Phase2: M2M tables
 
         bill = Bill.objects.create(**validated_data)
 
@@ -923,6 +988,9 @@ class BillSerializer(serializers.ModelSerializer):
             bill.customers.set(cust_ids)
         if rows is not None:
             self._replace_manual_discounts(bill, rows)
+        
+        # Phase2: M2M tables を設定
+        self._assign_tables(bill, table_ids)
 
         # 指名/場内差分 → 料金行同期（既存の関数）
         sync_nomination_fees(
@@ -943,9 +1011,15 @@ class BillSerializer(serializers.ModelSerializer):
         new_opened_at = validated_data.get('opened_at', _missing)
 
         # opened_at を null にする更新を禁止（事故防止）
+        # 既存の値を保持するか、新規 Bill なら now でセット
         if new_opened_at is None:
-            validated_data['opened_at'] = instance.opened_at or timezone.now()
-            new_opened_at = validated_data['opened_at']
+            if instance.opened_at:
+                # 既存値がある場合は削除フィールドから外す（更新しない）
+                validated_data.pop('opened_at', None)
+            else:
+                # 新規の場合はデフォルト値をセット
+                validated_data['opened_at'] = timezone.now()
+            new_opened_at = validated_data.get('opened_at', instance.opened_at)
 
         if new_opened_at is not _missing and req is not None:
             try:
@@ -983,6 +1057,7 @@ class BillSerializer(serializers.ModelSerializer):
         inhouse_raw   = validated_data.pop("inhouse_casts_w", None)
         free_raw      = validated_data.pop("free_ids", None)
         rows          = validated_data.pop('manual_discounts', None)
+        table_ids     = validated_data.pop('table_ids', None)  # Phase2: M2M tables
 
         help_raw = self.context['request'].data.get('help_ids', None)
         to_ids = lambda raw: [c.id if hasattr(c, 'id') else c for c in (raw or [])]
@@ -1011,6 +1086,9 @@ class BillSerializer(serializers.ModelSerializer):
         # 顧客M2M
         if cust_ids is not None:
             instance.customers.set(cust_ids)
+
+        # Phase2: M2M tables を更新
+        self._assign_tables(instance, table_ids)
 
         # 手入力割引の入れ替え
         if rows is not None:

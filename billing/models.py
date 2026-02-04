@@ -553,6 +553,12 @@ class CustomerLog(models.Model):
 # ───────── 伝票 ─────────
 class Bill(models.Model):
     table = models.ForeignKey('billing.Table', on_delete=models.CASCADE, null=True, blank=True)
+    tables = models.ManyToManyField(
+        'billing.Table',
+        blank=True,
+        related_name='bills_m2m',
+        help_text='複数卓対応（Phase1：FK table を残したまま追加）',
+    )
     opened_at = models.DateTimeField(default=timezone.now, db_index=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     expected_out = models.DateTimeField('退店予定', null=True, blank=True)

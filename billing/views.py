@@ -248,23 +248,21 @@ class TableViewSet(NoStoreListMixin, StoreScopedModelViewSet):
 class BillViewSet(viewsets.ModelViewSet):
     serializer_class = BillSerializer
     queryset = Bill.objects.all()
-    # DjangoFilterBackend はもう使わないので外してもOK
-    # filter_backends = [DjangoFilterBackend]
+    filterset_class = None  # Phase2: Dynamic filtersetを後で追加可能
+    filter_backends = []    # 当面は手動フィルタを使用
 
     def _sid(self):
         # StoreScopedModelViewSet.require_store をそのまま利用
         return StoreScopedModelViewSet.require_store(self, self.request)
 
     def get_queryset(self):
+        from .querysets import bills_in_store_qs
+        
         sid = self._sid()
-
-        qs = (
-            Bill.objects
-            .select_related("table__store")
-            .prefetch_related("items", "stays", "nominated_casts")
-            .filter(table__store_id=sid)
-            .order_by("-opened_at")
-        )
+        qs = bills_in_store_qs(sid)
+        
+        # 既存フィルタを保持
+        qs = qs.select_related("table__store").prefetch_related("items", "stays", "nominated_casts").order_by("-opened_at")
 
         # ▼ ここで「?cast=◯◯」を stays 経由で絞る（＝担当キャストのみ）
         cast_id = self.request.query_params.get("cast")

@@ -2,6 +2,7 @@
 import { ref, watch, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import Avatar from '@/components/Avatar.vue'
+import TablePicker from '@/components/TablePicker.vue'
 import Multiselect from 'vue-multiselect'
 import 'vue-multiselect/dist/vue-multiselect.css'
 import { fetchBasicDiscountRules, fetchDiscountRules, fetchStoreSeatSettings, fetchMasters, fetchBillTags, fetchCustomers, patchBill, api } from '@/api'  // ← api 追加
@@ -12,6 +13,7 @@ const props = defineProps({
   billId: { type: [Number, null], default: null },
   tables: { type: Array, default: () => [] },
   tableId: { type: [Number, null], default: null },
+  tableIds: { type: Array, default: () => [] },
 
   currentCasts: { type: Array, default: () => [] },  // 現在着席中のキャスト
 
@@ -72,7 +74,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'update:seatType','update:tableId','update:pax',
+  'update:seatType','update:tableId','update:tableIds','update:pax',
   'update:applyService','update:applyTax','update:memo',
   'update:selectedTagIds',  // ← 追加
   'chooseCourse','clearCustomer','searchCustomer','pickCustomer',
@@ -1002,6 +1004,14 @@ function customLabel(customer) {
             </button>
           </div>
         </div>
+      </div>
+
+      <div class="area mb-5">
+        <h3 class="fs-5 fw-bold"><IconPinned />複数テーブル選択</h3>
+        <TablePicker 
+          :modelValue="tableIds" 
+          @update:modelValue="v => $emit('update:tableIds', v)"
+        />
       </div>
 
       <div class="area mb-5">

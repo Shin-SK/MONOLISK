@@ -1,7 +1,17 @@
 # billing/filters.py
 
 from django_filters import rest_framework as filters
-from .models import CastPayout, BillItem
+from .models import CastPayout, BillItem, Bill
+
+
+class BillFilter(filters.FilterSet):
+    """Phase 2: Bill filtering with M2M table support"""
+    table = filters.NumberFilter(field_name="table_id")           # legacy互換
+    table_atom = filters.NumberFilter(field_name="tables__id")    # M2M
+    
+    class Meta:
+        model = Bill
+        fields = ['table', 'table_atom']
 
 class CastPayoutFilter(filters.FilterSet):
     year  = filters.NumberFilter(method='filter_year')

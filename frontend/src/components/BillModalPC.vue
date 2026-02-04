@@ -5,6 +5,7 @@ import BaseModal      from '@/components/BaseModal.vue'
 import Avatar         from '@/components/Avatar.vue'
 import { useCustomers } from '@/stores/useCustomers'
 import { useBillCustomers } from '@/composables/useBillCustomers'
+import { useBills } from '@/composables/useBills'
 import {
   api,
   updateBillTimes,
@@ -668,9 +669,12 @@ const headerInfo = computed(() => {
 })
 const editingTime = ref(false)
 async function saveTimes () {
-  const openedISO   = form.opened_at    ? dayjs(form.opened_at).toISOString()    : null
-  const expectedISO = form.expected_out ? dayjs(form.expected_out).toISOString() : null
   if (isNew.value) { editingTime.value = false; return }
+  
+  // opened_at は必須（現在値を保持）
+  const openedISO   = form.opened_at ? dayjs(form.opened_at).toISOString() : dayjs(props.bill.opened_at).toISOString()
+  const expectedISO = form.expected_out ? dayjs(form.expected_out).toISOString() : null
+  
   if (openedISO === props.bill.opened_at && expectedISO === props.bill.expected_out) {
     editingTime.value = false; return
   }
@@ -693,8 +697,21 @@ const current = computed(() => {
   return { sub, svc, tax, total }
 })
 
+/* 初期化ヘルパー */
+const toIdsFromAtoms = (atoms) => {
+  // atoms: ['A','B'] | [{id,name}, ...] | undefined
+  if (!Array.isArray(atoms)) return []
+  // 文字列配列なら ID は取れない → 空配列（サーバから table_atom_ids を採用する前提）
+  const first = atoms[0]
+  if (typeof first === 'string') return []
+  return atoms.map(a => a.id).filter(Boolean)
+}
+
 const form = reactive({
   table_id: props.bill?.table?.id ?? props.bill?.table ?? null,
+  table_ids: props.bill?.table_atom_ids
+    ? [...props.bill.table_atom_ids]                    // 推奨：サーバの ID 配列
+    : toIdsFromAtoms(props.bill?.table_atoms || []),    // 互換フォールバック
   opened_at: props.bill?.opened_at
     ? dayjs(props.bill.opened_at).format('YYYY-MM-DDTHH:mm')
     : dayjs().format('YYYY-MM-DDTHH:mm'),
@@ -801,6 +818,7 @@ async function confirmClose(){
 /* ---------------------------------------------------------
  * 注文保存フロー
  * --------------------------------------------------------- */
+const { createBill, updateBill } = useBills()
 const saving = ref(false)
 async function save () {
   if (saving.value) return
@@ -812,8 +830,8 @@ async function save () {
   try {
     // ❶ 新規POST
     if (wasNew) {
-      const { data: created } = await api.post('billing/bills/', {
-        table_id    : form.table_id ?? null,
+      const created = await createBill({
+        tableIds: form.table_ids && form.table_ids.length > 0 ? form.table_ids : [],
         opened_at   : form.opened_at ? dayjs(form.opened_at).toISOString() : null,
         expected_out: form.expected_out ? dayjs(form.expected_out).toISOString() : null,
         memo        : String(memoRef.value || ''),
@@ -829,9 +847,14 @@ async function save () {
       }
     } else {
       // 既存：卓/時刻 PATCH
-      const currentTableId = props.bill.table?.id ?? props.bill.table ?? null
-      if (currentTableId === null || form.table_id !== currentTableId) {
-        await updateBillTable(billId, form.table_id)
+      // Check if table_ids has changed compared to current bill's tables
+      const currentTableIds = props.bill?.table_atoms ? props.bill.table_atoms.map(atom => atom.id) : []
+      const tableIdsChanged = JSON.stringify(form.table_ids.sort()) !== JSON.stringify(currentTableIds.sort())
+      
+      if (tableIdsChanged) {
+        await updateBill(billId, {
+          tableIds: form.table_ids && form.table_ids.length > 0 ? form.table_ids : [],
+        })
       }
       await patchBill(billId, {
         opened_at   : form.opened_at    ? dayjs(form.opened_at).toISOString()    : null,
@@ -967,6 +990,7 @@ watch(freeCastIds, list => {
               :active-pane="pane"
               :tables="tables"
               :table-id="form.table_id"
+              :table-ids="form.table_ids"
               :pax="paxFromItems"
               :male="maleFromItems"
               :female="femaleFromItems"
@@ -977,6 +1001,7 @@ watch(freeCastIds, list => {
               v-model:seatType="seatType"
 
               @update:tableId="v => (form.table_id = v)"
+              @update:tableIds="v => (form.table_ids = v)"
               @update:applyService="onApplyServiceChangePc"
               @update:applyTax="onApplyTaxChangePc"
               @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"
