@@ -345,6 +345,7 @@ async function ensureBillId () {
     pax: paxPayload,
     apply_service_charge: props.bill?.apply_service_charge !== false,
     apply_tax: props.bill?.apply_tax !== false,
+    display_name: String(displayNameRef.value || props.bill?.display_name || ''),
   }
   const b = await createBill(req)
 
@@ -1318,7 +1319,7 @@ function handleClose() {
       @update:applyService="onApplyServiceChange"
       @update:applyTax="onApplyTaxChange"
       @update:memo="onMemoChange"
-      @update:displayName="onDisplayNameChange"
+      @update:display-name="onDisplayNameChange"
       @update:selectedTagIds="onSelectedTagIdsChange"
       @chooseCourse="(opt, qty) => onChooseCourse(opt, qty)"
       @clearCustomer="ed.clearCustomer"

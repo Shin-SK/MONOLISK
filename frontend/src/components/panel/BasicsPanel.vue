@@ -77,7 +77,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'update:seatType','update:tableId','update:tableIds','update:pax',
-  'update:applyService','update:applyTax','update:memo','update:displayName',
+  'update:applyService','update:applyTax','update:memo','update:display-name',
   'update:selectedTagIds',  // ← 追加
   'chooseCourse','clearCustomer','searchCustomer','pickCustomer',
   'applySet','save','switchPanel','update-times'
@@ -104,7 +104,7 @@ watch(memoLocal, (v) => { emit('update:memo', v) })
 // 伝票の表示名（あだ名）の双方向バインディング
 const displayNameLocal = ref(props.displayName || '')
 watch(() => props.displayName, (v) => { displayNameLocal.value = v || '' }, { immediate: true })
-watch(displayNameLocal, (v) => { emit('update:displayName', v) })
+watch(displayNameLocal, (v) => { emit('update:display-name', v) })
 
 // タグ関連
 const selectedTagIds = ref(props.selectedTagIds || [])

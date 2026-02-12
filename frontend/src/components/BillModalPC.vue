@@ -885,6 +885,7 @@ async function save () {
       const payload = {
         tableIds: form.table_ids && form.table_ids.length > 0 ? form.table_ids : [],
         memo        : String(memoRef.value || ''),
+        display_name: String(displayNameRef.value || ''),
         apply_service_charge: applyServiceCharge.value,
         apply_tax: applyTax.value,
       }
@@ -918,6 +919,7 @@ async function save () {
       // PATCH payload: opened_at は値がある時だけ送る（null 禁止）
       const patchPayload = {
         memo        : String(memoRef.value || ''),
+        display_name: String(displayNameRef.value || ''),
         apply_service_charge: applyServiceCharge.value,
         apply_tax: applyTax.value,
       }
@@ -1074,7 +1076,7 @@ watch(freeCastIds, list => {
               @update:applyService="onApplyServiceChangePc"
               @update:applyTax="onApplyTaxChangePc"
               @update:memo="onUpdateMemoPc"
-              @update:displayName="onUpdateDisplayNamePc"
+              @update:display-name="onUpdateDisplayNamePc"
               @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"
               @jumpToBill="rightTab = 'bill'"
               @applySet="onApplySet"

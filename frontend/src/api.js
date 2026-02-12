@@ -128,6 +128,7 @@ export const createBill = (arg = {}) => {
     ...(payload.apply_service_charge !== undefined ? { apply_service_charge: !!payload.apply_service_charge } : {}),
     ...(payload.apply_tax !== undefined ? { apply_tax: !!payload.apply_tax } : {}),
 		...(payload.memo != null ? { memo: String(payload.memo) } : {}),
+		...(payload.display_name != null ? { display_name: String(payload.display_name) } : {}),
 	}
 	return api.post('billing/bills/', body).then(r => r.data)
 }
