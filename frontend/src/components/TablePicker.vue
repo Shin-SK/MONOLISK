@@ -1,108 +1,75 @@
-<template>
-  <div class="table-picker">
-    <div v-if="loading" class="loading">読み込み中...</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
-    <div v-else class="table-list">
-      <label v-for="table in sortedTables" :key="table.id" class="table-checkbox">
-        <input
-          type="checkbox"
-          :value="table.id"
-          :checked="modelValue.includes(table.id)"
-          :disabled="disabled"
-          @change="handleChange"
-        />
-        <span>{{ table.name }}</span>
-      </label>
-    </div>
-  </div>
-</template>
-
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { fetchTables } from '@/composables/useTables.js'
+import { computed } from 'vue'
 
 const props = defineProps({
-  modelValue: {
-    type: Array,
-    default: () => []
-  },
-  disabled: {
-    type: Boolean,
-    default: false
-  }
+  // 単一選択: Number|null
+  // 複数選択: Number[]
+  modelValue: { type: [Number, Array, null], default: null },
+
+  // true: 複数選択（トグル）
+  // false: 単一選択
+  multiple: { type: Boolean, default: false },
+
+  // BasicsPanel側で持ってるテーブル一覧を渡す想定
+  tables: { type: Array, default: () => [] },
+
+  // 表示対象の絞り込み済み配列を渡してもOK
+  // （tables を渡した上で filteredTables を渡す運用でも良い）
+  disabled: { type: Boolean, default: false },
+
+  // Bootstrapの列クラス（3列なら col-4）
+  colClass: { type: String, default: 'col-4' },
+
+  // 表示ラベル（number/nameどっちを出すか）
+  labelKey: { type: String, default: 'number' }
 })
 
 const emit = defineEmits(['update:modelValue'])
 
-const tables = ref([])
-const loading = ref(false)
-const error = ref(null)
-
-const sortedTables = computed(() => {
-  return [...tables.value].sort((a, b) => (a.name || a.number || '').localeCompare(b.name || b.number || ''))
+const normalizedSelectedIds = computed(() => {
+  if (props.multiple) return Array.isArray(props.modelValue) ? props.modelValue : []
+  return props.modelValue == null ? [] : [Number(props.modelValue)]
 })
 
-const handleChange = (e) => {
-  const tableId = parseInt(e.target.value)
-  const newValue = e.target.checked
-    ? [...props.modelValue, tableId]
-    : props.modelValue.filter(id => id !== tableId)
-  emit('update:modelValue', newValue)
+const isSelected = (id) => normalizedSelectedIds.value.includes(Number(id))
+
+const labelOf = (t) => {
+  const v = t?.[props.labelKey]
+  return v != null && v !== '' ? String(v) : String(t?.name ?? t?.number ?? t?.id ?? '')
 }
 
-onMounted(async () => {
-  try {
-    loading.value = true
-    tables.value = await fetchTables()
-  } catch (err) {
-    error.value = err.message
-  } finally {
-    loading.value = false
+const toggle = (id) => {
+  if (props.disabled) return
+  const tid = Number(id)
+
+  if (props.multiple) {
+    const cur = Array.isArray(props.modelValue) ? props.modelValue.map(Number) : []
+    const next = cur.includes(tid) ? cur.filter(x => x !== tid) : [...cur, tid]
+    emit('update:modelValue', next)
+    return
   }
+
+  emit('update:modelValue', tid)
+}
+
+const sortedTables = computed(() => {
+  const arr = [...props.tables]
+  return arr.sort((a, b) => String(labelOf(a)).localeCompare(String(labelOf(b))))
 })
 </script>
 
-<style scoped>
-.table-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  padding: 0.5rem;
-}
-
-.loading,
-.error {
-  padding: 0.5rem;
-}
-
-.error {
-  color: #d32f2f;
-}
-
-.table-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.table-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  user-select: none;
-}
-
-.table-checkbox input {
-  cursor: pointer;
-}
-
-.table-checkbox input:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.table-checkbox span {
-  font-weight: 500;
-}
-</style>
+<template>
+  <div class="row g-1">
+    <div v-for="t in sortedTables" :key="t.id" :class="colClass">
+      <button
+        type="button"
+        class="btn w-100"
+        :class="isSelected(t.id) ? 'btn-secondary' : 'btn-outline-secondary'"
+        :disabled="disabled"
+        @click="toggle(t.id)"
+      >
+        {{ labelOf(t) }}
+      </button>
+    </div>
+  </div>
+</template>

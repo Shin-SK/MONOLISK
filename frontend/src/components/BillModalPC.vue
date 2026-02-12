@@ -254,6 +254,30 @@ async function onApplyTaxChangePc(v) {
   }
 }
 
+async function onUpdateTableIdsPc(ids) {
+  const nextIds = Array.isArray(ids)
+    ? ids.map(Number).filter(v => Number.isFinite(v))
+    : []
+  const prevIds = Array.isArray(form.table_ids) ? [...form.table_ids] : []
+
+  form.table_ids = nextIds
+  form.table_id = nextIds.length ? nextIds[0] : null
+
+  if (!props.bill?.id) return
+  try {
+    const updated = await updateBill(props.bill.id, { tableIds: nextIds })
+    if (updated) {
+      Object.assign(props.bill, updated)
+      emit('updated', updated)
+    }
+  } catch (e) {
+    console.error('[BillModalPC] failed to update table_ids', e)
+    form.table_ids = prevIds
+    form.table_id = prevIds.length ? prevIds[0] : null
+    alert('テーブルの更新に失敗しました')
+  }
+}
+
 async function onApplySet(payload){
   const lines = Array.isArray(payload?.lines) ? payload.lines : []
   const discountCode = payload?.discount_code || null
@@ -830,14 +854,20 @@ async function save () {
   try {
     // ❶ 新規POST
     if (wasNew) {
-      const created = await createBill({
+      const payload = {
         tableIds: form.table_ids && form.table_ids.length > 0 ? form.table_ids : [],
-        opened_at   : form.opened_at ? dayjs(form.opened_at).toISOString() : null,
-        expected_out: form.expected_out ? dayjs(form.expected_out).toISOString() : null,
         memo        : String(memoRef.value || ''),
         apply_service_charge: applyServiceCharge.value,
         apply_tax: applyTax.value,
-      })
+      }
+      // opened_at は値がある時だけ送る
+      if (form.opened_at) {
+        payload.opened_at = dayjs(form.opened_at).toISOString()
+      }
+      if (form.expected_out) {
+        payload.expected_out = dayjs(form.expected_out).toISOString()
+      }
+      const created = await createBill(payload)
       billId = created.id
       props.bill.id = billId
       props.bill.apply_service_charge = created.apply_service_charge
@@ -856,13 +886,22 @@ async function save () {
           tableIds: form.table_ids && form.table_ids.length > 0 ? form.table_ids : [],
         })
       }
-      await patchBill(billId, {
-        opened_at   : form.opened_at    ? dayjs(form.opened_at).toISOString()    : null,
-        expected_out: form.expected_out ? dayjs(form.expected_out).toISOString() : null,
+      
+      // PATCH payload: opened_at は値がある時だけ送る（null 禁止）
+      const patchPayload = {
         memo        : String(memoRef.value || ''),
         apply_service_charge: applyServiceCharge.value,
         apply_tax: applyTax.value,
-      })
+      }
+      
+      if (form.opened_at) {
+        patchPayload.opened_at = dayjs(form.opened_at).toISOString()
+      }
+      if (form.expected_out) {
+        patchPayload.expected_out = dayjs(form.expected_out).toISOString()
+      }
+      
+      await patchBill(billId, patchPayload)
     }
 
     // ❷ キャスト
@@ -1001,7 +1040,7 @@ watch(freeCastIds, list => {
               v-model:seatType="seatType"
 
               @update:tableId="v => (form.table_id = v)"
-              @update:tableIds="v => (form.table_ids = v)"
+              @update:tableIds="onUpdateTableIdsPc"
               @update:applyService="onApplyServiceChangePc"
               @update:applyTax="onApplyTaxChangePc"
               @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"

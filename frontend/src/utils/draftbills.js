@@ -1,12 +1,16 @@
 // src/utils/draftbills.js
-export function buildBillDraft({ tableId = null, storeId = null } = {}) {
+export function buildBillDraft({ tableId = null, tableIds = null, storeId = null } = {}) {
+  const table_atom_ids = tableIds
+    ? tableIds.map(Number)
+    : tableId ? [Number(tableId)] : []
   return {
     id: null,
     items: [],
     customers: [],
     stays: [],
     table: null,
-    table_id_hint: tableId, // BillModal 側の watch が拾う想定
+    table_id_hint: tableId,
+    table_atom_ids,
     opened_at: null,
     expected_out: null,
     grand_total: 0,

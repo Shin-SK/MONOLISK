@@ -101,14 +101,30 @@ export const fetchBillsList = ({ params={}, noCache=false, meta={} } = {}) =>
   export const fetchBills = (params = {}, options = {}) =>
   fetchBillsList({ params, noCache: true, ...options })
 
+// Helper: table_ids への変換（新旧入力を吸収）
+const toTableIds = (p = {}) => {
+  if (Array.isArray(p.tableIds) && p.tableIds.length) return p.tableIds.map(Number)
+  if (Array.isArray(p.table_ids) && p.table_ids.length) return p.table_ids.map(Number)
+  if (Array.isArray(p.table_atom_ids) && p.table_atom_ids.length) return p.table_atom_ids.map(Number)
+
+  if (p.table != null) {
+    if (typeof p.table === 'number') return [Number(p.table)]
+    if (typeof p.table === 'object' && p.table.id != null) return [Number(p.table.id)]
+  }
+  if (p.table_id != null) return [Number(p.table_id)]
+  return []
+}
+
 
 export const createBill = (arg = {}) => {
 	const payload = (typeof arg === 'number') ? { table_id: arg } : { ...arg }
+	const table_ids = toTableIds(payload)
+
 	const body = {
-		table_id    : payload.table_id ?? payload.table ?? null,
-		opened_at   : payload.opened_at,               // 任意
-		expected_out: payload.expected_out ?? null,    // 任意
-		pax         : payload.pax ?? null,             // 任意: 人数
+		table_ids, // ★必須（単卓でも配列）
+		...(payload.opened_at ? { opened_at: payload.opened_at } : {}),  // ★ null送らない
+		...(payload.expected_out !== undefined ? { expected_out: payload.expected_out } : {}),
+		...(payload.pax != null ? { pax: payload.pax } : {}),
     ...(payload.apply_service_charge !== undefined ? { apply_service_charge: !!payload.apply_service_charge } : {}),
     ...(payload.apply_tax !== undefined ? { apply_tax: !!payload.apply_tax } : {}),
 		...(payload.memo != null ? { memo: String(payload.memo) } : {}),
@@ -504,8 +520,31 @@ export const staffCheckOut = (shiftId, at = dayjs().toISOString()) =>
 
 
 // ──────────── Bills patch 共通 ────────────
-export const patchBill = (id, payload) =>
-  api.patch(`billing/bills/${id}/`, payload).then(r => r.data)
+export const patchBill = (id, payload = {}) => {
+  const table_ids = toTableIds(payload)
+  const hasTableIdsIntent =
+    Object.prototype.hasOwnProperty.call(payload, 'tableIds') ||
+    Object.prototype.hasOwnProperty.call(payload, 'table_ids') ||
+    Object.prototype.hasOwnProperty.call(payload, 'table_atom_ids') ||
+    Object.prototype.hasOwnProperty.call(payload, 'table') ||
+    Object.prototype.hasOwnProperty.call(payload, 'table_id')
+
+  const body = {
+    ...(hasTableIdsIntent ? { table_ids } : {}), // ★空配列も送れる
+    ...(payload.opened_at ? { opened_at: payload.opened_at } : {}), // ★null送らない
+    ...(payload.expected_out !== undefined ? { expected_out: payload.expected_out } : {}),
+    ...(payload.pax !== undefined ? { pax: payload.pax } : {}),
+    ...(payload.apply_service_charge !== undefined ? { apply_service_charge: !!payload.apply_service_charge } : {}),
+    ...(payload.apply_tax !== undefined ? { apply_tax: !!payload.apply_tax } : {}),
+    ...(payload.memo !== undefined ? { memo: payload.memo } : {}),
+    // その他のフィールドも通す（manual_discounts 等）
+    ...Object.keys(payload)
+      .filter(k => !['tableIds', 'table_ids', 'table_atom_ids', 'table', 'table_id', 'opened_at', 'expected_out', 'pax', 'apply_service_charge', 'apply_tax', 'memo'].includes(k))
+      .reduce((acc, k) => ({ ...acc, [k]: payload[k] }), {}),
+  }
+
+  return api.patch(`billing/bills/${id}/`, body).then(r => r.data)
+}
 
 
 /** 手入力割引行（manual_discounts）だけを全入れ替えで保存 */

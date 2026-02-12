@@ -27,6 +27,7 @@ const applyTaxRef = ref(true)
 const billTags = ref([])
 const selectedTagIds = ref([])
 const selectedCustomerId = ref(null)  // 注文作成時の顧客選択
+const tableIds = ref([])  // 複数テーブル選択用
 const billCustomersComposable = useBillCustomers()
 
 const props = defineProps({
@@ -80,6 +81,12 @@ function applyBillPatchToLocal(patch) {
   if (patch.apply_service_charge !== undefined) props.bill.apply_service_charge = patch.apply_service_charge
   if (patch.apply_tax !== undefined) props.bill.apply_tax = patch.apply_tax
 
+  // table fields（Phase2）
+  if (patch.table !== undefined) props.bill.table = patch.table
+  if (patch.table_atom_ids !== undefined) props.bill.table_atom_ids = patch.table_atom_ids
+  if (patch.table_atoms !== undefined) props.bill.table_atoms = patch.table_atoms
+  if (patch.table_label !== undefined) props.bill.table_label = patch.table_label
+
   // money fields (fetchBill / settleBill の反映)
   const moneyKeys = [
     'subtotal', 'service_charge', 'tax',
@@ -123,6 +130,25 @@ async function initOnOpen() {
   syncingTableInit.value = true
   const initTid = props.bill?.table?.id ?? props.bill?.table ?? null
   if (initTid != null) ed.tableId.value = Number(initTid)
+  
+  // tableIds 初期化（複数テーブル対応）
+  // サーバの正: table_atom_ids（Phase2）を最優先
+  const initTids =
+    props.bill?.table_atom_ids ??
+    props.bill?.table_ids ??
+    props.bill?.tables ??
+    []
+
+  let ids = Array.isArray(initTids) ? initTids.map(Number).filter(Boolean) : []
+
+  // もし空なら legacy table を最低限入れておく（表示保険）
+  if (!ids.length) {
+    const t0 = props.bill?.table?.id ?? props.bill?.table ?? null
+    if (t0 != null) ids = [Number(t0)]
+  }
+
+  tableIds.value = ids
+  
   await nextTick()
   syncingTableInit.value = false
 }
@@ -181,6 +207,13 @@ watch(() => props.bill?.id, async (billId) => {
     selectedCustomerId.value = null  // 顧客選択をリセット
   }
 }, { immediate: true })
+
+// table_atom_ids の更新に追従（表示の確実性を上げる）
+watch(() => props.bill?.table_atom_ids, (v) => {
+  if (!visible.value) return
+  const ids = Array.isArray(v) ? v.map(Number).filter(Boolean) : []
+  if (ids.length) tableIds.value = ids
+}, { deep: true })
 
 // 伝票の store が変わったら取り直す（table.store は数値ID）
 watch(() => props.bill?.table?.store, () => {
@@ -275,14 +308,24 @@ watch(() => ed.tableId.value, async (tid, prev) => {
 async function ensureBillId () {
   if (props.bill?.id) return props.bill.id
 
-  const tableId =
-    Number(ed.tableId.value) ||
-    Number(props.bill?.table?.id) ||
-    Number(props.bill?.table) ||
-    Number(props.bill?.table_id_hint) ||
-    null
-
-  if (!tableId) { alert('テーブルが未選択です'); throw new Error('no table') }
+  // tableIds（複数選択）が優先、なければ単一の tableId を配列化
+  let tableIdsPayload = []
+  
+  if (tableIds.value && tableIds.value.length > 0) {
+    // 複数テーブル選択がある場合
+    tableIdsPayload = tableIds.value.map(Number)
+  } else {
+    // 単一テーブル選択
+    const tableId =
+      Number(ed.tableId.value) ||
+      Number(props.bill?.table?.id) ||
+      Number(props.bill?.table) ||
+      Number(props.bill?.table_id_hint) ||
+      null
+    
+    if (!tableId) { alert('テーブルが未選択です'); throw new Error('no table') }
+    tableIdsPayload = [tableId]
+  }
 
   const paxPayload =
     Number(props.bill?.pax) ||
@@ -292,14 +335,15 @@ async function ensureBillId () {
 
   // ✅ 確認1: 新規伝票 SET適用
   // ensureBillId() 内では apply_* を ref ではなく props.bill の値から導出
-  const b = await createBill({
-    table: tableId,
-    opened_at: props.bill?.opened_at ?? null,
+  const req = {
+    table_ids: tableIdsPayload,  // ★table_ids で送る（単卓でも配列）
+    ...(props.bill?.opened_at ? { opened_at: props.bill.opened_at } : {}),
     expected_out: props.bill?.expected_out ?? null,
     pax: paxPayload,
     apply_service_charge: props.bill?.apply_service_charge !== false,
     apply_tax: props.bill?.apply_tax !== false,
-  })
+  }
+  const b = await createBill(req)
 
   // applyBillPatchToLocal helper を使用
   applyBillPatchToLocal(b)
@@ -736,6 +780,25 @@ function onUpdatePax(newPax) {
   // 既存伝票は即時 patch
   if (props.bill?.id) {
     enqueue('patchBill', { id: props.bill.id, payload: { pax: newPax }})
+    enqueue('reconcile', { id: props.bill.id })
+  }
+}
+
+// ★ BasicsPanel からのテーブル複数更新を受けて patch
+function onUpdateTableIds(ids) {
+  const nextIds = Array.isArray(ids)
+    ? ids.map(Number).filter(v => Number.isFinite(v))
+    : []
+
+  tableIds.value = nextIds
+
+  // legacy 互換：単一IDも更新（先頭）
+  if (ed?.tableId) {
+    ed.tableId.value = nextIds.length ? nextIds[0] : null
+  }
+
+  if (props.bill?.id) {
+    enqueue('patchBill', { id: props.bill.id, payload: { tableIds: nextIds }})
     enqueue('reconcile', { id: props.bill.id })
   }
 }
@@ -1204,6 +1267,7 @@ function handleClose() {
       v-show="pane==='base'"
       :tables="ed.tables.value || []"
       :table-id="ed.tableId.value"
+      :table-ids="tableIds"
       :current-casts="currentCastsForPanel"
       :course-options="ed.courseOptions.value || []"
       :seat-type-options="seatTypeOptions"
@@ -1230,6 +1294,7 @@ function handleClose() {
       @update-times="onUpdateTimes"
       @update:seatType="onSeatTypeChange" 
       @update:tableId="v => (ed.tableId.value = v)"
+      @update:tableIds="onUpdateTableIds"
       @update:pax="onUpdatePax"
       @update:applyService="onApplyServiceChange"
       @update:applyTax="onApplyTaxChange"

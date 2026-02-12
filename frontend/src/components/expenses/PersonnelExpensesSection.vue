@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue'
-import api from '@/api/http'
+import { api } from '@/api'
 import { useUser } from '@/stores/useUser'
 import {
   fetchPersonnelExpenseCategories,

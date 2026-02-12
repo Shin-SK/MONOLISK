@@ -1,7 +1,7 @@
 <!-- frontend/src/views/PayrollRuns.vue -->
 <script setup>
 import { onMounted, ref } from "vue";
-import api from "@/api/http";
+import { api } from "@/api";
 import PersonnelExpensesSection from "@/components/expenses/PersonnelExpensesSection.vue";
 
 const from = ref("");

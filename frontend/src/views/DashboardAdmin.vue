@@ -4,8 +4,8 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import BillModal       from '@/components/BillModal.vue'
-import BillListTable   from '@/components/BillListTable.vue'   // PC用（現行DnD）
-import BillTablesSP    from '@/components/BillTablesSP.vue'    // ← 新規（上で作成）
+import BillBoardPC     from '@/components/BillBoardPC.vue'     // PC用（伝票中心）
+import BillBoardSP     from '@/components/BillBoardSP.vue'     // SP用（伝票中心）
 import { api, fetchBill } from '@/api'
 import { buildBillDraft } from '@/utils/draftbills.js'
 import { startTxQueue } from '@/utils/txQueue'
@@ -41,11 +41,13 @@ async function openBillEditor({ billId }){
   showModal.value   = true
 }
 
-function handleNewBill({ tableId }){
-  const d = buildBillDraft({ tableId, storeId: myStoreId.value }) || {}
-  // BasicPanel は ed.tableId.value(= bill.table.id or table_id_hint) を読む
-  d.table = d.table || { id: tableId }         // ← これで “選択済み” になる
-  d.table_id_hint = tableId                     // ← 念のため hint も入れておく
+function handleNewBill({ tableId, tableIds }){
+  const ids = tableIds || (tableId ? [tableId] : [])
+  const d = buildBillDraft({ tableIds: ids, storeId: myStoreId.value }) || {}
+  if (ids.length === 1) {
+    d.table = d.table || { id: ids[0] }
+    d.table_id_hint = ids[0]
+  }
   currentBill.value = d
   showModal.value   = true
 }
@@ -81,7 +83,7 @@ watch(
   <div class="dashboard">
     <div class="tables">
       <component
-        :is="isSP ? BillTablesSP : BillListTable"
+        :is="isSP ? BillBoardSP : BillBoardPC"
         :ref="isSP ? 'spRef' : 'pcRef'"
         @bill-click="openBillEditor"
         @request-new="handleNewBill"

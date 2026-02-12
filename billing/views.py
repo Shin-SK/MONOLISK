@@ -271,11 +271,33 @@ class BillViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    def _validate_table_ids_in_store(self, sid, ids):
+        ids = [int(x) for x in (ids or []) if x is not None]
+        if not ids:
+            return
+
+        rows = list(Table.objects.filter(id__in=ids).values_list("id", "store_id"))
+        found = {i for i, _ in rows}
+        missing = [i for i in ids if i not in found]
+        bad = [i for i, s in rows if s != sid]
+
+        if missing or bad:
+            # エラーメッセージは既存互換のまま "table" に載せる
+            raise ValidationError({"table": "他店舗の卓は指定できません。"})
+
     def perform_create(self, serializer):
         sid = self._sid()
-        table = serializer.validated_data.get("table")
-        if not table or table.store_id != sid:
-            raise ValidationError({"table": "他店舗の卓は指定できません。"})
+        table_ids = serializer.validated_data.get("table_ids", None)
+        table = serializer.validated_data.get("table", None)
+
+        if table_ids is not None:
+            ids = table_ids
+        elif table is not None:
+            ids = [table.id]
+        else:
+            raise ValidationError({"table": "テーブルを選択してください。"})
+
+        self._validate_table_ids_in_store(sid, ids)
         bill = serializer.save()
         
         # pax が指定されていれば、BillCustomer を同期
@@ -284,9 +306,13 @@ class BillViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         sid = self._sid()
-        table = serializer.validated_data.get("table", getattr(serializer.instance, "table", None))
-        if table and table.store_id != sid:
-            raise ValidationError({"table": "他店舗の卓は指定できません。"})
+        if "table_ids" in serializer.validated_data:
+            ids = serializer.validated_data.get("table_ids") or []
+            self._validate_table_ids_in_store(sid, ids)
+        elif "table" in serializer.validated_data:
+            table = serializer.validated_data.get("table")
+            if table and table.store_id != sid:
+                raise ValidationError({"table": "他店舗の卓は指定できません。"})
 
         # discount_ruleが更新された場合、再計算を実行
         bill = serializer.instance

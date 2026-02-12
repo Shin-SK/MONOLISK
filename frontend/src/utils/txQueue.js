@@ -118,6 +118,16 @@ export function startTxQueue(){
         queue.splice(idx,1); save(queue)
       }catch(e){
         try { console.warn('[diag txQueue:taskError]', { kind: task.kind, payload: task.payload, error: e?.message }) } catch(_){ /* noop */ }
+        
+        // 404 の場合は破棄（DBリセット/古いID残骸）
+        const status = e?.response?.status
+        if (status === 404) {
+          console.warn('[txQueue] 404 detected, discarding task:', task.kind, task.payload)
+          queue.splice(idx, 1)
+          save(queue)
+          continue
+        }
+        
         task.tries = (task.tries||0)+1
         const wait = Math.min(60000, Math.pow(2, task.tries) * 1000) // 最大60秒
         task.nextAt = Date.now() + wait

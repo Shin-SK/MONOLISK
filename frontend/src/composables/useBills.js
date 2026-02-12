@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import api from '@/api.js'
+import { api } from '@/api'
 
 /* ヘルパー：重複除去 */
 function dedupe(arr) {

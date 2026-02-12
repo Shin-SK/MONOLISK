@@ -817,12 +817,50 @@ class BillSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Invalid table id(s) for this store')
         return ids
 
-    def _assign_tables(self, bill, ids):
-        """M2M tables を設定"""
-        if ids is None:
+    def _sync_tables(self, bill, validated_data):
+        """
+        目的: Bill.tables(M2M) を正にして、legacy FK(bill.table) と同期する。
+        入力優先順位:
+          1) table_ids（新）
+          2) table / table_id（旧）
+          3) 何も来ない場合は変更しない
+        """
+        table_ids = validated_data.get('table_ids', None)
+
+        # 旧入力を拾う（serializer構成により table or table_id のどちらか）
+        legacy_table = validated_data.get('table', None)
+        legacy_table_id = None
+        if legacy_table is not None:
+            legacy_table_id = getattr(legacy_table, 'id', None) or legacy_table
+        else:
+            legacy_table_id = validated_data.get('table_id', None)
+
+        # 1) 新入力が来たらそれで確定
+        if table_ids is not None:
+            ids = [int(x) for x in table_ids if x is not None]
+            bill.tables.set(ids)
+
+            # legacy FK 同期（先頭を代表にする。空ならNone）
+            if ids:
+                if bill.table_id != ids[0]:
+                    bill.table_id = ids[0]
+                    bill.save(update_fields=['table'])
+            else:
+                if bill.table_id is not None:
+                    bill.table = None
+                    bill.save(update_fields=['table'])
             return
-        # table_ids が指定されている場合はそれで置換
-        bill.tables.set(ids)
+
+        # 2) 新入力が無いが旧入力が来たら、M2Mに同期（事故防止）
+        if legacy_table_id is not None:
+            # M2M が空なら同期、既にあれば上書きしない（安全側）
+            if not bill.tables.exists():
+                bill.tables.add(int(legacy_table_id))
+
+            # legacy FK は念のため同期
+            if bill.table_id != int(legacy_table_id):
+                bill.table_id = int(legacy_table_id)
+                bill.save(update_fields=['table'])
 
     def to_internal_value(self, data):
         """Phase2: deprecation warning for legacy table/table_id fields"""
@@ -979,6 +1017,9 @@ class BillSerializer(serializers.ModelSerializer):
         cust_ids  = validated_data.pop('customer_ids', None)
         rows      = validated_data.pop('manual_discounts', None)
         table_ids = validated_data.pop('table_ids', None)  # Phase2: M2M tables
+        # table/table_id も保存（legacy対応）
+        legacy_table = validated_data.get('table', None)
+        legacy_table_id = validated_data.get('table_id', None)
 
         bill = Bill.objects.create(**validated_data)
 
@@ -990,7 +1031,8 @@ class BillSerializer(serializers.ModelSerializer):
             self._replace_manual_discounts(bill, rows)
         
         # Phase2: M2M tables を設定
-        self._assign_tables(bill, table_ids)
+        sync_data = {'table_ids': table_ids, 'table': legacy_table, 'table_id': legacy_table_id}
+        self._sync_tables(bill, sync_data)
 
         # 指名/場内差分 → 料金行同期（既存の関数）
         sync_nomination_fees(
@@ -1058,6 +1100,9 @@ class BillSerializer(serializers.ModelSerializer):
         free_raw      = validated_data.pop("free_ids", None)
         rows          = validated_data.pop('manual_discounts', None)
         table_ids     = validated_data.pop('table_ids', None)  # Phase2: M2M tables
+        # table/table_id も保存（legacy対応）
+        legacy_table = validated_data.get('table', None)
+        legacy_table_id = validated_data.get('table_id', None)
 
         help_raw = self.context['request'].data.get('help_ids', None)
         to_ids = lambda raw: [c.id if hasattr(c, 'id') else c for c in (raw or [])]
@@ -1088,7 +1133,8 @@ class BillSerializer(serializers.ModelSerializer):
             instance.customers.set(cust_ids)
 
         # Phase2: M2M tables を更新
-        self._assign_tables(instance, table_ids)
+        sync_data = {'table_ids': table_ids, 'table': legacy_table, 'table_id': legacy_table_id}
+        self._sync_tables(instance, sync_data)
 
         # 手入力割引の入れ替え
         if rows is not None:

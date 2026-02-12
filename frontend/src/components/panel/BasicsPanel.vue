@@ -594,7 +594,7 @@ const editingCustomer = ref(false)
 // 編集用ローカル値
 const editStartLocal = ref('')
 const editEndLocal = ref('')
-const editTableLocal = ref(null)
+const editTableIdsLocal = ref([])
 const editPaxLocal = ref(0)
 const customerQuery = ref('')
 
@@ -624,11 +624,28 @@ function saveEditEnd() {
 
 // テーブル編集
 function beginEditTable() {
-  editTableLocal.value = props.tableId
+  // 優先：props.tableIds（複数）
+  if (Array.isArray(props.tableIds) && props.tableIds.length) {
+    editTableIdsLocal.value = props.tableIds.map(Number)
+  } else if (props.tableId != null) {
+    // 互換：単一しか無い場合
+    editTableIdsLocal.value = [Number(props.tableId)]
+  } else {
+    editTableIdsLocal.value = []
+  }
   editingTable.value = true
 }
 function saveEditTable() {
-  emit('update:tableId', editTableLocal.value)
+  const ids = (editTableIdsLocal.value || [])
+    .map(Number)
+    .filter(v => Number.isFinite(v))
+
+  // 複数の真実
+  emit('update:tableIds', ids)
+
+  // legacy互換（先頭を tableId にも反映）
+  emit('update:tableId', ids.length ? ids[0] : null)
+
   editingTable.value = false
 }
 
@@ -694,6 +711,18 @@ function goToCustomerTab() {
 
 // テーブル番号 / 人数 / 延長数（PC/List の式：ext_minutes/30）
 const tableNumberLabel = computed(() => {
+  // 1) 複数（props.tableIds）
+  const ids = Array.isArray(props.tableIds)
+    ? props.tableIds.map(Number).filter(Boolean)
+    : []
+  if (ids.length) {
+    const labels = ids
+      .map(id => safeTables.value.find(t => Number(t.id) === Number(id))?.number)
+      .filter(Boolean)
+    return labels.length ? labels.join(' + ') : ids.join(' + ')
+  }
+
+  // 2) 互換（props.tableId）
   const id = props.tableId
   const hit = safeTables.value.find(t => Number(t.id)===Number(id))
   return hit?.number ?? (id ?? '-')
@@ -990,26 +1019,13 @@ function customLabel(customer) {
       </div>
 
       <div class="area mb-5">
-        <h3 class="fs-5 fw-bold"><IconPinned />テーブル番号</h3>
-        <div class="row g-1">
-          <div
-            v-for="t in filteredTables"
-            :key="t.id"
-            class="col-4">
-            <button
-              class="btn w-100"
-              :class="tableId === t.id ? 'btn-secondary' : 'btn-outline-secondary'"
-              @click="$emit('update:tableId', t.id)">
-              {{ t.number }}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="area mb-5">
         <h3 class="fs-5 fw-bold"><IconPinned />複数テーブル選択</h3>
-        <TablePicker 
-          :modelValue="tableIds" 
+        <TablePicker
+          :tables="filteredTables"
+          :modelValue="tableIds"
+          :multiple="true"
+          labelKey="number"
+          colClass="col-4"
           @update:modelValue="v => $emit('update:tableIds', v)"
         />
       </div>
@@ -1162,10 +1178,16 @@ function customLabel(customer) {
             <h3 class="m-0"><IconPinned/>テーブル</h3>
           </div>
           <div class="col-6">
-            <select v-if="editingTable" class="form-select" v-model="editTableLocal">
-              <option :value="null">-</option>
-              <option v-for="t in filteredTables" :key="t.id" :value="t.id">{{ t.number }}</option>
-            </select>
+            <div v-if="editingTable">
+              <TablePicker
+                :tables="filteredTables"
+                :modelValue="editTableIdsLocal"
+                :multiple="true"
+                labelKey="number"
+                colClass="col-4"
+                @update:modelValue="v => (editTableIdsLocal = v)"
+              />
+            </div>
             <span v-else class="fs-1 fw-bold">{{ tableNumberLabel }}</span>
           </div>
           <div class="col-3">
