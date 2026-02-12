@@ -64,6 +64,8 @@ const props = defineProps({
   
   // メモ
   memo: { type: String, default: '' },
+  // 伝票の表示名（あだ名）
+  displayName: { type: String, default: '' },
   
   // タグ
   tags: { type: Array, default: () => [] },  // BillTag オブジェクトの配列
@@ -75,7 +77,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'update:seatType','update:tableId','update:tableIds','update:pax',
-  'update:applyService','update:applyTax','update:memo',
+  'update:applyService','update:applyTax','update:memo','update:displayName',
   'update:selectedTagIds',  // ← 追加
   'chooseCourse','clearCustomer','searchCustomer','pickCustomer',
   'applySet','save','switchPanel','update-times'
@@ -98,6 +100,11 @@ const applyTaxModel = computed({
 const memoLocal = ref(props.memo || '')
 watch(() => props.memo, (v) => { memoLocal.value = v || '' }, { immediate: true })
 watch(memoLocal, (v) => { emit('update:memo', v) })
+
+// 伝票の表示名（あだ名）の双方向バインディング
+const displayNameLocal = ref(props.displayName || '')
+watch(() => props.displayName, (v) => { displayNameLocal.value = v || '' }, { immediate: true })
+watch(displayNameLocal, (v) => { emit('update:displayName', v) })
 
 // タグ関連
 const selectedTagIds = ref(props.selectedTagIds || [])
@@ -589,6 +596,7 @@ const editingStart = ref(false)
 const editingEnd = ref(false)
 const editingTable = ref(false)
 const editingPax = ref(false)
+const editingDisplayName = ref(false)
 const editingCustomer = ref(false)
 
 // 編集用ローカル値
@@ -689,6 +697,15 @@ async function saveEditPax() {
 // 延長→会計パネルへ
 function goToPayPanel() {
   emit('switchPanel', 'pay')
+}
+
+// 伝票の表示名（あだ名）編集
+function beginEditDisplayName() {
+  editingDisplayName.value = true
+}
+function saveEditDisplayName() {
+  editingDisplayName.value = false
+  // displayNameLocal は既に watch で emit('update:displayName', v) しているので、ここでは特に追加の処理は不要
 }
 
 // 顧客編集（Multipul検索）
@@ -1093,6 +1110,16 @@ function customLabel(customer) {
         </div>
       </div>
 
+      <!-- 伝票の表示名（あだ名） -->
+      <div class="area mb-3">
+        <label class="form-label fw-bold">伝票の表示名</label>
+        <input
+          class="form-control"
+          v-model="displayNameLocal"
+          placeholder="例：AB1 / AB2 / VIP来店"
+        />
+      </div>
+
       <!-- メモ -->
       <div class="area mb-5">
         <h3 class="fs-5 fw-bold"><IconNote />メモ</h3>
@@ -1134,6 +1161,24 @@ function customLabel(customer) {
         </div>
       </div>
       <div class="area my-2 d-flex flex-column gap-3">
+        <!-- 伝票名 -->
+        <div class="row align-items-center border-bottom pb-2">
+          <div class="col-3">
+            <h3 class="m-0"><IconStopwatch />伝票名</h3>
+          </div>
+          <div class="col-6">
+            <input v-if="editingDisplayName" type="text" class="form-control" v-model="displayNameLocal" placeholder="例：AB1 / AB2 / VIP来店" />
+            <span v-else class="fs-1 fw-bold">{{ displayNameLocal || '-' }}</span>
+          </div>
+          <div class="col-3">
+            <button v-if="editingDisplayName" class="btn btn-success btn-sm df-center gap-1 w-100" @click="saveEditDisplayName">
+              <IconDeviceFloppy />保存
+            </button>
+            <button v-else class="btn btn-outline-danger btn-sm df-center gap-1 w-100" @click="beginEditDisplayName">
+              <IconPencil />編集
+            </button>
+          </div>
+        </div>
         <!-- 開始時刻 -->
         <div class="row align-items-center border-bottom pb-2">
           <div class="col-3">

@@ -22,6 +22,7 @@ const canProvisional = computed(() => hasRole(['manager','owner']))
 
 // ===== 【1】ref の先行宣言（参照順依存をゼロにする） =====
 const memoRef = ref('')
+const displayNameRef = ref('')
 const applyServiceChargeRef = ref(true)
 const applyTaxRef = ref(true)
 const billTags = ref([])
@@ -102,6 +103,7 @@ function applyBillPatchToLocal(patch) {
   if (patch.discount_rule !== undefined) props.bill.discount_rule = patch.discount_rule
   if (patch.manual_discounts !== undefined) props.bill.manual_discounts = patch.manual_discounts
   if (patch.memo !== undefined) props.bill.memo = patch.memo
+  if (patch.display_name !== undefined) props.bill.display_name = patch.display_name
   if (patch.closed_at !== undefined) props.bill.closed_at = patch.closed_at
 }
 
@@ -120,6 +122,7 @@ async function initOnOpen() {
     billTags.value = []
   }
   memoRef.value = props.bill?.memo ?? ''
+  displayNameRef.value = props.bill?.display_name ?? ''
   selectedTagIds.value = props.bill?.tags?.map(t => t.id) || []
   resetPaymentFromProps()
   syncChargeFlagsFromBill()
@@ -575,6 +578,19 @@ async function onMemoChange(v) {
   }
 }
 
+async function onDisplayNameChange(v) {
+  const next = String(v || '')
+  displayNameRef.value = next
+  if (props.bill) props.bill.display_name = next
+
+  if (!props.bill?.id) return
+  try {
+    await patchBill(props.bill.id, { display_name: next })
+  } catch (e) {
+    console.error('[BillModalSP] failed to update display_name', e)
+  }
+}
+
 async function onSelectedTagIdsChange(v) {
   selectedTagIds.value = v || []
   if (props.bill) props.bill.tags = billTags.value.filter(t => selectedTagIds.value.includes(t.id))
@@ -650,6 +666,7 @@ const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= t
 const payRef = ref(null)
 
 watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
+watch(() => props.bill?.display_name, v => { displayNameRef.value = v ?? '' })
 
 // 伝票切替時（ID変化）に支払い入力・メモを初期化
 function resetPaymentFromProps() {
@@ -659,6 +676,7 @@ function resetPaymentFromProps() {
   cardBrandRef.value    = b.card_brand ?? null
   settledTotalRef.value = Number(b.settled_total ?? (b.grand_total || 0)) || 0
   memoRef.value         = b.memo ?? ''
+  displayNameRef.value  = b.display_name ?? ''
   selectedTagIds.value  = b.tags?.map(t => t.id) || []
   syncChargeFlagsFromBill()
 }
@@ -1287,6 +1305,7 @@ function handleClose() {
       :apply-service="applyServiceChargeRef"
       :apply-tax="applyTaxRef"
       :memo="memoRef"
+      :display-name="displayNameRef"
       :tags="billTags"
       :selected-tag-ids="selectedTagIds"
       :history-events="historyEvents"
@@ -1299,6 +1318,7 @@ function handleClose() {
       @update:applyService="onApplyServiceChange"
       @update:applyTax="onApplyTaxChange"
       @update:memo="onMemoChange"
+      @update:displayName="onDisplayNameChange"
       @update:selectedTagIds="onSelectedTagIdsChange"
       @chooseCourse="(opt, qty) => onChooseCourse(opt, qty)"
       @clearCustomer="ed.clearCustomer"

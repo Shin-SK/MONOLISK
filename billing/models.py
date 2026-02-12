@@ -578,6 +578,7 @@ class Bill(models.Model):
     tags = models.ManyToManyField('billing.BillTag', blank=True, related_name='bills', verbose_name='タグ')
 
     memo = models.TextField('メモ', blank=True, default='')
+    display_name = models.CharField(max_length=64, blank=True, default='')
     
     subtotal = models.PositiveIntegerField(default=0)
     service_charge = models.PositiveIntegerField(default=0)

@@ -97,8 +97,13 @@ function handleEdit(e) {
     <div class="card-header">
       <div class="row g-2">
         <div class="col-4">
-          <div class="label">卓番号</div>
-          <div class="value">{{ tableLabel(bill) }}</div>
+          <div class="label">卓</div>
+          <div class="value">
+            {{ tableLabel(bill) }}
+            <span v-if="bill.display_name && String(bill.display_name).trim()" class="ms-2 badge bg-dark">
+              {{ bill.display_name }}
+            </span>
+          </div>
         </div>
         <div class="col-4">
           <div class="label">開始</div>

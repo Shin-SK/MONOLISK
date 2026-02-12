@@ -283,6 +283,11 @@ defineExpose({ reload })
         @click="onTapBill(bill)"
       >
         <!-- ヘッダー -->
+        <div v-if="bill.display_name && String(bill.display_name).trim()" class="display-name df-center w-100 bg-white p-1">
+          <span  class="fs-4 fw-bold text-primary">
+            {{ bill.display_name }}
+          </span>
+        </div>
         <div class="sum bg-white p-2 d-flex gap-3 justify-content-between align-items-center fs-5">
           <div class="df-center flex-column gap-1">
             <span class="badge bg-light text-dark m-0 df-center gap-1">

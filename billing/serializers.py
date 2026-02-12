@@ -96,7 +96,7 @@ class BillMiniSerializer(serializers.ModelSerializer):
         model  = Bill
         fields = ['id', 'opened_at', 'closed_at', 
                   'grand_total','subtotal','table', 'expected_out',
-                  'table', 'memo']
+                  'table', 'memo', 'display_name']
 
 
 class TableMiniSerializer(serializers.ModelSerializer):
@@ -747,7 +747,7 @@ class BillSerializer(serializers.ModelSerializer):
         model = Bill
         fields = (
             # ---- 基本 ----
-            "id", "table", "table_id", "table_atoms", "table_label", "table_atom_ids", "table_ids", "opened_at", "closed_at","memo", "pax",
+            "id", "table", "table_id", "table_atoms", "table_label", "table_atom_ids", "table_ids", "opened_at", "closed_at","memo", "display_name", "pax",
             # ---- 金額 ----
             "subtotal", "service_charge", "tax", "apply_service_charge", "apply_tax", "grand_total", "total",
             "paid_cash","paid_card","card_brand","paid_total","change_due",

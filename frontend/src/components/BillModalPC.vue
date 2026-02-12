@@ -254,6 +254,32 @@ async function onApplyTaxChangePc(v) {
   }
 }
 
+async function onUpdateMemoPc(v) {
+  const next = String(v || '')
+  memoRef.value = next
+  if (props.bill) props.bill.memo = next
+
+  if (!props.bill?.id) return
+  try {
+    await patchBill(props.bill.id, { memo: next })
+  } catch (e) {
+    console.error('[BillModalPC] failed to update memo', e)
+  }
+}
+
+async function onUpdateDisplayNamePc(v) {
+  const next = String(v || '')
+  displayNameRef.value = next
+  if (props.bill) props.bill.display_name = next
+
+  if (!props.bill?.id) return
+  try {
+    await patchBill(props.bill.id, { display_name: next })
+  } catch (e) {
+    console.error('[BillModalPC] failed to update display_name', e)
+  }
+}
+
 async function onUpdateTableIdsPc(ids) {
   const nextIds = Array.isArray(ids)
     ? ids.map(Number).filter(v => Number.isFinite(v))
@@ -751,7 +777,9 @@ const form = reactive({
 })
 
 const memoRef = ref(props.bill?.memo ?? '')
+const displayNameRef = ref(props.bill?.display_name ?? '')
 watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
+watch(() => props.bill?.display_name, v => { displayNameRef.value = v ?? '' })
 
 /* 差額等 */
 const displayGrandTotal = computed(() => bill.value?.grand_total ?? 0)
@@ -1036,6 +1064,8 @@ watch(freeCastIds, list => {
               :course-options="courseOptions"
               :apply-service="applyServiceCharge"
               :apply-tax="applyTax"
+              :memo="memoRef"
+              :display-name="displayNameRef"
 
               v-model:seatType="seatType"
 
@@ -1043,6 +1073,8 @@ watch(freeCastIds, list => {
               @update:tableIds="onUpdateTableIdsPc"
               @update:applyService="onApplyServiceChangePc"
               @update:applyTax="onApplyTaxChangePc"
+              @update:memo="onUpdateMemoPc"
+              @update:displayName="onUpdateDisplayNamePc"
               @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"
               @jumpToBill="rightTab = 'bill'"
               @applySet="onApplySet"
