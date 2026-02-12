@@ -61,6 +61,14 @@ function hasMemo(b) {
   return !!(b?.memo && String(b.memo).trim())
 }
 
+function tableLabel(b) {
+  if (b?.table_label) return b.table_label
+  if (Array.isArray(b?.table_atoms) && b.table_atoms.length) {
+    return b.table_atoms.join(' + ')
+  }
+  return b?.table?.number ?? '-'
+}
+
 function handleSelect(e) {
   e.stopPropagation()
   emit('select', props.bill.id)
@@ -88,27 +96,27 @@ function handleEdit(e) {
 
     <div class="card-header">
       <div class="row g-2">
-        <div class="col">
+        <div class="col-4">
           <div class="label">卓番号</div>
-          <div class="value">{{ bill.table?.number ?? '-' }}</div>
+          <div class="value">{{ tableLabel(bill) }}</div>
         </div>
-        <div class="col">
+        <div class="col-4">
           <div class="label">開始</div>
           <div class="value">{{ bill.opened_at ? dayjs(bill.opened_at).format('HH:mm') : '-' }}</div>
         </div>
-        <div class="col">
+        <div class="col-4">
           <div class="label">終了</div>
           <div class="value">{{ bill.closed_at ? dayjs(bill.closed_at).format('HH:mm') : (bill.expected_out ? dayjs(bill.expected_out).format('HH:mm') : '-') }}</div>
         </div>
-        <div class="col">
+        <div class="col-4">
           <div class="label">延長</div>
           <div class="value">{{ bill.ext_minutes ? Math.floor(bill.ext_minutes / 30) : '-' }}</div>
         </div>
-        <div class="col">
+        <div class="col-4">
           <div class="label">人数</div>
           <div class="value">{{ calcPax(bill) || '-' }}</div>
         </div>
-        <div class="col">
+        <div class="col-4">
           <div class="label">SET数</div>
           <div class="value">{{ bill.set_rounds || '-' }}</div>
         </div>
