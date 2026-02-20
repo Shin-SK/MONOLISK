@@ -7,6 +7,13 @@ let reloaded = false
 
 let fallbackTimer = null
 
+function reloadWithVersionBuster () {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('v')
+  url.searchParams.set('v', String(Date.now()))
+  location.replace(url.toString())
+}
+
 
 function ensureOverlay (msg = 'アップデート中… 数秒で再開します') {
   let el = document.getElementById(OVERLAY_ID)
@@ -55,7 +62,9 @@ function hideOverlay () {
 }
 
 function saveResumePoint () {
-  const p = location.pathname + location.search + location.hash
+  const url = new URL(window.location.href)
+  url.searchParams.delete('v')
+  const p = url.pathname + url.search + url.hash
   sessionStorage.setItem('__resume_to', p)
 }
 
@@ -84,9 +93,7 @@ export function setupPWA () {
       if (typeof updateNowFn === 'function') updateNowFn()
       if (!fallbackTimer) {
         fallbackTimer = setTimeout(() => {
-          const cur = location.pathname + location.search + location.hash
-          const sep = location.search ? '&' : '?'
-          location.replace(`${cur}${sep}v=${Date.now()}`)
+          reloadWithVersionBuster()
         }, 4000) // 4秒で強制リロード
       }
     },
@@ -101,9 +108,7 @@ export function setupPWA () {
     if (reloaded) return
     reloaded = true
     ensureOverlay('アップデート中… 再読み込みしています')
-    const cur = location.pathname + location.search + location.hash
-    const sep = location.search ? '&' : '?'
-    location.replace(`${cur}${sep}v=${Date.now()}`)
+    reloadWithVersionBuster()
   })
 }
 
@@ -114,9 +119,7 @@ export async function applyUpdateNow () {
     saveResumePoint()
     if (!fallbackTimer) {
       fallbackTimer = setTimeout(() => {
-        const cur = location.pathname + location.search + location.hash
-        const sep = location.search ? '&' : '?'
-        location.replace(`${cur}${sep}v=${Date.now()}`)
+        reloadWithVersionBuster()
       }, 4000)
     }
     if (typeof updateNowFn === 'function') await updateNowFn()

@@ -179,14 +179,40 @@ function getCustomerBadgeText(it) {
 }
 
 function getServedByName(it) {
-  // 優先: オブジェクト上の stage_name
-  const cast = it?.served_by_cast
-  if (cast?.stage_name) return cast.stage_name
-  // 次: servedByMap から解決
-  const id = Number(it?.served_by_cast_id ?? cast?.id)
-  const key = String(Number.isFinite(id) ? id : '')
-  if (key && props.servedByMap && props.servedByMap[key]) return props.servedByMap[key]
-  return null
+  const names = []
+  const seen = new Set()
+
+  const addName = (name) => {
+    const n = String(name || '').trim()
+    if (!n || seen.has(n)) return
+    seen.add(n)
+    names.push(n)
+  }
+
+  const list = Array.isArray(it?.served_by_casts) ? it.served_by_casts : []
+  for (const cast of list) {
+    addName(cast?.stage_name)
+  }
+
+  const ids = Array.isArray(it?.served_by_cast_ids) ? it.served_by_cast_ids : []
+  for (const rawId of ids) {
+    const id = Number(rawId)
+    if (!Number.isFinite(id)) continue
+    const mapped = props.servedByMap?.[String(id)]
+    addName(mapped || `cast#${id}`)
+  }
+
+  if (!names.length) {
+    const cast = it?.served_by_cast
+    if (cast?.stage_name) addName(cast.stage_name)
+    const legacyId = Number(it?.served_by_cast_id ?? cast?.id)
+    if (Number.isFinite(legacyId)) {
+      const mapped = props.servedByMap?.[String(legacyId)]
+      addName(mapped || `cast#${legacyId}`)
+    }
+  }
+
+  return names.length ? names.join('＋') : null
 }
 
 /* ---------------------------------------------------------
@@ -551,6 +577,17 @@ const getMemo = () => String(memoLocal.value || '')
 const servedBySelection = ref({})
 const editingItemId = ref(null)
 
+const normalizeCastIds = (ids) => {
+  const src = Array.isArray(ids) ? ids : []
+  const out = []
+  for (const x of src) {
+    const n = Number(x)
+    if (!Number.isFinite(n)) continue
+    if (!out.includes(n)) out.push(n)
+  }
+  return out
+}
+
 function toggleEditItem(it) {
   const id = it?.id
   if (!id) return
@@ -564,8 +601,13 @@ function isEditing(it) {
 watch(() => props.items, (list = []) => {
   const next = {}
   for (const it of list) {
-    const id = Number(it?.served_by_cast_id ?? it?.served_by_cast?.id)
-    next[it.id] = Number.isFinite(id) ? id : ''
+    const m2mIds = normalizeCastIds(it?.served_by_cast_ids)
+    if (m2mIds.length) {
+      next[it.id] = m2mIds
+      continue
+    }
+    const legacyId = Number(it?.served_by_cast_id ?? it?.served_by_cast?.id)
+    next[it.id] = Number.isFinite(legacyId) ? [legacyId] : []
   }
   servedBySelection.value = next
 }, { immediate: true, deep: true })
@@ -584,15 +626,22 @@ watch(() => props.items, (items) => {
   }
 }, { immediate: true, deep: true })
 
-function onSelectServedBy(it, val){
-  servedBySelection.value = { ...servedBySelection.value, [it.id]: val }
+function onSelectServedBy(it, event){
+  const selected = Array.from(event?.target?.selectedOptions || []).map(opt => opt.value)
+  servedBySelection.value = {
+    ...servedBySelection.value,
+    [it.id]: normalizeCastIds(selected),
+  }
   // 保存ボタンで emit する（ここでは emit しない）
 }
 
 function saveEditedItem(it) {
-  const raw = servedBySelection.value?.[it.id] ?? ''
-  const castId = (raw === '' || raw == null) ? null : Number(raw)
-  emit('changeServedBy', { item: it, castId })
+  const ids = normalizeCastIds(servedBySelection.value?.[it.id])
+  emit('changeServedBy', {
+    item: it,
+    castIds: ids,
+    castId: ids.length ? ids[0] : null,
+  })
   editingItemId.value = null
 }
 
@@ -813,11 +862,11 @@ function removeSavedDiscount(index) {
               <IconUser :size="16" />
               <select
                 class="form-select form-select-sm w-auto"
+                multiple
                 :disabled="!servedByOptions || !servedByOptions.length"
-                :value="servedBySelection[it.id] ?? ''"
-                @change="onSelectServedBy(it, $event.target.value)"
+                :value="servedBySelection[it.id] ?? []"
+                @change="onSelectServedBy(it, $event)"
               >
-                <option value="">担当なし</option>
                 <option v-for="c in servedByOptions" :key="c.id" :value="c.id">
                   {{ c.label }}
                 </option>

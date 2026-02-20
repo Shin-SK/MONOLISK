@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, computed, ref, nextTick, onUnmounted } from 'vue'
+import { reactive, computed, ref, nextTick, onUnmounted, watch } from 'vue'
 
 const cartEl     = ref(null)   // カートDOM
 const showJump   = ref(false)  // 「カートを見る」ボタン表示
@@ -31,6 +31,7 @@ const props = defineProps({
   orderMasters:      { type: Array,  default: () => [] }, // [{id,name}]
   servedByOptions:   { type: Array,  default: () => [] }, // [{id,label}]
   servedByCastId:  { type: [Number, String], default: null },
+  servedByCastIds: { type: Array, default: () => [] },
   /* ▼ 追加：pending を受けて“選択済み表示”に使う */
   pending:           { type: Array,  default: () => [] }, // [{master_id, qty, cast_id}]
   masterNameMap:     { type: Object, default: () => ({}) },
@@ -40,7 +41,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'update:selectedCat', 'update:servedByCastId',
+  'update:selectedCat', 'update:servedByCastId', 'update:servedByCastIds',
   'addPending', 'removePending', 'clearPending',
   'placeOrder'
 ])
@@ -49,6 +50,40 @@ const emit = defineEmits([
 const onServedChange = (e) => {
   const v = e.target.value
   emit('update:servedByCastId', v === '' ? null : Number(v))
+}
+
+const normalizeIds = (v) => {
+  const src = Array.isArray(v) ? v : []
+  const out = []
+  for (const x of src) {
+    const n = Number(x)
+    if (!Number.isFinite(n)) continue
+    if (!out.includes(n)) out.push(n)
+  }
+  return out
+}
+
+const selectedServedByIds = ref(normalizeIds(props.servedByCastIds))
+
+function syncSingleFromMulti(ids) {
+  emit('update:servedByCastIds', ids)
+  emit('update:servedByCastId', ids.length ? ids[0] : null)
+}
+
+function toggleServedBy(id) {
+  const n = Number(id)
+  if (!Number.isFinite(n)) return
+  const next = normalizeIds(selectedServedByIds.value)
+  const idx = next.indexOf(n)
+  if (idx >= 0) next.splice(idx, 1)
+  else next.push(n)
+  selectedServedByIds.value = next
+  syncSingleFromMulti(next)
+}
+
+function clearServedBy() {
+  selectedServedByIds.value = []
+  syncSingleFromMulti([])
 }
 
 /* 選択ハイライト：pending に同じ master_id があれば active */
@@ -64,7 +99,7 @@ const add    = (id) => {
 	const k = keyOf(id)
 	const q = qtyOf(id)
 	if (q <= 0) return            // ★ 0個のまま「◯+」なら何もしない（←運用に合わせて）
-	emit('addPending', id, q)
+  emit('addPending', id, q, normalizeIds(selectedServedByIds.value))
 	qtyMap[k] = 0                 // ★ 追加後は0にリセット
 	pokeCartFeedback()
 }
@@ -76,6 +111,16 @@ const listServedBy = computed(() => {
   return Array.isArray(v) ? v : (Array.isArray(v?.value) ? v.value : [])
 })
 const k = (v) => (v == null ? '' : String(v))
+
+function castNamesFromPending(p) {
+  const ids = Array.isArray(p?.cast_ids)
+    ? normalizeIds(p.cast_ids)
+    : (p?.cast_id != null ? [Number(p.cast_id)] : [])
+  return ids
+    .map(id => props.servedByMap[String(id)] || ('cast#' + id))
+    .filter(Boolean)
+    .join('＋')
+}
 
 const yen = (n) => `¥${(Number(n) || 0).toLocaleString()}`
 
@@ -90,6 +135,14 @@ const priceOf = (id) => {
 const cartSubtotal = computed(() =>
   (props.pending || []).reduce((s, p) =>
     s + priceOf(p.master_id) * (Number(p.qty) || 0), 0)
+)
+
+watch(
+  () => props.servedByCastIds,
+  (v) => {
+    selectedServedByIds.value = normalizeIds(v)
+  },
+  { deep: true, immediate: true }
 )
 
 </script>
@@ -118,9 +171,9 @@ const cartSubtotal = computed(() =>
           <button
             type="button"
             class="pill"
-            :class="{ active: servedByCastId == null }"
-            :aria-pressed="servedByCastId == null"
-            @click="emit('update:servedByCastId', null)"
+            :class="{ active: !selectedServedByIds.length }"
+            :aria-pressed="!selectedServedByIds.length"
+            @click="clearServedBy"
           >未指定</button>
 
           <button
@@ -128,9 +181,9 @@ const cartSubtotal = computed(() =>
             :key="String(c.id)"
             type="button"
             class="pill"
-            :class="{ active: k(servedByCastId) === k(c.id) }"
-            :aria-pressed="k(servedByCastId) === k(c.id)"
-            @click="emit('update:servedByCastId', c.id)"
+            :class="{ active: selectedServedByIds.includes(Number(c.id)) }"
+            :aria-pressed="selectedServedByIds.includes(Number(c.id))"
+            @click="toggleServedBy(c.id)"
           >{{ c.label }}</button>
         </div>
       </div>
@@ -184,8 +237,8 @@ const cartSubtotal = computed(() =>
         <div v-for="(p,i) in pending" :key="i" class="cart-item d-flex justify-content-between align-items-center">
 
           <div class="wrap">
-            <div v-if="p.cast_id" class="badge bg-secondary">
-              {{ servedByMap[String(p.cast_id)] || ('cast#' + p.cast_id) }}
+            <div v-if="castNamesFromPending(p)" class="badge bg-secondary">
+              {{ castNamesFromPending(p) }}
             </div>
             <div class="d-flex align-items-center gap-2">
               <div class="name fs-md-5 fw-bold">

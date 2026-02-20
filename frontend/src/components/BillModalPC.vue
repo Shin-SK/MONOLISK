@@ -362,7 +362,7 @@ async function onApplySet(payload){
     if (!master) { console.warn('[applySet] master not found:', ln); continue }
 
     if (isNew.value){
-      pending.value.push({ master_id: master.id, qty, cast_id: null })
+      pending.value.push({ master_id: master.id, qty, cast_ids: [], cast_id: null })
     }else{
       addBillItem(props.bill.id, { item_master: master.id, qty })
         .then(() => emit('updated', props.bill.id))
@@ -599,8 +599,20 @@ const catOptions = computed(() => {
 const selectedCat  = ref('drink')
 const orderMasters = computed(() => masters.value.filter(m => catCode(m) === selectedCat.value))
 
+const normalizeCastIds = (ids) => {
+  const src = Array.isArray(ids) ? ids : []
+  const out = []
+  for (const x of src) {
+    const n = Number(x)
+    if (!Number.isFinite(n)) continue
+    if (!out.includes(n)) out.push(n)
+  }
+  return out
+}
+
 /* SP の OrderPanelSP に合わせた変換 */
 const servedByCastId = ref(null)
+const servedByCastIds = ref([])
 const servedByOptions = computed(() =>
   (currentCasts.value || []).map(c => ({ id: c.id, label: c.stage_name }))
 )
@@ -618,23 +630,39 @@ const orderMastersForPanel = computed(() =>
 )
 
 /* 注文ペンディング */
-const pending = ref([])   // [{ master_id, qty, cast_id, customer_id }]
+const pending = ref([])   // [{ master_id, qty, cast_ids, cast_id, customer_id }]
 const selectedCustomerId = ref(null)  // 注文作成時の顧客選択
-// 【フェーズ3】castId と customerId を引数で受け取る
-const onAddPending   = (masterId, qty, castId, customerId) => pending.value.push({ 
-  master_id: masterId, 
-  qty: Number(qty)||0, 
-  cast_id: castId ?? servedByCastId.value ?? null,
-  customer_id: customerId ?? selectedCustomerId.value ?? null
-})
+// 【フェーズ3】castIds と customerId を引数で受け取る
+const onAddPending   = (masterId, qty, castIds, customerId) => {
+  const ids = normalizeCastIds(
+    Array.isArray(castIds)
+      ? castIds
+      : (castIds != null ? [castIds] : servedByCastIds.value)
+  )
+  pending.value.push({
+    master_id: masterId,
+    qty: Number(qty)||0,
+    cast_ids: ids,
+    cast_id: ids.length ? ids[0] : (servedByCastId.value ?? null),
+    customer_id: customerId ?? selectedCustomerId.value ?? null
+  })
+}
 const onRemovePending = (i) => pending.value.splice(i, 1)
 const onClearPending  = () => (pending.value = [])
 const onPlaceOrder    = async () => { await save() }
 
-async function onChangeServedBy({ item, castId }) {
+async function onChangeServedBy({ item, castIds, castId }) {
   if (!props.bill?.id) return
   try {
-    await patchBillItem(props.bill.id, item.id, { served_by_cast_id: castId })
+    const ids = normalizeCastIds(
+      Array.isArray(castIds)
+        ? castIds
+        : (castId != null ? [castId] : [])
+    )
+    await patchBillItem(props.bill.id, item.id, {
+      served_by_cast_ids: ids,
+      served_by_cast_id: ids.length ? ids[0] : null,
+    })
     const fresh = await fetchBill(props.bill.id).catch(() => null)
     if (fresh) {
       Object.assign(props.bill, fresh)
@@ -949,10 +977,12 @@ async function save () {
 
     // ❸ pending 注文
     for (const it of pending.value) {
+      const castIds = normalizeCastIds(it.cast_ids || (it.cast_id != null ? [it.cast_id] : []))
       const payload = {
         item_master: it.master_id,
         qty: it.qty,
-        served_by_cast_id: it.cast_id ?? undefined
+        served_by_cast_ids: castIds,
+        served_by_cast_id: castIds.length ? castIds[0] : (it.cast_id ?? undefined)
       }
       if (it.customer_id) {
         payload.customer_id = it.customer_id
@@ -1130,6 +1160,7 @@ watch(freeCastIds, list => {
               :order-masters="orderMastersForPanel"
               :served-by-options="servedByOptions"
               :served-by-cast-id="servedByCastId"
+              :served-by-cast-ids="servedByCastIds"
               :pending="pending"
               :master-name-map="masterNameMap"
               :served-by-map="servedByMap"
@@ -1139,6 +1170,7 @@ watch(freeCastIds, list => {
               :readonly="false"
               @update:selectedCat="v => (selectedCat = v)"
               @update:servedByCastId="v => (servedByCastId = v)"
+              @update:servedByCastIds="v => (servedByCastIds = v)"
               @update:selectedCustomerId="v => (selectedCustomerId = v)"
               @addPending="onAddPending"
               @removePending="onRemovePending"

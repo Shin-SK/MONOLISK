@@ -291,6 +291,10 @@ class BillItemSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    served_by_cast_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+    )
     customer_id = serializers.PrimaryKeyRelatedField(
         source='customer',
         queryset=Customer.objects.all(),
@@ -333,7 +337,20 @@ class BillItemSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         if getattr(instance, 'item_master', None):
             data['item_master'] = ItemMasterSerializer(instance.item_master).data
+        data['served_by_cast_ids'] = list(instance.served_by_casts.values_list('id', flat=True))
         return data
+
+    def _normalize_cast_ids(self, ids):
+        if ids is None:
+            return None
+        normalized = []
+        for value in ids:
+            if value in (None, ''):
+                continue
+            cast_id = int(value)
+            if cast_id not in normalized:
+                normalized.append(cast_id)
+        return normalized
 
     def get_subtotal(self, obj):
         return obj.subtotal
@@ -398,6 +415,15 @@ class BillItemSerializer(serializers.ModelSerializer):
             if getattr(served_by_cast, 'store_id', None) != store_id:
                 raise serializers.ValidationError({'served_by_cast_id': '他店舗のキャストは指定できません。'})
 
+        served_by_cast_ids = self._normalize_cast_ids(attrs.get('served_by_cast_ids', None))
+        if served_by_cast_ids is not None:
+            valid_ids = set(
+                Cast.objects.filter(id__in=served_by_cast_ids, store_id=store_id).values_list('id', flat=True)
+            )
+            if len(valid_ids) != len(set(served_by_cast_ids)):
+                raise serializers.ValidationError({'served_by_cast_ids': '他店舗または存在しないキャストが含まれています。'})
+            attrs['served_by_cast_ids'] = served_by_cast_ids
+
         # customer は bill に参加しているか確認（BillCustomerが存在するか）
         customer = attrs.get('customer', None)
         if customer is not None:
@@ -423,13 +449,29 @@ class BillItemSerializer(serializers.ModelSerializer):
         bill は View 側で serializer.save(bill=bill, ...) される前提。
         ここでは特別な処理は不要。
         """
-        return super().create(validated_data)
+        served_by_cast_ids = validated_data.pop('served_by_cast_ids', None)
+        obj = super().create(validated_data)
+
+        if served_by_cast_ids is not None:
+            obj.served_by_casts.set(served_by_cast_ids)
+            obj.served_by_cast_id = served_by_cast_ids[0] if served_by_cast_ids else None
+            obj.save(update_fields=['served_by_cast'])
+
+        return obj
 
     def update(self, instance, validated_data):
         """
         更新も同様に store ロックは validate 済み。
         """
-        return super().update(instance, validated_data)
+        served_by_cast_ids = validated_data.pop('served_by_cast_ids', None)
+        obj = super().update(instance, validated_data)
+
+        if served_by_cast_ids is not None:
+            obj.served_by_casts.set(served_by_cast_ids)
+            obj.served_by_cast_id = served_by_cast_ids[0] if served_by_cast_ids else None
+            obj.save(update_fields=['served_by_cast'])
+
+        return obj
     
 
 class CastCategoryRateSerializer(serializers.ModelSerializer):

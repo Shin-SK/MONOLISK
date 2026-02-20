@@ -976,6 +976,12 @@ class BillItem(models.Model):
     price = models.PositiveIntegerField(null=True, blank=True)
     qty = models.PositiveSmallIntegerField(default=1)
     served_by_cast = models.ForeignKey('billing.Cast', null=True, blank=True, on_delete=models.SET_NULL, db_index=True)
+    served_by_casts = models.ManyToManyField(
+        'billing.Cast',
+        through='BillItemCast',
+        related_name='served_items_m2m',
+        blank=True,
+    )
     customer = models.ForeignKey(
         'billing.Customer',
         null=True, blank=True,
@@ -1116,6 +1122,17 @@ class BillItem(models.Model):
             bill.update_expected_out(save=True)
             # ★ 削除時も再計算
             _recalc_bill_after_items_change(bill)
+
+
+class BillItemCast(models.Model):
+    bill_item = models.ForeignKey('BillItem', on_delete=models.CASCADE, related_name='served_by_links')
+    cast = models.ForeignKey('Cast', on_delete=models.CASCADE, related_name='served_bill_item_links')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['bill_item', 'cast'], name='uniq_billitem_cast'),
+        ]
 
 
 

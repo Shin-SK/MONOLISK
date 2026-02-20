@@ -489,12 +489,37 @@ const normalizeCastId = (v) => {
   return null
 }
 
+const normalizeCastIds = (ids) => {
+  const src = Array.isArray(ids) ? ids : []
+  const out = []
+  for (const x of src) {
+    const n = Number(x)
+    if (!Number.isFinite(n)) continue
+    if (!out.includes(n)) out.push(n)
+  }
+  return out
+}
+
 // v-model 用に型を矯正して OrderPanel へ渡す
 const servedByCastIdModel = computed({
   get: () => normalizeCastId(ed.servedByCastId?.value),
   set: (v) => {
     const n = normalizeCastId(v)
     if (ed.servedByCastId) ed.servedByCastId.value = n
+  }
+})
+
+const servedByCastIdsModel = computed({
+  get: () => {
+    const ids = normalizeCastIds(ed.servedByCastIds?.value)
+    if (ids.length) return ids
+    const first = normalizeCastId(ed.servedByCastId?.value)
+    return first != null ? [first] : []
+  },
+  set: (v) => {
+    const ids = normalizeCastIds(v)
+    if (ed.servedByCastIds) ed.servedByCastIds.value = ids
+    if (ed.servedByCastId) ed.servedByCastId.value = ids.length ? ids[0] : null
   }
 })
 
@@ -737,9 +762,17 @@ const decItem = async (it) => {
   }catch(e){ console.error('[decItem] error:', e); alert('数量を減らせませんでした') }
 }
 
-const changeServedBy = async ({ item, castId }) => {
+const changeServedBy = async ({ item, castIds, castId }) => {
   try {
-    await patchBillItem(props.bill.id, item.id, { served_by_cast_id: castId })
+    const ids = normalizeCastIds(
+      Array.isArray(castIds)
+        ? castIds
+        : (castId != null ? [castId] : [])
+    )
+    await patchBillItem(props.bill.id, item.id, {
+      served_by_cast_ids: ids,
+      served_by_cast_id: ids.length ? ids[0] : null,
+    })
     const fresh = await fetchBill(props.bill.id).catch(() => null)
     if (fresh) {
       applyBillPatchToLocal(fresh)
@@ -1053,6 +1086,9 @@ watch(() => ed.servedByCastId?.value, (newCastId) => {
   ed.pending.value.forEach(item => {
     if (item && item.cast_id == null) {
       item.cast_id = newCastId
+      if (!Array.isArray(item.cast_ids) || item.cast_ids.length === 0) {
+        item.cast_ids = [Number(newCastId)]
+      }
     }
   })
 })
@@ -1355,6 +1391,7 @@ function handleClose() {
     :selected-cat="ed.selectedOrderCat.value"
     :order-masters="ed.orderMasters.value || []"
     v-model:served-by-cast-id="servedByCastIdModel"
+    v-model:served-by-cast-ids="servedByCastIdsModel"
     :pending="ed.pending.value"
     :master-name-map="masterNameMap"
     :served-by-map="servedByMap"
@@ -1364,12 +1401,14 @@ function handleClose() {
     :selected-customer-id="selectedCustomerId"
     @update:selectedCat="v => (ed.selectedOrderCat.value = v)"
     @update:selectedCustomerId="v => (selectedCustomerId = v)"
-    @addPending="(id, qty, castId, customerId) => {
+    @addPending="(id, qty, castIds, customerId) => {
       const q = Math.max(1, Number(qty || 1))
+      const ids = (Array.isArray(castIds) ? castIds : []).map(Number).filter(Number.isFinite)
       ed.pending.value.push({
         master_id: Number(id),
         qty: q,
-        cast_id: (castId == null || castId === '') ? null : Number(castId),
+        cast_ids: ids,
+        cast_id: ids.length ? ids[0] : null,
         customer_id: (customerId == null || customerId === '') ? null : Number(customerId)
       })
     }"

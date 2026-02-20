@@ -65,15 +65,34 @@ export default function useBillEditor(billObjRef){
   })
 
   const servedByCastId = ref(null)   // 提供者（未指定はnull）
+  const servedByCastIds = ref([])    // 複数提供者
   const selectedCustomerId = ref(null)  // 【フェーズ3】注文時の顧客ID
+
+  const normalizeCastIds = (ids) => {
+    const src = Array.isArray(ids) ? ids : []
+    const out = []
+    for (const x of src) {
+      const n = Number(x)
+      if (!Number.isFinite(n)) continue
+      if (!out.includes(n)) out.push(n)
+    }
+    return out
+  }
   
-  // 【フェーズ3】castId と customerId を引数で受け取る
-  function addPending(masterId, qty = 1, castId = null, customerId = null){
+  // 【フェーズ3】castIds と customerId を引数で受け取る
+  function addPending(masterId, qty = 1, castIds = null, customerId = null){
     if (!masterId) return
+    const ids = normalizeCastIds(
+      Array.isArray(castIds)
+        ? castIds
+        : (castIds != null ? [castIds] : servedByCastIds.value)
+    )
+
     pending.value.push({
       master_id: masterId,
       qty,
-      cast_id: castId ?? servedByCastId.value ?? null,
+      cast_ids: ids,
+      cast_id: ids.length ? ids[0] : (servedByCastId.value ?? null),
       customer_id: customerId ?? selectedCustomerId.value ?? null,
     })
   }
@@ -160,7 +179,7 @@ export default function useBillEditor(billObjRef){
 async function chooseCourse(opt){
   if (!opt) return { updated:false }
   if (isNew.value){
-    pending.value.push({ master_id: opt.id, qty: pax.value, cast_id: null })
+    pending.value.push({ master_id: opt.id, qty: pax.value, cast_ids: [], cast_id: null })
     return { pending:true, updated:false }
   }
   // ★ 即ローカルで行を足す
@@ -493,12 +512,14 @@ async function chooseCourse(opt){
     } catch(e){ /* noop */ }
 
     for (const it of pending.value || []){
+      const castIds = normalizeCastIds(it.cast_ids || (it.cast_id != null ? [it.cast_id] : []))
       enqueue('addBillItem', { 
         id: optimisticId, 
         item: { 
           item_master: it.master_id, 
           qty: it.qty, 
-          served_by_cast_id: it.cast_id ?? undefined,
+          served_by_cast_ids: castIds,
+          served_by_cast_id: castIds.length ? castIds[0] : (it.cast_id ?? undefined),
           customer_id: it.customer_id ?? undefined
         } 
       })
@@ -529,7 +550,7 @@ async function chooseCourse(opt){
     // Order
 
     orderCatOptions, selectedOrderCat, orderMasters,
-    servedByCastId, selectedCustomerId, addPending,  // 【フェーズ3】selectedCustomerId を追加
+    servedByCastId, servedByCastIds, selectedCustomerId, addPending,  // 【フェーズ3】selectedCustomerId を追加
     pending,  // 既存をここでも返しておく（保存で使う）
 
     // SP: 顧客インライン検索

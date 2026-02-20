@@ -45,6 +45,7 @@ const props = defineProps({
   orderMasters:      { type: Array,  default: () => [] }, // [{id,name}]
   servedByOptions:   { type: Array,  default: () => [] }, // [{id,label}]
   servedByCastId:  { type: [Number, String], default: null },
+  servedByCastIds: { type: Array, default: () => [] },
   /* ▼ 追加：pending を受けて“選択済み表示”に使う */
   pending:           { type: Array,  default: () => [] }, // [{master_id, qty, cast_id, customer_id}]
   masterNameMap:     { type: Object, default: () => ({}) },
@@ -56,7 +57,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'update:selectedCat', 'update:servedByCastId', 'update:selectedCustomerId',
+  'update:selectedCat', 'update:servedByCastId', 'update:servedByCastIds', 'update:selectedCustomerId',
   'addPending', 'removePending', 'clearPending',
   'placeOrder'
 ])
@@ -89,10 +90,21 @@ function defaultCastId () {
   return null
 }
 
+const normalizeIds = (v) => {
+  const src = Array.isArray(v) ? v : []
+  const out = []
+  for (const x of src) {
+    const n = Number(x)
+    if (!Number.isFinite(n)) continue
+    if (!out.includes(n)) out.push(n)
+  }
+  return out
+}
+
 /* ▼ 選択中（詳細カードを開いている）アイテム */
 const activeMasterId = ref(null)     // 今開いてる master_id
 const activeQty      = ref(1)        // 詳細カード内の数量
-const activeCastId   = ref(defaultCastId())  // 詳細カード内の担当（null禁止：必ず誰か）
+const activeCastIds  = ref(normalizeIds(props.servedByCastIds))
 const activeCustomerId = ref(null)   // 詳細カード内の顧客（一時選択）
 
 function openDetail(masterId) {
@@ -103,7 +115,7 @@ function openDetail(masterId) {
   }
   activeMasterId.value = masterId
   activeQty.value = 1
-  activeCastId.value = defaultCastId() // 必ず誰か
+  activeCastIds.value = normalizeIds(props.servedByCastIds)
 
   // 顧客をデフォルトで最初の顧客に設定
   const firstCustomer = (props.billCustomers && props.billCustomers.length) ? props.billCustomers[0].customer_id : null
@@ -122,35 +134,48 @@ watch(
   () => listServedBy.value,
   (list) => {
     if (activeMasterId.value == null) return
-    const ids = new Set((list || []).map(x => String(x.id)))
-
-    // 1) 候補が空なら何もしない（UIで「キャストがいません」を出す）
-    if (ids.size === 0) return
-
-    // 2) 現在選択が空 or 候補に存在しないなら先頭に矯正
-    const cur = activeCastId.value
-    if (cur == null || !ids.has(String(cur))) {
-      activeCastId.value = Number(list[0].id)
-    }
+    const ids = new Set((list || []).map(x => Number(x.id)))
+    activeCastIds.value = normalizeIds(activeCastIds.value).filter(id => ids.has(id))
   },
   { immediate: true }
 )
+
+watch(
+  () => props.servedByCastIds,
+  (ids) => {
+    if (activeMasterId.value == null) {
+      activeCastIds.value = normalizeIds(ids)
+    }
+  },
+  { deep: true }
+)
+
+function toggleActiveCast(castId) {
+  const id = Number(castId)
+  if (!Number.isFinite(id)) return
+  const next = normalizeIds(activeCastIds.value)
+  const idx = next.indexOf(id)
+  if (idx >= 0) next.splice(idx, 1)
+  else next.push(id)
+  activeCastIds.value = next
+}
+
+function clearActiveCasts() {
+  activeCastIds.value = []
+}
 
 function incActive() { activeQty.value = Math.max(1, Number(activeQty.value || 1) + 1) }
 function decActive() { activeQty.value = Math.max(1, Number(activeQty.value || 1) - 1) }
 
 function confirmAdd(masterId) {
   const q = Math.max(1, Number(activeQty.value || 1))
+  const ids = normalizeIds(activeCastIds.value)
 
-  // 最終ガード：担当必須（通常は null にならないが念のため）
-  const ensured = Number(activeCastId.value || 0)
-  if (!ensured) {
-    alert('担当できるキャストがいません（先にキャストを着席させてください）')
-    return
-  }
+  emit('update:servedByCastIds', ids)
+  emit('update:servedByCastId', ids.length ? ids[0] : null)
 
   // 【フェーズ3】顧客IDも一緒に送信（親側で customer_id として保持される）
-  emit('addPending', masterId, q, ensured, activeCustomerId.value)
+  emit('addPending', masterId, q, ids, activeCustomerId.value)
 
   activeMasterId.value = null
   pokeCartFeedback()
@@ -183,6 +208,16 @@ const cartSubtotal = computed(() =>
   (props.pending || []).reduce((s, p) =>
     s + priceOf(p.master_id) * (Number(p.qty) || 0), 0)
 )
+
+function castNamesFromPending(p) {
+  const ids = Array.isArray(p?.cast_ids)
+    ? normalizeIds(p.cast_ids)
+    : (p?.cast_id != null ? [Number(p.cast_id)] : [])
+  return ids
+    .map(id => props.servedByMap[String(id)] || ('cast#' + id))
+    .filter(Boolean)
+    .join('＋')
+}
 
 </script>
 
@@ -239,15 +274,23 @@ const cartSubtotal = computed(() =>
             <div class="d-flex align-items-center justify-content-between mb-3">
               <div class="text-muted small fw-bold text-nowrap">担当</div>
               <div class="served-pills flex-wrap" role="tablist">
+                <button
+                  type="button"
+                  class="badge bg-light text-secondary rounded-pill"
+                  :class="{ active: !activeCastIds.length }"
+                  :aria-pressed="!activeCastIds.length"
+                  @click="clearActiveCasts"
+                  style="font-size: 1rem;"
+                >未指定</button>
                 <template v-if="listServedBy.length">
                   <button
                     v-for="c in listServedBy"
                     :key="String(c.id)"
                     type="button"
                     class="badge bg-light text-secondary rounded-pill"
-                    :class="{ active: k(activeCastId) === k(c.id) }"
-                    :aria-pressed="k(activeCastId) === k(c.id)"
-                    @click="() => { activeCastId = Number(c.id) }"
+                    :class="{ active: activeCastIds.includes(Number(c.id)) }"
+                    :aria-pressed="activeCastIds.includes(Number(c.id))"
+                    @click="() => toggleActiveCast(c.id)"
                     style="font-size: 1rem;"
                   >{{ c.label }}</button>
                 </template>
@@ -321,8 +364,8 @@ const cartSubtotal = computed(() =>
                 || ('#' + p.master_id) }}
               </div>
               <div class="d-flex gap-2 flex-wrap mt-1">
-                <div v-if="p.cast_id" class="badge bg-secondary">
-                  {{ servedByMap[String(p.cast_id)] || ('cast#' + p.cast_id) }}
+                <div v-if="castNamesFromPending(p)" class="badge bg-secondary">
+                  {{ castNamesFromPending(p) }}
                   <template v-if="p.customer_id != null && p.customer_id !== ''">
                     / {{ billCustomersMap[String(p.customer_id)] || ('Guest-' + String(p.customer_id).padStart(6, '0')) }}
                   </template>
