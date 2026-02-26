@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python manage.py makemigrations billing --name garden_monthly_fields)",
+      "Bash(python3 -c \":*)"
+    ],
+    "additionalDirectories": [
+      "/Users/koyanagikokoro/Dropbox/PRODUCTS/MONOLISK"
+    ]
+  }
+}

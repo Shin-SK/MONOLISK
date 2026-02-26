@@ -2214,3 +2214,66 @@ def attach_personnel_expenses_to_run(request, pk=None):
         'start_date': run.period_start,
         'end_date': run.period_end,
     }, status=status.HTTP_200_OK)
+
+
+# ──────────────────────────────────────────────
+# Garden 暫定ランク API
+# ──────────────────────────────────────────────
+class PayrollStatusView(APIView):
+    """
+    GET /api/billing/payroll/status/
+
+    Garden店: 現在期間の暫定ランク・売上・バック見込みを返す。
+    Garden以外: {"enabled": false}
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            sid = _get_store_id_from_header(request)
+        except ValueError:
+            return Response(
+                {"detail": "X-Store-Id header is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        store = get_object_or_404(Store, pk=sid)
+
+        # Garden 以外は enabled=false
+        if getattr(store, "slug", None) != "garden":
+            return Response({"enabled": False})
+
+        # cast を request.user + store_id で取得
+        cast = Cast.objects.filter(user=request.user, store_id=sid).first()
+        if cast is None:
+            return Response(
+                {"detail": "Cast not found for this user/store."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # 期間
+        today = timezone.localdate()
+        period_start, period_end = get_default_payroll_period(store, today)
+
+        from billing.payroll.engines.stores.garden import calculate_garden_stats
+
+        stats = calculate_garden_stats(store, cast.id, period_start, today)
+        monthly_back = stats["slide_back"] + stats["dohan_back"] + stats["b_back"]
+
+        return Response({
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+            "as_of": today.isoformat(),
+            "cast_id": cast.id,
+            "sales_total": stats["sales_total"],
+            "nom_count": stats["nom_count"],
+            "dohan_count": stats["dohan_count"],
+            "dohan_sales_total": stats["dohan_sales_total"],
+            "points": stats["points"],
+            "rank": stats["rank"],
+            "hourly": stats["hourly"],
+            "slide_rate": stats["slide_rate"],
+            "slide_back": stats["slide_back"],
+            "dohan_back": stats["dohan_back"],
+            "b_back": stats["b_back"],
+            "monthly_back": monthly_back,
+        })

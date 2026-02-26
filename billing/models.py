@@ -1912,6 +1912,7 @@ class PayrollRunLine(models.Model):
     hourly_pay = models.PositiveIntegerField(default=0, verbose_name='時給合計')
     commission = models.PositiveIntegerField(default=0, verbose_name='バック合計')
     total = models.PositiveIntegerField(default=0, verbose_name='給与合計')
+    garden_snapshot = models.JSONField(null=True, blank=True, verbose_name='Garden制度スナップショット')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1933,6 +1934,7 @@ class PayrollRunBackRow(models.Model):
     bill_id = models.IntegerField(null=True, blank=True, verbose_name='伝票ID')
     bill_item_id = models.IntegerField(null=True, blank=True, verbose_name='明細ID')
     occurred_at = models.DateTimeField(null=True, blank=True, verbose_name='発生日時')
+    label = models.CharField(max_length=40, blank=True, default='', verbose_name='種別ラベル')
     amount = models.PositiveIntegerField(default=0, verbose_name='バック額')
 
     class Meta:

@@ -129,5 +129,12 @@ class BaseEngine:
     def item_payout_override(self, bill, item, stay_type: str) -> int | None:
         return None
 
+    def finalize_payroll_line(self, line, period_start, period_end):
+        """
+        締め処理後にPayrollRunLineを店舗固有ロジックで補正する。
+        戻り値: 追加のPayrollRunBackRow リスト（空ならno-op）。
+        """
+        return []
+
 class DefaultEngine(BaseEngine):
     pass  # Base のまま（従来どおりの本指名プール）

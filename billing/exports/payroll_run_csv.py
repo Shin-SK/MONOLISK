@@ -23,6 +23,7 @@ from ..models import (
     PayrollRunBackRow,
 )
 from ..permissions import RequireCap
+from ..payroll.engines import get_engine
 
 
 # exp.csv に合わせた 17列
@@ -240,9 +241,26 @@ class PayrollRunExportCSVView(APIView):
                     total=hourly_total + back_total,
                 )
             )
-        PayrollRunLine.objects.bulk_create(lines)
+        lines = PayrollRunLine.objects.bulk_create(lines)
 
-        # --- バック根拠明細（CastPayout “全部”） ---
+        # --- Engine finalize（店舗固有の締め後補正） ---
+        engine = get_engine(store)
+        finalize_extra_rows = []
+        lines_to_save = []
+        for line in lines:
+            extra = engine.finalize_payroll_line(line, df, dt)
+            if extra:
+                finalize_extra_rows.extend(extra)
+                lines_to_save.append(line)
+        if lines_to_save:
+            PayrollRunLine.objects.bulk_update(
+                lines_to_save,
+                ["hourly_pay", "commission", "total", "garden_snapshot"],
+            )
+        if finalize_extra_rows:
+            PayrollRunBackRow.objects.bulk_create(finalize_extra_rows)
+
+        # --- バック根拠明細（CastPayout "全部"） ---
         payout_qs = (
             CastPayout.objects.filter(
                 bill__table__store_id=sid,
@@ -266,7 +284,7 @@ class PayrollRunExportCSVView(APIView):
             )
         PayrollRunBackRow.objects.bulk_create(back_rows)
 
-        # --- 勤務(時給)明細（CastDailySummary “全部”） ---
+        # --- 勤務(時給)明細（CastDailySummary "全部"） ---
         daily_qs = (
             CastDailySummary.objects.filter(
                 store_id=sid,
@@ -285,6 +303,15 @@ class PayrollRunExportCSVView(APIView):
         for p in payout_qs:
             payouts_by_cast.setdefault(p.cast_id, []).append(p)
 
+        # finalize 後の値を参照するための lookup
+        line_by_cast = {l.cast_id: l for l in lines}
+
+        # Garden月次バック明細（GDN_* 行のみ）
+        monthly_by_cast = {}
+        for r in finalize_extra_rows:
+            if r.label and r.label.startswith("GDN_"):
+                monthly_by_cast.setdefault(r.cast_id, []).append(r)
+
         # --- CSV書き出し（exp.csv 形式：1テーブル） ---
         output = io.StringIO()
         writer = csv.writer(output)
@@ -292,17 +319,15 @@ class PayrollRunExportCSVView(APIView):
         # 1行目：ヘッダ
         _row(writer, CSV_COLUMNS)
 
-        # 任意：メモや注意を入れたい場合は “ヘッダの次行” に入れる（空でOK）
-        # 今回は exp.csv に合わせて「入れない」方針。
-        # ただし将来必要なら、ここに「区分=メモ」行を追加すると自然。
-
         for c in casts:
             cast_id = c.id
             cast_name = c.stage_name or f"cast-{cast_id}"
 
-            hourly_total = int(c.hourly_total or 0)
-            back_total = int(c.back_total or 0)
-            total = hourly_total + back_total
+            # finalize 後の確定値を使う
+            ln = line_by_cast.get(cast_id)
+            hourly_total = ln.hourly_pay if ln else int(c.hourly_total or 0)
+            back_total = ln.commission if ln else int(c.back_total or 0)
+            total = ln.total if ln else (hourly_total + back_total)
 
             # サマリ行（出勤/売上欄は空）
             _row(
@@ -324,7 +349,7 @@ class PayrollRunExportCSVView(APIView):
                     hours = _round_hours(worked_min)
                     wage_amount = int(d.payroll or 0)
 
-                    # できるだけ “あるなら使う” 方針（無ければ空）
+                    # できるだけ "あるなら使う" 方針（無ければ空）
                     in_dt = getattr(d, "clock_in_at", None) or getattr(d, "started_at", None) or getattr(d, "check_in_at", None)
                     out_dt = getattr(d, "clock_out_at", None) or getattr(d, "ended_at", None) or getattr(d, "check_out_at", None)
 
@@ -415,6 +440,22 @@ class PayrollRunExportCSVView(APIView):
                         "売上",
                         "", "", "", "", "",
                         "", "", "", "", "", "", "",
+                    ],
+                )
+
+            # 月次バック明細（GDN_* 行）
+            m_list = monthly_by_cast.get(cast_id, [])
+            for m in m_list:
+                _row(
+                    writer,
+                    [
+                        "", "", "", "",
+                        "月次バック",
+                        "", "", "", "", "",
+                        "", "",
+                        m.label,
+                        "", "", "",
+                        int(m.amount or 0),
                     ],
                 )
 

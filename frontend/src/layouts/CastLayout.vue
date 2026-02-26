@@ -8,7 +8,8 @@ import {
   fetchCastShiftHistory,
   fetchCastDailySummaries,
   fetchCastRankings,
-  listCastGoals
+  listCastGoals,
+  fetchPayrollStatus,
 } from '@/api'
 import CastSidebar from '@/components/sidebar/CastSidebar.vue'
 import CastOrderModal from '@/components/cast/CastOrderModal.vue'
@@ -49,6 +50,7 @@ const shifts = ref([])
 const todaySum = ref(null)
 const rankings = ref([])
 const latestGoal = ref(null)
+const payrollStatus = ref(null)
 const goalProgressMap = ref({})
 const todayStr = dayjs().format('YYYY-MM-DD')
 const dateFrom = ref(dayjs().startOf('month').format('YYYY-MM-DD'))
@@ -110,13 +112,23 @@ async function loadLatestGoal() {
   }
 }
 
+async function loadPayrollStatus() {
+  try {
+    payrollStatus.value = await fetchPayrollStatus()
+  } catch (e) {
+    console.error('loadPayrollStatus failed:', e)
+    payrollStatus.value = null
+  }
+}
+
 async function loadHeaderData() {
   await Promise.all([
     loadCast(),
     loadShifts(),
     loadToday(),
     loadRankings(),
-    loadLatestGoal()
+    loadLatestGoal(),
+    loadPayrollStatus(),
   ])
 }
 
@@ -132,6 +144,12 @@ const todaySales = computed(() =>
 const myRank = computed(() => {
   const idx = rankings.value.findIndex(r => r.cast_id === castId.value)
   return idx === -1 ? null : idx + 1
+})
+
+const gardenRank = computed(() => {
+  const s = payrollStatus.value
+  if (!s || s.enabled === false) return null
+  return s.rank || null
 })
 
 const nextShift = computed(() => {
@@ -345,6 +363,9 @@ watch(() => route.fullPath, (p) => {
             class="d-flex align-items-center gap-1">
             <IconTrendingUp />
             <span class="fs-5 fw-bold">No.{{ myRank }}</span>
+          </div>
+          <div v-if="gardenRank" class="d-flex align-items-center gap-2">
+            <span class="badge bg-dark">ランク {{ gardenRank }}</span>
           </div>
         </div>
       </div>

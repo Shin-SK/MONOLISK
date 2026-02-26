@@ -12,7 +12,7 @@ from .views import (
      StaffViewSet, StaffShiftViewSet,
      CustomerViewSet, StoreNoticeViewSet, StoreSeatSettingViewSet, DiscountRuleViewSet, CastPayrollSummaryView, CastPayrollDetailView, CastPayrollDetailCSVView,
      CustomerTagViewSet, BillTagViewSet, HourlySalesView,
-     PayrollRunPreviewView, PayrollRunExportCSVView,
+     PayrollRunPreviewView, PayrollRunExportCSVView, PayrollStatusView,
      PersonnelExpenseCategoryViewSet, PersonnelExpenseViewSet,
      attach_personnel_expenses_to_run,
 )
@@ -80,6 +80,7 @@ urlpatterns = [
     path("payroll/casts/<int:cast_id>/export.csv", CastPayrollDetailCSVView.as_view(), name="payroll-cast-detail-csv"),
     
     # ★給与締め（PayrollRun）
+    path("payroll/status/", PayrollStatusView.as_view(), name="payroll-status"),
     path("payroll/runs/preview/", PayrollRunPreviewView.as_view(), name="payroll-runs-preview"),
     path("payroll/runs/export.csv", PayrollRunExportCSVView.as_view(), name="payroll-runs-export-csv"),
     path("payroll/runs/<int:pk>/attach-personnel-expenses/", attach_personnel_expenses_to_run, name="payroll-attach-expenses"),

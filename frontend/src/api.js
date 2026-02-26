@@ -910,6 +910,11 @@ export async function fetchPayrollDetail(castId, params = {}) {
   return res.data
 }
 
+export async function fetchPayrollStatus() {
+  const res = await api.get('billing/payroll/status/')
+  return res.data
+}
+
 export async function downloadPayrollDetailCsv(castId, params = {}) {
   // axiosインスタンス(api)は認証＆X-Store-Idを自動付与
   const res = await api.get(`billing/payroll/casts/${castId}/export.csv`, {
