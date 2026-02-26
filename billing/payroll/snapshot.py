@@ -12,6 +12,12 @@ from typing import Dict, List, Any
 from django.utils import timezone
 from django.conf import settings
 from billing.services.payout_helper import get_payout_base
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from billing.models import Bill
+    from billing.calculator import BillCalculationResult  # 実体の場所が違うなら合わせる
+    from billing.payroll.types import CastPayout          # 実体の場所が違うなら合わせる
 
 
 def build_payroll_snapshot(bill: "Bill") -> Dict[str, Any]:
@@ -121,14 +127,14 @@ def build_payroll_snapshot(bill: "Bill") -> Dict[str, Any]:
     engine = get_engine(store)
     
     # ─────────────────────────────────────────
-    # by_cast: 各キャストの給与集計 + 内訳
-    # ─────────────────────────────────────────
-    by_cast = _build_by_cast(bill, result.cast_payouts, store, engine)
-    
-    # ─────────────────────────────────────────
     # items: 各伝票明細の給与効果
     # ─────────────────────────────────────────
-    items_info = _build_items_info(bill, engine)
+    items_info = _build_items_info(bill, engine, store)
+
+    # ─────────────────────────────────────────
+    # by_cast: 各キャストの給与集計 + 内訳
+    # ─────────────────────────────────────────
+    by_cast = _build_by_cast(bill, result.cast_payouts, items_info, store, engine)
     
     # ─────────────────────────────────────────
     # totals: 給与関連の合計値
@@ -168,9 +174,65 @@ def build_payroll_snapshot(bill: "Bill") -> Dict[str, Any]:
     return snapshot
 
 
+def _get_item_served_casts(item) -> list:
+    """served_by_casts (M2M) を返す。空なら served_by_cast (FK) へフォールバック。"""
+    casts = list(item.served_by_casts.all())
+    if casts:
+        return casts
+    if item.served_by_cast_id and item.served_by_cast:
+        return [item.served_by_cast]
+    return []
+
+
+def _compute_item_back_split(item, store, stay_type_map: dict, engine, bill) -> dict:
+    """
+    1アイテムの item_back を担当キャスト全員に均等分配。
+    各キャストの back_rate は stay_type ベースで個別算出。
+    端数は 100 円単位 floor（店残し）。
+
+    Returns:
+        {cast_id: {"amount": int, "rate": Decimal, "basis_type": str}}
+    """
+    from billing.services.backrate import resolve_back_rate
+
+    casts = _get_item_served_casts(item)
+    if not casts or not item.item_master:
+        return {}
+
+    base, basis_type, _ = get_payout_base(item, item.item_master)
+    category = getattr(item.item_master, "category", None)
+    n = len(casts)
+    total = Decimal(0)
+    cast_info = {}
+
+    for cast in casts:
+        stay_type = stay_type_map.get(cast.id, "free")
+        rate = resolve_back_rate(
+            store=store, category=category, cast=cast, stay_type=stay_type
+        )
+        contrib = base * rate
+        bt = basis_type
+        override = engine.item_payout_override(bill, item, stay_type)
+        if override is not None:
+            try:
+                contrib += Decimal(override)
+            except Exception:
+                pass
+            bt = "override"
+        total += contrib
+        cast_info[cast.id] = (rate, bt)
+
+    per_cast = (total / Decimal(n)).quantize(Decimal("100"), rounding=ROUND_FLOOR)
+    return {
+        cid: {"amount": int(per_cast), "rate": cast_info[cid][0], "basis_type": cast_info[cid][1]}
+        for cid in cast_info
+    }
+
+
 def _build_by_cast(
     bill: "Bill",
     cast_payouts: List["CastPayout"],
+    items_info: List[Dict[str, Any]],
     store,
     engine
 ) -> List[Dict[str, Any]]:
@@ -193,35 +255,120 @@ def _build_by_cast(
     from ..models import BillCastStay
     
     result = []
-    
+
     # cast_id → stay_type マップ
     stay_type_map = {}
     for stay in bill.stays.filter(left_at__isnull=True):
         stay_type_map[stay.cast_id] = stay.stay_type
-    
-    # cast_id → amount 集計（複数 payout を合算）
-    cast_amount_map = {}
+
+    # cast_id → payout amount 集計（複数 payout を合算）
+    payout_amount_map = {}
     for payout in cast_payouts:
         cid = payout.cast_id
-        cast_amount_map[cid] = cast_amount_map.get(cid, 0) + int(payout.amount)
-    
+        payout_amount_map[cid] = payout_amount_map.get(cid, 0) + int(payout.amount)
+
+    # items_info から cast ごとの item_back 内訳を再構築
+    item_back_amount_map = {}
+    item_back_details_map = {}
+    for item in items_info:
+        item_id = item.get("bill_item_id")
+        for effect in item.get("payroll_effects", []):
+            if effect.get("type") != "item_back":
+                continue
+            cast_id = effect.get("cast_id")
+            if cast_id is None:
+                continue
+            amount = int(effect.get("amount", 0) or 0)
+            basis = effect.get("basis") or {}
+
+            item_back_amount_map[cast_id] = item_back_amount_map.get(cast_id, 0) + amount
+            item_back_details_map.setdefault(cast_id, []).append({
+                "item_id": item_id,
+                "name": item.get("name"),
+                "qty": item.get("qty"),
+                "unit_price": item.get("unit_price"),
+                "subtotal": item.get("subtotal"),
+                "rate": basis.get("rate"),
+                "basis": basis.get("basis_type"),
+                "amount": amount,
+            })
+
+    # by_cast 母集団 = payout cast_id ∪ payroll_effect cast_id
+    cast_ids = set(payout_amount_map.keys()) | set(item_back_amount_map.keys())
+
+    nom_payouts = engine.nomination_payouts(bill) or {}
+    dohan_payouts = engine.dohan_payouts(bill) or {}
+    nom_items = [
+        it for it in bill.items.all()
+        if getattr(it, "is_nomination", False)
+    ]
+    nom_subtotal = sum(it.subtotal for it in nom_items)
+    pool_rate = float(getattr(bill.table.store, "nom_pool_rate", 0))
+    num_nominated = len(bill.nominated_casts.all()) + (1 if bill.main_cast else 0)
+
     # by_cast を構築
-    for cast_id in sorted(cast_amount_map.keys()):
-        amount = cast_amount_map[cast_id]
+    for cast_id in sorted(cast_ids):
+        payout_amount = payout_amount_map.get(cast_id, 0)
+        item_back_amount = item_back_amount_map.get(cast_id, 0)
+        nom_amount = int(nom_payouts.get(cast_id, 0) or 0)
+        dohan_amount = int(dohan_payouts.get(cast_id, 0) or 0)
+
+        amount = payout_amount + item_back_amount
         stay_type = stay_type_map.get(cast_id, "unknown")
-        
-        # 内訳を計算
-        breakdown = _build_cast_breakdown(
-            bill, cast_id, amount, stay_type, engine
-        )
-        
+        breakdown = []
+
+        if item_back_amount > 0:
+            breakdown.append({
+                "type": "item_back",
+                "label": "ドリンク・フード",
+                "amount": item_back_amount,
+                "basis": {
+                    "detail": item_back_details_map.get(cast_id, []),
+                    "stay_type": stay_type,
+                }
+            })
+
+        if nom_amount > 0:
+            breakdown.append({
+                "type": "nomination_pool",
+                "label": "本指名プール",
+                "amount": nom_amount,
+                "basis": {
+                    "pool_subtotal": nom_subtotal,
+                    "pool_rate": pool_rate,
+                    "num_nominated": num_nominated,
+                }
+            })
+
+        if dohan_amount > 0:
+            breakdown.append({
+                "type": "dohan_pool",
+                "label": "同伴",
+                "amount": dohan_amount,
+                "basis": {
+                    "method": "engine_calculated",
+                }
+            })
+
+        component_total = item_back_amount + nom_amount + dohan_amount
+        adjustment = amount - component_total
+        if adjustment != 0:
+            breakdown.append({
+                "type": "adjustment",
+                "label": "調整",
+                "amount": adjustment,
+                "basis": {
+                    "reason": "residual_from_engine",
+                }
+            })
+
         result.append({
             "cast_id": cast_id,
             "stay_type": stay_type,
             "amount": amount,
             "breakdown": breakdown,
         })
-    
+
     return result
 
 
@@ -229,13 +376,14 @@ def _build_cast_breakdown(
     bill: "Bill",
     cast_id: int,
     total_amount: int,
-    stay_type: str,
-    engine
+    stay_type_map: dict,
+    engine,
+    store,
 ) -> List[Dict[str, Any]]:
     """
     特定キャストの給与内訳を構築。
     item_back / nomination_pool / dohan_pool などを分類。
-    
+
     Returns:
         [
           { "type": "item_back", "label": "...", "amount": 5000, "basis": {...} },
@@ -243,50 +391,42 @@ def _build_cast_breakdown(
         ]
     """
     from ..models import BillItem
-    
+
+    stay_type = stay_type_map.get(cast_id, "unknown")
     breakdown = []
     remaining = total_amount
-    
+
     # ─────────────────────────────────────────
-    # 1) Item Back（served_by_cast 経由）
+    # 1) Item Back（served_by_casts M2M 経由、FK へフォールバック）
     # ─────────────────────────────────────────
     item_back_amount = 0
     item_details = []
-    
-    for item in bill.items.select_related("item_master__category").all():
-        if item.served_by_cast_id != cast_id or item.exclude_from_payout:
+
+    for item in bill.items.select_related("item_master__category", "served_by_cast").prefetch_related("served_by_casts").all():
+        if item.exclude_from_payout:
             continue
-        
-        # item_payout_override を呼ぶ
-        override = engine.item_payout_override(bill, item, stay_type)
-        if override is not None:
-            amount = int(override)
-            basis_type = "override"
-        else:
-            # 既定：%, back_rate で計算
-            if item.item_master:
-                # シャンパン原価基準対応
-                base, basis_type, _ = get_payout_base(item, item.item_master)
-                amount = int(
-                    (base * Decimal(item.back_rate))
-                    .quantize(0, rounding=ROUND_FLOOR)
-                )
-            else:
-                amount = 0
-                basis_type = "unknown"
-        
-        if amount > 0:
-            item_back_amount += amount
-            item_details.append({
-                "item_id": item.id,
-                "name": item.item_master.name if item.item_master else "(削除済)",
-                "qty": item.qty,
-                "unit_price": int(item.price or 0),
-                "subtotal": int(item.subtotal),
-                "rate": float(item.back_rate or 0),
-                "basis": basis_type,
-                "amount": amount,
-            })
+        if item.is_nomination:
+            continue
+        if cast_id not in {c.id for c in _get_item_served_casts(item)}:
+            continue
+
+        split = _compute_item_back_split(item, store, stay_type_map, engine, bill)
+        entry = split.get(cast_id)
+        if not entry or entry["amount"] <= 0:
+            continue
+
+        amount = entry["amount"]
+        item_back_amount += amount
+        item_details.append({
+            "item_id": item.id,
+            "name": item.item_master.name if item.item_master else "(削除済)",
+            "qty": item.qty,
+            "unit_price": int(item.price or 0),
+            "subtotal": int(item.subtotal),
+            "rate": str(entry["rate"]),
+            "basis": entry["basis_type"],
+            "amount": amount,
+        })
     
     if item_back_amount > 0:
         breakdown.append({
@@ -360,11 +500,11 @@ def _build_cast_breakdown(
     return breakdown
 
 
-def _build_items_info(bill: "Bill", engine) -> List[Dict[str, Any]]:
+def _build_items_info(bill: "Bill", engine, store) -> List[Dict[str, Any]]:
     """
     Bill の明細（items）を構築。
     各アイテムの給与効果（payroll_effects）を記載。
-    
+
     Returns:
         [
           {
@@ -388,64 +528,53 @@ def _build_items_info(bill: "Bill", engine) -> List[Dict[str, Any]]:
         ]
     """
     from ..models import BillCastStay
-    
+
     # cast_id → stay_type マップ
     stay_type_map = {}
     for stay in bill.stays.filter(left_at__isnull=True):
         stay_type_map[stay.cast_id] = stay.stay_type
-    
+
     result = []
-    
-    for item in bill.items.select_related("item_master__category").all():
+
+    for item in bill.items.select_related("item_master__category", "served_by_cast").prefetch_related("served_by_casts").all():
         if item.exclude_from_payout:
-            # exclude_from_payout は items に含めない
             continue
-        
+
         served_by_cast_id = item.served_by_cast_id
-        stay_type = stay_type_map.get(served_by_cast_id, "unknown") if served_by_cast_id else None
-        
+        served_casts = _get_item_served_casts(item)
+        primary_id = served_casts[0].id if served_casts else served_by_cast_id
+        stay_type = stay_type_map.get(primary_id, "unknown") if primary_id else None
+
         # payroll_effects 計算
         payroll_effects = []
-        
-        if served_by_cast_id and not item.is_nomination:
-            # served_by_cast がいる → item back を計算
-            override = engine.item_payout_override(bill, item, stay_type)
-            if override is not None:
-                amount = int(override)
-                basis_type = "override"
-            else:
-                # シャンパン原価基準対応
-                if item.item_master:
-                    base, basis, _ = get_payout_base(item, item.item_master)
-                    amount = int(
-                        (base * Decimal(item.back_rate))
-                        .quantize(0, rounding=ROUND_FLOOR)
-                    )
-                    basis_type = basis
-                else:
-                    amount = 0
-                    basis_type = "unknown"
-            
-            if amount > 0 or item.back_rate != 0:  # amount=0 でも basis を残す
-                # calculation ラベルを basis_type に応じて切り替える
-                if basis_type == "cost":
-                    calc_label = "cost * qty * rate"
-                elif basis_type == "subtotal":
-                    calc_label = "subtotal * rate"
-                else:
-                    calc_label = "calculated"
-                
-                payroll_effects.append({
-                    "cast_id": served_by_cast_id,
-                    "type": "item_back",
-                    "amount": amount,
-                    "basis": {
-                        "rate": float(item.back_rate),
-                        "calculation": calc_label,
-                        "basis_type": basis_type,
-                    }
-                })
-        
+
+        if served_casts and not item.is_nomination:
+            split = _compute_item_back_split(item, store, stay_type_map, engine, bill)
+            for cast in served_casts:
+                entry = split.get(cast.id)
+                if not entry:
+                    continue
+                amount = entry["amount"]
+                rate = entry["rate"]
+                basis_type = entry["basis_type"]
+                if amount > 0 or rate != 0:
+                    if basis_type == "cost":
+                        calc_label = "cost * qty * rate / n"
+                    elif basis_type == "subtotal":
+                        calc_label = "subtotal * rate / n"
+                    else:
+                        calc_label = "calculated"
+                    payroll_effects.append({
+                        "cast_id": cast.id,
+                        "type": "item_back",
+                        "amount": amount,
+                        "basis": {
+                            "rate": str(rate),
+                            "calculation": calc_label,
+                            "basis_type": basis_type,
+                        }
+                    })
+
         result.append({
             "bill_item_id": item.id,
             "name": item.item_master.name if item.item_master else "(削除済)",
@@ -456,7 +585,7 @@ def _build_items_info(bill: "Bill", engine) -> List[Dict[str, Any]]:
             "stay_type": stay_type,
             "payroll_effects": payroll_effects,
         })
-    
+
     return result
 
 
