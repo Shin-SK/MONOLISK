@@ -79,3 +79,5 @@ frontend/public/_redirects
 .env.docker
 
 .md
+
+docs/*.md

@@ -26,7 +26,6 @@ export function useBillCustomers() {
   async function fetchBillCustomers(billId) {
     loading.value = true
     error.value = null
-    customers.value = []
 
     try {
       // キャッシュを明示的に無効化（pax更新後の同期確認のため）
@@ -71,6 +70,30 @@ export function useBillCustomers() {
   }
 
   /**
+   * pax 更新後のリトライ付き再取得。
+   * BillCustomer がサーバ側で増殖されるまで短いポーリングで待つ。
+   * @param {number} billId
+   * @param {number} expectedCount - 期待する最低件数（= newPax）
+   * @param {object} [opts]
+   * @param {number} [opts.maxRetries=5]
+   * @param {number} [opts.interval=250] - リトライ間隔 (ms)
+   * @returns {Promise<Array>} 最終的な customers 配列
+   */
+  async function fetchUntilCount(billId, expectedCount, { maxRetries = 5, interval = 250 } = {}) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      await fetchBillCustomers(billId)
+      if (customers.value.length >= expectedCount) break
+      if (attempt < maxRetries) {
+        if (import.meta.env?.DEV) {
+          console.log(`[useBillCustomers] リトライ ${attempt + 1}/${maxRetries}: 期待=${expectedCount}, 実際=${customers.value.length}`)
+        }
+        await new Promise(r => setTimeout(r, interval))
+      }
+    }
+    return customers.value
+  }
+
+  /**
    * BillCustomer を作成
    * @param {number} billId
    * @param {object} payload
@@ -97,6 +120,7 @@ export function useBillCustomers() {
     error,
     customers,
     fetchBillCustomers,
+    fetchUntilCount,
     refresh,
     createBillCustomer,
     updateBillCustomer

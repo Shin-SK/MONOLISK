@@ -80,7 +80,8 @@ const emit = defineEmits([
   'update:applyService','update:applyTax','update:memo','update:display-name',
   'update:selectedTagIds',  // ← 追加
   'chooseCourse','clearCustomer','searchCustomer','pickCustomer',
-  'applySet','save','switchPanel','update-times'
+  'applySet','save','switchPanel','update-times',
+  'customers-changed',  // 案B: 顧客リスト変更を親に通知
 ])
 
 /* ===== 席種・テーブル ===== */
@@ -182,11 +183,11 @@ function cancelEditBillCustomerLeft(bcId) {
   editingBillCustomerLeft.value[bcId] = false
 }
 
-async function refreshBillCustomers() {
+async function refreshBillCustomers(force = false) {
   if (!props.billId) return
-  
-  // 【修正】親からbillCustomersが渡されている場合はそれを使用
-  if (props.billCustomersFromParent !== null && Array.isArray(props.billCustomersFromParent)) {
+
+  // 【修正】親からbillCustomersが渡されている場合はそれを使用（force時はスキップ）
+  if (!force && props.billCustomersFromParent !== null && Array.isArray(props.billCustomersFromParent)) {
     billCustomers.value = [...props.billCustomersFromParent]
     
     if (import.meta.env.DEV) {
@@ -297,7 +298,8 @@ async function saveCustomerTimes(bcId) {
   const left_at = toISOFromLocal(editLeftLocal.value[bcId])
   try {
     await billCustomersComp.updateBillCustomer(bcId, { arrived_at, left_at })
-    await refreshBillCustomers()
+    await refreshBillCustomers(true)
+    emit('customers-changed')
   } catch (e) {
     alert('時刻の保存に失敗しました（INより前にOUTなど）')
   }
@@ -345,7 +347,8 @@ async function replaceCustomer(bcId) {
     await billCustomersComp.updateBillCustomer(bcId, { customer: newCustomerId })
     replaceCustomerMap.value[bcId] = ''  // reset dropdown
     editingReplaceCustomer.value[bcId] = false  // 編集モード解除
-    await refreshBillCustomers()
+    await refreshBillCustomers(true)
+    emit('customers-changed')
     alert('顧客を差し替えました')
   } catch (e) {
     console.error('[BasicsPanel] replace customer failed', e)
@@ -665,18 +668,19 @@ function beginEditPax() {
 async function saveEditPax() {
   const newPax = Number(editPaxLocal.value) || 0
   editingPax.value = false
-  
-  // 【フェーズ1】既存伝票の場合は即座にAPI更新
+
   if (props.billId) {
     try {
       await patchBill(props.billId, { pax: newPax })
       emit('update:pax', newPax)
-      
-      // 【フェーズ1】pax更新後に顧客リストを再取得
-      await refreshBillCustomers()
-      
+
+      // pax更新後にリトライ付きで顧客リストを再取得
+      const result = await billCustomersComp.fetchUntilCount(props.billId, newPax)
+      billCustomers.value = [...result]
+      emit('customers-changed')
+
       if (import.meta.env.DEV) {
-        console.log(`[フェーズ1] 人数編集保存完了:`, {
+        console.log(`[BasicsPanel] 人数編集保存完了:`, {
           billId: props.billId,
           newPax,
           '顧客数': billCustomers.value.length
@@ -687,11 +691,8 @@ async function saveEditPax() {
       alert('人数の更新に失敗しました')
     }
   } else {
-    // 新規伝票の場合はローカル状態のみ更新
     emit('update:pax', newPax)
   }
-  
-  // 【フェーズ0】pax更新後の真実確認ログは削除（フェーズ1で統合）
 }
 
 // 延長→会計パネルへ
@@ -1484,13 +1485,13 @@ function customLabel(customer) {
 
 
             <div class="d-flex gap-2 flex-wrap">
-              <button class="btn btn-outline-secondary btn-sm" type="button" @click="timelineComp.markArrived(bc.id).then(refreshBillCustomers)">
+              <button class="btn btn-outline-secondary btn-sm" type="button" @click="timelineComp.markArrived(bc.id).then(() => refreshBillCustomers(true)).then(() => emit('customers-changed'))">
                 今入店
               </button>
-              <button class="btn btn-outline-secondary btn-sm" type="button" @click="timelineComp.markLeft(bc.id).then(refreshBillCustomers)">
+              <button class="btn btn-outline-secondary btn-sm" type="button" @click="timelineComp.markLeft(bc.id).then(() => refreshBillCustomers(true)).then(() => emit('customers-changed'))">
                 今退店
               </button>
-              <button class="btn btn-outline-secondary btn-sm" type="button" @click="timelineComp.clearLeft(bc.id).then(refreshBillCustomers)">
+              <button class="btn btn-outline-secondary btn-sm" type="button" @click="timelineComp.clearLeft(bc.id).then(() => refreshBillCustomers(true)).then(() => emit('customers-changed'))">
                 退店解除
               </button>
               <button class="btn btn-success btn-sm" type="button" @click="saveCustomerTimes(bc.id)">

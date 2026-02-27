@@ -54,7 +54,8 @@ const runners = {
     const store = useBills()
     const b = store.list.find(x => Number(x.id) === Number(p.id)) || {}
     const payload = { ...p.payload }
-    if (payload.opened_at === undefined)    payload.opened_at = b.opened_at ?? null
+    // opened_at はバックエンド側で更新禁止のため送らない
+    delete payload.opened_at
     if (payload.expected_out === undefined) payload.expected_out = b.expected_out ?? null
     await patchBill(p.id, payload)
   },               // {id, payload}

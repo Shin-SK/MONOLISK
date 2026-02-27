@@ -532,7 +532,7 @@ export const patchBill = (id, payload = {}) => {
 
   const body = {
     ...(hasTableIdsIntent ? { table_ids } : {}), // ★空配列も送れる
-    ...(payload.opened_at ? { opened_at: payload.opened_at } : {}), // ★null送らない
+    // opened_at はバックエンド側で更新禁止のため送らない
     ...(payload.expected_out !== undefined ? { expected_out: payload.expected_out } : {}),
     ...(payload.pax !== undefined ? { pax: payload.pax } : {}),
     ...(payload.apply_service_charge !== undefined ? { apply_service_charge: !!payload.apply_service_charge } : {}),

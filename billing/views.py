@@ -299,10 +299,18 @@ class BillViewSet(viewsets.ModelViewSet):
 
         self._validate_table_ids_in_store(sid, ids)
         bill = serializer.save()
-        
+
         # pax が指定されていれば、BillCustomer を同期
         from .services.bill_customer_sync import ensure_bill_customers_for_pax
         ensure_bill_customers_for_pax(bill)
+
+        # 自動 SET/延長を reconcile
+        try:
+            from .services.customer_charge_reconcile import reconcile_customer_charges
+            reconcile_customer_charges(bill.id)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("reconcile failed on bill create %s", bill.id)
 
     def perform_update(self, serializer):
         sid = self._sid()
@@ -324,11 +332,17 @@ class BillViewSet(viewsets.ModelViewSet):
 
         serializer.save()
 
-        # pax が更新された場合、BillCustomer を同期
+        # pax が更新された場合、BillCustomer を同期 → 自動 SET/延長を reconcile
         if pax_updated:
             bill.refresh_from_db()
             from .services.bill_customer_sync import ensure_bill_customers_for_pax
             ensure_bill_customers_for_pax(bill)
+            try:
+                from .services.customer_charge_reconcile import reconcile_customer_charges
+                reconcile_customer_charges(bill.id)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("reconcile failed on pax update bill %s", bill.id)
 
         # discount_ruleが変更された場合、金額を再計算
         if discount_rule_updated or service_toggle_updated or tax_toggle_updated:
@@ -583,7 +597,16 @@ class BillCustomerViewSet(viewsets.ModelViewSet):
         return BillCustomerSerializer
     
     def perform_update(self, serializer):
-        serializer.save()
+        instance = serializer.save()
+        # arrived_at / left_at 更新後に自動 SET/延長を reconcile
+        try:
+            from .services.customer_charge_reconcile import reconcile_customer_charges
+            reconcile_customer_charges(instance.bill_id)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "reconcile failed on bill-customer update %s", instance.bill_id,
+            )
 
 
 # ────────────────────────────────────────────────────────────────────

@@ -399,8 +399,10 @@ async function onApplySet (payload){
     .reduce((sum, l) => sum + Number(l.qty || 0), 0)
   if (totalPaxFromPayload > 0) {
     await patchBill(billId, { pax: totalPaxFromPayload })
+    // pax更新後にリトライ付きで顧客リストを再取得
+    await billCustomersComposable.fetchUntilCount(billId, totalPaxFromPayload)
   }
-  
+
   const fresh = await fetchBill(billId).catch(()=>null)
   if (fresh) {
     // applyBillPatchToLocal で一元管理
@@ -821,18 +823,21 @@ function onUpdateTimes({ opened_at, expected_out}){
   }
 }
 
-// ★ BasicsPanel からの人数更新を受けて patch（即時反映＋裏送信）
+// ★ BasicsPanel からの人数更新を受けてローカル state だけ反映
+// ※ API patch / customers 再取得は BasicsPanel.saveEditPax() が
+//   await patchBill → await refreshBillCustomers(true) → emit('customers-changed')
+//   で完遂済みなので、親で二重処理しない
 function onUpdatePax(newPax) {
-  // ★ 新規伝票でもローカルに保持
   if (newPax !== undefined) {
     props.bill.pax = newPax
     ed.pax.value = newPax
   }
+}
 
-  // 既存伝票は即時 patch
+// 案B: BasicsPanel から顧客リスト変更通知を受けて親stateを再取得
+function onCustomersChanged() {
   if (props.bill?.id) {
-    enqueue('patchBill', { id: props.bill.id, payload: { pax: newPax }})
-    enqueue('reconcile', { id: props.bill.id })
+    billCustomersComposable.fetchBillCustomers(props.bill.id)
   }
 }
 
@@ -1363,6 +1368,7 @@ function handleClose() {
       @pickCustomer="ed.pickCustomerInline"
       @applySet="onApplySet"
       @save="handleSave"
+      @customers-changed="onCustomersChanged"
     />
 
     <CastsPanel

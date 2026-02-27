@@ -309,36 +309,20 @@ async function onApplySet(payload){
   const discountCode = payload?.discount_code || null
   const pax = Number(payload?.pax) || 0
   
-  // 【フェーズ1】pax更新がある場合は先にAPI反映
+  // pax更新がある場合は先にAPI反映 → リトライ付き顧客再取得
   if (pax > 0 && props.bill?.id) {
     try {
       await patchBill(props.bill.id, { pax })
       if (props.bill) props.bill.pax = pax
-      
-      // 【フェーズ1】pax更新後に顧客リストを再取得
-      await billCustomersComposable.fetchBillCustomers(props.bill.id)
-      
-      // 【フェーズ5】より詳細なログで切り分け可能にする
+
+      await billCustomersComposable.fetchUntilCount(props.bill.id, pax)
+
       if (import.meta.env.DEV) {
-        console.log(`[フェーズ5] pax更新完了 → 顧客再取得:`, {
+        console.log(`[BillModalPC] pax更新完了 → 顧客再取得:`, {
           billId: props.bill.id,
           '更新後のpax': pax,
-          'API応答の顧客数': billCustomersComposable.customers.value?.length || 0,
-          '顧客ID一覧': (billCustomersComposable.customers.value || []).map(bc => bc.id),
-          'タイムスタンプ': new Date().toISOString()
+          '顧客数': billCustomersComposable.customers.value?.length || 0,
         })
-        
-        // 【フェーズ5】期待値チェック
-        const expectedCount = pax
-        const actualCount = billCustomersComposable.customers.value?.length || 0
-        if (expectedCount !== actualCount) {
-          console.warn(`[フェーズ5] ⚠️ 顧客数不一致検出:`, {
-            '期待値(pax)': expectedCount,
-            '実際の顧客数': actualCount,
-            '差分': actualCount - expectedCount,
-            '問題': actualCount < expectedCount ? 'API側で顧客が作成されていない可能性' : 'pax より多い顧客が存在'
-          })
-        }
       }
     } catch (e) {
       console.error('[applySet] pax update failed:', e)
