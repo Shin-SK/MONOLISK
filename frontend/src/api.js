@@ -1015,6 +1015,17 @@ export const attachPersonnelExpensesToPayrollRun = async (runId, payload = {}) =
 	return data
 }
 
+/* ---------- 立替 (Substitute) ---------- */
+export const fetchSubstituteItems = (billId) =>
+  api.get(`billing/bills/${billId}/substitute-items/`, { cache: false })
+     .then(r => Array.isArray(r.data?.results) ? r.data.results : (Array.isArray(r.data) ? r.data : []))
+
+export const addSubstituteItem = (billId, payload) =>
+  api.post(`billing/bills/${billId}/substitute-items/`, payload).then(r => r.data)
+
+export const deleteSubstituteItem = (billId, itemId) =>
+  api.delete(`billing/bills/${billId}/substitute-items/${itemId}/`)
+
 if (import.meta.env.DEV) window.__API__ = api
 
 

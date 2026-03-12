@@ -5,6 +5,7 @@ import BasicsPanel from '@/components/panel/BasicsPanel.vue'
 import CastsPanel  from '@/components/panel/CastsPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel from '@/components/panel/PayPanel.vue'
+import SubstitutePanel from '@/components/panel/SubstitutePanel.vue'
 import useBillEditor from '@/composables/useBillEditor'
 import { useBillCustomers } from '@/composables/useBillCustomers'
 import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
@@ -455,7 +456,7 @@ const onChooseCourse = async (opt) => {
   const res = await ed.chooseCourse(opt)
   if (res?.updated) emit('updated', props.bill.id)
 }
-const pageTitle = computed(() => ({ base:'基本', casts:'キャスト', order:'注文', prov:'仮会計', pay:'会計' }[pane.value] || ''))
+const pageTitle = computed(() => ({ base:'基本', casts:'キャスト', order:'注文', substitute:'立替', prov:'仮会計', pay:'会計' }[pane.value] || ''))
 const onDutyIds = computed(() => Array.from(ed.onDutySet?.value ?? []))
 const masterNameMap = computed(() => {
   const list = ed.masters?.value || []; const map = {}
@@ -1423,6 +1424,17 @@ function handleClose() {
     @placeOrder="handleSave"
   />
 
+    <SubstitutePanel
+      v-show="pane==='substitute'"
+      :bill-id="props.bill?.id"
+      :cat-options="ed.orderCatOptions.value || []"
+      :masters="ed.masters?.value || []"
+      :served-by-options="servedByOptions"
+      :bill-customers="billCustomersComposable.customers.value || []"
+      :readonly="!!props.bill?.closed_at"
+      @updated="emit('updated', props.bill?.id)"
+    />
+
     <PayPanel
        v-show="pane==='pay'"
        ref="payRef"
@@ -1479,6 +1491,7 @@ function handleClose() {
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='base'}"  @click="pane='base'"><IconFileNeutral /><span>基本</span></button>
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='casts'}" @click="pane='casts'"><IconUser /><span>キャスト</span></button>
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='order'}" @click="pane='order'"><IconShoppingCart /><span>注文</span></button>
+            <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='substitute'}" @click="pane='substitute'"><span>立替</span></button>
             <button v-if="canProvisional" type="button" class="nav-link d-flex flex-column" :class="{active: pane==='prov'}" @click="pane='prov'"><IconCalculator /><span>仮</span></button>
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='pay'}"   @click="pane='pay'"><IconReceiptYen /><span>会計</span></button>
           </div>

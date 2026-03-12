@@ -89,6 +89,26 @@ onMounted(load)
           </table>
         </div>
 
+        <div v-if="bill.substitute_items && bill.substitute_items.length" class="mt-4">
+          <h6 class="mb-2">立替明細</h6>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr><th>商品</th><th class="text-center">数量</th><th>キャスト</th><th>顧客</th><th class="text-end">立替額</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="si in bill.substitute_items" :key="si.id">
+                  <td>{{ si.item_master?.name || si.name }}</td>
+                  <td class="text-center">{{ si.qty }}</td>
+                  <td>{{ si.cast?.stage_name || '—' }}</td>
+                  <td>{{ si.customer?.name || '—' }}</td>
+                  <td class="text-end">{{ yen(si.substitute_amount) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="mt-4">
           <PayrollSnapshotPanel
             :snapshot="payrollSnapshot"

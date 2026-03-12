@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
      StoreViewSet, TableViewSet, ItemMasterViewSet,
      BillViewSet, BillItemViewSet, BillStayViewSet,
+     BillSubstituteItemViewSet,
      BillCustomerViewSet,
      CastViewSet, CastSalesView, CastSalesSummaryView,
      CastPayoutListView, CastItemDetailView,
@@ -54,6 +55,13 @@ urlpatterns = [
          BillItemViewSet.as_view({"get": "retrieve", "put": "update",
                                   "patch": "partial_update", "delete": "destroy"}),
          name="billitem-detail"),
+
+    path("bills/<int:bill_pk>/substitute-items/",
+         BillSubstituteItemViewSet.as_view({"get": "list", "post": "create"}),
+         name="billsubstituteitem-list"),
+    path("bills/<int:bill_pk>/substitute-items/<int:pk>/",
+         BillSubstituteItemViewSet.as_view({"delete": "destroy"}),
+         name="billsubstituteitem-detail"),
 
     path("bills/<int:bill_pk>/stays/",
          BillStayViewSet.as_view({"post": "create"}), name="billstay-create"),

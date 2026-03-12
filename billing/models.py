@@ -1135,6 +1135,58 @@ class BillItemCast(models.Model):
         ]
 
 
+# ───────── 立替明細 ─────────
+class BillSubstituteItem(models.Model):
+    bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name='substitute_items')
+    item_master = models.ForeignKey('billing.ItemMaster', on_delete=models.PROTECT, related_name='substitute_items')
+    cast = models.ForeignKey('billing.Cast', on_delete=models.PROTECT, related_name='substitute_items')
+    customer = models.ForeignKey(
+        'billing.Customer',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='substitute_items',
+    )
+    name = models.CharField(max_length=40, blank=True)
+    price = models.PositiveIntegerField(null=True, blank=True)
+    qty = models.PositiveSmallIntegerField(default=1)
+    substitute_amount = models.PositiveIntegerField(default=0)
+    ordered_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ['id']
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(qty__gte=1) & models.Q(qty__lte=99),
+                name='billsubstituteitem_qty_range',
+            ),
+            models.CheckConstraint(
+                check=models.Q(price__gte=0) & models.Q(price__lte=2000000),
+                name='billsubstituteitem_price_range',
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.bill_id and self.bill.closed_at is not None:
+            raise ValidationError('クローズ済みの伝票には立替明細を追加できません。')
+
+        if self.item_master_id:
+            im = self.item_master
+            self.name = self.name or im.name
+            if self.price is None:
+                self.price = im.price_regular
+
+            from billing.services.substitute import calc_substitute_total
+            self.substitute_amount = calc_substitute_total(im, self.qty or 1)
+
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.bill_id and self.bill.closed_at is not None:
+            raise ValidationError('クローズ済みの伝票の立替明細は削除できません。')
+        super().delete(*args, **kwargs)
+
+    def __str__(self):
+        return f'立替: {self.name} x{self.qty} → ¥{self.substitute_amount}'
 
 
 

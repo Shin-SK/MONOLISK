@@ -28,6 +28,7 @@ import BasicsPanel   from '@/components/panel/BasicsPanel.vue'
 import CustomerPanel from '@/components/CustomerPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel      from '@/components/panel/PayPanel.vue'
+import SubstitutePanel from '@/components/panel/SubstitutePanel.vue'
 import { enqueue }   from '@/utils/txQueue'
 
 /* ---------------------------------------------------------
@@ -525,9 +526,10 @@ async function toggleInhouse (cid) {
 /* ---------------------------------------------------------
  * 右ペイン：注文/会計タブ
  * --------------------------------------------------------- */
-const rightTab   = ref('order')  // 'bill' | 'order'
+const rightTab   = ref('order')  // 'order' | 'bill' | 'substitute'
 const isBillTab  = computed(() => rightTab.value === 'bill')
 const isOrderTab = computed(() => rightTab.value === 'order')
+const isSubstituteTab = computed(() => rightTab.value === 'substitute')
 
 /* 顧客モーダル */
 const activeCustId  = ref(null)
@@ -1119,7 +1121,7 @@ watch(freeCastIds, list => {
 
       <div class="outer d-flex flex-column position-relative col-4"><!-- 右ペイン -->
         <!-- タブ -->
-        <div class="tab nav nav-pills g-1 mb-5 row w-50" role="tablist" aria-label="右ペイン切替">
+        <div class="tab nav nav-pills g-1 mb-5 row w-75" role="tablist" aria-label="右ペイン切替">
           <button
             type="button"
             class="nav-link col d-flex align-items-center gap-2"
@@ -1128,6 +1130,14 @@ watch(freeCastIds, list => {
             :aria-selected="isOrderTab"
             @click="rightTab='order'"
           ><IconShoppingCart />注文</button>
+          <button
+            type="button"
+            class="nav-link col d-flex align-items-center gap-2"
+            :class="{ active: isSubstituteTab }"
+            role="tab"
+            :aria-selected="isSubstituteTab"
+            @click="rightTab='substitute'"
+          >立替</button>
           <button
             type="button"
             class="nav-link col d-flex align-items-center gap-2"
@@ -1161,6 +1171,18 @@ watch(freeCastIds, list => {
               @clearPending="onClearPending"
               @placeOrder="onPlaceOrder"
             />
+        </div>
+
+        <div v-if="isSubstituteTab" class="overflow-auto flex-grow-1">
+          <SubstitutePanel
+            :bill-id="props.bill?.id"
+            :cat-options="catOptions"
+            :masters="masters"
+            :served-by-options="servedByOptions"
+            :bill-customers="billCustomersComposable.customers.value || []"
+            :readonly="!!props.bill?.closed_at"
+            @updated="$emit('updated', props.bill?.id)"
+          />
         </div>
 
         <div class="summary" v-if="isBillTab">

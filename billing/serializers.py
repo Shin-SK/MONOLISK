@@ -1,11 +1,12 @@
 # billing/serializer.py
 from rest_framework import serializers
 from .models import (
-    Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast, 
-    ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift, 
-    Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule, CastGoal, User, 
+    Store, Table, Bill, ItemMaster, BillItem, CastPayout, BillCastStay, Cast,
+    ItemCategory, CastCategoryRate, CastShift, CastDailySummary, Staff, StaffShift,
+    Customer, CustomerLog, StoreSeatSetting, SeatType, DiscountRule, CastGoal, User,
     CustomerTag, BillTag,
-    PersonnelExpenseCategory, PersonnelExpense, PersonnelExpenseSettlementEvent
+    PersonnelExpenseCategory, PersonnelExpense, PersonnelExpenseSettlementEvent,
+    BillSubstituteItem,
 )
 from dj_rest_auth.serializers import UserDetailsSerializer
 from cloudinary.utils import cloudinary_url
@@ -482,6 +483,69 @@ class CastCategoryRateSerializer(serializers.ModelSerializer):
         fields = ('id','category','rate_free','rate_nomination','rate_inhouse')
 
 
+# ───────── 立替明細 ─────────
+class BillSubstituteItemSerializer(serializers.ModelSerializer):
+    # WRITE
+    item_master_id = serializers.PrimaryKeyRelatedField(
+        source='item_master', queryset=ItemMaster.objects.all(), write_only=True,
+    )
+    cast_id = serializers.PrimaryKeyRelatedField(
+        source='cast', queryset=Cast.objects.all(), write_only=True,
+    )
+    customer_id = serializers.PrimaryKeyRelatedField(
+        source='customer', queryset=Customer.objects.all(),
+        write_only=True, required=False, allow_null=True,
+    )
+
+    # READ
+    cast = CastMiniSerializer(read_only=True)
+    bill = serializers.PrimaryKeyRelatedField(read_only=True)
+    item_master = ItemMasterSerializer(read_only=True)
+    customer = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BillSubstituteItem
+        fields = (
+            'id', 'bill', 'item_master', 'item_master_id',
+            'cast', 'cast_id', 'customer', 'customer_id',
+            'name', 'price', 'qty', 'substitute_amount', 'ordered_at',
+        )
+        read_only_fields = ('bill', 'name', 'price', 'substitute_amount', 'ordered_at')
+
+    def get_customer(self, obj):
+        if obj.customer:
+            return {
+                'id': obj.customer.id,
+                'name': obj.customer.display_name,
+                'phone': obj.customer.phone,
+            }
+        return None
+
+    def validate_qty(self, value):
+        if value is None or value < BILLITEM_QTY_MIN:
+            raise serializers.ValidationError(ERROR_MESSAGES['qty_zero'])
+        if value > BILLITEM_QTY_MAX:
+            raise serializers.ValidationError(ERROR_MESSAGES['qty_range'])
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        store = getattr(request, 'store', None) if request else None
+        store_id = getattr(store, 'id', None)
+        if not store_id:
+            raise serializers.ValidationError({'store_id': 'X-Store-Id header is required.'})
+
+        item_master = attrs.get('item_master')
+        if item_master and getattr(item_master, 'store_id', None) not in (None, store_id):
+            raise serializers.ValidationError({'item_master_id': '他店舗の商品は使用できません。'})
+
+        cast = attrs.get('cast')
+        if cast and getattr(cast, 'store_id', None) != store_id:
+            raise serializers.ValidationError({'cast_id': '他店舗のキャストは指定できません。'})
+
+        return attrs
+
+
 User = get_user_model()
 
 class CastSerializer(serializers.ModelSerializer):
@@ -699,6 +763,7 @@ class BillDiscountLineSerializer(serializers.ModelSerializer):
 class BillSerializer(serializers.ModelSerializer):
     table        = TableMiniSerializer(read_only=True)
     items        = BillItemSerializer(read_only=True, many=True)
+    substitute_items = BillSubstituteItemSerializer(read_only=True, many=True)
     stays        = BillCastStaySerializer(read_only=True, many=True)
 
     # 金額は締め済みなら保存値、未締めなら Calculator で算出（下の get_* 参照）
@@ -794,7 +859,7 @@ class BillSerializer(serializers.ModelSerializer):
             "subtotal", "service_charge", "tax", "apply_service_charge", "apply_tax", "grand_total", "total",
             "paid_cash","paid_card","card_brand","paid_total","change_due",
             # ---- 関連 ----
-            "items", "stays","expected_out",
+            "items", "substitute_items", "stays","expected_out",
             "nominated_casts",            # READ (depth=2)
             "nominated_casts_w",          # WRITE
             "settled_total",

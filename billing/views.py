@@ -32,7 +32,8 @@ from .models import (
     Cast, CastPayout, ItemCategory, CastShift, CastDailySummary,
     Staff, StaffShift, Customer, CustomerLog, CustomerTag,
     StoreNotice, StoreSeatSetting, DiscountRule, BillTag,
-    PersonnelExpenseCategory, PersonnelExpense, PersonnelExpenseSettlementEvent, PayrollRun
+    PersonnelExpenseCategory, PersonnelExpense, PersonnelExpenseSettlementEvent, PayrollRun,
+    BillSubstituteItem,
 )
 from .serializers import (
     StoreSerializer, TableSerializer, BillSerializer,
@@ -45,6 +46,7 @@ from .serializers import (
     StoreNoticeSerializer, ItemCategorySerializer, StoreSeatSettingSerializer, DiscountRuleSerializer,
     CastPayoutListSerializer, CustomerTagSerializer, BillTagSerializer,
     PersonnelExpenseCategorySerializer, PersonnelExpenseSerializer, PersonnelExpenseSettlementEventSerializer,
+    BillSubstituteItemSerializer,
 )
 from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales, sync_nomination_fees
@@ -649,6 +651,38 @@ class BillItemViewSet(viewsets.ModelViewSet):
 
         serializer.save(bill=bill, **extra)
 
+
+# ───────── 立替明細 ─────────
+class BillSubstituteItemViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    serializer_class = BillSubstituteItemSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        sid = StoreScopedModelViewSet.require_store(self, self.request)
+        return (
+            BillSubstituteItem.objects
+            .select_related('bill', 'bill__table', 'item_master', 'item_master__category', 'cast', 'customer')
+            .filter(bill_id=self.kwargs['bill_pk'], bill__table__store_id=sid)
+        )
+
+    def perform_create(self, serializer):
+        sid = StoreScopedModelViewSet.require_store(self, self.request)
+        bill = get_object_or_404(Bill.objects.select_related('table__store'), pk=self.kwargs['bill_pk'])
+        if bill.table.store_id != sid:
+            raise PermissionDenied('他店舗の伝票です。')
+        if bill.closed_at is not None:
+            raise ValidationError({'bill': 'クローズ済みの伝票には立替明細を追加できません。'})
+        serializer.save(bill=bill)
+
+    def perform_destroy(self, instance):
+        if instance.bill.closed_at is not None:
+            raise ValidationError({'bill': 'クローズ済みの伝票の立替明細は削除できません。'})
+        instance.delete()
 
 
 # ────────────────────────────────────────────────────────────────────
