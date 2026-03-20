@@ -42,7 +42,12 @@ class BillCalculator:
 
     # ---------------- 金額計算 ----------------
     def _subtotal_raw(self) -> Decimal:
-        return Decimal(sum(it.subtotal for it in self.bill.items.all()))
+        items_total = Decimal(sum(it.subtotal for it in self.bill.items.all()))
+        sub_total = Decimal(sum(
+            (si.price or 0) * (si.qty or 1)
+            for si in self.bill.substitute_items.all()
+        ))
+        return max(Decimal(0), items_total - sub_total)
 
     def _apply_discounts(self, subtotal: Decimal) -> Decimal:
         """DiscountRule を 1 つだけ適用（併用不可）"""
