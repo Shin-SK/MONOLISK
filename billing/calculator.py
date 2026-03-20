@@ -37,7 +37,7 @@ class BillCalculator:
                 self.store = getattr(st.bill.table, "store", None)
         if self.store is None:
             # どうしても取れない場合は 0%計算 or 例外。ここでは 0% にフォールバック。
-            class _Dummy: service_rate = 0; tax_rate = 0
+            class _Dummy: service_rate = 0; tax_rate = 0; nom_pool_rate = 0
             self.store = _Dummy()
 
     # ---------------- 金額計算 ----------------
