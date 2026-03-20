@@ -17,6 +17,7 @@ import {
   fetchBill, patchBillItem, patchBill,
   setBillDiscountByCode,
   setBillDohan,
+  addSubstituteItem,
 } from '@/api'
 import { useCasts }     from '@/stores/useCasts'
 import { useMasters }   from '@/stores/useMasters'
@@ -28,7 +29,6 @@ import BasicsPanel   from '@/components/panel/BasicsPanel.vue'
 import CustomerPanel from '@/components/CustomerPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel      from '@/components/panel/PayPanel.vue'
-import SubstitutePanel from '@/components/panel/SubstitutePanel.vue'
 import { enqueue }   from '@/utils/txQueue'
 
 /* ---------------------------------------------------------
@@ -526,10 +526,9 @@ async function toggleInhouse (cid) {
 /* ---------------------------------------------------------
  * 右ペイン：注文/会計タブ
  * --------------------------------------------------------- */
-const rightTab   = ref('order')  // 'order' | 'bill' | 'substitute'
+const rightTab   = ref('order')  // 'order' | 'bill'
 const isBillTab  = computed(() => rightTab.value === 'bill')
 const isOrderTab = computed(() => rightTab.value === 'order')
-const isSubstituteTab = computed(() => rightTab.value === 'substitute')
 
 /* 顧客モーダル */
 const activeCustId  = ref(null)
@@ -636,6 +635,24 @@ const onAddPending   = (masterId, qty, castIds, customerId) => {
 const onRemovePending = (i) => pending.value.splice(i, 1)
 const onClearPending  = () => (pending.value = [])
 const onPlaceOrder    = async () => { await save() }
+
+const onAddSubstitute = async (masterId) => {
+  if (!props.bill?.id) return
+  const castId = servedByCastIds.value.length ? servedByCastIds.value[0] : servedByCastId.value
+  if (!castId) { alert('キャストを選択してください'); return }
+  try {
+    await addSubstituteItem(props.bill.id, {
+      item_master_id: Number(masterId),
+      cast_id: Number(castId),
+      qty: 1,
+      ...(selectedCustomerId.value ? { customer_id: Number(selectedCustomerId.value) } : {}),
+    })
+    emit('updated', props.bill.id)
+  } catch (e) {
+    console.error('substitute add failed', e)
+    alert('立替追加に失敗しました: ' + (e.response?.data?.detail || e.message))
+  }
+}
 
 async function onChangeServedBy({ item, castIds, castId }) {
   if (!props.bill?.id) return
@@ -1133,14 +1150,6 @@ watch(freeCastIds, list => {
           <button
             type="button"
             class="nav-link col d-flex align-items-center gap-2"
-            :class="{ active: isSubstituteTab }"
-            role="tab"
-            :aria-selected="isSubstituteTab"
-            @click="rightTab='substitute'"
-          >立替</button>
-          <button
-            type="button"
-            class="nav-link col d-flex align-items-center gap-2"
             :class="{ active: isBillTab }"
             role="tab"
             :aria-selected="isBillTab"
@@ -1162,6 +1171,8 @@ watch(freeCastIds, list => {
               :bill-customers="billCustomersComposable.customers.value || []"
               :selected-customer-id="selectedCustomerId"
               :readonly="false"
+              :bill-id="props.bill?.id"
+              :bill-closed="!!props.bill?.closed_at"
               @update:selectedCat="v => (selectedCat = v)"
               @update:servedByCastId="v => (servedByCastId = v)"
               @update:servedByCastIds="v => (servedByCastIds = v)"
@@ -1170,25 +1181,15 @@ watch(freeCastIds, list => {
               @removePending="onRemovePending"
               @clearPending="onClearPending"
               @placeOrder="onPlaceOrder"
+              @addSubstitute="onAddSubstitute"
             />
-        </div>
-
-        <div v-if="isSubstituteTab" class="overflow-auto flex-grow-1">
-          <SubstitutePanel
-            :bill-id="props.bill?.id"
-            :cat-options="catOptions"
-            :masters="masters"
-            :served-by-options="servedByOptions"
-            :bill-customers="billCustomersComposable.customers.value || []"
-            :readonly="!!props.bill?.closed_at"
-            @updated="$emit('updated', props.bill?.id)"
-          />
         </div>
 
         <div class="summary" v-if="isBillTab">
           <PayPanel
             :bill-id="props.bill?.id"
             :items="props.bill.items || []"
+            :substitute-items="props.bill.substitute_items || []"
             :master-name-map="masterNameMap"
             :served-by-map="servedByMap"
             :served-by-options="servedByOptions"

@@ -5,7 +5,6 @@ import BasicsPanel from '@/components/panel/BasicsPanel.vue'
 import CastsPanel  from '@/components/panel/CastsPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel from '@/components/panel/PayPanel.vue'
-import SubstitutePanel from '@/components/panel/SubstitutePanel.vue'
 import useBillEditor from '@/composables/useBillEditor'
 import { useBillCustomers } from '@/composables/useBillCustomers'
 import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
@@ -16,6 +15,7 @@ import {
   fetchBill, deleteBillItem, patchBillItem, patchBillItemQty, fetchMasters,
   createBill, patchBill,
   setBillDiscountByCode, updateBillDiscountRule, settleBill, fetchBillTags,
+  addSubstituteItem,
  } from '@/api'
 
 const { hasRole } = useRoles()
@@ -456,7 +456,7 @@ const onChooseCourse = async (opt) => {
   const res = await ed.chooseCourse(opt)
   if (res?.updated) emit('updated', props.bill.id)
 }
-const pageTitle = computed(() => ({ base:'基本', casts:'キャスト', order:'注文', substitute:'立替', prov:'仮会計', pay:'会計' }[pane.value] || ''))
+const pageTitle = computed(() => ({ base:'基本', casts:'キャスト', order:'注文', prov:'仮会計', pay:'会計' }[pane.value] || ''))
 const onDutyIds = computed(() => Array.from(ed.onDutySet?.value ?? []))
 const masterNameMap = computed(() => {
   const list = ed.masters?.value || []; const map = {}
@@ -1301,6 +1301,24 @@ async function handleSave(){
   }
 }
 
+async function onAddSubstitute(masterId) {
+  if (!props.bill?.id) return
+  const castId = servedByCastIdsModel.value.length ? servedByCastIdsModel.value[0] : servedByCastIdModel.value
+  if (!castId) { alert('キャストを選択してください'); return }
+  try {
+    await addSubstituteItem(props.bill.id, {
+      item_master_id: Number(masterId),
+      cast_id: Number(castId),
+      qty: 1,
+      ...(selectedCustomerId.value ? { customer_id: Number(selectedCustomerId.value) } : {}),
+    })
+    emit('updated', props.bill.id)
+  } catch (e) {
+    console.error('substitute add failed', e)
+    alert('立替追加に失敗しました: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
 function handleClose() {
   // 閉じる際も保存時と同等のリロードをトリガー
   emit('saved', props.bill)
@@ -1406,6 +1424,8 @@ function handleClose() {
     :master-price-map="masterPriceMap"
     :bill-customers="billCustomersComposable.customers.value || []"
     :selected-customer-id="selectedCustomerId"
+    :bill-id="props.bill?.id"
+    :bill-closed="!!props.bill?.closed_at"
     @update:selectedCat="v => (ed.selectedOrderCat.value = v)"
     @update:selectedCustomerId="v => (selectedCustomerId = v)"
     @addPending="(id, qty, castIds, customerId) => {
@@ -1422,18 +1442,8 @@ function handleClose() {
     @removePending="i => ed.pending.value.splice(i,1)"
     @clearPending="() => (ed.pending.value = [])"
     @placeOrder="handleSave"
+    @addSubstitute="onAddSubstitute"
   />
-
-    <SubstitutePanel
-      v-show="pane==='substitute'"
-      :bill-id="props.bill?.id"
-      :cat-options="ed.orderCatOptions.value || []"
-      :masters="ed.masters?.value || []"
-      :served-by-options="servedByOptions"
-      :bill-customers="billCustomersComposable.customers.value || []"
-      :readonly="!!props.bill?.closed_at"
-      @updated="emit('updated', props.bill?.id)"
-    />
 
     <PayPanel
        v-show="pane==='pay'"
@@ -1442,6 +1452,7 @@ function handleClose() {
        :bill="props.bill"
        :pane="pane"
        :items="bill.items || []"
+       :substitute-items="bill.substitute_items || []"
        :master-name-map="masterNameMap"
        :served-by-map="servedByMap"
        :served-by-options="servedByOptions"
@@ -1491,7 +1502,6 @@ function handleClose() {
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='base'}"  @click="pane='base'"><IconFileNeutral /><span>基本</span></button>
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='casts'}" @click="pane='casts'"><IconUser /><span>キャスト</span></button>
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='order'}" @click="pane='order'"><IconShoppingCart /><span>注文</span></button>
-            <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='substitute'}" @click="pane='substitute'"><span>立替</span></button>
             <button v-if="canProvisional" type="button" class="nav-link d-flex flex-column" :class="{active: pane==='prov'}" @click="pane='prov'"><IconCalculator /><span>仮</span></button>
             <button type="button" class="nav-link d-flex flex-column" :class="{active: pane==='pay'}"   @click="pane='pay'"><IconReceiptYen /><span>会計</span></button>
           </div>

@@ -49,6 +49,8 @@ const props = defineProps({
 
   // 店舗識別（親から slug を渡す）
   storeSlug: { type: String, default: '' },
+  // 立替明細
+  substituteItems: { type: Array, default: () => [] },
   // パネル管理
   pane: { type: String, default: 'base' },
   // （互換）単位指定：現行の“ステップ割引”では Admin 側ルールを使うため未使用だが props として残す
@@ -889,6 +891,26 @@ function removeSavedDiscount(index) {
           </div>
       </div>
       <div v-if="!items || !items.length" class="text-muted small">履歴はありません</div>
+
+      <!-- 立替明細 -->
+      <div
+        v-for="si in substituteItems"
+        :key="'sub-' + si.id"
+        class="card border-info"
+        style="background-color: #e8f4fd;"
+      >
+        <div class="card-header py-1 d-flex align-items-center gap-2" style="background-color: #d1ecf8;">
+          <span class="badge bg-info text-dark small">立替</span>
+          <span class="small text-muted">{{ si.cast?.stage_name || '—' }} が立替</span>
+        </div>
+        <div class="card-body p-2">
+          <div class="fw-bold">{{ si.item_master?.name || si.name }}</div>
+        </div>
+        <div v-if="si.customer" class="card-footer py-1 px-2 text-muted small d-flex align-items-center gap-1" style="background-color: #d1ecf8;">
+          <IconUserScan :size="14" />
+          {{ si.customer.name || si.customer.full_name || ('Guest-' + String(si.customer.id).padStart(6, '0')) }}
+        </div>
+      </div>
     </div>
 
 

@@ -54,12 +54,14 @@ const props = defineProps({
   billCustomers:     { type: Array,  default: () => [] }, // 本指名顧客一覧
   selectedCustomerId: { type: [Number, null], default: null },
   readonly: { type: Boolean, default: false },
+  billId: { type: Number, default: null },
+  billClosed: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
   'update:selectedCat', 'update:servedByCastId', 'update:servedByCastIds', 'update:selectedCustomerId',
   'addPending', 'removePending', 'clearPending',
-  'placeOrder'
+  'placeOrder', 'addSubstitute'
 ])
 
 /* 提供者 */
@@ -336,9 +338,14 @@ function castNamesFromPending(p) {
 
 
 
-            <button type="button" class="btn btn-sm btn-warning w-100" @click="confirmAdd(m.id)">
-              追加
-            </button>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-warning flex-grow-1" @click="confirmAdd(m.id)">
+                追加
+              </button>
+              <button v-if="props.billId && !props.billClosed" type="button" class="btn btn-sm btn-outline-secondary" @click="emit('addSubstitute', m.id)">
+                立替
+              </button>
+            </div>
           </div>
         </div>
       </div>

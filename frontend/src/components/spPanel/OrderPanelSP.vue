@@ -38,12 +38,14 @@ const props = defineProps({
   servedByMap:       { type: Object, default: () => ({}) },
   masterPriceMap:  { type: Object, default: () => ({}) },
   readonly: { type: Boolean, default: false },
+  billId: { type: Number, default: null },
+  billClosed: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
   'update:selectedCat', 'update:servedByCastId', 'update:servedByCastIds',
   'addPending', 'removePending', 'clearPending',
-  'placeOrder'
+  'placeOrder', 'addSubstitute'
 ])
 
 /* 提供者 */
@@ -224,6 +226,9 @@ watch(
             </div>
             <div class="addbutton d-flex align-items-center">
               <button type="button" @click="add(m.id)"><IconCirclePlus /></button>
+            </div>
+            <div v-if="props.billId && !props.billClosed" class="ms-2 d-flex align-items-center">
+              <button type="button" class="btn btn-outline-secondary btn-sm px-1 py-0" style="font-size:.7rem;line-height:1.4" @click="emit('addSubstitute', m.id)">立替</button>
             </div>
           </div>
         </div>
