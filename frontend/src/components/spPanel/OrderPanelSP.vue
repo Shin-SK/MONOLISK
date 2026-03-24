@@ -1,3 +1,11 @@
+<!--
+  OrderPanelSP.vue（名前は「SP版」だが実態は以下）
+  - 実際の使用元: BillModalPC.vue, cast/Order.vue, CastOrderModal.vue, ProvisionalPanelSP.vue
+  - UI方式: インライン数量入力型（行内に±ステッパー→○＋で追加）
+  - 固有機能: qtyMapによるインライン数量管理、上部に担当選択UI常時表示
+  - addPending: 3引数 (masterId, qty, castIds) ※customerIdなし
+  - 将来統合時の論点: docs/order-panel-current-map.md 参照
+-->
 <script setup>
 import { reactive, computed, ref, nextTick, onUnmounted, watch } from 'vue'
 

@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404
 
 from ..models import (
     Store,
+    Bill,
     Cast,
     CastDailySummary,
     CastPayout,
@@ -31,6 +32,7 @@ CSV_COLUMNS = [
     "名前",
     "時給合計",
     "バック合計",
+    "立替控除",
     "給与合計",
     "区分",
     "出勤",
@@ -136,6 +138,37 @@ def _row(writer, values):
     writer.writerow(vals[: len(CSV_COLUMNS)])
 
 
+def _aggregate_substitute_deduction_from_snapshots(store_id, period_start, period_end):
+    """
+    期間内のクローズ済み伝票の payroll_snapshot から、
+    cast_id 別の立替控除合計を集計する。
+    snapshot がクローズ時確定値の唯一の根拠。
+    """
+    bills = Bill.objects.filter(
+        table__store_id=store_id,
+        closed_at__date__range=(period_start, period_end),
+        payroll_snapshot__isnull=False,
+    ).only('payroll_snapshot')
+
+    cast_deduction = {}   # {cast_id: int}
+    cast_details = {}     # {cast_id: [detail,...]}
+    for bill in bills:
+        snap = bill.payroll_snapshot
+        if not isinstance(snap, dict):
+            continue
+        for cast_rec in snap.get('by_cast', []):
+            cid = cast_rec.get('cast_id')
+            ded = int(cast_rec.get('substitute_deduction', 0) or 0)
+            if cid and ded > 0:
+                cast_deduction[cid] = cast_deduction.get(cid, 0) + ded
+                for s in cast_rec.get('substitutes', []):
+                    cast_details.setdefault(cid, []).append({
+                        **s,
+                        "bill_id": bill.id if hasattr(bill, 'id') else None,
+                    })
+    return cast_deduction, cast_details
+
+
 class PayrollRunExportCSVView(APIView):
     """
     POST /api/billing/payroll/runs/export.csv
@@ -225,12 +258,16 @@ class PayrollRunExportCSVView(APIView):
             .order_by("stage_name", "id")
         )
 
+        # --- 立替控除（snapshotから集計） ---
+        sub_ded_map, sub_det_map = _aggregate_substitute_deduction_from_snapshots(sid, df, dt)
+
         # --- DBへ保存（サマリ） ---
         lines = []
         for c in casts:
             worked_min = int(c.worked_min or 0)
             hourly_total = int(c.hourly_total or 0)
             back_total = int(c.back_total or 0)
+            sub_ded = sub_ded_map.get(c.id, 0)
             lines.append(
                 PayrollRunLine(
                     run=run,
@@ -238,7 +275,8 @@ class PayrollRunExportCSVView(APIView):
                     worked_min=worked_min,
                     hourly_pay=hourly_total,
                     commission=back_total,
-                    total=hourly_total + back_total,
+                    substitute_deduction=sub_ded,
+                    total=max(0, hourly_total + back_total - sub_ded),
                 )
             )
         lines = PayrollRunLine.objects.bulk_create(lines)
@@ -255,7 +293,7 @@ class PayrollRunExportCSVView(APIView):
         if lines_to_save:
             PayrollRunLine.objects.bulk_update(
                 lines_to_save,
-                ["hourly_pay", "commission", "total", "garden_snapshot"],
+                ["hourly_pay", "commission", "substitute_deduction", "total", "garden_snapshot"],
             )
         if finalize_extra_rows:
             PayrollRunBackRow.objects.bulk_create(finalize_extra_rows)
@@ -327,7 +365,8 @@ class PayrollRunExportCSVView(APIView):
             ln = line_by_cast.get(cast_id)
             hourly_total = ln.hourly_pay if ln else int(c.hourly_total or 0)
             back_total = ln.commission if ln else int(c.back_total or 0)
-            total = ln.total if ln else (hourly_total + back_total)
+            sub_ded = ln.substitute_deduction if ln else sub_ded_map.get(cast_id, 0)
+            total = ln.total if ln else max(0, hourly_total + back_total - sub_ded)
 
             # サマリ行（出勤/売上欄は空）
             _row(
@@ -336,6 +375,7 @@ class PayrollRunExportCSVView(APIView):
                     cast_name,
                     hourly_total,
                     back_total,
+                    sub_ded if sub_ded else "",
                     total,
                     "", "", "", "", "", "", "", "", "", "", "", "", "",
                 ],
@@ -367,7 +407,7 @@ class PayrollRunExportCSVView(APIView):
                     _row(
                         writer,
                         [
-                            "", "", "", "",
+                            "", "", "", "", "",
                             "出勤日時",
                             _fmt_dt(in_dt),
                             _fmt_dt(out_dt),
@@ -381,7 +421,7 @@ class PayrollRunExportCSVView(APIView):
                 _row(
                     writer,
                     [
-                        "", "", "", "",
+                        "", "", "", "", "",
                         "出勤日時",
                         "", "", "", "", "",
                         "", "", "", "", "", "", "",
@@ -420,7 +460,7 @@ class PayrollRunExportCSVView(APIView):
                     _row(
                         writer,
                         [
-                            "", "", "", "",
+                            "", "", "", "", "",
                             "売上",
                             "", "", "", "", "",
                             bill_id,
@@ -436,10 +476,29 @@ class PayrollRunExportCSVView(APIView):
                 _row(
                     writer,
                     [
-                        "", "", "", "",
+                        "", "", "", "", "",
                         "売上",
                         "", "", "", "", "",
                         "", "", "", "", "", "", "",
+                    ],
+                )
+
+            # 立替控除明細（区分=立替）
+            s_list = sub_det_map.get(cast_id, [])
+            for s in s_list:
+                _row(
+                    writer,
+                    [
+                        "", "", "", "", "",
+                        "立替",
+                        "", "", "", "", "",
+                        s.get("bill_id", ""),
+                        s.get("bill_substitute_item_id", ""),
+                        s.get("item_name", ""),
+                        s.get("price", ""),
+                        s.get("qty", ""),
+                        "",
+                        -int(s.get("substitute_amount", 0)),
                     ],
                 )
 
@@ -449,7 +508,7 @@ class PayrollRunExportCSVView(APIView):
                 _row(
                     writer,
                     [
-                        "", "", "", "",
+                        "", "", "", "", "",
                         "月次バック",
                         "", "", "", "", "",
                         "", "",

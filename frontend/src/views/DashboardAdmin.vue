@@ -84,7 +84,7 @@ watch(
     <div class="tables">
       <component
         :is="isSP ? BillBoardSP : BillBoardPC"
-        :ref="isSP ? 'spRef' : 'pcRef'"
+        :ref="isSP ? spRef : pcRef"
         @bill-click="openBillEditor"
         @request-new="handleNewBill"
       />

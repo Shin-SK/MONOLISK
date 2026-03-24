@@ -42,10 +42,14 @@ class BillCalculator:
 
     # ---------------- 金額計算 ----------------
     def _subtotal_raw(self) -> Decimal:
-        items_total = Decimal(sum(it.subtotal for it in self.bill.items.all()))
+        if not hasattr(self, '_cached_items'):
+            self._cached_items = list(self.bill.items.select_related("item_master__category", "served_by_cast"))
+        if not hasattr(self, '_cached_substitute_items'):
+            self._cached_substitute_items = list(self.bill.substitute_items.all())
+        items_total = Decimal(sum(it.subtotal for it in self._cached_items))
         sub_total = Decimal(sum(
             (si.price or 0) * (si.qty or 1)
-            for si in self.bill.substitute_items.all()
+            for si in self._cached_substitute_items
         ))
         return max(Decimal(0), items_total - sub_total)
 
@@ -101,7 +105,9 @@ class BillCalculator:
         engine = get_engine(self.store)
 
         # A) 明細ごとの歩合（店舗エンジンの上書き > 既定：％ back_rate）
-        for item in self.bill.items.select_related("item_master__category", "served_by_cast"):
+        if not hasattr(self, '_cached_items'):
+            self._cached_items = list(self.bill.items.select_related("item_master__category", "served_by_cast"))
+        for item in self._cached_items:
             if item.exclude_from_payout or not item.served_by_cast or item.is_nomination:
                 continue
 
@@ -134,7 +140,7 @@ class BillCalculator:
         cast_objs = {c.id: c for c in self.bill.nominated_casts.all()}
         if self.bill.main_cast:
             cast_objs[self.bill.main_cast.id] = self.bill.main_cast
-        for it in self.bill.items.select_related("served_by_cast"):
+        for it in self._cached_items:
             if it.served_by_cast:
                 cast_objs[it.served_by_cast.id] = it.served_by_cast
 

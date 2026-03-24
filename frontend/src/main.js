@@ -46,17 +46,14 @@ app.component('Avatar', Avatar)
   restoreRouteIfNeeded(router)
   app.mount('#app')
 
-  // 起動時に更新チェック → 新版なら「反映中」→ 強制更新
-  await setupUpdateWatcher()
+  // 起動時にバージョンチェック → 新版があれば通知バナーを表示（reloadしない）
+  setupUpdateWatcher()
 
   // スプラッシュ終了（通常は500msの余白）
   scheduleFinishSplash(500)
 })()
 
-// BFCache (Back/Forward Cache) 対策: 戻るボタンでキャッシュから復元された時もバージョンチェック
+// BFCache対策: 戻るボタンでキャッシュから復元された時もバージョンチェック（通知のみ）
 window.addEventListener('pageshow', (event) => {
-  if (event.persisted) {
-    console.log('[BFCache] キャッシュから復元を検知、バージョンチェック実行')
-    setupUpdateWatcher()
-  }
+  if (event.persisted) setupUpdateWatcher()
 })

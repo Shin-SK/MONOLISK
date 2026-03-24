@@ -1,3 +1,11 @@
+<!--
+  OrderPanel.vue（名前は「PC版」だが実態は以下）
+  - 実際の使用元: BillModalSP.vue（SP側モーダル）
+  - UI方式: 詳細カード展開型（タップ→カード→担当/顧客選択→数量→追加）
+  - 固有機能: billCustomers / selectedCustomerId による顧客ひも付き注文
+  - addPending: 4引数 (masterId, qty, castIds, customerId)
+  - 将来統合時の論点: docs/order-panel-current-map.md 参照
+-->
 <script setup>
 import { reactive, computed, ref, nextTick, onUnmounted, watch } from 'vue'
 

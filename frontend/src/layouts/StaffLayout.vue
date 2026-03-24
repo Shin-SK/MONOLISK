@@ -93,7 +93,7 @@ const isActiveName = (name) => route.name === name
 /* logout もそのまま */
 async function logout () {
   try { await api.post('dj-rest-auth/logout/') } catch {}
-  user.clear()
+  user.clearAll()
   router.push('/login')
 }
 </script>

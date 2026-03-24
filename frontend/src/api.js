@@ -220,7 +220,6 @@ export async function getHourlySales(date, storeId) {
     params: { date },
     headers: {
       'X-Store-Id': sid,
-      'X-Store-ID': sid,
     },
     meta: { overrideStoreId: sid },
   })
@@ -283,7 +282,6 @@ export const getBillDailyPLForStore = (date, storeId, opt={}) => {
     params: { date, store_id: Number(storeId) },
     headers: {
       'X-Store-Id': String(Number(storeId)),
-      'X-Store-ID': String(Number(storeId)),
     },
     cache: false,  // ← 常に最新を取得
   }
@@ -297,7 +295,6 @@ export const getBillMonthlyPLForStore = (monthStr, storeId, opt={}) => {
     params: { year, month, store_id: Number(storeId) },
     headers: {
       'X-Store-Id': String(Number(storeId)),
-      'X-Store-ID': String(Number(storeId)),
     },
     cache: false,  // ← 常に最新を取得
   }
@@ -322,7 +319,6 @@ export const getBillYearlyPLForStore = (year, storeId, opt={}) => {
     params: { year, store_id: Number(storeId) },
     headers: {
       'X-Store-Id': String(Number(storeId)),
-      'X-Store-ID': String(Number(storeId)),
     },
     cache: false,  // ← 常に最新を取得
   }
@@ -767,7 +763,7 @@ const IS_ABS = /^https?:\/\//i.test(KDS_BASE_RAW)
 const norm = (d) => Array.isArray(d) ? d : (d?.results ?? d?.items ?? d ?? [])
 const withStore = (cfg = {}) => {
   const sid = localStorage.getItem('store_id')
-  return sid ? { ...cfg, headers:{ ...(cfg.headers||{}), 'X-Store-Id': sid, 'X-Store-ID': sid } } : cfg
+  return sid ? { ...cfg, headers:{ ...(cfg.headers||{}), 'X-Store-Id': sid } } : cfg
 }
 
 const K = (path) => {

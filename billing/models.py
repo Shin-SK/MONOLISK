@@ -1963,6 +1963,7 @@ class PayrollRunLine(models.Model):
     worked_min = models.PositiveIntegerField(default=0, verbose_name='勤務分')
     hourly_pay = models.PositiveIntegerField(default=0, verbose_name='時給合計')
     commission = models.PositiveIntegerField(default=0, verbose_name='バック合計')
+    substitute_deduction = models.PositiveIntegerField(default=0, verbose_name='立替控除')
     total = models.PositiveIntegerField(default=0, verbose_name='給与合計')
     garden_snapshot = models.JSONField(null=True, blank=True, verbose_name='Garden制度スナップショット')
     created_at = models.DateTimeField(auto_now_add=True)

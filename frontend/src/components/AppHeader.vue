@@ -25,7 +25,7 @@ const rootPath = computed(() =>
 async function logout () {
   try { await api.post('dj-rest-auth/logout/') }
   finally {
-    userStore.clear()
+    userStore.clearAll()
     router.push('/login')
   }
 }

@@ -85,6 +85,11 @@ def user_store_ids(user):
     if not getattr(user, "is_authenticated", False):
         return set()
 
+    # リクエストスコープキャッシュ（userオブジェクトに属性付与、リクエスト終了で消える）
+    cache_attr = "_cached_store_ids"
+    if hasattr(user, cache_attr):
+        return getattr(user, cache_attr)
+
     ids = set()
 
     # 1) StoreMembership を一次情報に
@@ -102,6 +107,7 @@ def user_store_ids(user):
     if sid:
         ids.add(sid)
 
+    setattr(user, cache_attr, ids)
     return ids
 
 
@@ -359,13 +365,11 @@ class BillViewSet(viewsets.ModelViewSet):
         if getattr(bill, "closed_at", None):
             return Response({"detail": "already closed"}, status=status.HTTP_200_OK)
 
-        if getattr(bill, "opened_at", None) is None:
+        if bill.opened_at is None:
             bill.opened_at = timezone.now()
+            bill.save(update_fields=["opened_at"])
 
-        if hasattr(bill, "closed_at"):
-            bill.closed_at = timezone.now()
-
-        bill.save()
+        bill.close()
         return Response({"ok": True}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"], url_path="nomination-summaries")
@@ -1356,23 +1360,29 @@ class CustomerTagAnalyticsView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        from django.db.models import Max
+
         tag = get_object_or_404(CustomerTag, code=tag_code, is_active=True)
-        customers = tag.customers.all()
-        
-        # 顧客ごとの集計
+
+        # annotate で1クエリに集約
+        # - billcustomer: BillCustomer.customer FK逆参照（related_name未指定 → ルックアップ名 'billcustomer'）
+        # - bills: Bill.customers M2M の related_name='bills'
+        customers = tag.customers.annotate(
+            visit_count=Count('billcustomer', distinct=True),
+            total_spent=Sum('bills__grand_total'),
+            last_visited=Max('bills__closed_at'),
+        )
+
         customer_stats = []
         total_visits = 0
         total_revenue = 0
-        
+
         for cust in customers:
-            visits = BillCustomer.objects.filter(customer=cust).count()
-            revenue = sum(
-                bill.grand_total for bill in cust.bills.all()
-            )
-            
+            visits = cust.visit_count or 0
+            revenue = cust.total_spent or 0
             total_visits += visits
             total_revenue += revenue
-            
+            lv = cust.last_visited
             customer_stats.append({
                 'id': cust.id,
                 'alias': cust.alias or cust.full_name,
@@ -1380,14 +1390,10 @@ class CustomerTagAnalyticsView(APIView):
                 'phone': cust.phone,
                 'visit_count': visits,
                 'total_spent': revenue,
-                'last_visited': (
-                    cust.bills.order_by('-closed_at')
-                    .values_list('closed_at', flat=True)
-                    .first()
-                    .date().isoformat() if cust.bills.exists() else None
-                ),
+                'last_visited': lv.date().isoformat() if lv else None,
             })
-        
+
+        cust_count = len(customer_stats)
         return Response({
             'tag': {
                 'id': tag.id,
@@ -1397,12 +1403,12 @@ class CustomerTagAnalyticsView(APIView):
             },
             'customers': customer_stats,
             'summary': {
-                'total_customers': customers.count(),
+                'total_customers': cust_count,
                 'total_visits': total_visits,
                 'total_revenue': total_revenue,
                 'avg_revenue_per_customer': (
-                    int(total_revenue / customers.count())
-                    if customers.count() > 0 else 0
+                    int(total_revenue / cust_count)
+                    if cust_count > 0 else 0
                 ),
             },
         })

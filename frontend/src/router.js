@@ -66,7 +66,7 @@ const routes = [
     children: [
       { path: 'mypage', name: 'staff-mypage', component: () => import('@/views/staff/StaffMypage.vue'), meta:{ rolesAny: ['staff','manager','owner','superuser'], title:'マイページ' } },
       { path: 'bills', name: 'staff-bills', component: () => import('@/views/BillList.vue'), meta: { title: '伝票一覧', rolesAny: ['manager','staff','superuser'], requiresAuth: true, adminOnly: true } },
-      { path: 'bills/:id', name: 'BillDetail', component: () => import('@/views/BillDetailPage.vue'), props: true, meta: { title: '伝票詳細', rolesAny: ['manager','staff','superuser'], requiresAuth: true, adminOnly: true } },
+      { path: 'bills/:id', name: 'StaffBillDetail', component: () => import('@/views/BillDetailPage.vue'), props: true, meta: { title: '伝票詳細', rolesAny: ['manager','staff','superuser'], requiresAuth: true, adminOnly: true } },
       { path: 'bill', name:'staff-bill-table', component: () => import('@/views/DashboardAdmin.vue'), meta: { title: '卓伝票', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
       { path: 'bill/list', name:'staff-bill-list', component: () => import('@/views/DashboardList.vue'),  meta: { title: '伝票一覧', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},
       { path: 'bill/timeline', name:'staff-bill-tl', component: () => import('@/views/DashboardGantt.vue'), meta: { title: 'TIMELINE', rolesAny: ['manager','staff' ,'superuser'], requiresAuth: true, adminOnly: true }},

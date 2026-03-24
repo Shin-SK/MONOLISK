@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch, onActivated } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import dayjs from 'dayjs'
 import { api } from '@/api'
 import Avatar from '@/components/Avatar.vue'
@@ -12,6 +12,10 @@ const props = defineProps({
 })
 
 const router = useRouter()
+const route  = useRoute()
+const billDetailName = computed(() =>
+  route.path.startsWith('/staff') ? 'StaffBillDetail' : 'BillDetail'
+)
 const bills = ref([])
 const loading = ref(false)
 const currentPage = ref(1)
@@ -107,7 +111,6 @@ async function loadBills() {
     if (props.storeId) {
       config.headers = {
         'X-Store-Id': String(props.storeId),
-        'X-Store-ID': String(props.storeId)
       }
     }
     const { data } = await api.get('billing/bills/', config)
@@ -128,7 +131,7 @@ async function loadBills() {
 }
 
 function viewDetail(billId) {
-  router.push({ name: 'BillDetail', params: { id: billId } })
+  router.push({ name: billDetailName.value, params: { id: billId } })
 }
 
 function getCastBadgeClass(stay) {
@@ -215,7 +218,7 @@ function handleSelect(billId) {
 }
 
 function handleEdit(billId) {
-  router.push({ name: 'BillDetail', params: { id: billId } })
+  router.push({ name: billDetailName.value, params: { id: billId } })
 }
 
 async function bulkDelete() {

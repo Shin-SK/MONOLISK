@@ -111,7 +111,6 @@ export function wireInterceptors(api) {
       const hasOverride = !!(cfg.headers['X-Store-Id'] || cfg.headers['X-Store-ID'])
       if (!hasOverride && sid) {
         cfg.headers['X-Store-Id'] = String(sid)
-        cfg.headers['X-Store-ID'] = String(sid)
         if (cfg.meta?.overrideStoreId) {
           console.log('[api] X-Store-Id overridden to:', sid, 'for url:', cfg.url)
         }

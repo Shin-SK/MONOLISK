@@ -1,11 +1,13 @@
 // src/plugins/dayjs.js
 import dayjs from 'dayjs'
-import isBetween     from 'dayjs/plugin/isBetween'
-import isSameOrAfter from 'dayjs/plugin/isSameOrAfter'
+import isBetween      from 'dayjs/plugin/isBetween'
+import isSameOrAfter  from 'dayjs/plugin/isSameOrAfter'
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore'
 import 'dayjs/locale/ja'  // ← 日本語ロケールを読み込み
 dayjs.locale('ja')        // ← デフォルトを日本語に
 
 dayjs.extend(isBetween)
 dayjs.extend(isSameOrAfter)
+dayjs.extend(isSameOrBefore)
 
 // 何か返す必要はない。import するだけで副作用として拡張が完了。

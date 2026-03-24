@@ -253,13 +253,27 @@ def _build_by_cast(
         ]
     """
     from ..models import BillCastStay
-    
+
     result = []
 
     # cast_id → stay_type マップ
     stay_type_map = {}
     for stay in bill.stays.filter(left_at__isnull=True):
         stay_type_map[stay.cast_id] = stay.stay_type
+
+    # ─── 立替控除: cast_id 別に集計 ───
+    sub_deduction_map = {}   # {cast_id: int}
+    sub_details_map = {}     # {cast_id: [detail,...]}
+    for si in bill.substitute_items.select_related('item_master').all():
+        cid = si.cast_id
+        sub_deduction_map[cid] = sub_deduction_map.get(cid, 0) + int(si.substitute_amount or 0)
+        sub_details_map.setdefault(cid, []).append({
+            "bill_substitute_item_id": si.id,
+            "item_name": si.name or (si.item_master.name if si.item_master else ""),
+            "qty": si.qty,
+            "price": int(si.price or 0),
+            "substitute_amount": int(si.substitute_amount or 0),
+        })
 
     # cast_id → payout amount 集計（複数 payout を合算）
     payout_amount_map = {}
@@ -293,8 +307,8 @@ def _build_by_cast(
                 "amount": amount,
             })
 
-    # by_cast 母集団 = payout cast_id ∪ payroll_effect cast_id
-    cast_ids = set(payout_amount_map.keys()) | set(item_back_amount_map.keys())
+    # by_cast 母集団 = payout cast_id ∪ payroll_effect cast_id ∪ 立替cast_id
+    cast_ids = set(payout_amount_map.keys()) | set(item_back_amount_map.keys()) | set(sub_deduction_map.keys())
 
     nom_payouts = engine.nomination_payouts(bill) or {}
     dohan_payouts = engine.dohan_payouts(bill) or {}
@@ -362,12 +376,22 @@ def _build_by_cast(
                 }
             })
 
-        result.append({
+        # ─── 立替控除 ───
+        sub_ded = sub_deduction_map.get(cast_id, 0)
+        net = amount - sub_ded
+
+        entry = {
             "cast_id": cast_id,
             "stay_type": stay_type,
             "amount": amount,
+            "substitute_deduction": sub_ded,
+            "net_amount": net,
             "breakdown": breakdown,
-        })
+        }
+        if sub_ded > 0:
+            entry["substitutes"] = sub_details_map.get(cast_id, [])
+
+        result.append(entry)
 
     return result
 
@@ -626,6 +650,9 @@ def _build_totals(by_cast: List, items_info: List, result: "BillCalculationResul
         for effect in item.get("payroll_effects", []):
             item_total += effect.get("amount", 0)
     
+    # 立替控除合計
+    substitute_deduction_total = sum(c.get("substitute_deduction", 0) for c in by_cast)
+
     return {
         "subtotal": int(result.subtotal),
         "service_charge": int(result.service_fee),
@@ -636,6 +663,7 @@ def _build_totals(by_cast: List, items_info: List, result: "BillCalculationResul
         "dohan_total": dohan_total,
         "item_total": item_total,
         "hourly_total": 0,  # 時給計算は実装待機
+        "substitute_deduction_total": substitute_deduction_total,
     }
 
 
