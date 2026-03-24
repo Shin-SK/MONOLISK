@@ -39,6 +39,7 @@ const routes = [
           { path: 'news',            name: 'settings-news-list',  component: () => import('@/views/settings/AdminNewsList.vue') },
           { path: 'news/new',        name: 'settings-news-new',   component: () => import('@/views/settings/AdminNewsForm.vue') },
           { path: 'news/:id(\\d+)',  name: 'settings-news-form',  component: () => import('@/views/settings/AdminNewsForm.vue'), props: true },
+          { path: 'release-notes',  name: 'settings-release-notes', component: () => import('@/views/settings/ReleaseNotes.vue') },
         ],
       },
     ],

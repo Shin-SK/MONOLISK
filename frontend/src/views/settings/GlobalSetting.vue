@@ -13,6 +13,7 @@ const cards = [
   { to: { name: 'settings-staff-list' }, title: 'スタッフ', desc: 'スタッフ一覧・詳細編集' },
   { to: { name: 'settings-cast-list' },  title: 'キャスト', desc: 'キャスト一覧・詳細編集' },
   { to: { name: 'settings-news-list' },  title: 'お知らせ', desc: '店舗からのお知らせ（公開／予約公開／画像1枚）' },
+  { to: { name: 'settings-release-notes' }, title: 'リリースノート', desc: 'バージョン情報・更新履歴' },
 ]
 </script>
 
