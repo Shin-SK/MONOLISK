@@ -55,6 +55,12 @@ async function logout() {
                @click.prevent="nav({ name:'staff-mypage' })">
               <IconUserSquare /> <span>マイページ</span>
             </a>
+            <a class="btn p-2 w-100 d-flex gap-2 justify-content-start border-0"
+               href="#"
+               :class="{ active: route.name==='staff-manual' }"
+               @click.prevent="nav({ name:'staff-manual' })">
+              <IconBook /> <span>操作マニュアル</span>
+            </a>
           </div>
 
           <template v-if="KDS_ENABLED">

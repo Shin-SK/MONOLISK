@@ -48,6 +48,9 @@ async function logout() {
           <a class="btn w-100 d-flex justify-content-start px-2" href="#" @click.prevent="nav({name:'cast-profile'})">
             プロフィール編集
           </a>
+          <a class="btn w-100 d-flex justify-content-start px-2" href="#" @click.prevent="nav({name:'cast-manual'})">
+            操作マニュアル
+          </a>
       </div>
 
       <div class="footer d-flex flex-column gap-2">

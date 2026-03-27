@@ -100,6 +100,11 @@ async function logout () {
             設定
           </a>
 
+          <!-- 操作マニュアル -->
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-manual'})">
+            操作マニュアル
+          </a>
+
 
             <!-- Manual アコーディオン jsとcomponentsから吐き出す -->
           <div class="accordion accordion-flush my-2 d-none" id="accordionManual">

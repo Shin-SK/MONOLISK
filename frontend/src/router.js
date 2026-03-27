@@ -57,6 +57,9 @@ const routes = [
       { path: 'order',  component: () => import('@/views/cast/Order.vue'), meta: { rolesAny: ['cast'] } },
       { path: 'profile', name: 'cast-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ rolesAny:['cast'], title:'プロフィール編集' } },
       { path: 'news/:id(\\d+)', name: 'news-detail', component: () => import('@/views/NewsDetail.vue') },
+      { path: 'manual',                    name: 'cast-manual',         component: () => import('@/views/ManualPage.vue'),    meta: { title: '操作マニュアル' } },
+      { path: 'manual/:sectionId',         name: 'cast-manual-section', component: () => import('@/views/ManualSection.vue'), meta: { title: '操作マニュアル' } },
+      { path: 'manual/:sectionId/:itemId', name: 'cast-manual-item',    component: () => import('@/views/ManualItem.vue'),    meta: { title: '操作マニュアル' } },
     ],
   },
   // ---------- スタッフ ---------- //
@@ -87,7 +90,9 @@ const routes = [
         meta:{ rolesAny: ['staff','manager','owner','superuser'], title:'DASHBOARD-TIMELINE' }
       },
       { path: 'profile', name: 'staff-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ rolesAny:['staff'], title:'プロフィール編集' } },
-    
+      { path: 'manual',                    name: 'staff-manual',         component: () => import('@/views/ManualPage.vue'),    meta: { title: '操作マニュアル' } },
+      { path: 'manual/:sectionId',         name: 'staff-manual-section', component: () => import('@/views/ManualSection.vue'), meta: { title: '操作マニュアル' } },
+      { path: 'manual/:sectionId/:itemId', name: 'staff-manual-item',    component: () => import('@/views/ManualItem.vue'),    meta: { title: '操作マニュアル' } },
     ]
   },
   // ---------- オーナー ---------- //
@@ -104,6 +109,9 @@ const routes = [
       { path: 'pl/Monthly', name:'owner-pl-monthly', component: () => import('@/views/BillPLMonthly.vue'), meta: { title: '売上-月次', rolesAny: ['owner','superuser'], requiresAuth:true } },
       { path: 'pl/yearly', name:'owner-pl-yearly',  component: () => import('@/views/BillPLYearly.vue'), meta: { title: '売上-年次', rolesAny: ['owner','superuser'], requiresAuth:true } },
       { path: 'profile', name: 'owner-profile', component: () => import('@/views/ProfileEdit.vue'), meta:{ rolesAny:['owner'], title:'プロフィール編集' } },
+      { path: 'manual',                    name: 'owner-manual',         component: () => import('@/views/ManualPage.vue'),    meta: { title: '操作マニュアル' } },
+      { path: 'manual/:sectionId',         name: 'owner-manual-section', component: () => import('@/views/ManualSection.vue'), meta: { title: '操作マニュアル' } },
+      { path: 'manual/:sectionId/:itemId', name: 'owner-manual-item',    component: () => import('@/views/ManualItem.vue'),    meta: { title: '操作マニュアル' } },
     ]
   },
 
@@ -188,7 +196,9 @@ const routes = [
         component: () => import('@/views/KDSDishup.vue'),
         meta: { title: 'KDS Deshap', requiresAuth: true, kds: true }
       },
-
+      { path: 'manual',                    name: 'mng-manual',         component: () => import('@/views/ManualPage.vue'),    meta: { title: '操作マニュアル' } },
+      { path: 'manual/:sectionId',         name: 'mng-manual-section', component: () => import('@/views/ManualSection.vue'), meta: { title: '操作マニュアル' } },
+      { path: 'manual/:sectionId/:itemId', name: 'mng-manual-item',    component: () => import('@/views/ManualItem.vue'),    meta: { title: '操作マニュアル' } },
     ]
   },
 
