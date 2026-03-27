@@ -1186,7 +1186,7 @@ function customLabel(customer) {
             <h3 class="m-0"><IconStopwatch />開始時刻</h3>
           </div>
           <div class="col-6">
-            <input v-if="editingStart" type="datetime-local" class="form-control" v-model="editStartLocal" />
+            <input v-if="editingStart" type="datetime-local" step="300" class="form-control" v-model="editStartLocal" />
             <span v-else class="fs-1 fw-bold">{{ startDisplay }}</span>
           </div>
           <div class="col-3">
@@ -1205,7 +1205,7 @@ function customLabel(customer) {
             <h3 class="m-0"><IconBellPause />終了時刻</h3>
           </div>
           <div class="col-6">
-            <input v-if="editingEnd" type="datetime-local" class="form-control" v-model="editEndLocal" />
+            <input v-if="editingEnd" type="datetime-local" step="300" class="form-control" v-model="editEndLocal" />
             <span v-else class="fs-1 fw-bold">{{ endDisplay }}</span>
           </div>
           <div class="col-3">
@@ -1423,6 +1423,7 @@ function customLabel(customer) {
                 <input
                   v-else
                   type="datetime-local"
+                  step="300"
                   class="form-control form-control-sm"
                   v-model="editArrivedLocal[bc.id]"
                 />
@@ -1459,6 +1460,7 @@ function customLabel(customer) {
                 <input
                   v-else
                   type="datetime-local"
+                  step="300"
                   class="form-control form-control-sm"
                   v-model="editLeftLocal[bc.id]"
                 />

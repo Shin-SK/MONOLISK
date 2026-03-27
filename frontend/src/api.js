@@ -528,7 +528,7 @@ export const patchBill = (id, payload = {}) => {
 
   const body = {
     ...(hasTableIdsIntent ? { table_ids } : {}), // ★空配列も送れる
-    // opened_at はバックエンド側で更新禁止のため送らない
+    ...(payload.opened_at !== undefined ? { opened_at: payload.opened_at } : {}),
     ...(payload.expected_out !== undefined ? { expected_out: payload.expected_out } : {}),
     ...(payload.pax !== undefined ? { pax: payload.pax } : {}),
     ...(payload.apply_service_charge !== undefined ? { apply_service_charge: !!payload.apply_service_charge } : {}),
@@ -536,7 +536,7 @@ export const patchBill = (id, payload = {}) => {
     ...(payload.memo !== undefined ? { memo: payload.memo } : {}),
     // その他のフィールドも通す（manual_discounts 等）
     ...Object.keys(payload)
-      .filter(k => !['tableIds', 'table_ids', 'table_atom_ids', 'table', 'table_id', 'opened_at', 'expected_out', 'pax', 'apply_service_charge', 'apply_tax', 'memo'].includes(k))
+      .filter(k => !['tableIds', 'table_ids', 'table_atom_ids', 'table', 'table_id', 'expected_out', 'pax', 'apply_service_charge', 'apply_tax', 'memo'].includes(k))
       .reduce((acc, k) => ({ ...acc, [k]: payload[k] }), {}),
   }
 
