@@ -63,7 +63,7 @@ const sortedTables = computed(() => {
     <div v-for="t in sortedTables" :key="t.id" :class="colClass">
       <button
         type="button"
-        class="btn w-100 text-nowrap"
+        class="btn w-100 text-nowrap text-center px-2 py-1"
         :class="isSelected(t.id) ? 'btn-secondary' : 'btn-outline-secondary'"
         :disabled="disabled"
         @click="toggle(t.id)"

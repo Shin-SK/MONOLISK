@@ -1230,7 +1230,7 @@ function customLabel(customer) {
                 :modelValue="editTableIdsLocal"
                 :multiple="true"
                 labelKey="number"
-                colClass="col-4"
+                colClass="col-6"
                 @update:modelValue="v => (editTableIdsLocal = v)"
               />
             </div>
