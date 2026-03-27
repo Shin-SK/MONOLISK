@@ -22,12 +22,18 @@ export function useBillCustomerTimeline() {
   /**
    * 顧客を「IN」（arrived_at = now）
    */
+  function roundTo5min(d) {
+    const m = d.minute()
+    const r = m % 5
+    return r < 3 ? d.minute(m - r).second(0).millisecond(0) : d.minute(m + (5 - r)).second(0).millisecond(0)
+  }
+
   async function markArrived(billCustomerId) {
     loading.value = true
     error.value = null
 
     try {
-      const now = dayjs().toISOString()
+      const now = roundTo5min(dayjs()).toISOString()
       await api.patch(`/billing/bill-customers/${billCustomerId}/`, {
         arrived_at: now
       })
@@ -47,7 +53,7 @@ export function useBillCustomerTimeline() {
     error.value = null
 
     try {
-      const now = dayjs().toISOString()
+      const now = roundTo5min(dayjs()).toISOString()
       await api.patch(`/billing/bill-customers/${billCustomerId}/`, {
         left_at: now
       })
