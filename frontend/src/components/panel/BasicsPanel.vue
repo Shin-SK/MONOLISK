@@ -1227,11 +1227,10 @@ function customLabel(customer) {
             <div v-if="editingTable">
               <TablePicker
                 :tables="filteredTables"
-                :modelValue="editTableIdsLocal"
+                v-model="editTableIdsLocal"
                 :multiple="true"
                 labelKey="number"
                 colClass="col-6"
-                @update:modelValue="v => (editTableIdsLocal = v)"
               />
             </div>
             <span v-else class="fs-1 fw-bold">{{ tableNumberLabel }}</span>

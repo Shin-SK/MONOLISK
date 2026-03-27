@@ -63,7 +63,7 @@ const sortedTables = computed(() => {
     <div v-for="t in sortedTables" :key="t.id" :class="colClass">
       <button
         type="button"
-        class="btn w-100 text-nowrap text-center px-2 py-1"
+        class="table-picker-btn btn w-100 text-nowrap text-center px-2 py-1"
         :class="isSelected(t.id) ? 'btn-secondary' : 'btn-outline-secondary'"
         :disabled="disabled"
         @click="toggle(t.id)"
@@ -73,3 +73,25 @@ const sortedTables = computed(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.table-picker-btn:focus,
+.table-picker-btn:focus-visible {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.table-picker-btn:not(.btn-secondary):active,
+.table-picker-btn:not(.btn-secondary):focus,
+.table-picker-btn:not(.btn-secondary):focus-visible {
+  background-color: transparent !important;
+  color: var(--bs-secondary) !important;
+  border-color: var(--bs-secondary) !important;
+}
+
+.table-picker-btn.btn-secondary:active,
+.table-picker-btn.btn-secondary:focus,
+.table-picker-btn.btn-secondary:focus-visible {
+  box-shadow: none !important;
+}
+</style>
