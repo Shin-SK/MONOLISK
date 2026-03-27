@@ -7,7 +7,8 @@ import { api } from '@/api'
 const route  = useRoute()
 const router = useRouter()
 const isEdit = !!route.params.id
-const categories  = ref([]) 
+const categories  = ref([])
+const isActive    = ref(true)
 
 /* ---------- フォーム ---------- */
 const form = reactive({
@@ -76,6 +77,7 @@ async function fetchCast () {
     hourly_wage: data.hourly_wage,
   })
   avatarUrl.value = data.avatar_url ? `${data.avatar_url}${data.avatar_url.includes('?') ? '&' : '?'}t=${Date.now()}` : ''
+  isActive.value = data.is_active !== false
 }
 
 /* ---------- 保存 ---------- */
@@ -140,11 +142,25 @@ async function save () {
 }
 
 
-/* ---------- 削除 ---------- */
-async function remove () {
-  if (!confirm('本当に削除しますか？')) return
-  await api.delete(`billing/casts/${route.params.id}/`)
-  router.push({ name: 'settings-cast-list' })   // ← ここだけ変更
+/* ---------- 無効化 / 再有効化 ---------- */
+async function deactivate () {
+  if (!confirm('このキャストを無効化しますか？')) return
+  try {
+    await api.post(`billing/casts/${route.params.id}/deactivate/`)
+    isActive.value = false
+  } catch (e) {
+    alert(e.response?.data?.detail || '無効化に失敗しました')
+  }
+}
+
+async function reactivate () {
+  if (!confirm('このキャストを再有効化しますか？')) return
+  try {
+    await api.post(`billing/casts/${route.params.id}/reactivate/`)
+    isActive.value = true
+  } catch (e) {
+    alert(e.response?.data?.detail || '再有効化に失敗しました')
+  }
 }
 
 /* ---------- 起動 ---------- */
@@ -158,6 +174,14 @@ onMounted(async ()=>{
   <div
     class="container-fluid py-4"
   >
+    <!-- 無効化バナー -->
+    <div
+      v-if="isEdit && !isActive"
+      class="alert alert-warning mb-4"
+    >
+      このキャストは無効化されています
+    </div>
+
     <!-- ユーザー名（編集時は readonly） -->
     <div class="mb-3">
       <label class="form-label">ユーザー名</label>
@@ -372,11 +396,18 @@ onMounted(async ()=>{
         保存
       </button>
       <button
-        v-if="isEdit"
+        v-if="isEdit && isActive"
         class="btn btn-outline-danger"
-        @click="remove"
+        @click="deactivate"
       >
-        削除
+        無効化
+      </button>
+      <button
+        v-if="isEdit && !isActive"
+        class="btn btn-outline-success"
+        @click="reactivate"
+      >
+        再有効化
       </button>
     </div>
   </div>

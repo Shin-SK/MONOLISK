@@ -714,6 +714,31 @@ class CastViewSet(StoreScopedModelViewSet):
     filterset_fields = ["user__is_active", "stage_name", "user__username"]
     search_fields = ["stage_name", "user__username", "user__first_name", "user__last_name"]
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            instance.delete()
+        except models.ProtectedError:
+            return Response(
+                {"detail": "このキャストは伝票や給与締めで使用されているため削除できません。無効化をお使いください。"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'], url_path='deactivate')
+    def deactivate(self, request, pk=None):
+        cast = self.get_object()
+        cast.user.is_active = False
+        cast.user.save(update_fields=['is_active'])
+        return Response(CastSerializer(cast).data)
+
+    @action(detail=True, methods=['post'], url_path='reactivate')
+    def reactivate(self, request, pk=None):
+        cast = self.get_object()
+        cast.user.is_active = True
+        cast.user.save(update_fields=['is_active'])
+        return Response(CastSerializer(cast).data)
+
     @action(detail=True, methods=['get','post'], url_path='goals')
     def goals(self, request, pk=None):
         """

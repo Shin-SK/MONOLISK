@@ -561,6 +561,7 @@ class CastSerializer(serializers.ModelSerializer):
     user_id         = serializers.IntegerField(source='user.id', read_only=True)
 
     avatar_url     = serializers.SerializerMethodField()
+    is_active       = serializers.BooleanField(source='user.is_active', read_only=True)
     category_rates = CastCategoryRateSerializer(many=True, required=False)
 
     # store は View 側で require_store 済み。来ていれば尊重、無ければ補完する。
@@ -582,6 +583,8 @@ class CastSerializer(serializers.ModelSerializer):
             "back_rate_free_override","back_rate_nomination_override","back_rate_inhouse_override",
             # カテゴリ別バック率
             "category_rates",
+            # 状態
+            "is_active",
         )
 
     # ---------- helpers ----------
