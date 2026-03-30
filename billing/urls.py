@@ -16,6 +16,9 @@ from .views import (
      PayrollRunPreviewView, PayrollRunExportCSVView, PayrollStatusView,
      PersonnelExpenseCategoryViewSet, PersonnelExpenseViewSet,
      attach_personnel_expenses_to_run,
+     BillExcelDownloadView,
+     DailyZipDownloadView,
+     DailyReportDownloadView,
 )
 
 from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
@@ -93,6 +96,11 @@ urlpatterns = [
     path("payroll/runs/export.csv", PayrollRunExportCSVView.as_view(), name="payroll-runs-export-csv"),
     path("payroll/runs/<int:pk>/attach-personnel-expenses/", attach_personnel_expenses_to_run, name="payroll-attach-expenses"),
     
+    # ★ Excel出力
+    path("bills/<int:bill_pk>/excel/", BillExcelDownloadView.as_view(), name="bill-excel"),
+    path("excel/daily-zip/", DailyZipDownloadView.as_view(), name="daily-zip"),
+    path("excel/daily-report/", DailyReportDownloadView.as_view(), name="daily-report"),
+
     path('kds/tickets/', KDSTicketList.as_view(), name='kds_ticket_list'),
     path('kds/tickets/<int:pk>/ack/', KDSTicketAck.as_view(), name='kds_ticket_ack'),
     path('kds/tickets/<int:pk>/ready/', KDSTicketReady.as_view(), name='kds_ticket_ready'),

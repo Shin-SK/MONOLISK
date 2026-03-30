@@ -921,6 +921,30 @@ export async function downloadPayrollDetailCsv(castId, params = {}) {
 }
 
 
+// ───────── Excel出力 ─────────
+export async function downloadBillExcel(billId) {
+  const res = await api.get(`billing/bills/${billId}/excel/`, {
+    responseType: 'blob',
+  })
+  return res.data
+}
+
+export async function downloadDailyZip(dateStr) {
+  const res = await api.get('billing/excel/daily-zip/', {
+    params: { date: dateStr },
+    responseType: 'blob',
+  })
+  return res.data
+}
+
+export async function downloadDailyReport(dateStr) {
+  const res = await api.get('billing/excel/daily-report/', {
+    params: { date: dateStr },
+    responseType: 'blob',
+  })
+  return res.data
+}
+
 // ───────── Stores (Switcher用) ─────────
 export const listMyStores = () =>
 	api.get('billing/stores/my/').then(r => r.data)

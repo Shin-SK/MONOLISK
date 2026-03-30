@@ -11,10 +11,8 @@ import {
 } from '@/api'
 import MiniTip from '@/components/MiniTip.vue'
 import Avatar from '@/components/Avatar.vue'
-import CsvPreviewTable from '@/components/CsvPreviewTable.vue'
 import { useUser } from '@/stores/useUser'
 import { useProfile } from '@/composables/useProfile'
-import PersonnelExpensesSection from '@/components/expenses/PersonnelExpensesSection.vue'
 
 const user = useUser()
 const route = useRoute()
@@ -36,23 +34,14 @@ const showOpenTip = ref(false)
 const showDutyTip = ref(false)
 
 /* ----------------- タブ管理 ----------------- */
-const activeTab = ref('sales') // 'sales', 'bills', 'download'
-const csvTab = ref('bills') // 'bills', 'payroll'
+const activeTab = ref('sales') // 'sales', 'bills'
 
 function switchTab(tabId) {
   activeTab.value = tabId
 }
 
-function switchCsvTab(tabId) {
-  csvTab.value = tabId
-}
-
 /* ----------------- 日付（単日） ----------------- */
 const date = ref(dayjs().format('YYYY-MM-DD'))
-
-/* 経費タブ用日付範囲 */
-const expenseFrom = ref(dayjs().format('YYYY-MM-DD'))
-const expenseTo = ref(dayjs().format('YYYY-MM-DD'))
 
 /* ----------------- 状態 ----------------- */
 const loading = ref(false)
@@ -70,13 +59,6 @@ const kpi = ref({
 })
 
 const billsToday = ref([])   // 今日の伝票（最小表示用）
-
-// 給与CSV用
-const payrollCsvText = ref('')
-const payrollPreviewHeaders = ref([])
-const payrollPreviewRows = ref([])
-
-
 
 /* ----------------- ユーティリティ ----------------- */
 const asId = v => (v && typeof v === 'object') ? v.id : v
@@ -210,186 +192,6 @@ watch(
   () => { loadAll() }
 )
 
-/* ----------------- CSV（フロント生成） ----------------- */
-const billsCsvHeaders = [
-  'id','table_no','opened_at','closed_at',
-  'subtotal','service_charge','tax','grand_total','total',
-  'paid_cash','paid_card','paid_total','settled_total',
-  'customer_display_name','memo'
-]
-
-const billsCsvRows = computed(() => {
-  return billsToday.value.map(b => ({
-    id: b.id,
-    table_no: b.table?.number ?? '',
-    opened_at: b.opened_at ?? '',
-    closed_at: b.closed_at ?? '',
-    subtotal: b.subtotal ?? 0,
-    service_charge: b.service_charge ?? 0,
-    tax: b.tax ?? 0,
-    grand_total: b.grand_total ?? 0,
-    total: b.total ?? 0,
-    paid_cash: b.paid_cash ?? 0,
-    paid_card: b.paid_card ?? 0,
-    paid_total: b.paid_total ?? 0,
-    settled_total: b.settled_total ?? (b.grand_total || 0),
-    customer_display_name: b.customer_display_name ?? '',
-    memo: b.memo ?? '',
-  }))
-})
-
-function csvEscape(v){
-  const s = String(v ?? '')
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
-  return s
-}
-function downloadCsv(filename, headers, rows){
-  const lines = []
-  lines.push(headers.map(csvEscape).join(','))
-  for (const r of rows) lines.push(headers.map(h => csvEscape(r[h])).join(','))
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function downloadBillsCsv(){
-  downloadCsv(`bills_${date.value}.csv`, billsCsvHeaders, billsCsvRows.value)
-}
-
-function parseCsvForPreview(text) {
-  // BOM除去
-  let csv = text
-  if (csv.charCodeAt(0) === 0xFEFF) {
-    csv = csv.slice(1)
-  }
-
-  const lines = csv.split(/\r?\n/).filter(line => line.trim())
-  if (!lines.length) {
-    payrollPreviewHeaders.value = []
-    payrollPreviewRows.value = []
-    return
-  }
-
-  // 簡易CSV行パース（ダブルクォート対応）
-  function parseCsvLine(line) {
-    const result = []
-    let current = ''
-    let inQuotes = false
-    
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i]
-      const next = line[i + 1]
-      
-      if (char === '"') {
-        if (inQuotes && next === '"') {
-          current += '"'
-          i++
-        } else {
-          inQuotes = !inQuotes
-        }
-      } else if (char === ',' && !inQuotes) {
-        result.push(current)
-        current = ''
-      } else {
-        current += char
-      }
-    }
-    result.push(current)
-    return result
-  }
-
-  // ヘッダ
-  const headers = parseCsvLine(lines[0])
-  payrollPreviewHeaders.value = headers
-
-  // データ行（先頭50行まで）
-  const rows = []
-  const maxRows = Math.min(lines.length - 1, 50)
-  for (let i = 1; i <= maxRows; i++) {
-    const values = parseCsvLine(lines[i])
-    const row = {}
-    headers.forEach((h, idx) => {
-      row[h] = values[idx] ?? ''
-    })
-    rows.push(row)
-  }
-  payrollPreviewRows.value = rows
-}
-
-async function downloadPayrollCsv() {
-  try {
-    loading.value = true
-    const storeId = user.storeId
-    
-    const res = await fetch('/api/billing/payroll/runs/export.csv', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Store-Id': String(storeId),
-        'Authorization': `Token ${user.token}`,
-      },
-      body: JSON.stringify({
-        from: date.value,
-        to: date.value,
-        note: '',
-      }),
-    })
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`)
-    }
-
-    const blob = await res.blob()
-    const text = await blob.text()
-    
-    // プレビュー更新
-    payrollCsvText.value = text
-    parseCsvForPreview(text)
-
-    // ダウンロード
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `payroll_${date.value}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  } catch (e) {
-    console.error(e)
-    errorMsg.value = '給与CSVダウンロードに失敗しました'
-  } finally {
-    loading.value = false
-  }
-}
-
-function downloadItemsCsv(){
-  const headers = [
-    'bill_id','item_id','name','qty','price','subtotal',
-    'served_by','category','code'
-  ]
-  const rows = []
-  for (const b of billsToday.value){
-    const items = Array.isArray(b.items) ? b.items : []
-    for (const it of items){
-      rows.push({
-        bill_id  : b.id,
-        item_id  : it.id,
-        name     : it.name ?? '',
-        qty      : it.qty ?? 0,
-        price    : it.price ?? 0,
-        subtotal : it.subtotal ?? 0,
-        served_by: it.served_by_cast?.stage_name ?? '',
-        category : it.category?.name ?? it.category ?? '',
-        code     : it.code ?? '',
-      })
-    }
-  }
-  downloadCsv(`bill_items_${date.value}.csv`, headers, rows)
-}
-
 /* ----------------- 表示用の派生 ----------------- */
 const kpiSalesLabel = computed(() =>
   `${fmtYen(kpi.value.sales_total)}<span>（現金:${fmtYen(kpi.value.sales_cash)} / カード:${fmtYen(kpi.value.sales_card)}）</span>`
@@ -426,39 +228,21 @@ const kpiDutyLabel = computed(() =>
 
     <nav class="row border-bottom g-1 mb-4">
       <div
-        class="col-3"
+        class="col-6"
         :class="{ 'border-bottom border-3 border-secondary': activeTab === 'sales' }">
-        <button 
+        <button
           class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
           @click="switchTab('sales')">
           売上
         </button>
       </div>
       <div
-        class="col-3"
+        class="col-6"
         :class="{ 'border-bottom border-3 border-secondary': activeTab === 'bills' }">
-        <button 
+        <button
           class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
           @click="switchTab('bills')">
           伝票
-        </button>
-      </div>
-      <div
-        class="col-3"
-        :class="{ 'border-bottom border-3 border-secondary': activeTab === 'expenses' }">
-        <button 
-          class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
-          @click="switchTab('expenses')">
-          経費
-        </button>
-      </div>
-      <div
-        class="col-3"
-        :class="{ 'border-bottom border-3 border-secondary': activeTab === 'download' }">
-        <button
-          class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
-          @click="switchTab('download')">
-          CSV
         </button>
       </div>
     </nav>
@@ -562,83 +346,7 @@ const kpiDutyLabel = computed(() =>
       </div>
     </div>
 
-    <div v-show="activeTab === 'expenses'" class="area my-4">
 
-        <div class="row g-2 align-items-center mb-3">
-          <div class="col-auto">
-            <label class="form-label small mb-0">開始日</label>
-            <input type="date" class="form-control form-control-sm bg-white" v-model="expenseFrom" />
-          </div>
-          <div class="col-auto">
-            <label class="form-label small mb-0">終了日</label>
-            <input type="date" class="form-control form-control-sm bg-white" v-model="expenseTo" />
-          </div>
-        </div>
-
-      <PersonnelExpensesSection 
-        :range-from="expenseFrom"
-        :range-to="expenseTo"
-      />
-    </div>
-
-    <!-- CSV -->
-    <div v-show="activeTab === 'download'" class="area my-4">
-      <div class="h4 fw-bold text-center">CSVダウンロード</div>
-
-      <nav class="row border-bottom g-1 mb-3">
-        <div
-          class="col-6"
-          :class="{ 'border-bottom border-3 border-secondary': csvTab === 'bills' }">
-          <button 
-            class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
-            @click="switchCsvTab('bills')">
-            伝票
-          </button>
-        </div>
-        <div
-          class="col-6"
-          :class="{ 'border-bottom border-3 border-secondary': csvTab === 'payroll' }">
-          <button 
-            class="btn flex-grow-1 border-0 rounded-0 w-100 px-0"
-            @click="switchCsvTab('payroll')">
-            給与
-          </button>
-        </div>
-      </nav>
-
-      <div v-show="csvTab === 'bills'" class="card mb-3">
-        <div class="card-header">本日の伝票CSVプレビュー</div>
-        <div class="card-body">
-          <CsvPreviewTable 
-            :headers="billsCsvHeaders" 
-            :rows="billsCsvRows" 
-            :maxRows="20" 
-          />
-        </div>
-        <div class="card-footer">
-          <button class="btn btn-sm btn-success w-100" type="button" @click="downloadBillsCsv">
-            伝票CSVダウンロード
-          </button>
-        </div>
-      </div>
-
-      <div v-show="csvTab === 'payroll'" class="card">
-        <div class="card-header">本日の給与CSVプレビュー</div>
-        <div class="card-body">
-          <CsvPreviewTable 
-            :headers="payrollPreviewHeaders" 
-            :rows="payrollPreviewRows" 
-            :maxRows="20" 
-          />
-        </div>
-        <div class="card-footer">
-          <button class="btn btn-sm btn-success w-100" type="button" @click="downloadPayrollCsv">
-            給与CSVダウンロード
-          </button>
-        </div>
-      </div>
-
-    </div>
 
   </div>
 </template>

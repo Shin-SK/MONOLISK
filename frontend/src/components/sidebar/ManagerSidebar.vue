@@ -94,6 +94,9 @@ async function logout () {
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'PayrollRuns'})">
             給与締め・出力
           </a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-excel-export'})">
+            エクセル出力
+          </a>
 
           <!-- 設定（ManagerLayout配下の /settings） -->
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'settings'})">

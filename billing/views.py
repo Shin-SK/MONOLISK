@@ -2365,3 +2365,100 @@ class PayrollStatusView(APIView):
             "b_back": stats["b_back"],
             "monthly_back": monthly_back,
         })
+
+
+# ============================================================
+#  Excel出力ビュー
+# ============================================================
+class BillExcelDownloadView(APIView):
+    """個別伝票Excelダウンロード: GET /api/billing/bills/<id>/excel/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, bill_pk):
+        sid = StoreScopedModelViewSet.require_store(self, request)
+        from .querysets import bills_in_store_qs
+        bill = get_object_or_404(bills_in_store_qs(sid), pk=bill_pk)
+
+        from .excel import generate_bill_excel
+        buf = generate_bill_excel(bill)
+
+        response = HttpResponse(
+            buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="bill_{bill.id}.xlsx"'
+        return response
+
+
+class DailyZipDownloadView(APIView):
+    """1日分まとめZIP: GET /api/billing/excel/daily-zip/?date=YYYY-MM-DD"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        sid = StoreScopedModelViewSet.require_store(self, request)
+        date_str = request.query_params.get('date')
+        if not date_str:
+            raise ValidationError({'date': 'dateパラメータは必須です。'})
+
+        try:
+            target_date = date.fromisoformat(date_str)
+        except ValueError:
+            raise ValidationError({'date': 'YYYY-MM-DD形式で指定してください。'})
+
+        from .querysets import bills_in_store_qs
+        bills = list(
+            bills_in_store_qs(sid)
+            .filter(closed_at__date=target_date)
+            .select_related('table')
+            .prefetch_related('tables', 'items__served_by_cast', 'items__served_by_casts',
+                              'substitute_items__cast', 'stays__cast', 'customers')
+            .order_by('opened_at')
+        )
+
+        if not bills:
+            return Response({'detail': '指定日の伝票がありません。'}, status=status.HTTP_404_NOT_FOUND)
+
+        from .excel import generate_daily_zip
+        zip_buf = generate_daily_zip(bills)
+
+        response = HttpResponse(zip_buf.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{date_str}_bills.zip"'
+        return response
+
+
+class DailyReportDownloadView(APIView):
+    """売上日報Excel: GET /api/billing/excel/daily-report/?date=YYYY-MM-DD"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        sid = StoreScopedModelViewSet.require_store(self, request)
+        date_str = request.query_params.get('date')
+        if not date_str:
+            raise ValidationError({'date': 'dateパラメータは必須です。'})
+
+        try:
+            target_date = date.fromisoformat(date_str)
+        except ValueError:
+            raise ValidationError({'date': 'YYYY-MM-DD形式で指定してください。'})
+
+        from .querysets import bills_in_store_qs
+        bills = list(
+            bills_in_store_qs(sid)
+            .filter(closed_at__date=target_date)
+            .select_related('table', 'main_cast')
+            .prefetch_related('tables', 'substitute_items', 'customers', 'stays__cast')
+            .order_by('opened_at')
+        )
+
+        if not bills:
+            return Response({'detail': '指定日の伝票がありません。'}, status=status.HTTP_404_NOT_FOUND)
+
+        from .excel import generate_daily_report
+        buf = generate_daily_report(bills, target_date)
+
+        response = HttpResponse(
+            buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response['Content-Disposition'] = f'attachment; filename="{date_str}_daily_report.xlsx"'
+        return response

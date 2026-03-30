@@ -156,6 +156,14 @@ const routes = [
       { path: 'staffs/new',      redirect: { name: 'settings-staff-new' } },
       { path: 'casts/:id(\\d+)', redirect: to => ({ name: 'settings-cast-form', params: { id: to.params.id } }) },
       { path: 'casts/new',       redirect: { name: 'settings-cast-new' } },
+      // Excel出力
+      {
+        path: 'excel-export',
+        name: 'mng-excel-export',
+        component: () => import('@/views/ExcelExport.vue'),
+        meta: { title: 'エクセル出力', rolesAny: ['manager','superuser'], requiresAuth: true }
+      },
+
       // 給与計算
       {
         path: '/payroll',
