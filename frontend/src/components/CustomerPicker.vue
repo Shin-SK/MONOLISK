@@ -24,7 +24,7 @@ const newTagName = ref('')      // 新規タグ名
 
 // 編集用フォーム（一部だけ編集しても v‑model で保持）
 const form = ref({
-  id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '', tag_ids: [],
+  id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '', receipt_name: '', tag_ids: [],
   has_bottle: false, bottle_shelf: '', bottle_memo: '',
 })
 
@@ -128,7 +128,7 @@ function newCustomer () {
   selected.value = null
   selectedTagIds.value = []
   form.value = {
-    id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '', tag_ids: [],
+    id: null, full_name: '', alias: '', phone: '', birthday: '', memo: '', receipt_name: '', tag_ids: [],
     has_bottle: false, bottle_shelf: '', bottle_memo: '',
   }
 }
@@ -251,6 +251,10 @@ async function save () {
             <textarea v-model="form.bottle_memo" rows="2" class="form-control" placeholder="シャトー・マルゴー 2015"></textarea>
           </div>
         </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">領収書宛名</label>
+        <input v-model="form.receipt_name" class="form-control" placeholder="未設定の場合は顧客名を使用" />
       </div>
       <div class="mb-3">
         <label class="form-label fw-bold small">メモ</label>

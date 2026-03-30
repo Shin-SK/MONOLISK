@@ -665,8 +665,9 @@ export const updateCustomer = (id, payload = {}) => {
     full_name: payload.full_name ?? payload.name ?? '',
     phone    : payload.phone     ?? '',
     memo     : payload.memo      ?? '',
-    alias    : payload.alias     ?? '',
-    birthday : payload.birthday  ?? null,
+    alias        : payload.alias        ?? '',
+    birthday     : payload.birthday     ?? null,
+    receipt_name : payload.receipt_name ?? '',
   };
   return api.patch(`billing/customers/${id}/`, body).then(r => r.data);
 };

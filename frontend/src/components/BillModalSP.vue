@@ -2,6 +2,8 @@
 import { computed, ref, toRef, watch, nextTick, watchEffect, onMounted } from 'vue'
 import BaseModal from '@/components/BaseModal.vue'
 import BasicsPanel from '@/components/panel/BasicsPanel.vue'
+import CustomerModal from '@/components/CustomerModal.vue'
+import { useCustomers } from '@/stores/useCustomers'
 import CastsPanel  from '@/components/panel/CastsPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel from '@/components/panel/PayPanel.vue'
@@ -688,7 +690,10 @@ const paidCardRef     = ref(props.bill?.paid_card ?? 0)
 const cardBrandRef    = ref(props.bill?.card_brand ?? null)
 const settledTotalRef = ref(props.bill?.settled_total ?? (props.bill?.grand_total || 0))
 const paidTotal   = computed(() => (Number(paidCashRef.value)||0) + (Number(paidCardRef.value)||0))
-const targetTotal = computed(() => Number(settledTotalRef.value) || Number(displayGrandTotal.value) || 0)
+const targetTotal = computed(() => {
+  const s = settledTotalRef.value
+  return (s != null && s !== '' && Number.isFinite(Number(s))) ? Number(s) : Number(displayGrandTotal.value) || 0
+})
 const diff        = computed(() => paidTotal.value - targetTotal.value)
 const overPay     = computed(() => Math.max(0, diff.value))
 const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= targetTotal.value)
@@ -841,6 +846,47 @@ function onCustomersChanged() {
     billCustomersComposable.fetchBillCustomers(props.bill.id)
   }
 }
+
+// 顧客ストア（領収書補助用）
+const customers = useCustomers()
+
+// 顧客情報編集モーダル
+const showCustModal = ref(false)
+const activeCustId  = ref(null)
+function openCustModal(id = null) {
+  console.log('[BillModalSP] openCustModal called', id)
+  activeCustId.value = typeof id === 'object' && id ? id.id : id
+  showCustModal.value = true
+}
+function handleCustPickedSP(cust) {
+  showCustModal.value = false
+}
+function handleCustSavedSP(cust) {
+  showCustModal.value = false
+}
+
+// 伝票の顧客をキャッシュに読み込む
+watch(() => billCustomersComposable.customers.value, async (bcs) => {
+  if (!bcs?.length) return
+  const custId = bcs[0].customer_id ?? bcs[0].customer
+  if (custId && !customers.cache.get(custId)) {
+    await customers.fetchOne(custId)
+  }
+}, { immediate: true })
+
+/* 領収書補助 */
+const receiptNameForBill = computed(() => {
+  const bcs = billCustomersComposable.customers.value || []
+  if (!bcs.length) return ''
+  const custId = bcs[0].customer_id ?? bcs[0].customer
+  if (!custId) return ''
+  const cust = customers.cache.get(custId)
+  if (!cust) return ''
+  return cust.receipt_name || cust.full_name || ''
+})
+const receiptTotal = computed(() => Number(targetTotal.value) || 0)
+const receiptExTax = computed(() => Math.ceil(receiptTotal.value / 1.1))
+const receiptTax   = computed(() => receiptTotal.value - receiptExTax.value)
 
 // ★ BasicsPanel からのテーブル複数更新を受けて patch
 function onUpdateTableIds(ids) {
@@ -1388,6 +1434,7 @@ function handleClose() {
       @applySet="onApplySet"
       @save="handleSave"
       @customers-changed="onCustomersChanged"
+      @edit-customer="openCustModal"
     />
 
     <CastsPanel
@@ -1472,6 +1519,7 @@ function handleClose() {
       :manual-discounts="props.bill?.manual_discounts || []"
       :store-slug="storeSlug"
       :dosukoi-discount-unit="1000"
+      :receipt-name="receiptNameForBill"
       @update:settledTotal="setSettledTotal"
       @update:paidCash="setPaidCash"
       @update:paidCard="setPaidCard"
@@ -1508,6 +1556,13 @@ function handleClose() {
         </div>
       </div>
     </template>
+    <!-- 顧客情報編集モーダル -->
+    <CustomerModal
+      v-model="showCustModal"
+      :customer-id="activeCustId"
+      @picked="handleCustPickedSP"
+      @saved="handleCustSavedSP"
+    />
   </BaseModal>
 </template>
 

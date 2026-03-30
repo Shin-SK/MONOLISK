@@ -38,13 +38,13 @@ function handleSaved (cust) {
     <div
       v-if="visible"
       class="modal-backdrop fade show"
-      style="z-index:1055;"
+      style="z-index:1070;"
     ></div>
 
     <div
       v-if="visible"
       class="modal fade show"
-      style="display:block; z-index:1060;"
+      style="display:block; z-index:1075;"
     >
       <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content p-3">

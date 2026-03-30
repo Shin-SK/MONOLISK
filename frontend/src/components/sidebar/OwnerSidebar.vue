@@ -36,7 +36,7 @@ async function logout () {
         <button class="btn-close" data-bs-dismiss="offcanvas" aria-label="閉じる" />
       </div>
 
-      <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
+      <aside class="aside offcanvas-body d-flex flex-column justify-content-between">
         <nav class="nav flex-column h-100">
           <div class="wrap">
             <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'owner-dashboard'})">マイページ</a>

@@ -284,7 +284,8 @@ watch(() => props.storeIds, fetchData, { deep: true })
             <div class="number">{{ yen(pl.sales_total ?? ((pl.sales_cash ?? 0) + (pl.sales_card ?? 0))) }}</div>
           </div>
         </div>
-        <div class="col-12 col-md-4">
+        <!-- 人件費サマリー（一時非表示：設計変更中） -->
+        <div v-if="false" class="col-12 col-md-4">
           <div class="box">
             <div class="head">人件費<small>（時給＋歩合）</small></div>
             <div class="number">{{ yen(pl.cast_labor ?? pl.labor_cost) }}</div>
@@ -385,17 +386,18 @@ watch(() => props.storeIds, fetchData, { deep: true })
               <td class="text-end">{{ yen(pl.extension_sales ?? 0) }} / {{ pl.extension_qty ?? 0 }}</td>
             </tr>
             <tr class="text-blue"><th>その他売上</th><td class="text-end">{{ yen(pl.other_sales ?? 0) }}</td></tr>
-            <tr class="text-red"><th>人件費（合算）</th><td class="text-end fw-bold">{{ yen(pl.cast_labor ?? pl.labor_cost ?? 0) }}</td></tr>
-            <tr class="text-red"><th class="fw-normal ps-5">時給</th><td class="text-end">{{ yen(pl.cast_hourly ?? pl.hourly_pay ?? 0) }}</td></tr>
-            <tr class="text-red"><th class="fw-normal ps-5">歩合</th><td class="text-end">{{ yen(pl.cast_commission ?? pl.commission ?? 0) }}</td></tr>
+            <!-- 人件費（一時非表示：設計変更中） -->
+            <tr v-if="false" class="text-red"><th>人件費（合算）</th><td class="text-end fw-bold">{{ yen(pl.cast_labor ?? pl.labor_cost ?? 0) }}</td></tr>
+            <tr v-if="false" class="text-red"><th class="fw-normal ps-5">時給</th><td class="text-end">{{ yen(pl.cast_hourly ?? pl.hourly_pay ?? 0) }}</td></tr>
+            <tr v-if="false" class="text-red"><th class="fw-normal ps-5">歩合</th><td class="text-end">{{ yen(pl.cast_commission ?? pl.commission ?? 0) }}</td></tr>
             <tr><th>営業利益</th><td class="text-end fw-bold fs-5">{{ yen(pl.operating_profit ?? 0) }}</td></tr>
           </tbody>
         </table>
 
         <!-- Personnel Expenses Reference Section -->
-        <div 
-          v-if="pl.personnel_expenses_collect_created != null || 
-                pl.personnel_expenses_collect_settled != null || 
+        <div
+          v-if="pl.personnel_expenses_collect_created != null ||
+                pl.personnel_expenses_collect_settled != null ||
                 pl.personnel_expenses_collect_outstanding != null"
         >
           <h6 class="fw-bold mb-3 text-secondary">立替経費（参考値）<small>損益計算には含まれません</small></h6>

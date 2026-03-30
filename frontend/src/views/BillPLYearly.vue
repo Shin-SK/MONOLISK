@@ -123,7 +123,8 @@ watch(() => props.storeIds, fetchData, { deep: true })
           <div class="box"><div class="head">平均客単価</div><div class="number">{{ yen(pl.totals.avg_spend) }}</div></div>
         </div>
         <div class="col-12 col-md-4">
-          <div class="box"><div class="head">人件費</div><div class="number">{{ yen(pl.totals.labor_cost) }}</div></div>
+          <!-- 人件費（一時非表示：設計変更中） -->
+          <div v-if="false" class="box"><div class="head">人件費</div><div class="number">{{ yen(pl.totals.labor_cost) }}</div></div>
         </div>
         <div class="col-12 col-md-4">
           <div class="box"><div class="head">営業利益</div><div class="number">{{ yen(pl.totals.operating_profit) }}</div></div>
@@ -139,7 +140,8 @@ watch(() => props.storeIds, fetchData, { deep: true })
               <th class="text-end">売上（現金/カード）</th>
               <th class="text-end">客数</th>
               <th class="text-end">平均客単価</th>
-              <th class="text-end">人件費</th>
+              <!-- 人件費（一時非表示） -->
+              <th v-if="false" class="text-end">人件費</th>
               <th class="text-end">営業利益</th>
             </tr>
           </thead>
@@ -151,7 +153,7 @@ watch(() => props.storeIds, fetchData, { deep: true })
                 ({{ yen(m.totals.sales_cash) }}/{{ yen(m.totals.sales_card) }})</td>
               <td class="text-end">{{ m.totals.guest_count }}</td>
               <td class="text-end">{{ yen(m.totals.avg_spend) }}</td>
-              <td class="text-end">{{ yen(m.totals.labor_cost) }}</td>
+              <td v-if="false" class="text-end">{{ yen(m.totals.labor_cost) }}</td>
               <td class="text-end" :class="{ 'fw-semibold': true, 'text-danger': m.totals.operating_profit < 0 }">
                 {{ yen(m.totals.operating_profit) }}
               </td>

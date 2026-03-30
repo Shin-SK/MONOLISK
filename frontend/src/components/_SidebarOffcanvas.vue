@@ -36,7 +36,7 @@ async function logout () {
         <button class="btn-close" data-bs-dismiss="offcanvas" />
       </div>
 
-      <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
+      <aside class="aside offcanvas-body d-flex flex-column justify-content-between">
         <!-- -------- ナビ ---------- -->
         <nav class="nav flex-column h-100">
 

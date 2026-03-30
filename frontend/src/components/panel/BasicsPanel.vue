@@ -82,6 +82,7 @@ const emit = defineEmits([
   'chooseCourse','clearCustomer','searchCustomer','pickCustomer',
   'applySet','save','switchPanel','update-times',
   'customers-changed',  // 案B: 顧客リスト変更を親に通知
+  'edit-customer',      // 顧客情報編集（customerIdを親に通知）
 ])
 
 /* ===== 席種・テーブル ===== */
@@ -775,6 +776,12 @@ const customerDisplayName = computed(() => {
   return props.customer.alias || props.customer.full_name || `#${props.customer.id}`
 })
 
+// 選択中の顧客マスタID（編集ボタン用）
+const editableCustomerId = computed(() => {
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
+  return c?.id ?? null
+})
+
 // 代表顧客（優先順位：props.customer → billCustomers[0] → null）
 const representativeCustomer = computed(() => {
   // 1. 顧客マスタが選択されている場合はそれを優先
@@ -844,6 +851,33 @@ const customerMemo = computed(() => {
   const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
   if (!c?.memo) return 'メモなし'
   return c.memo
+})
+
+const customerPhone = computed(() => {
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
+  return c?.phone || '-'
+})
+
+const customerReceiptName = computed(() => {
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
+  return c?.receipt_name || '-'
+})
+
+const customerAlias = computed(() => {
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
+  return c?.alias || '-'
+})
+
+const customerTags = computed(() => {
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
+  if (!c?.tags?.length) return null
+  return c.tags
+})
+
+const customerBottle = computed(() => {
+  const c = selectedBillCustomer.value || selectedCustomer.value || props.customer
+  if (!c?.has_bottle) return null
+  return { shelf: c.bottle_shelf || '-', memo: c.bottle_memo || '' }
 })
 
 /* 追加（黄色ボタン） */
@@ -1309,7 +1343,7 @@ function customLabel(customer) {
               </button>
             </div>
             <button class="btn btn-outline-danger btn-sm df-center gap-1 w-100 mt-2" @click="beginEditCustomer">
-              <IconPencil />編集
+              <IconPencil />顧客変更
             </button>
           </div>
         </div>
@@ -1403,7 +1437,7 @@ function customLabel(customer) {
                   type="button"
                   @click="beginEditReplaceCustomer(bc.id)"
                 >
-                  編集
+                  差し替え
                 </button>
                 <button
                   v-else
@@ -1519,28 +1553,63 @@ function customLabel(customer) {
         <dl class="row g-2 mb-0">
           <dt class="col-4 text-end">名前</dt>
           <dd class="col-8 fw-bold">{{ customerDisplayName }}</dd>
-          
+
           <dt class="col-4 text-end">フルネーム</dt>
           <dd class="col-8">{{ customerFullName }}</dd>
-          
+
+          <dt class="col-4 text-end">あだ名</dt>
+          <dd class="col-8">{{ customerAlias }}</dd>
+
+          <dt class="col-4 text-end">電話番号</dt>
+          <dd class="col-8">{{ customerPhone }}</dd>
+
           <dt class="col-4 text-end">誕生日</dt>
           <dd class="col-8">{{ customerBirthday }}</dd>
-          
+
+          <dt class="col-4 text-end">領収書宛名</dt>
+          <dd class="col-8">{{ customerReceiptName }}</dd>
+
+          <template v-if="customerTags">
+            <dt class="col-4 text-end">タグ</dt>
+            <dd class="col-8">
+              <span v-for="tag in customerTags" :key="tag.id" class="badge me-1" :style="{ backgroundColor: tag.color || '#808080' }">{{ tag.name }}</span>
+            </dd>
+          </template>
+
+          <template v-if="customerBottle">
+            <dt class="col-4 text-end">ボトル棚</dt>
+            <dd class="col-8">{{ customerBottle.shelf }}</dd>
+            <template v-if="customerBottle.memo">
+              <dt class="col-4 text-end">ボトルメモ</dt>
+              <dd class="col-8">{{ customerBottle.memo }}</dd>
+            </template>
+          </template>
+
           <dt class="col-4 text-end">前回の<br>ご注文</dt>
           <dd class="col-8">{{ customerLastOrder }}</dd>
-          
+
           <dt class="col-4 text-end">前回の<br>来店日時</dt>
           <dd class="col-8">{{ customerLastVisit }}</dd>
-          
+
           <dt class="col-4 text-end">前回の<br>キャスト</dt>
           <dd class="col-8">{{ customerLastCast }}</dd>
-          
+
           <dd class="col-12">
             <p class="mx-2 mb-0 bg-white rounded p-3"  style="min-height: 80px; white-space: pre-wrap;">
               {{ customerMemo }}
             </p>
           </dd>
         </dl>
+        <div class="text-center mt-3">
+          <button
+            v-if="editableCustomerId"
+            class="btn btn-outline-primary btn-sm w-100"
+            type="button"
+            @click="emit('edit-customer', editableCustomerId)"
+          >
+            顧客情報を編集
+          </button>
+        </div>
       </div>
 
     </div>

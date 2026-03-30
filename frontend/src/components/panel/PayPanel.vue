@@ -53,8 +53,10 @@ const props = defineProps({
   substituteItems: { type: Array, default: () => [] },
   // パネル管理
   pane: { type: String, default: 'base' },
-  // （互換）単位指定：現行の“ステップ割引”では Admin 側ルールを使うため未使用だが props として残す
+  // （互換）単位指定：現行の”ステップ割引”では Admin 側ルールを使うため未使用だが props として残す
   dosukoiDiscountUnit: { type: Number, default: 1000 },
+  // 領収書宛名（親から渡す）
+  receiptName: { type: String, default: '' },
 })
 
 const emit = defineEmits([
@@ -538,6 +540,12 @@ const settled = computed({
   get: () => toNum(props.settledTotal),
   set: (v) => { dirtyTotal.value = true; emit('update:settledTotal', toNum(v)) }
 })
+
+const showReceipt = ref(false)
+/* 領収書（最終確認セクション用） */
+const receiptTotal = computed(() => toNum(settled.value) || toNum(props.displayGrandTotal) || 0)
+const receiptExTax = computed(() => Math.ceil(receiptTotal.value / 1.1))
+const receiptTax   = computed(() => receiptTotal.value - receiptExTax.value)
 const paidCashModel = computed({
   get: () => toNum(props.paidCash),
   set: (v) => emit('update:paidCash', toNum(v))
@@ -1182,8 +1190,33 @@ function removeSavedDiscount(index) {
       <textarea class="form-control" rows="3" v-model="memoLocal" placeholder="備考メモ"></textarea>
     </div>
 
+    <!-- 領収書 -->
+    <div v-if="receiptName || receiptTotal > 0" class="coupon mb-4">
+      <label
+        class="form-label fw-bold d-flex align-items-center justify-content-between w-100 bg-light p-2 rounded"
+        role="button"
+        :aria-expanded="showReceipt"
+        @click="showReceipt = !showReceipt"
+      >
+        領収書
+        <IconChevronUp :class="{'rotate-180': showReceipt}" :size="20" />
+      </label>
+      <div class="wrap collapse-body mt-2" v-show="showReceipt">
+        <div class="row g-1">
+          <div class="col-4 text-muted">宛名</div>
+          <div class="col-8 text-end fw-bold">{{ receiptName || '-' }}</div>
+          <div class="col-4 text-muted">領収金額</div>
+          <div class="col-8 text-end">¥{{ receiptTotal.toLocaleString() }}</div>
+          <div class="col-4 text-muted">税抜金額</div>
+          <div class="col-8 text-end">¥{{ receiptExTax.toLocaleString() }}</div>
+          <div class="col-4 text-muted">消費税(10%)</div>
+          <div class="col-8 text-end">¥{{ receiptTax.toLocaleString() }}</div>
+        </div>
+      </div>
+    </div>
+
     <div class="last-check">
-      <div class="fw-bold df-center text-danger">最終確認</div>
+      <div class="bg-danger fw-bold df-center text-white mb-3 rounded py-1">最終確認</div>
     <div class="row g-2">
       <div class="col-3">会計金額</div>
       <div class="col-9 text-end fw-bold">¥{{ discountedTotal.toLocaleString() }}</div>

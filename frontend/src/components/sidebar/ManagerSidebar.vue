@@ -50,11 +50,11 @@ async function logout () {
         <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="閉じる"></button>
       </div>
 
-      <aside class="aside offcanvas-body d-flex flex-column justify-content-between vh-100">
+      <aside class="aside offcanvas-body d-flex flex-column justify-content-between">
         <!-- -------- ナビ ---------- -->
         <nav class="nav flex-column">
 
-          <div class="d-flex flex-column mb-4 pb-4 border-bottom gap-3">
+          <div class="d-flex flex-column mb-3 pb-3 border-bottom gap-3">
             <!-- ダッシュボード -->
             <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-dashboard'})">
               <IconHome /><span class="lh-1">ホーム</span>
@@ -87,11 +87,11 @@ async function logout () {
             顧客情報
           </a>
 
-          <!-- 給与 -->
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'Payroll'})">
+          <!-- 給与（一時非表示） -->
+          <a class="nav-link bg-white d-none" href="#" @click.prevent="nav({name:'Payroll'})">
             給与計算
           </a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'PayrollRuns'})">
+          <a class="nav-link bg-white d-none" href="#" @click.prevent="nav({name:'PayrollRuns'})">
             給与締め・出力
           </a>
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-excel-export'})">
@@ -103,8 +103,8 @@ async function logout () {
             設定
           </a>
 
-          <!-- 操作マニュアル -->
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-manual'})">
+          <!-- 操作マニュアル（一時非表示） -->
+          <a class="nav-link bg-white d-none" href="#" @click.prevent="nav({name:'mng-manual'})">
             操作マニュアル
           </a>
 

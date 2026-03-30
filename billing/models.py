@@ -498,7 +498,8 @@ class Customer(models.Model):
     birthday   = models.DateField(null=True, blank=True)
     photo      = models.ImageField(upload_to='cust/', null=True, blank=True)
     memo       = models.TextField(blank=True)
-    
+    receipt_name = models.CharField(max_length=200, blank=True, verbose_name='領収書宛名')
+
     # ★ タグ（複数可）
     tags = models.ManyToManyField(
         'billing.CustomerTag',

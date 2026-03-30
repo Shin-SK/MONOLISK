@@ -111,7 +111,8 @@ watch(() => props.storeIds, fetchData, { deep: true })
             </div>
           </div>
         </div>
-        <div class="col-12 col-md-4">
+        <!-- 人件費（一時非表示：設計変更中） -->
+        <div v-if="false" class="col-12 col-md-4">
           <div class="box">
             <div class="head">
               人件費
@@ -131,7 +132,8 @@ watch(() => props.storeIds, fetchData, { deep: true })
               <th class="text-end">現金</th>
               <th class="text-end">カード</th>
               <th class="text-end">売上（現金/カード）</th>
-              <th class="text-end">キャスト</th>
+              <!-- 人件費（一時非表示） -->
+              <th v-if="false" class="text-end">キャスト</th>
               <th class="text-end">粗利益</th>
             </tr>
           </thead>
@@ -151,7 +153,7 @@ watch(() => props.storeIds, fetchData, { deep: true })
                 <span class="fw-bold">{{ yen(d.sales_total) }}</span>
                 ({{ yen(d.sales_cash) }}/{{ yen(d.sales_card) }})
               </td>
-              <td class="text-end">
+              <td v-if="false" class="text-end">
                 {{ yen(d.cast_labor) }}
               </td>
               <td
@@ -176,7 +178,7 @@ watch(() => props.storeIds, fetchData, { deep: true })
               <td class="text-end">
                 {{ yen(total.sales_total) }}({{ yen(total.sales_card) }}/{{ yen(total.sales_card) }})
               </td>
-              <td class="text-end">
+              <td v-if="false" class="text-end">
                 {{ yen(total.cast_labor) }}
               </td>
               <td class="text-end">

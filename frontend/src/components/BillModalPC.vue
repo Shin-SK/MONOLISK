@@ -534,8 +534,10 @@ const isOrderTab = computed(() => rightTab.value === 'order')
 const activeCustId  = ref(null)
 const showCustModal = ref(false)
 function openCustModal (id = null) {
+  console.log('[BillModalPC] openCustModal called', id)
   activeCustId.value = asId(id)
   showCustModal.value = true
+  console.log('[BillModalPC] showCustModal =', showCustModal.value, 'activeCustId =', activeCustId.value)
 }
 function clearCustomer(target) {
   const id = asId(target)
@@ -812,10 +814,36 @@ const displayNameRef = ref(props.bill?.display_name ?? '')
 watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
 watch(() => props.bill?.display_name, v => { displayNameRef.value = v ?? '' })
 
+// 伝票の顧客をキャッシュに読み込む
+watch(() => billCustomersComposable.customers.value, async (bcs) => {
+  if (!bcs?.length) return
+  const custId = bcs[0]?.customer_id ?? bcs[0]?.customer
+  if (custId && !customers.cache.get(custId)) {
+    await customers.fetchOne(custId)
+  }
+}, { immediate: true })
+
+/* 領収書補助 */
+const receiptNameForBill = computed(() => {
+  const bcs = billCustomersComposable.customers.value || []
+  if (!bcs.length) return ''
+  const custId = bcs[0].customer_id ?? bcs[0].customer
+  if (!custId) return ''
+  const cust = customers.cache.get(custId)
+  if (!cust) return ''
+  return cust.receipt_name || cust.full_name || ''
+})
+const receiptTotal = computed(() => Number(targetTotal.value) || 0)
+const receiptExTax = computed(() => Math.ceil(receiptTotal.value / 1.1))
+const receiptTax   = computed(() => receiptTotal.value - receiptExTax.value)
+
 /* 差額等 */
 const displayGrandTotal = computed(() => bill.value?.grand_total ?? 0)
 const paidTotal   = computed(() => (form.paid_cash || 0) + (form.paid_card || 0))
-const targetTotal = computed(() => form.settled_total || displayGrandTotal.value)
+const targetTotal = computed(() => {
+  const s = form.settled_total
+  return (s != null && s !== '' && Number.isFinite(Number(s))) ? Number(s) : displayGrandTotal.value
+})
 const diff        = computed(() => paidTotal.value - targetTotal.value)
 const overPay     = computed(() => Math.max(0, diff.value))
 const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= targetTotal.value)
@@ -1114,6 +1142,7 @@ watch(freeCastIds, list => {
               @jumpToBill="rightTab = 'bill'"
               @applySet="onApplySet"
               @save="save"
+              @edit-customer="openCustModal"
             />
           </div>
         </div>
@@ -1211,6 +1240,7 @@ watch(freeCastIds, list => {
             :discount-rule-id="props.bill.discount_rule"
             :store-slug="storeSlug"
             :dosukoi-discount-unit="1000"
+            :receipt-name="receiptNameForBill"
             ref="payRefPc"
 
             @update:settledTotal="v => (form.settled_total = v)"
@@ -1231,6 +1261,14 @@ watch(freeCastIds, list => {
       </div>
 
     </div>
+
+    <!-- 顧客情報編集モーダル -->
+    <CustomerModal
+      v-model="showCustModal"
+      :customer-id="activeCustId"
+      @picked="handleCustPicked"
+      @saved="handleCustSaved"
+    />
   </BaseModal>
 </template>
 
