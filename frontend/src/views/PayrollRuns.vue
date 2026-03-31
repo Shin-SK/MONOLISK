@@ -190,7 +190,10 @@ onMounted(loadPreview);
                 <td class="fw-bold">{{ row.stage_name }}</td>
                 <td class="text-end">{{ minToHours(row.worked_min) }}</td>
                 <td class="text-end">{{ yen(row.hourly_pay) }}</td>
-                <td class="text-end">{{ yen(row.sales_total || 0) }}</td>
+                <td class="text-end">
+                  {{ yen(row.sales_total || 0) }}
+                  <span v-if="row.is_manual_sales" class="badge bg-info ms-1" style="font-size:0.65em">手入力</span>
+                </td>
                 <td class="text-end">{{ yen(row.commission) }}</td>
                 <td class="text-end fw-bold">{{ yen(row.total) }}</td>
                 <td class="text-center">

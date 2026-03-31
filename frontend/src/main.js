@@ -4,7 +4,7 @@ import { createPinia } from 'pinia'
 import App    from './App.vue'
 import router from './router'
 import { setupPWA, restoreRouteIfNeeded } from '@/plugins/pwa'
-setupPWA()
+if (!import.meta.env.DEV) setupPWA()
 
 import * as bootstrap from 'bootstrap'
 window.bootstrap = bootstrap
@@ -47,13 +47,15 @@ app.component('Avatar', Avatar)
   app.mount('#app')
 
   // 起動時にバージョンチェック → 新版があれば通知バナーを表示（reloadしない）
-  setupUpdateWatcher()
+  if (!import.meta.env.DEV) setupUpdateWatcher()
 
   // スプラッシュ終了（通常は500msの余白）
   scheduleFinishSplash(500)
 })()
 
 // BFCache対策: 戻るボタンでキャッシュから復元された時もバージョンチェック（通知のみ）
-window.addEventListener('pageshow', (event) => {
-  if (event.persisted) setupUpdateWatcher()
-})
+if (!import.meta.env.DEV) {
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) setupUpdateWatcher()
+  })
+}

@@ -18,6 +18,41 @@ const form = reactive({
 const saving = ref(false)
 const msg = ref('')
 
+/* ── パスワード変更 ─────────────────────── */
+const pw = reactive({ old_password: '', new_password1: '', new_password2: '' })
+const pwSaving = ref(false)
+const pwMsg = ref('')
+
+async function changePassword() {
+  if (pw.new_password1 !== pw.new_password2) {
+    pwMsg.value = '新しいパスワードが一致しません'
+    return
+  }
+  pwSaving.value = true
+  pwMsg.value = ''
+  try {
+    await api.post('dj-rest-auth/password/change/', {
+      old_password: pw.old_password,
+      new_password1: pw.new_password1,
+      new_password2: pw.new_password2,
+    }, { cache: false })
+    alert('パスワードを変更しました')
+    pw.old_password = ''
+    pw.new_password1 = ''
+    pw.new_password2 = ''
+  } catch (e) {
+    const d = e?.response?.data
+    if (d) {
+      const msgs = Object.values(d).flat()
+      alert(msgs.join(' / ') || 'パスワード変更に失敗しました')
+    } else {
+      alert(e?.message || 'パスワード変更に失敗しました')
+    }
+  } finally {
+    pwSaving.value = false
+  }
+}
+
 /* ── アバター ─────────────────────────── */
 const previewUrl = ref('')       // ローカルプレビューURL
 const avatarFile = ref(null)     // 選択したFile
@@ -72,10 +107,10 @@ async function save() {
     }
 
     await meStore.fetchMe?.()
-    msg.value = '保存しました'
+    alert('保存しました')
   } catch (e) {
     const d = e?.response?.data
-    msg.value = d ? JSON.stringify(d) : (e?.message || '保存に失敗しました')
+    alert(d ? JSON.stringify(d) : (e?.message || '保存に失敗しました'))
   } finally {
     saving.value = false
   }
@@ -137,6 +172,30 @@ onMounted(load)
         {{ saving ? '保存中…' : '保存' }}
       </button>
       <span class="text-muted">{{ msg }}</span>
+    </div>
+
+    <!-- パスワード変更 -->
+    <hr class="my-5" />
+    <h5 class="fw-bold mb-3">パスワード変更</h5>
+    <div class="row g-3">
+      <div class="col-12">
+        <label class="form-label small text-muted">現在のパスワード</label>
+        <input v-model="pw.old_password" type="password" class="form-control" autocomplete="current-password" />
+      </div>
+      <div class="col-12">
+        <label class="form-label small text-muted">新しいパスワード</label>
+        <input v-model="pw.new_password1" type="password" class="form-control" autocomplete="new-password" />
+      </div>
+      <div class="col-12">
+        <label class="form-label small text-muted">新しいパスワード（確認）</label>
+        <input v-model="pw.new_password2" type="password" class="form-control" autocomplete="new-password" />
+      </div>
+    </div>
+    <div class="mt-4 w-100">
+      <button class="btn btn-sm btn-primary w-100" :disabled="pwSaving || !pw.old_password || !pw.new_password1 || !pw.new_password2" @click="changePassword">
+        {{ pwSaving ? '変更中…' : 'パスワードを変更' }}
+      </button>
+      <span class="text-muted">{{ pwMsg }}</span>
     </div>
   </div>
 

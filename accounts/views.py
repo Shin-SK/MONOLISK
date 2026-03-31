@@ -1,9 +1,15 @@
 # accounts/views.py
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+from django.core.mail import send_mail
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.conf import settings
+from django.utils import timezone
 from billing.models import Store
 from accounts.utils import choose_current_store_id
 from .caps import get_caps_for
@@ -72,7 +78,11 @@ def _me_payload(request):
     return {
         'id': u.id,
         'username': u.get_username(),
-        'name': getattr(u, 'display_name', None) or u.get_full_name() or u.get_username(),
+        'first_name': u.first_name,
+        'last_name': u.last_name,
+        'name': getattr(u, 'display_name', None)
+               or (f'{u.last_name} {u.first_name}'.strip() if (u.last_name or u.first_name) else '')
+               or u.get_username(),
         'is_superuser': u.is_superuser,
         'stores': store_ids,
         'memberships': memberships,
@@ -118,3 +128,62 @@ def debug_set_role(request):
 
     # ★ 直接ペイロードを返す（me()は呼ばない）
     return Response(_me_payload(request))
+
+
+# ---------- お問い合わせ ---------- #
+class ContactThrottle(AnonRateThrottle):
+    rate = '5/min'
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([ContactThrottle])
+def contact(request):
+    name = (request.data.get('name') or '').strip()
+    email = (request.data.get('email') or '').strip()
+    body = (request.data.get('body') or '').strip()
+    honeypot = (request.data.get('website') or '').strip()
+
+    # honeypot
+    if honeypot:
+        return Response({'ok': True})
+
+    # バリデーション
+    errors = {}
+    if not name:
+        errors['name'] = 'お名前を入力してください'
+    if not email:
+        errors['email'] = 'メールアドレスを入力してください'
+    else:
+        try:
+            validate_email(email)
+        except DjangoValidationError:
+            errors['email'] = '正しいメールアドレスを入力してください'
+    if not body:
+        errors['body'] = 'お問い合わせ内容を入力してください'
+    if errors:
+        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # メール本文
+    now = timezone.now().strftime('%Y-%m-%d %H:%M:%S %Z')
+    ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() or request.META.get('REMOTE_ADDR', '')
+    ua = request.META.get('HTTP_USER_AGENT', '')
+
+    message = (
+        f"お名前: {name}\n"
+        f"メールアドレス: {email}\n\n"
+        f"お問い合わせ内容:\n{body}\n\n"
+        f"---\n"
+        f"送信日時: {now}\n"
+        f"IP: {ip}\n"
+        f"User-Agent: {ua}\n"
+    )
+
+    send_mail(
+        subject='【MONOLISK お問い合わせ】',
+        message=message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=['info@monolisk-app.com'],
+        fail_silently=False,
+    )
+
+    return Response({'ok': True}, status=status.HTTP_201_CREATED)

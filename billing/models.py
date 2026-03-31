@@ -1750,7 +1750,15 @@ class CastGoal(models.Model):
         s, e = self.period_bounds(on_date)
 
         if self.metric == self.METRIC_REVENUE:
-            # 担当売上 = Σ(price * qty)
+            # 手入力値（CastManualSubtotal）があればそちらを優先
+            manual_total = CastManualSubtotal.objects.filter(
+                store=self.cast.store,
+                cast_id=self.cast_id,
+                work_date__range=(s, e),
+            ).aggregate(x=Sum('manual_subtotal'))['x']
+            if manual_total is not None:
+                return int(manual_total)
+            # なければ従来の担当売上 = Σ(price * qty)
             return int(BillItem.objects.filter(
                 served_by_cast_id=self.cast_id,
                 bill__closed_at__date__range=(s, e),
@@ -2001,6 +2009,38 @@ class PayrollRunBackRow(models.Model):
 
     def __str__(self):
         return f'{self.cast.stage_name} - Bill#{self.bill_id}: ¥{self.amount:,}'
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# キャスト売上（手入力）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class CastManualSubtotal(models.Model):
+    """キャスト売上（手入力）— 日別×キャスト別"""
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name='cast_manual_subtotals')
+    cast = models.ForeignKey(Cast, on_delete=models.CASCADE, related_name='manual_subtotals')
+    work_date = models.DateField(verbose_name='営業日')
+    manual_subtotal = models.IntegerField(default=0, verbose_name='キャスト売上（手入力）')
+    memo = models.TextField(blank=True, default='', verbose_name='メモ')
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        verbose_name='更新者'
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新日時')
+
+    class Meta:
+        verbose_name = 'キャスト売上（手入力）'
+        verbose_name_plural = verbose_name
+        constraints = [
+            models.UniqueConstraint(fields=['store', 'cast', 'work_date'], name='uniq_castmanualsubtotal_store_cast_date'),
+        ]
+        ordering = ['-work_date', 'cast__stage_name']
+        indexes = [
+            models.Index(fields=['store', 'work_date']),
+        ]
+
+    def __str__(self):
+        return f'{self.cast.stage_name} {self.work_date} ¥{self.manual_subtotal:,}'
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

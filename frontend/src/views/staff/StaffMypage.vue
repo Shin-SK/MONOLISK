@@ -281,20 +281,25 @@ onMounted(async () => {
       <div v-if="activeTab === 'home'"
         class="wrap">
 
+        <!-- 経費（一時非表示） -->
+        <!--
         <div class="home-keihi mb-5">
           <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
             <IconCalendarDollar />経費
           </h2>
           <PersonnelExpensesSection v-if="me" :subject-user-id="me.id" />
         </div>
+        -->
 
-        <!-- ランキング -->
+        <!-- ランキング（一時非表示） -->
+        <!--
         <div class="rank mb-5">
           <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
             <IconCrown />ランキング
           </h2>
           <RankingBlock :rows="monthlyRows" />
         </div>
+        -->
         <!-- ▼ お店からのお知らせ -->
         <div class="notice mt-5">
           <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">

@@ -137,8 +137,10 @@ const routes = [
       { path: 'pl', name:'mng-pl',  component: () => import('@/views/PLPage.vue'), meta: { title: '収支分析', rolesAny: ['manager','owner','superuser'], requiresAuth:true } },
 
       { path: 'cast-sales', name:'mng-cast-sales', component: () => import('@/views/CastSalesList.vue'),   meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
+      { path: 'cast-manual-subtotal', name:'mng-cast-manual-subtotal', component: () => import('@/views/CastManualSubtotal.vue'), meta: { title: 'キャスト売上（手入力）', requiresAuth: true, adminOnly: true } },
       { path: 'cast-sales/:id',    component: () => import('@/views/CastSalesDetail.vue'), props: true, name: 'cast-sales-detail', meta: { title: 'キャスト売上', requiresAuth: true, adminOnly: true } },
-      { path: 'cast-shift', name:'mng-cast-shift' ,component: () => import('@/views/CastShiftList.vue'),   props: true, meta: { title: 'シフト管理' } },
+      { path: 'cast-shift', name:'mng-cast-shift' ,component: () => import('@/views/CastShiftList.vue'),   props: true, meta: { title: '出退勤' } },
+      { path: 'cast-shift-calendar', name:'mng-cast-shift-calendar', component: () => import('@/views/CastShiftCalendar.vue'), meta: { title: 'シフト一覧' } },
       { path: 'cast-shift/:id(\\d+)/shifts', name:'mng-cast-shift-detail', component: () => import('@/views/CastShiftPage.vue'), props: true , meta: { title: 'シフト管理' } },
 
       { path: 'ranking', name:'mng-ranking',  component: () => import('@/views/CastRanking.vue'),        props: true, meta: { title: 'ランキング',    requiresAuth: true, adminOnly: true } },
@@ -213,6 +215,9 @@ const routes = [
 
   // ---------- その他認証系 ---------- //
   { path: '/login', name: 'login', component: () => import('@/views/Login.vue') },
+  { path: '/contact', name: 'contact', component: () => import('@/views/Contact.vue') },
+  { path: '/password-reset', name: 'password-reset', component: () => import('@/views/PasswordReset.vue') },
+  { path: '/password-reset/confirm', name: 'password-reset-confirm', component: () => import('@/views/PasswordResetConfirm.vue') },
   { path: '/casts',     redirect: { name: 'settings-cast-list' } },
   { path: '/casts/new', redirect: { name: 'settings-cast-new' } },
 

@@ -7,6 +7,7 @@ from .models import (
     CustomerTag, BillTag,
     PersonnelExpenseCategory, PersonnelExpense, PersonnelExpenseSettlementEvent,
     BillSubstituteItem,
+    CastManualSubtotal,
 )
 from dj_rest_auth.serializers import UserDetailsSerializer
 from cloudinary.utils import cloudinary_url
@@ -2070,6 +2071,19 @@ class PersonnelExpenseSettlementEventSerializer(serializers.ModelSerializer):
         if expense.settled_amount >= expense.amount:
             expense.status = PersonnelExpense.ExpenseStatus.SETTLED
             expense.save(update_fields=['status'])
-        
+
         return event
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# キャスト売上（手入力）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class CastManualSubtotalSerializer(serializers.ModelSerializer):
+    cast_name = serializers.CharField(source='cast.stage_name', read_only=True)
+
+    class Meta:
+        model = CastManualSubtotal
+        fields = ['id', 'store', 'cast', 'cast_name', 'work_date', 'manual_subtotal', 'memo', 'updated_by', 'updated_at']
+        read_only_fields = ['id', 'store', 'updated_by', 'updated_at']
 

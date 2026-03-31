@@ -26,8 +26,8 @@ const DEFAULT_SKIP_AUTH = [
   'dj-rest-auth/logout',
   'dj-rest-auth/registration',
   'auth/registration',
-  'dj-rest-auth/password',
   'dj-rest-auth/password/reset',
+  'accounts/contact',
 ]
 
 // Store 非依存（X-Store-Id を付けない）
@@ -38,10 +38,10 @@ const STORE_INDEPENDENT_PREFIXES = [
   'dj-rest-auth/logout',
   'dj-rest-auth/registration',
   'auth/registration',
-  'dj-rest-auth/password',
   'dj-rest-auth/password/reset',
   'dj-rest-auth/user',
   'billing/stores/my',
+  'accounts/contact',
 ]
 
 // 'api/dj-rest-auth/login/' → 'dj-rest-auth/login'

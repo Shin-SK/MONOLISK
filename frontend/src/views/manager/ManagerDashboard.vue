@@ -16,7 +16,7 @@ import { useProfile } from '@/composables/useProfile'
 
 const user = useUser()
 const route = useRoute()
-const { avatarURL } = useProfile()
+const { avatarURL, displayName } = useProfile()
 
 /* storeId を localStorage から読む */
 const storeId = computed(() => {
@@ -27,7 +27,7 @@ const storeId = computed(() => {
 
 
 const userName = computed(() => {
-  return user.me?.username || user.me?.email || 'ユーザー'
+  return displayName.value || user.me?.email || 'ユーザー'
 })
 
 const showOpenTip = ref(false)

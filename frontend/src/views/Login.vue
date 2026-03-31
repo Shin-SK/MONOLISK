@@ -77,7 +77,17 @@ const submit = async () => {
         <button type="submit" class="btn btn-primary w-100">
           ログイン
         </button>
+
+        <div class="mt-3 text-center">
+          <router-link to="/password-reset" class="text-decoration-none small text-muted">
+            パスワードを忘れた方
+          </router-link>
+        </div>
       </form>
+    </div>
+
+    <div class="text-center small text-muted">
+      お困りの方は <router-link to="/contact" class="text-decoration-none">お問い合わせフォーム</router-link> からご連絡ください
     </div>
   </div>
 </template>

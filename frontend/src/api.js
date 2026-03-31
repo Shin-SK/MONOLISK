@@ -1047,6 +1047,18 @@ export const addSubstituteItem = (billId, payload) =>
 export const deleteSubstituteItem = (billId, itemId) =>
   api.delete(`billing/bills/${billId}/substitute-items/${itemId}/`)
 
+// ───────── キャスト売上（手入力） ─────────
+
+export const fetchCastManualSubtotals = (dateStr) =>
+  api.get('billing/cast-manual-subtotals/', { params: { date: dateStr } }).then(r => r.data)
+
+export const fetchCastManualSubtotalsRange = (from, to) =>
+  api.get('billing/cast-manual-subtotals/', { params: { from, to } }).then(r => r.data)
+
+export const saveCastManualSubtotals = (rows) =>
+  api.post('billing/cast-manual-subtotals/', rows).then(r => r.data)
+
+
 if (import.meta.env.DEV) window.__API__ = api
 
 

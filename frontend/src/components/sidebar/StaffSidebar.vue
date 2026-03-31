@@ -81,6 +81,13 @@ async function logout() {
           </template>
         </div>
 
+        <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'staff-profile'})">
+          アカウント設定
+        </a>
+        <a class="nav-link bg-white mb-2" href="#" @click.prevent="nav('/contact')">
+          お問い合わせ
+        </a>
+
         <div class="footer d-flex flex-column gap-2">
           <div class="d-flex justify-content-between align-items-center">
             <div class="d-flex align-items-center gap-2">

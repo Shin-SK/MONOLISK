@@ -200,11 +200,25 @@ REST_AUTH = {
     "LOGIN_SERIALIZER":        "accounts.serializers.LoginWithStoreSerializer",
     "USER_DETAILS_SERIALIZER": "billing.serializers_user_details.UserDetailsWithAvatarSerializer",
     "TOKEN_SERIALIZER":        "accounts.serializers.TokenWithStoreSerializer",
+    "PASSWORD_RESET_SERIALIZER": "accounts.serializers_password.FrontendPasswordResetSerializer",
 }
 ACCOUNT_LOGIN_METHODS     = ["username"]
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
 ACCOUNT_EMAIL_VERIFICATION = "none"
 REST_USE_JWT = False
+
+# ── Email ──────────────────────────────────────────────────────────
+EMAIL_BACKEND  = "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST     = env("EMAIL_HOST", default="localhost")
+EMAIL_PORT     = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER     = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS  = env.bool("EMAIL_USE_TLS", default=False)
+EMAIL_USE_SSL  = env.bool("EMAIL_USE_SSL", default=False)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@monolisk-app.com")
+
+# パスワードリセットメールのリンク先（フロントエンドURL）
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (

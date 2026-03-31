@@ -19,6 +19,7 @@ from .views import (
      BillExcelDownloadView,
      DailyZipDownloadView,
      DailyReportDownloadView,
+     CastManualSubtotalView,
 )
 
 from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
@@ -100,6 +101,9 @@ urlpatterns = [
     path("bills/<int:bill_pk>/excel/", BillExcelDownloadView.as_view(), name="bill-excel"),
     path("excel/daily-zip/", DailyZipDownloadView.as_view(), name="daily-zip"),
     path("excel/daily-report/", DailyReportDownloadView.as_view(), name="daily-report"),
+
+    # ★キャスト売上（手入力）
+    path("cast-manual-subtotals/", CastManualSubtotalView.as_view(), name="cast-manual-subtotals"),
 
     path('kds/tickets/', KDSTicketList.as_view(), name='kds_ticket_list'),
     path('kds/tickets/<int:pk>/ack/', KDSTicketAck.as_view(), name='kds_ticket_ack'),

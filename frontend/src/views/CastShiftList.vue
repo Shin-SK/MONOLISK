@@ -8,154 +8,140 @@ import {
   createCastShift,
   castCheckIn,
   castCheckOut,
-  deleteCastShift,
   getBillingCasts
 } from '@/api'
 
 const todayISO = dayjs().format('YYYY-MM-DD')
-const rows = ref([])   // [{ cast, shift|null }]
+const DAY_LABELS = ['月','火','水','木','金','土','日']
+const todayLabel = `${dayjs().format('M月D日')} (${DAY_LABELS[dayjs().isoWeekday?.() - 1] || dayjs().format('ddd')})`
 
-/* ---------- データロード ---------- */
+const rows = ref([])
+const loading = ref(false)
+
 async function load () {
-  const [casts, shifts] = await Promise.all([
-    // ★ アバター反映のため常に最新を取得
-    getBillingCasts({ _ts: Date.now() }, { cache: false }),
-    fetchCastShifts({ date: todayISO })
-  ])
+  loading.value = true
+  try {
+    const [casts, shifts] = await Promise.all([
+      getBillingCasts({ _ts: Date.now() }, { cache: false }),
+      fetchCastShifts({ from: todayISO, to: todayISO })
+    ])
 
-  /* ☆ 今日表示する条件 ☆
-     1) plan_start が今日 ＆ clock_out が null  (予定 or 勤務中)
-     2) clock_in が今日   ＆ clock_out が null  (突発勤務中)
-  */
-  const active = shifts.filter(s => {
-    const plannedToday = s.plan_start && dayjs(s.plan_start).isSame(todayISO, 'day')
-    const startedToday = s.clock_in    && dayjs(s.clock_in ).isSame(todayISO, 'day')
-    return !s.clock_out && (plannedToday || startedToday)
-  })
+    const shiftMap = {}
+    for (const s of shifts) {
+      const cid = s.cast?.id
+      if (!cid) continue
+      if (!shiftMap[cid]) shiftMap[cid] = []
+      shiftMap[cid].push(s)
+    }
 
-  const shiftMap = Object.fromEntries(active.map(s => [s.cast.id, s]))
-
-  rows.value = casts
-    .map(c => ({ cast: c, shift: shiftMap[c.id] || null }))
-    .sort((a, b) => {
-      const t1 = a.shift?.plan_start || '9999-12-31'
-      const t2 = b.shift?.plan_start || '9999-12-31'
-      return t1.localeCompare(t2)
+    rows.value = casts.map(c => {
+      const all = shiftMap[c.id] || []
+      const working   = all.find(s => s.clock_in && !s.clock_out)
+      const scheduled = all.find(s => !s.clock_in && !s.clock_out)
+      const done      = all.filter(s => s.clock_out)
+      return {
+        cast: c,
+        activeShift: working || scheduled || null,
+        doneCount: done.length,
+        status: working ? 'working' : scheduled ? 'scheduled' : done.length ? 'done' : 'none'
+      }
+    }).sort((a, b) => {
+      const order = { working: 0, scheduled: 1, none: 2, done: 3 }
+      return (order[a.status] ?? 9) - (order[b.status] ?? 9)
     })
-}
-
-/* ---------- util ---------- */
-const fmtPlan = s => {
-  if (!s || !s.plan_start || !s.plan_end) return '–'
-  return `${dayjs(s.plan_start).format('YYYY/MM/DD HH:mm')} – ${dayjs(s.plan_end).format('HH:mm')}`
-}
-
-/* ---------- API 操作 ---------- */
-async function ensureShift (row) {
-  if (!row.shift) {
-    row.shift = await createCastShift({
-      cast_id : row.cast.id,
-      store_id: row.cast.store,
-    })
+  } finally {
+    loading.value = false
   }
 }
 
-async function checkIn (row) {
-  await ensureShift(row)
-  if (!row.shift.clock_in) {
-    await castCheckIn(row.shift.id)
-    await load()
+const fmtTime = d => d ? dayjs(d).format('HH:mm') : ''
+
+async function doCheckIn (row) {
+  let shift = row.activeShift
+  if (!shift) {
+    shift = await createCastShift({ cast_id: row.cast.id })
   }
+  await castCheckIn(shift.id)
+  await load()
 }
 
-async function checkOut (row) {
-  if (row.shift && !row.shift.clock_out) {
-    if (!window.confirm('退勤しますか？')) return
-    await castCheckOut(row.shift.id)
-    alert('退勤処理が完了しました！')
-    await load()    // clock_out が入ったので除外対象に
-  }
-}
-
-async function removeShift (row) {
-  if (row.shift && confirm('本当に削除しますか？')) {
-    await deleteCastShift(row.shift.id)
-    await load()
-  }
+async function doCheckOut (row) {
+  if (!confirm('退勤しますか？')) return
+  await castCheckOut(row.activeShift.id)
+  await load()
 }
 
 onMounted(load)
 </script>
 
 <template>
-  <div class="mt-4 table-responsive">
-    <table class="table table-bordered table-hover align-middle table-striped">
-      <thead class="table-dark">
-        <tr>
-          <th>キャスト</th>
-          <th>シフト</th>
-          <th>出勤時間</th>
-          <th class="text-end">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="row in rows" :key="row.cast.id">
-          <td>
-            <RouterLink
-              :to="{ name: 'mng-cast-shift-detail', params: { id: row.cast.id } }"
-              class="d-inline-flex align-items-center gap-2 text-decoration-none"
-            >
-              <!-- ★ アバター表示 -->
-              <Avatar :url="row.cast.avatar_url" :alt="row.cast.stage_name" :size="24" />
-              <span>{{ row.cast.stage_name }}</span>
+  <div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4 class="fw-bold mb-0">
+        出退勤
+        <small class="text-muted fs-6 ms-2">{{ todayLabel }}</small>
+      </h4>
+      <RouterLink :to="{ name: 'mng-cast-shift-calendar' }" class="btn btn-outline-primary btn-sm">
+        シフト一覧
+      </RouterLink>
+    </div>
+
+    <div class="row g-3">
+      <div v-for="row in rows" :key="row.cast.id" class="col-12 col-sm-6 col-lg-4">
+        <div
+          class="card h-100"
+          :class="{
+            'border-success border-2': row.status === 'working',
+            'border-primary': row.status === 'scheduled',
+          }"
+        >
+          <div class="card-body d-flex align-items-center gap-3">
+            <!-- Avatar + Name -->
+            <RouterLink :to="{ name: 'mng-cast-shift-detail', params: { id: row.cast.id } }">
+              <Avatar :url="row.cast.avatar_url" :alt="row.cast.stage_name" :size="48" />
             </RouterLink>
-          </td>
+            <div class="flex-grow-1 min-w-0">
+              <div class="fw-bold text-truncate">{{ row.cast.stage_name }}</div>
+              <div class="small">
+                <template v-if="row.status === 'working'">
+                  <span class="badge bg-success">勤務中</span>
+                  <span class="text-muted ms-1">{{ fmtTime(row.activeShift.clock_in) }}〜</span>
+                </template>
+                <template v-else-if="row.status === 'scheduled'">
+                  <span class="badge bg-primary">予定</span>
+                  <span class="text-muted ms-1">
+                    {{ fmtTime(row.activeShift.plan_start) }}–{{ fmtTime(row.activeShift.plan_end) }}
+                  </span>
+                </template>
+                <template v-else-if="row.status === 'done'">
+                  <span class="badge bg-secondary">退勤済</span>
+                </template>
+                <template v-else>
+                  <span class="text-muted">シフトなし</span>
+                </template>
+              </div>
+            </div>
+            <!-- Action Button -->
+            <div class="flex-shrink-0">
+              <button
+                v-if="row.status === 'none' || row.status === 'scheduled'"
+                class="btn btn-primary px-4"
+                @click="doCheckIn(row)"
+              >出勤</button>
+              <button
+                v-else-if="row.status === 'working'"
+                class="btn btn-danger px-4"
+                @click="doCheckOut(row)"
+              >退勤</button>
+              <span v-else class="text-secondary small">完了</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
-          <td>{{ fmtPlan(row.shift) }}</td>
-
-          <td>
-            {{ row.shift?.clock_in ? dayjs(row.shift.clock_in).format('YYYY/MM/DD HH:mm') : '–' }}
-          </td>
-
-          <td class="text-end">
-            <!-- 出勤 -->
-            <button
-              v-if="!row.shift?.clock_in"
-              class="btn btn-primary"
-              @click="checkIn(row)"
-            >出勤</button>
-
-            <!-- 退勤 -->
-            <button
-              v-else-if="!row.shift?.clock_out"
-              class="btn btn-danger"
-              @click="checkOut(row)"
-            >退勤</button>
-
-            <!-- 削除 (退勤済み) -->
-            <button
-              v-else
-              class="btn btn-outline-secondary"
-              @click="removeShift(row)"
-            >削除</button>
-          </td>
-        </tr>
-
-        <tr v-if="!rows.length">
-          <td colspan="4" class="text-center text-muted">本日のシフトはありません</td>
-        </tr>
-      </tbody>
-    </table>
+      <div v-if="!rows.length && !loading" class="col-12 text-center text-muted py-5">
+        キャストが登録されていません
+      </div>
+    </div>
   </div>
 </template>
-
-
-<style scoped lang="scss">
-
-  table{
-    th, td{
-      white-space: nowrap;
-    };
-  }
-
-</style>

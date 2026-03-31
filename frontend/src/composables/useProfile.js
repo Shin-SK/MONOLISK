@@ -7,6 +7,7 @@ export function useProfile() {
   const displayName = computed(() =>
     user.me?.display_name ??
     user.me?.stage_name ??
+    user.me?.name ??
     user.me?.username ??
     user.name ?? 'Guest'
   )

@@ -15,7 +15,8 @@ import {
   fetchStoreNotices,
   listCastGoals,
   fetchCustomerMatch,
-  fetchCustomerAffinity
+  fetchCustomerAffinity,
+  fetchCastManualSubtotalsRange,
 } from '@/api'
 import { useUser } from '@/stores/useUser'
 import { yen } from '@/utils/money'
@@ -58,12 +59,14 @@ const todayStr = dayjs().format('YYYY-MM-DD')
 /* ---------- 状態 ---------- */
 const shifts      = ref([])
 const summary     = ref(null)
+const summaryAll  = ref([])   // CastDailySummary 全件（月合計用）
 const rankings    = ref([])
 const notices     = ref([])
 const draftShifts = ref([])
 const customerBills = ref([])
 const allCustomerBills = ref([])  // 全顧客用
 const latestGoal = ref(null)  // 最新の目標
+const manualSubs  = ref([])   // CastManualSubtotal（手入力）
 const goalProgressMap = ref({})  // 目標の進捗
 
 // 相性ランキング
@@ -116,7 +119,8 @@ async function loadSummary () {
     from : dateFrom.value,
     to   : dateTo.value,
   })
-  summary.value = list[0] ?? null
+  summaryAll.value = Array.isArray(list) ? list : []
+  summary.value = summaryAll.value[0] ?? null
 }
 async function loadRankings () {
   rankings.value = await fetchCastRankings({
@@ -177,11 +181,36 @@ async function loadMatchCustomers() {
     matchLoading.value = false
   }
 }
+async function loadManualSubs () {
+  try {
+    const data = await fetchCastManualSubtotalsRange(dateFrom.value, dateTo.value)
+    // 自分のキャスト分だけフィルタ
+    manualSubs.value = (Array.isArray(data) ? data : []).filter(m => m.cast === castId.value)
+  } catch {
+    manualSubs.value = []
+  }
+}
 async function loadAll () {
-  await Promise.all([ loadShifts(), loadSummary(), loadRankings(), loadNotices(), loadCustomerBills(), loadAllCustomerBills(), loadLatestGoal() ])
+  await Promise.all([ loadShifts(), loadSummary(), loadRankings(), loadNotices(), loadCustomerBills(), loadAllCustomerBills(), loadLatestGoal(), loadManualSubs() ])
 }
 
 /* ---------- 計算 ---------- */
+
+// 今月のキャスト売上（手入力優先）
+const monthlyCastSales = computed(() => {
+  const manualTotal = manualSubs.value.reduce((s, m) => s + (Number(m.manual_subtotal) || 0), 0)
+  if (manualSubs.value.length > 0) return { value: manualTotal, isManual: true }
+  // 自動計算: CastDailySummary の gross_sales 合計
+  const autoTotal = summaryAll.value.reduce((s, r) => {
+    return s + (Number(r.sales_free) || 0) + (Number(r.sales_in) || 0) + (Number(r.sales_nom) || 0) + (Number(r.sales_champ) || 0)
+  }, 0)
+  return { value: autoTotal, isManual: false }
+})
+
+// 今月の時給見込み（CastDailySummary.payroll 合計）
+const monthlyPayroll = computed(() => {
+  return summaryAll.value.reduce((s, r) => s + (Number(r.payroll) || 0), 0)
+})
 const salesBreakdown = computed(() => summary.value ? {
   champ: summary.value.sales_champ || 0,
   nom  : summary.value.sales_nom   || 0,
@@ -339,7 +368,7 @@ function closeCustomerModal(){
 
 
 /* ---------- 監視 ---------- */
-watch([dateFrom,dateTo], () => { if (castId.value) { loadShifts(); loadSummary(); loadRankings() } })
+watch([dateFrom,dateTo], () => { if (castId.value) { loadShifts(); loadSummary(); loadRankings(); loadManualSubs() } })
 watch(matchSort, () => { loadMatchCustomers() })
 
 /* ---------- 起動 ---------- */
@@ -501,6 +530,31 @@ const latestGoalView = computed(() => {
     <div v-if="activeTab === 'home'"
       class="wrap">
 
+      <!-- ▼ 今月のキャスト売上 & 時給見込み -->
+      <div class="cast-sales-summary mt-3 mb-5">
+        <div class="row g-3">
+          <div class="col-6">
+            <div class="card shadow-sm border-0 h-100">
+              <div class="card-body text-center">
+                <div class="small text-muted mb-1">今月のキャスト売上</div>
+                <div class="fs-4 fw-bold">{{ yen(monthlyCastSales.value) }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="card shadow-sm border-0 h-100">
+              <div class="card-body text-center">
+                <div class="small text-muted mb-1">今月の時給見込み</div>
+                <div class="fs-4 fw-bold">{{ yen(monthlyPayroll) }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="text-muted mt-1" style="font-size:0.7em">
+          ※ 確定金額ではありません ※ バック等は含まれていません
+        </div>
+      </div>
+
       <div class="customer-match-section mt-3 mb-5">
         <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-3">
           <IconFaceId />相性チェック顧客</h2>
@@ -610,7 +664,7 @@ const latestGoalView = computed(() => {
         </div>
       </div>
 
-      <div class="home-keihi mb-5">
+      <div class="home-keihi mb-5 d-none">
         <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
           <IconCalendarDollar />経費
         </h2>
@@ -660,8 +714,8 @@ const latestGoalView = computed(() => {
         </div>
         <p v-else class="text-muted">目標はまだ設定されていません</p>
       </div>
-      <!-- ランキング -->
-      <div class="rank mb-5">
+      <!-- ランキング（一時非表示） -->
+      <div class="rank mb-5 d-none">
         <h2 class="small fw-bold d-flex align-items-center justify-content-start gap-1 mb-2">
           <IconCrown />ランキング
         </h2>

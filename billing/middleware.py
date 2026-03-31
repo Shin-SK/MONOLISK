@@ -18,6 +18,7 @@ SKIP_PATHS = (
     "/api/auth/registration",
     "/api/dj-rest-auth/registration",
     "/api/billing/stores/my",   # ← 追加：所属店舗一覧は Store 非依存でOK
+    "/api/accounts/contact",    # お問い合わせ（認証・Store不要）
 )
 
 class AttachStoreMiddleware(MiddlewareMixin):

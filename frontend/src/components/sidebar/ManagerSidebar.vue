@@ -73,9 +73,15 @@ async function logout () {
 
           <!-- キャスト関連 -->
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-cast-shift'})">
-            キャストシフト
+            出退勤
           </a>
-          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-cast-sales'})">
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-cast-shift-calendar'})">
+            シフト一覧
+          </a>
+          <a class="nav-link bg-white d-none" href="#" @click.prevent="nav({name:'mng-cast-sales'})">
+            キャスト売上（自動）
+          </a>
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-cast-manual-subtotal'})">
             キャスト売上
           </a>
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-ranking'})">
@@ -98,9 +104,17 @@ async function logout () {
             エクセル出力
           </a>
 
+          <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'mng-profile'})">
+            アカウント設定
+          </a>
+
           <!-- 設定（ManagerLayout配下の /settings） -->
           <a class="nav-link bg-white" href="#" @click.prevent="nav({name:'settings'})">
             設定
+          </a>
+
+          <a class="nav-link bg-white" href="#" @click.prevent="nav('/contact')">
+            お問い合わせ
           </a>
 
           <!-- 操作マニュアル（一時非表示） -->

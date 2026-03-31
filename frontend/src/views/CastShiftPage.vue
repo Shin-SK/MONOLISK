@@ -165,83 +165,48 @@ onMounted(load)
         シフト申請
       </div>
       <div class="card-body bg-white">
-        <div class="d-flex gap-5">
-          <div class="area w-50">
-            <div class="d-flex g-3 align-items-end mb-3">
-              <table class="table">
+        <div class="d-flex flex-column flex-md-row gap-3 gap-md-5">
+          <!-- 入力フォーム -->
+          <div class="area w-100 w-md-50">
+            <div class="mb-2">
+              <label class="form-label small mb-1">開始時刻</label>
+              <input v-model="form.start" type="datetime-local" class="form-control">
+            </div>
+            <div class="mb-2">
+              <label class="form-label small mb-1">終了時刻</label>
+              <input v-model="form.end" type="datetime-local" class="form-control">
+            </div>
+            <button class="btn btn-outline-secondary w-100" @click="addDraft">
+              <IconCircleDashedPlus /> 追加
+            </button>
+          </div>
+          <!-- ドラフト一覧 -->
+          <div class="area w-100 w-md-50">
+            <div class="table-responsive">
+              <table class="table mb-0">
                 <thead>
-                  <tr>
-                    <th>開始時刻</th>
-                    <th>終了時刻</th>
-                    <th />
-                  </tr>
+                  <tr><th /><th>開始時刻</th><th>終了時刻</th><th /></tr>
                 </thead>
                 <tbody>
-                  <tr>
+                  <tr v-for="(d,i) in draftShifts" :key="i" class="align-middle">
+                    <td>{{ i+1 }}</td>
+                    <td class="text-nowrap">{{ fmt(d.plan_start) || '–' }}</td>
+                    <td class="text-nowrap">{{ fmt(d.plan_end) || '–' }}</td>
                     <td>
-                      <input
-                        v-model="form.start"
-                        type="datetime-local"
-                        class="form-control"
-                      >
-                    </td>
-                    <td>
-                      <input
-                        v-model="form.end"
-                        type="datetime-local"
-                        class="form-control"
-                      >
-                    </td>
-                    <td>
-                      <button
-                        class="btn"
-                        @click="addDraft"
-                      >
-                        <IconCircleDashedPlus />
+                      <button class="btn" @click="removeDraft(i)">
+                        <IconX :size="12" />
                       </button>
                     </td>
+                  </tr>
+                  <tr v-if="!draftShifts.length" class="align-middle text-muted">
+                    <td /><td>–</td><td>–</td><td />
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
-          <div class="area w-50">
-            <table class="table">
-              <thead>
-                <tr><th /><th>開始時刻</th><th>終了時刻</th><th /></tr>
-              </thead>
-              <tbody>
-                <!-- ドラフト行 -->
-                <tr
-                  v-for="(d,i) in draftShifts"
-                  :key="i"
-                  class="align-middle"
-                >
-                  <td>{{ i+1 }}</td>
-                  <td>{{ fmt(d.plan_start) || '–' }}</td>
-                  <td>{{ fmt(d.plan_end) || '–' }}</td>
-                  <td>
-                    <button
-                      class="btn"
-                      @click="removeDraft(i)"
-                    >
-                      <IconX :size="12" />
-                    </button>
-                  </td>
-                </tr>
-
-                <!-- 何も無いときはダミー行 -->
-                <tr
-                  v-if="!draftShifts.length"
-                  class="align-middle text-muted"
-                >
-                  <td /><td>–</td><td>–</td><td />
-                </tr>
-              </tbody>
-            </table>
-          </div>
         </div>
-        <div class="d-flex justify-content-center">
+        <div class="d-flex justify-content-center mt-3">
           <button
             class="btn btn-primary"
             :disabled="!draftShifts.length"
@@ -257,7 +222,7 @@ onMounted(load)
     <h3 class="mb-3">
       シフト履歴
     </h3>
-    <div class="d-flex align-items-end gap-2 mb-3">
+    <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
       <div>
         <label class="form-label">開始日</label>
         <input
@@ -294,7 +259,8 @@ onMounted(load)
     </div>
 
     <!-- ▼ テーブル -->
-    <table class="table align-middle">
+    <div class="table-responsive">
+    <table class="table align-middle" style="min-width: 760px;">
       <thead class="table-dark">
         <tr>
           <th style="width:40px;" class="text-center">
@@ -305,10 +271,14 @@ onMounted(load)
               @change="toggleAll($event.target.checked)"
             >
           </th>
-          <th>ID</th><th>予定</th><th>出勤</th><th>退勤</th>
-          <th>勤務</th><th>時給</th><th>給与</th><th class="text-end">
-            操作
-          </th>
+          <th class="text-nowrap">ID</th>
+          <th class="text-nowrap">予定</th>
+          <th class="text-nowrap">出勤</th>
+          <th class="text-nowrap">退勤</th>
+          <th class="text-nowrap">勤務</th>
+          <th class="text-nowrap">時給</th>
+          <th class="text-nowrap">給与</th>
+          <th class="text-nowrap text-end">操作</th>
         </tr>
       </thead>
       <tbody>
@@ -327,7 +297,7 @@ onMounted(load)
           <td>{{ r.id }}</td>
 
           <!-- 予定 -->
-          <td>
+          <td class="text-nowrap">
             <template v-if="editing.id !== r.id">
               <span v-if="r.plan_start">{{ fmt(r.plan_start) }} – {{ fmt(r.plan_end) }}</span>
               <button
@@ -356,7 +326,7 @@ onMounted(load)
           </td>
 
           <!-- 出勤 -->
-          <td v-if="editing.id !== r.id">
+          <td v-if="editing.id !== r.id" class="text-nowrap">
             {{ fmt(r.clock_in) }}
             <button
               v-if="r.clock_in"
@@ -376,7 +346,7 @@ onMounted(load)
           </td>
 
           <!-- 退勤 -->
-          <td v-if="editing.id !== r.id">
+          <td v-if="editing.id !== r.id" class="text-nowrap">
             {{ fmt(r.clock_out) }}
           </td>
           <td v-else>
@@ -388,14 +358,14 @@ onMounted(load)
           </td>
 
           <!-- 勤務 -->
-          <td>{{ r.worked_min ? (r.worked_min/60).toFixed(2)+' h' : '–' }}</td>
+          <td class="text-nowrap">{{ r.worked_min ? (r.worked_min/60).toFixed(2)+' h' : '–' }}</td>
 
           <!-- 時給／給与 -->
-          <td>{{ yen(r.hourly_wage_snap) }}</td>
-          <td>{{ r.payroll_amount ? yen(r.payroll_amount) : '–' }}</td>
+          <td class="text-nowrap">{{ yen(r.hourly_wage_snap) }}</td>
+          <td class="text-nowrap">{{ r.payroll_amount ? yen(r.payroll_amount) : '–' }}</td>
 
           <!-- 操作 -->
-          <td class="text-end">
+          <td class="text-end text-nowrap">
             <template v-if="editing.id !== r.id">
               <button
                 class="btn btn-outline-primary me-2"
@@ -436,5 +406,12 @@ onMounted(load)
         </tr>
       </tbody>
     </table>
+    </div>
   </div>
 </template>
+
+<style scoped>
+@media (min-width: 768px) {
+  .w-md-50 { width: 50% !important; }
+}
+</style>

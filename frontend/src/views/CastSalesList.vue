@@ -7,7 +7,8 @@ import {
   fetchCastDailySummaries,   // ← champ 売上（sales_champ）用
   fetchCasts,
   fetchPayrollSummary,       // ← 時給合計
-  listCastPayouts         // ← 期間の CastPayout 明細（stay_type 付き）
+  listCastPayouts,        // ← 期間の CastPayout 明細（stay_type 付き）
+  fetchCastManualSubtotalsRange,
 } from '@/api'
 
 /* ---------- 期間 ---------- */
@@ -20,6 +21,7 @@ const totals      = ref([])   // 画面に出すキャスト別集計
 const allCasts    = ref([])   // 全キャスト（ゼロも表示）
 const paySummary  = ref([])   // {id, hourly_pay, commission, ...}
 const payouts     = ref([])   // CastPayout（stay_type 付き）
+const manualSubs  = ref([])   // CastManualSubtotal（手入力）
 
 const router = useRouter()
 const yen = n => `¥${(+n || 0).toLocaleString()}`
@@ -58,6 +60,23 @@ function aggregate () {
     payByCast.set(cid, Number(s.hourly_pay) || 0)
   }
 
+  // 3.5) キャスト売上: 手入力値（期間合算）
+  const manualByCast = new Map()
+  for (const m of (manualSubs.value || [])) {
+    const cid = m.cast
+    if (!cid) continue
+    manualByCast.set(cid, (manualByCast.get(cid) || 0) + (Number(m.manual_subtotal) || 0))
+  }
+
+  // 3.6) キャスト売上: 自動計算値（CastDailySummary の gross_sales）
+  const autoSalesByCast = new Map()
+  for (const r of (dailyRows.value || [])) {
+    const cid = r.cast?.id
+    if (!cid) continue
+    const gs = (Number(r.sales_free) || 0) + (Number(r.sales_in) || 0) + (Number(r.sales_nom) || 0) + (Number(r.sales_champ) || 0)
+    autoSalesByCast.set(cid, (autoSalesByCast.get(cid) || 0) + gs)
+  }
+
   // 4) 行を作る（ゼロも表示）
   const every = new Set([
     ...Array.from(champByCast.keys()),
@@ -77,12 +96,17 @@ function aggregate () {
     const pay   = payByCast.get(cid)     || 0
     const comm  = nom + inn + free
 
+    const hasManual = manualByCast.has(cid)
+    const castSales = hasManual ? manualByCast.get(cid) : (autoSalesByCast.get(cid) || 0)
+
     map.set(cid, {
       cast, champ,
       nom, in: inn, free,
       comm,            // 歩合小計 = 3区分の合計
       pay,
       grand: comm + pay,
+      castSales,       // キャスト売上（手入力優先）
+      isManual: hasManual,
     })
   }
 
@@ -91,16 +115,18 @@ function aggregate () {
 
 /* ---------- 取得 ---------- */
 async function load () {
-  const [rows, casts, sum, pays] = await Promise.all([
+  const [rows, casts, sum, pays, manuals] = await Promise.all([
     fetchCastDailySummaries({ from: dateFrom.value, to: dateTo.value }),
     fetchCasts(),
     fetchPayrollSummary({ from: dateFrom.value, to: dateTo.value }),
-    listCastPayouts({ from: dateFrom.value, to: dateTo.value, limit: 10000 })   // stay_type 付きで取得
+    listCastPayouts({ from: dateFrom.value, to: dateTo.value, limit: 10000 }),   // stay_type 付きで取得
+    fetchCastManualSubtotalsRange(dateFrom.value, dateTo.value),
   ])
   dailyRows.value   = Array.isArray(rows) ? rows : []
   allCasts.value    = Array.isArray(casts?.results) ? casts.results : (Array.isArray(casts) ? casts : [])
   paySummary.value  = Array.isArray(sum)  ? sum  : []
   payouts.value     = Array.isArray(pays) ? pays : []
+  manualSubs.value  = Array.isArray(manuals) ? manuals : []
   aggregate()
 }
 
@@ -144,6 +170,7 @@ onMounted(load)
         <thead class="table-dark">
           <tr>
             <th>キャスト</th>
+            <th>キャスト売上</th>
             <th>シャンパン</th>
             <th>本指名</th>
             <th>場内</th>
@@ -169,6 +196,10 @@ onMounted(load)
             "
           >
             <td>{{ t.cast.stage_name }}</td>
+            <td>
+              {{ yen(t.castSales) }}
+              <span v-if="t.isManual" class="badge bg-info ms-1" style="font-size:0.65em">手入力</span>
+            </td>
             <td>{{ yen(t.champ) }}</td>
             <td>{{ yen(t.nom) }}</td>
             <td>{{ yen(t.in) }}</td>

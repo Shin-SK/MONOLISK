@@ -34,6 +34,7 @@ from .models import (
     StoreNotice, StoreSeatSetting, DiscountRule, BillTag,
     PersonnelExpenseCategory, PersonnelExpense, PersonnelExpenseSettlementEvent, PayrollRun,
     BillSubstituteItem,
+    CastManualSubtotal,
 )
 from .serializers import (
     StoreSerializer, TableSerializer, BillSerializer,
@@ -47,6 +48,7 @@ from .serializers import (
     CastPayoutListSerializer, CustomerTagSerializer, BillTagSerializer,
     PersonnelExpenseCategorySerializer, PersonnelExpenseSerializer, PersonnelExpenseSettlementEventSerializer,
     BillSubstituteItemSerializer,
+    CastManualSubtotalSerializer,
 )
 from .filters import CastPayoutFilter, CastItemFilter
 from .services import get_cast_sales, sync_nomination_fees
@@ -877,6 +879,17 @@ class CastShiftViewSet(StoreScopedModelViewSet):
     queryset = CastShift.objects.select_related("store", "cast")
     serializer_class = CastShiftSerializer
     filterset_fields = ["cast", "clock_in", "clock_out"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        f = self.request.query_params.get("from")
+        t = self.request.query_params.get("to")
+        if f and t:
+            qs = qs.filter(
+                Q(plan_start__date__range=(f, t))
+                | Q(plan_start__isnull=True, clock_in__date__range=(f, t))
+            )
+        return qs.order_by("plan_start")
 
     def perform_create(self, serializer):
         sid = self.require_store(self.request)
@@ -2135,12 +2148,26 @@ class PayrollRunPreviewView(APIView):
             .order_by('stage_name', 'id')
         )
 
+        # ── 手入力キャスト売上（manual_subtotal）を期間合算 ──
+        manual_sales_map = {}
+        manual_qs = (
+            CastManualSubtotal.objects
+            .filter(store_id=sid, work_date__range=(df, dt))
+            .values('cast_id')
+            .annotate(total=Sum('manual_subtotal'))
+        )
+        for m in manual_qs:
+            manual_sales_map[m['cast_id']] = int(m['total'] or 0)
+
         summary = []
         for r in qs:
             cast_id = r['id']
             worked_min = int(r['worked_min'] or 0)
             hourly_pay = int(r['hourly_pay'] or 0)
             commission = int(r['commission'] or 0)
+
+            has_manual = cast_id in manual_sales_map
+            sales_total = manual_sales_map[cast_id] if has_manual else int(sales_total_map.get(cast_id, 0))
 
             summary.append({
                 'cast_id': cast_id,
@@ -2149,7 +2176,8 @@ class PayrollRunPreviewView(APIView):
                 'hourly_pay': hourly_pay,
                 'commission': commission,
                 'total': hourly_pay + commission,
-                'sales_total': int(sales_total_map.get(cast_id, 0)),
+                'sales_total': sales_total,
+                'is_manual_sales': has_manual,
                 'bill_rows': bill_rows_sorted.get(cast_id, []),
             })
 
@@ -2462,3 +2490,76 @@ class DailyReportDownloadView(APIView):
         )
         response['Content-Disposition'] = f'attachment; filename="{date_str}_daily_report.xlsx"'
         return response
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# キャスト売上（手入力）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class CastManualSubtotalView(APIView):
+    """
+    GET  ?date=YYYY-MM-DD           → その日のキャスト売上（手入力）一覧
+    GET  ?from=YYYY-MM-DD&to=YYYY-MM-DD → 期間のキャスト売上（手入力）一覧
+    POST [{cast, work_date, manual_subtotal, memo?}, ...]  → 一括保存（upsert）
+    """
+    permission_classes = [permissions.IsAuthenticated, RequireCap]
+    required_cap = 'operate_orders'
+
+    def _store_id(self, request):
+        s = getattr(request, 'store', None)
+        if not getattr(s, 'id', None):
+            raise ValidationError({'store_id': 'X-Store-Id header is required.'})
+        return s.id
+
+    def get(self, request):
+        sid = self._store_id(request)
+        date_str = request.query_params.get('date')
+        from_str = request.query_params.get('from')
+        to_str = request.query_params.get('to')
+
+        if date_str:
+            try:
+                target_date = date.fromisoformat(date_str)
+            except ValueError:
+                raise ValidationError({'date': 'YYYY-MM-DD形式で指定してください。'})
+            qs = CastManualSubtotal.objects.filter(store_id=sid, work_date=target_date)
+        elif from_str and to_str:
+            try:
+                d_from = date.fromisoformat(from_str)
+                d_to = date.fromisoformat(to_str)
+            except ValueError:
+                raise ValidationError({'date': 'YYYY-MM-DD形式で指定してください。'})
+            qs = CastManualSubtotal.objects.filter(store_id=sid, work_date__range=(d_from, d_to))
+        else:
+            raise ValidationError({'date': 'date または from/to パラメータは必須です。'})
+
+        qs = qs.select_related('cast')
+        serializer = CastManualSubtotalSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        sid = self._store_id(request)
+        rows = request.data if isinstance(request.data, list) else [request.data]
+        results = []
+
+        with transaction.atomic():
+            for row in rows:
+                cast_id = row.get('cast')
+                work_date = row.get('work_date')
+                if not cast_id or not work_date:
+                    raise ValidationError({'detail': 'cast と work_date は必須です。'})
+
+                obj, _ = CastManualSubtotal.objects.update_or_create(
+                    store_id=sid,
+                    cast_id=cast_id,
+                    work_date=work_date,
+                    defaults={
+                        'manual_subtotal': row.get('manual_subtotal', 0),
+                        'memo': row.get('memo', ''),
+                        'updated_by': request.user,
+                    }
+                )
+                results.append(obj)
+
+        serializer = CastManualSubtotalSerializer(results, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
