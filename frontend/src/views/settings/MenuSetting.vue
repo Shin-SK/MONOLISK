@@ -126,7 +126,7 @@ function cancelEdit() {
 async function save() {
   const payload = {
     name: draft.value.name,
-    category: catValue(draft.value.category),
+    category_code: catValue(draft.value.category),
     price_regular: +draft.value.price_regular || 0,
     price_late: draft.value.price_late === '' ? null : (+draft.value.price_late || 0),
     cost: draft.value.cost === '' ? null : (+draft.value.cost || null),
@@ -207,14 +207,14 @@ onMounted(async () => {
         <table class="table table-sm align-middle">
           <thead class="table-light">
             <tr>
-              <th style="width:18%">カテゴリ</th>
+              <th style="width:140px">カテゴリ</th>
               <th>品名</th>
-              <th class="text-end" style="width:12%">通常価格</th>
-              <th class="text-end" style="width:10%">深夜価格</th>
-              <th class="text-end" style="width:10%">原価</th>
-              <th class="text-end" style="width:10%">時間(min)</th>
-              <th style="width:18%">フラグ</th>
-              <th style="width:12%"></th>
+              <th class="text-end" style="width:110px">通常価格</th>
+              <th class="text-end" style="width:110px">深夜価格</th>
+              <th class="text-end" style="width:110px">原価</th>
+              <th class="text-end" style="width:80px">時間</th>
+              <th style="width:240px">フラグ</th>
+              <th style="width:150px"></th>
             </tr>
           </thead>
 
@@ -328,8 +328,11 @@ onMounted(async () => {
 <style scoped lang="scss">
 
 table{
+  table-layout: fixed;
   td,th{
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 

@@ -168,16 +168,17 @@ class ItemCategoryMiniSerializer(serializers.ModelSerializer):
 
 
 class ItemMasterSerializer(serializers.ModelSerializer):
-    category = serializers.SerializerMethodField()   # ★ここを変更
+    category = serializers.SerializerMethodField()
 
     def get_category(self, obj):
         return {
             "code": obj.category.code,
-            "name": obj.category.name, 
+            "name": obj.category.name,
             "show_in_menu": obj.category.show_in_menu,
         }
 
-    category_id = serializers.PrimaryKeyRelatedField(
+    category_code = serializers.SlugRelatedField(
+        slug_field='code',
         source='category',
         queryset=ItemCategory.objects.all(),
         write_only=True,
@@ -186,10 +187,10 @@ class ItemMasterSerializer(serializers.ModelSerializer):
     class Meta:
         model  = ItemMaster
         fields = [
-            'id', 'name', 'code', 'price_regular',
+            'id', 'name', 'code', 'price_regular', 'price_late', 'cost',
             'duration_min', 'apply_service',
             'exclude_from_payout', 'track_stock',
-            'category', 'category_id',
+            'category', 'category_code',
             'route',
         ]
 

@@ -85,7 +85,7 @@ class BillCalculator:
 
     def _tax(self, subtotal: Decimal, service_fee: Decimal) -> Decimal:
         """
-        グローバル既定：税は小計にのみ課税（サービス料には課税しない）
+        税は小計＋サービス料に課税
         """
         if getattr(self.bill, "apply_tax", True) is False:
             return Decimal(0)
@@ -93,7 +93,7 @@ class BillCalculator:
         if rate >= 1:
             rate /= 100
 
-        base = subtotal  # ★変更点：小計のみ課税
+        base = subtotal + service_fee
         return (base * rate).quantize(0, rounding=ROUND_FLOOR)
 
     # --------------- CastPayout ----------------

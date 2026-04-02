@@ -28,9 +28,9 @@ function calcTotals(items) {
   }, 0)
   const sr  = Number(props.serviceRate || 0)
   const tr  = Number(props.taxRate || 0)
-  // バックエンド準拠：切り捨て、税は“小計にのみ”
+  // バックエンド準拠：切り捨て、税は小計＋サービス料に課税
   const svc = Math.floor(sub * effServiceRate.value)
-  const tax = Math.floor(sub * effTaxRate.value)
+  const tax = Math.floor((sub + svc) * effTaxRate.value)
   return { sub, svc, tax, total: sub + svc + tax }
 }
 

@@ -17,7 +17,7 @@ class TestBillCalculator:
             slug="test", name="Test", service_rate=Decimal("0.10"), tax_rate=Decimal("0.10"),
             nom_pool_rate=Decimal("0.50"),
         )
-        table = Table.objects.create(store=store, number=1)
+        table = Table.objects.create(store=store, code="1")
         # カテゴリ
         cat_set = ItemCategory.objects.create(code="set", name="SET", back_rate_free=Decimal("0.30"))
         cat_drink = ItemCategory.objects.create(code="drink", name="Drink", back_rate_free=Decimal("0.30"))

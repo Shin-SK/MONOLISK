@@ -74,9 +74,8 @@ def calc_bill_totals(bill):
     if sr >= 1: sr /= 100
     if tr >= 1: tr /= 100
 
-    # 新ポリシー - サ別は小計×率 税は小計×率
     service_amt = (Decimal(subtotal) * sr).quantize(0, ROUND_FLOOR)
-    tax_amt     = (Decimal(subtotal) * tr).quantize(0, ROUND_FLOOR)
+    tax_amt     = ((Decimal(subtotal) + service_amt) * tr).quantize(0, ROUND_FLOOR)
 
     total = int(Decimal(subtotal) + service_amt + tax_amt)
 
