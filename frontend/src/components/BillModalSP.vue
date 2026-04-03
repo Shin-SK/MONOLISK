@@ -343,7 +343,7 @@ async function ensureBillId () {
   // ensureBillId() 内では apply_* を ref ではなく props.bill の値から導出
   const req = {
     table_ids: tableIdsPayload,  // ★table_ids で送る（単卓でも配列）
-    ...(props.bill?.opened_at ? { opened_at: props.bill.opened_at } : {}),
+    // 新規作成時は opened_at を送らない（backend の timezone.now() を使う）
     expected_out: props.bill?.expected_out ?? null,
     pax: paxPayload,
     apply_service_charge: props.bill?.apply_service_charge !== false,

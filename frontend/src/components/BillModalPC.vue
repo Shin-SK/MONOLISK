@@ -948,16 +948,14 @@ async function save () {
         apply_service_charge: applyServiceCharge.value,
         apply_tax: applyTax.value,
       }
-      // opened_at は値がある時だけ送る
-      if (form.opened_at) {
-        payload.opened_at = dayjs(form.opened_at).toISOString()
-      }
+      // 新規作成時は opened_at を送らない（backend の timezone.now() を使う）
       if (form.expected_out) {
         payload.expected_out = dayjs(form.expected_out).toISOString()
       }
       const created = await createBill(payload)
       billId = created.id
       props.bill.id = billId
+      props.bill.opened_at = created.opened_at
       props.bill.apply_service_charge = created.apply_service_charge
       props.bill.apply_tax = created.apply_tax
       if ((props.bill.customers?.length ?? 0) > 0) {
