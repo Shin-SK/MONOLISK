@@ -52,8 +52,8 @@ function resetDraft() {
     name: '',
     category: '',        // ItemCategory の code（文字列）
     price_regular: 0,
-    price_late: '',
-    cost: '',
+    price_late: 0,
+    cost: 0,
     duration_min: 0,
     apply_service: true,
     exclude_from_payout: false,
@@ -149,7 +149,20 @@ async function save() {
     cancelEdit()
   } catch (e) {
     console.error(e)
-    alert(e?.response?.data?.detail || '保存に失敗しました')
+    const data = e?.response?.data
+    let msg = '保存に失敗しました'
+    if (data) {
+      if (data.detail) {
+        msg = data.detail
+      } else if (typeof data === 'object') {
+        const lines = Object.entries(data)
+          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+        if (lines.length) msg = lines.join('\n')
+      } else {
+        msg = JSON.stringify(data)
+      }
+    }
+    alert(msg)
   }
 }
 
@@ -329,6 +342,7 @@ onMounted(async () => {
 
 table{
   table-layout: fixed;
+  min-width: 1100px;
   td,th{
     white-space: nowrap;
     overflow: hidden;

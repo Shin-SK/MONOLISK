@@ -108,6 +108,13 @@ function ensureOverlay (msg = 'アップデートを適用中…') {
   el.style.display = 'flex'
 }
 
+async function clearSwCaches () {
+  try {
+    const keys = await caches.keys()
+    await Promise.all(keys.map(k => caches.delete(k)))
+  } catch (_) { /* noop */ }
+}
+
 function reloadWithVersionBuster () {
   const url = new URL(window.location.href)
   url.searchParams.delete('v')
@@ -159,10 +166,11 @@ export function setupPWA () {
   updateNowFn = updateFn
 
   // controllerchange: ユーザー操作時のみreload
-  navigator.serviceWorker?.addEventListener('controllerchange', () => {
+  navigator.serviceWorker?.addEventListener('controllerchange', async () => {
     if (!userTriggered) return
     saveResumePoint()
     ensureOverlay('アップデートを適用中… 再読み込みしています')
+    await clearSwCaches()
     reloadWithVersionBuster()
   })
 
@@ -177,6 +185,7 @@ export async function applyUpdateNow () {
   // 更新がなければ何もしない（auth.jsからの空振り対策）
   if (!_updateAvailable) return
 
+  _updateAvailable = false
   _setUserTriggered()
   dismissBanner()
   ensureOverlay('アップデートを適用中…')
@@ -184,10 +193,14 @@ export async function applyUpdateNow () {
 
   try {
     if (typeof updateNowFn === 'function') await updateNowFn()
-    // フォールバック: 4秒後にreload（SWが応答しない場合）
-    setTimeout(() => reloadWithVersionBuster(), 4000)
   } catch (e) {
     console.warn('[pwa] applyUpdateNow failed:', e)
-    reloadWithVersionBuster()
   }
+
+  // フォールバック: 4秒以内に controllerchange が来なければ
+  // SWキャッシュを削除して強制リロード
+  setTimeout(async () => {
+    await clearSwCaches()
+    reloadWithVersionBuster()
+  }, 4000)
 }
