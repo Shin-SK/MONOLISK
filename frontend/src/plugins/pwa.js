@@ -144,41 +144,17 @@ export function restoreRouteIfNeeded (router) {
 
 // ─── PWA セットアップ ───
 export function setupPWA () {
-  let userTriggered = false
-
   const updateFn = registerSW({
     immediate: true,
     onNeedRefresh () {
-      // 通知のみ。reloadしない
       _updateAvailable = true
-      if (userTriggered) {
-        // ユーザーが「今すぐ更新」を押した後のSW更新完了 → reload
-        saveResumePoint()
-        ensureOverlay('アップデートを適用中…')
-        setTimeout(() => reloadWithVersionBuster(), 500)
-      } else {
-        showBanner()
-      }
+      showBanner()
     },
     onOfflineReady () { /* noop */ },
     onRegisterError (e) { console.warn('[pwa] register error:', e) }
   })
   updateNowFn = updateFn
-
-  // controllerchange: ユーザー操作時のみreload
-  navigator.serviceWorker?.addEventListener('controllerchange', async () => {
-    if (!userTriggered) return
-    saveResumePoint()
-    ensureOverlay('アップデートを適用中… 再読み込みしています')
-    await clearSwCaches()
-    reloadWithVersionBuster()
-  })
-
-  // applyUpdateNow を呼んだ時に userTriggered フラグを立てる内部参照
-  _setUserTriggered = () => { userTriggered = true }
 }
-
-let _setUserTriggered = () => {}
 
 /** ユーザー操作で「今すぐ更新」を実行 */
 export async function applyUpdateNow () {
@@ -186,21 +162,24 @@ export async function applyUpdateNow () {
   if (!_updateAvailable) return
 
   _updateAvailable = false
-  _setUserTriggered()
   dismissBanner()
   ensureOverlay('アップデートを適用中…')
   saveResumePoint()
 
+  // 1. SW更新を試行（既に自動更新済みなら空振りでOK）
   try {
     if (typeof updateNowFn === 'function') await updateNowFn()
-  } catch (e) {
-    console.warn('[pwa] applyUpdateNow failed:', e)
-  }
+  } catch (_) {}
 
-  // フォールバック: 4秒以内に controllerchange が来なければ
-  // SWキャッシュを削除して強制リロード
-  setTimeout(async () => {
-    await clearSwCaches()
-    reloadWithVersionBuster()
-  }, 4000)
+  // 2. SWを解除（次回ページロードで再登録される）
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration()
+    if (reg) await reg.unregister()
+  } catch (_) {}
+
+  // 3. SWキャッシュを全削除
+  await clearSwCaches()
+
+  // 4. 強制リロード
+  reloadWithVersionBuster()
 }
