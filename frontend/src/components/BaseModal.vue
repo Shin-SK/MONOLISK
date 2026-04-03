@@ -88,7 +88,8 @@ body.modal-open { overflow: hidden; touch-action: none; }
   background:#000; opacity:.5;
   z-index:1050;
 }
-.modal{ z-index:1055; }   /* backdrop より前面 */
+.modal{ z-index:1055; overflow-x:hidden; }   /* backdrop より前面 */
+.modal :deep(.modal-content){ overflow-x:hidden; }
 
 /* ---------- フェード効果 ---------- */
 .backdrop-fade-enter-active,
