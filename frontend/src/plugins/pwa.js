@@ -1,11 +1,9 @@
 // src/plugins/pwa.js
-// PWA更新方式: 主=onNeedRefresh / 従=version.json(起動時フォールバック)
+// PWA更新方式: バナー通知 → 強制更新で確実に適用
 import { registerSW } from 'virtual:pwa-register'
 
 const BANNER_ID = 'update-banner'
 const OVERLAY_ID = 'update-overlay'
-const SW_TIMEOUT = 5000 // 全体タイムアウト(ms) — 5秒以内に成功or失敗
-let updateNowFn = null
 let _updateAvailable = false
 
 /** 更新が利用可能かどうか */
@@ -62,7 +60,7 @@ function showBanner () {
   document.head.appendChild(style)
   document.body.appendChild(el)
 
-  document.getElementById('ub-apply')?.addEventListener('click', () => applyUpdateNow())
+  document.getElementById('ub-apply')?.addEventListener('click', () => applyUpdate())
   document.getElementById('ub-close')?.addEventListener('click', () => dismissBanner())
 }
 
@@ -71,7 +69,7 @@ function dismissBanner () {
   if (el) el.remove()
 }
 
-// ─── 更新適用中オーバーレイ（手動更新時のみ表示）───
+// ─── 更新適用中オーバーレイ ───
 function ensureOverlay (msg = 'アップデートを適用中…') {
   let el = document.getElementById(OVERLAY_ID)
   if (!el) {
@@ -109,36 +107,6 @@ function ensureOverlay (msg = 'アップデートを適用中…') {
   el.style.display = 'flex'
 }
 
-function saveResumePoint () {
-  const url = new URL(window.location.href)
-  url.searchParams.delete('v')
-  const p = url.pathname + url.search + url.hash
-  sessionStorage.setItem('__resume_to', p)
-}
-
-/** ページ離脱 or タイムアウトを Race で待つ */
-function waitForPageLeaveOrTimeout (ms) {
-  return new Promise(resolve => {
-    const timer = setTimeout(() => { cleanup(); resolve(false) }, ms)
-
-    function success () { clearTimeout(timer); cleanup(); resolve(true) }
-    function cleanup () {
-      window.removeEventListener('pagehide', success)
-      window.removeEventListener('beforeunload', success)
-      document.removeEventListener('visibilitychange', onVisChange)
-      navigator.serviceWorker?.removeEventListener('controllerchange', success)
-    }
-    function onVisChange () {
-      if (document.visibilityState === 'hidden') success()
-    }
-
-    window.addEventListener('pagehide', success, { once: true })
-    window.addEventListener('beforeunload', success, { once: true })
-    document.addEventListener('visibilitychange', onVisChange)
-    navigator.serviceWorker?.addEventListener('controllerchange', success, { once: true })
-  })
-}
-
 export function restoreRouteIfNeeded (router) {
   const p = sessionStorage.getItem('__resume_to')
   if (!p) return
@@ -154,7 +122,7 @@ export function restoreRouteIfNeeded (router) {
 
 // ─── PWA セットアップ ───
 export function setupPWA () {
-  const updateFn = registerSW({
+  registerSW({
     immediate: true,
     onNeedRefresh () {
       console.log('[pwa] onNeedRefresh fired')
@@ -164,67 +132,19 @@ export function setupPWA () {
     onOfflineReady () { /* noop */ },
     onRegisterError (e) { console.warn('[pwa] register error:', e) }
   })
-  updateNowFn = updateFn
 }
 
-/** ユーザー操作で「今すぐ更新」を実行 */
-export async function applyUpdateNow () {
-  if (!_updateAvailable) return
-
+// ─── 更新適用（強制更新: SW解除 + キャッシュ削除 + reload）───
+async function applyUpdate () {
   _updateAvailable = false
   dismissBanner()
   ensureOverlay('アップデートを適用中…')
-  saveResumePoint()
 
-  // 1. updateNowFn(true) を呼ぶ → ライブラリ側が controlling イベントで reload する
-  try {
-    console.log('[pwa] calling updateNowFn')
-    if (typeof updateNowFn === 'function') await updateNowFn(true)
-  } catch (_) {}
-
-  // 2. ページ離脱（pagehide/beforeunload/visibilitychange/controllerchange）を待つ
-  console.log('[pwa] waiting for page leave or controllerchange...')
-  const left = await waitForPageLeaveOrTimeout(SW_TIMEOUT)
-
-  if (left) {
-    console.log('[pwa] page leaving detected, update succeeded')
-    return
-  }
-
-  // 3. タイムアウト = 本当にページが留まっている → 失敗
-  removeOverlay()
-  showFailBanner()
-}
-
-function removeOverlay () {
-  const el = document.getElementById(OVERLAY_ID)
-  if (el) el.remove()
-}
-
-function showFailBanner () {
-  if (document.getElementById(BANNER_ID)) return
-  console.log('[pwa] update failed, showing recovery banner')
-  const el = document.createElement('div')
-  el.id = BANNER_ID
-  el.innerHTML = `
-    <div class="ub-inner">
-      <div class="ub-text">
-        <div class="ub-title">更新に失敗しました</div>
-        <div class="ub-sub">通常の再読み込みで直らない場合があります</div>
-      </div>
-      <button class="ub-btn" id="ub-force">強制更新</button>
-      <button class="ub-close" id="ub-close2" aria-label="閉じる">&times;</button>
-    </div>
-  `
-  document.body.appendChild(el)
-  document.getElementById('ub-force')?.addEventListener('click', () => forceRecovery())
-  document.getElementById('ub-close2')?.addEventListener('click', () => dismissBanner())
-}
-
-// ─── 強制復旧（失敗時専用の脱出ハッチ）───
-async function forceRecovery () {
-  dismissBanner()
-  ensureOverlay('強制更新中…')
+  // セッション保存（reload後の復帰用）
+  const url = new URL(window.location.href)
+  url.searchParams.delete('v')
+  const p = url.pathname + url.search + url.hash
+  sessionStorage.setItem('__resume_to', p)
 
   // 1. SW を解除
   try {
@@ -232,7 +152,7 @@ async function forceRecovery () {
     if (regs) await Promise.all(regs.map(r => r.unregister()))
   } catch (_) {}
 
-  // 2. PWA関連キャッシュのみ削除（workbox- プレフィックス）
+  // 2. PWA関連キャッシュ削除
   try {
     const keys = await caches.keys()
     await Promise.all(
@@ -240,6 +160,12 @@ async function forceRecovery () {
     )
   } catch (_) {}
 
-  // 3. 強制リロード
+  // 3. reload
   location.reload()
+}
+
+/** 外部から呼ぶ用（互換性維持） */
+export async function applyUpdateNow () {
+  if (!_updateAvailable) return
+  await applyUpdate()
 }
