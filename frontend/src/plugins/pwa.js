@@ -4,7 +4,7 @@ import { registerSW } from 'virtual:pwa-register'
 
 const BANNER_ID = 'update-banner'
 const OVERLAY_ID = 'update-overlay'
-const SW_TIMEOUT = 8000 // controllerchange 待機タイムアウト(ms)
+const SW_TIMEOUT = 5000 // 全体タイムアウト(ms) — 5秒以内に成功or失敗
 let updateNowFn = null
 let _updateAvailable = false
 
@@ -154,7 +154,15 @@ export function setupPWA () {
   updateNowFn = updateFn
 }
 
-/** ユーザー操作で「今すぐ更新」を実行 */
+/** タイムアウト付きPromise実行 */
+function withTimeout (promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+  ])
+}
+
+/** ユーザー操作で「今すぐ更新」を実行（全体5秒以内に成功or失敗） */
 export async function applyUpdateNow () {
   if (!_updateAvailable) return
 
@@ -163,22 +171,29 @@ export async function applyUpdateNow () {
   ensureOverlay('アップデートを適用中…')
   saveResumePoint()
 
-  // 1. updateNowFn() で新SWを activate させる
   try {
-    if (typeof updateNowFn === 'function') await updateNowFn(true)
-  } catch (_) {}
+    // 1. updateNowFn + controllerchange を並行で走らせ、全体をタイムアウトで囲む
+    const swReady = (async () => {
+      try {
+        if (typeof updateNowFn === 'function') await updateNowFn(true)
+      } catch (_) {}
+      // controllerchange を待つ（updateNowFnが即返った場合のみここに来る）
+      return waitForControllerChange(SW_TIMEOUT)
+    })()
 
-  // 2. controllerchange を待つ
-  const ok = await waitForControllerChange(SW_TIMEOUT)
+    const ok = await withTimeout(swReady, SW_TIMEOUT)
 
-  if (ok) {
-    // 成功: 新SWが制御を取った → リロード
-    location.reload()
-  } else {
-    // タイムアウト: フォールバックとしてリロードだけ試みる
-    removeOverlay()
-    showFailBanner()
+    if (ok) {
+      location.reload()
+      return
+    }
+  } catch (_) {
+    // タイムアウト or エラー → 失敗フローへ
   }
+
+  // 失敗: オーバーレイ解除 → 失敗バナー
+  removeOverlay()
+  showFailBanner()
 }
 
 function removeOverlay () {
