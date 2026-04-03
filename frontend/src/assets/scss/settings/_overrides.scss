@@ -50,12 +50,15 @@
   @include fs(8);
 }
 
-.modal-fullscreen .modal-content {
-    height: auto;
-    border: 0;
-    border-radius: 0;
-    min-height: 100%;
-      
+.modal-fullscreen {
+    width: 100% !important;
+
+    .modal-content {
+      height: auto;
+      border: 0;
+      border-radius: 0;
+      min-height: 100%;
+    }
 }
 
 /* 生のボタン/入力だけ黒に固定（Bootstrapの .btn は触らない） */
