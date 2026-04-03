@@ -122,7 +122,7 @@ function waitForControllerChange (ms) {
     const sw = navigator.serviceWorker
     if (!sw) { resolve(false); return }
     const timer = setTimeout(() => { sw.removeEventListener('controllerchange', ok); resolve(false) }, ms)
-    function ok () { clearTimeout(timer); resolve(true) }
+    function ok () { console.log('[pwa] controllerchange received'); clearTimeout(timer); resolve(true) }
     sw.addEventListener('controllerchange', ok, { once: true })
   })
 }
@@ -145,6 +145,7 @@ export function setupPWA () {
   const updateFn = registerSW({
     immediate: true,
     onNeedRefresh () {
+      console.log('[pwa] onNeedRefresh fired')
       _updateAvailable = true
       showBanner()
     },
@@ -175,6 +176,7 @@ export async function applyUpdateNow () {
     // 1. updateNowFn + controllerchange を並行で走らせ、全体をタイムアウトで囲む
     const swReady = (async () => {
       try {
+        console.log('[pwa] calling updateNowFn')
         if (typeof updateNowFn === 'function') await updateNowFn(true)
       } catch (_) {}
       // controllerchange を待つ（updateNowFnが即返った場合のみここに来る）
@@ -202,6 +204,7 @@ function removeOverlay () {
 }
 
 function showFailBanner () {
+  console.log('[pwa] update failed, showing recovery banner')
   if (document.getElementById(BANNER_ID)) return
   const el = document.createElement('div')
   el.id = BANNER_ID
