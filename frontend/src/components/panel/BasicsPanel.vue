@@ -156,15 +156,27 @@ const editingBillCustomerLeft = ref({})     // bcId -> true/false（退店）
 function toLocalInput(iso) {
   return iso ? dayjs(iso).format('YYYY-MM-DDTHH:mm') : ''
 }
-function roundTo5min(d) {
-  const m = d.minute()
-  const r = m % 5
-  return r < 3 ? d.minute(m - r).second(0).millisecond(0) : d.minute(m + (5 - r)).second(0).millisecond(0)
-}
 function toISOFromLocal(v) {
   if (!v) return null
-  return roundTo5min(dayjs(v)).toISOString()
+  return dayjs(v).second(0).millisecond(0).toISOString()
 }
+function calcAdjust5min(current, dir) {
+  if (!current) return current
+  const d = dayjs(current)
+  const m = d.minute()
+  const r = m % 5
+  let next
+  if (dir > 0) {
+    next = r === 0 ? d.add(5, 'minute') : d.minute(m + (5 - r))
+  } else {
+    next = r === 0 ? d.subtract(5, 'minute') : d.minute(m - r)
+  }
+  return next.second(0).millisecond(0).format('YYYY-MM-DDTHH:mm')
+}
+function adjustStartTime(dir) { editStartLocal.value = calcAdjust5min(editStartLocal.value, dir) }
+function adjustEndTime(dir) { editEndLocal.value = calcAdjust5min(editEndLocal.value, dir) }
+function adjustArrivedTime(bcId, dir) { editArrivedLocal.value[bcId] = calcAdjust5min(editArrivedLocal.value[bcId], dir) }
+function adjustLeftTime(bcId, dir) { editLeftLocal.value[bcId] = calcAdjust5min(editLeftLocal.value[bcId], dir) }
 
 function beginEditBillCustomerArrived(bcId) {
   editingBillCustomerArrived.value[bcId] = true
@@ -1226,7 +1238,13 @@ function customLabel(customer) {
             <h3 class="m-0"><IconStopwatch />開始時刻</h3>
           </div>
           <div class="col-6">
-            <input v-if="editingStart" type="datetime-local" step="300" class="form-control" v-model="editStartLocal" />
+            <div v-if="editingStart">
+              <input type="datetime-local" step="60" class="form-control" v-model="editStartLocal" />
+              <div class="d-flex gap-2 mt-1">
+                <button type="button" class="btn btn-outline-secondary btn-sm w-50" @click="adjustStartTime(-1)">-5</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm w-50" @click="adjustStartTime(1)">+5</button>
+              </div>
+            </div>
             <span v-else class="fs-1 fw-bold">{{ startDisplay }}</span>
           </div>
           <div class="col-3">
@@ -1245,7 +1263,13 @@ function customLabel(customer) {
             <h3 class="m-0"><IconBellPause />終了時刻</h3>
           </div>
           <div class="col-6">
-            <input v-if="editingEnd" type="datetime-local" step="300" class="form-control" v-model="editEndLocal" />
+            <div v-if="editingEnd">
+              <input type="datetime-local" step="60" class="form-control" v-model="editEndLocal" />
+              <div class="d-flex gap-2 mt-1">
+                <button type="button" class="btn btn-outline-secondary btn-sm w-50" @click="adjustEndTime(-1)">-5</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm w-50" @click="adjustEndTime(1)">+5</button>
+              </div>
+            </div>
             <span v-else class="fs-1 fw-bold">{{ endDisplay }}</span>
           </div>
           <div class="col-3">
@@ -1459,13 +1483,13 @@ function customLabel(customer) {
                 <span v-if="!editingBillCustomerArrived[bc.id]" class="fw-bold fs-1">
                   {{ editArrivedLocal[bc.id] ? dayjs(editArrivedLocal[bc.id]).format('HH:mm') : '-' }}
                 </span>
-                <input
-                  v-else
-                  type="datetime-local"
-                  step="300"
-                  class="form-control form-control-sm"
-                  v-model="editArrivedLocal[bc.id]"
-                />
+                <div v-else>
+                  <input type="datetime-local" step="60" class="form-control form-control-sm" v-model="editArrivedLocal[bc.id]" />
+                  <div class="d-flex gap-2 mt-1">
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-50" @click="adjustArrivedTime(bc.id, -1)">-5</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-50" @click="adjustArrivedTime(bc.id, 1)">+5</button>
+                  </div>
+                </div>
               </div>
               <div class="col-3">
                 <button 
@@ -1496,13 +1520,13 @@ function customLabel(customer) {
                 <span v-if="!editingBillCustomerLeft[bc.id]" class="fw-bold fs-1">
                   {{ editLeftLocal[bc.id] ? dayjs(editLeftLocal[bc.id]).format('HH:mm') : '-' }}
                 </span>
-                <input
-                  v-else
-                  type="datetime-local"
-                  step="300"
-                  class="form-control form-control-sm"
-                  v-model="editLeftLocal[bc.id]"
-                />
+                <div v-else>
+                  <input type="datetime-local" step="60" class="form-control form-control-sm" v-model="editLeftLocal[bc.id]" />
+                  <div class="d-flex gap-2 mt-1">
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-50" @click="adjustLeftTime(bc.id, -1)">-5</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-50" @click="adjustLeftTime(bc.id, 1)">+5</button>
+                  </div>
+                </div>
               </div>
               <div class="col-3">
                 <button 
