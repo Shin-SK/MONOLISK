@@ -116,9 +116,27 @@ function saveResumePoint () {
   sessionStorage.setItem('__resume_to', p)
 }
 
-/** ページがまだ生きているか判定するための待機（ライブラリ側reloadを待つ） */
-function waitForReload (ms) {
-  return new Promise(resolve => setTimeout(() => resolve(false), ms))
+/** ページ離脱 or タイムアウトを Race で待つ */
+function waitForPageLeaveOrTimeout (ms) {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { cleanup(); resolve(false) }, ms)
+
+    function success () { clearTimeout(timer); cleanup(); resolve(true) }
+    function cleanup () {
+      window.removeEventListener('pagehide', success)
+      window.removeEventListener('beforeunload', success)
+      document.removeEventListener('visibilitychange', onVisChange)
+      navigator.serviceWorker?.removeEventListener('controllerchange', success)
+    }
+    function onVisChange () {
+      if (document.visibilityState === 'hidden') success()
+    }
+
+    window.addEventListener('pagehide', success, { once: true })
+    window.addEventListener('beforeunload', success, { once: true })
+    document.addEventListener('visibilitychange', onVisChange)
+    navigator.serviceWorker?.addEventListener('controllerchange', success, { once: true })
+  })
 }
 
 export function restoreRouteIfNeeded (router) {
@@ -164,12 +182,16 @@ export async function applyUpdateNow () {
     if (typeof updateNowFn === 'function') await updateNowFn(true)
   } catch (_) {}
 
-  // 2. ライブラリ側の reload を待つ。ページが離脱すればここに到達しない
-  console.log('[pwa] waiting for library reload...')
-  await waitForReload(SW_TIMEOUT)
+  // 2. ページ離脱（pagehide/beforeunload/visibilitychange/controllerchange）を待つ
+  console.log('[pwa] waiting for page leave or controllerchange...')
+  const left = await waitForPageLeaveOrTimeout(SW_TIMEOUT)
 
-  // 3. ここに来た = ライブラリ側の reload が起きなかった → 失敗
-  console.log('[pwa] update failed, showing recovery banner')
+  if (left) {
+    console.log('[pwa] page leaving detected, update succeeded')
+    return
+  }
+
+  // 3. タイムアウト = 本当にページが留まっている → 失敗
   removeOverlay()
   showFailBanner()
 }
@@ -180,8 +202,8 @@ function removeOverlay () {
 }
 
 function showFailBanner () {
-  console.log('[pwa] update failed, showing recovery banner')
   if (document.getElementById(BANNER_ID)) return
+  console.log('[pwa] update failed, showing recovery banner')
   const el = document.createElement('div')
   el.id = BANNER_ID
   el.innerHTML = `
