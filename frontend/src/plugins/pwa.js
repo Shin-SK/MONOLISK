@@ -1,16 +1,17 @@
 // src/plugins/pwa.js
-// PWA更新方式: 通知のみ・手動適用優先
+// PWA更新方式: 主=onNeedRefresh / 従=version.json(起動時フォールバック)
 import { registerSW } from 'virtual:pwa-register'
 
 const BANNER_ID = 'update-banner'
 const OVERLAY_ID = 'update-overlay'
+const SW_TIMEOUT = 8000 // controllerchange 待機タイムアウト(ms)
 let updateNowFn = null
 let _updateAvailable = false
 
 /** 更新が利用可能かどうか */
 export function isUpdateAvailable () { return _updateAvailable }
 
-/** 外部から更新フラグを立てる（update-watcher用） */
+/** 外部から更新フラグを立てる（update-watcher用フォールバック） */
 export function markUpdateAvailable () {
   if (_updateAvailable) return
   _updateAvailable = true
@@ -108,25 +109,22 @@ function ensureOverlay (msg = 'アップデートを適用中…') {
   el.style.display = 'flex'
 }
 
-async function clearSwCaches () {
-  try {
-    const keys = await caches.keys()
-    await Promise.all(keys.map(k => caches.delete(k)))
-  } catch (_) { /* noop */ }
-}
-
-function reloadWithVersionBuster () {
-  const url = new URL(window.location.href)
-  url.searchParams.delete('v')
-  url.searchParams.set('v', String(Date.now()))
-  location.replace(url.toString())
-}
-
 function saveResumePoint () {
   const url = new URL(window.location.href)
   url.searchParams.delete('v')
   const p = url.pathname + url.search + url.hash
   sessionStorage.setItem('__resume_to', p)
+}
+
+/** controllerchange を待つ（タイムアウト付き） */
+function waitForControllerChange (ms) {
+  return new Promise(resolve => {
+    const sw = navigator.serviceWorker
+    if (!sw) { resolve(false); return }
+    const timer = setTimeout(() => { sw.removeEventListener('controllerchange', ok); resolve(false) }, ms)
+    function ok () { clearTimeout(timer); resolve(true) }
+    sw.addEventListener('controllerchange', ok, { once: true })
+  })
 }
 
 export function restoreRouteIfNeeded (router) {
@@ -158,7 +156,6 @@ export function setupPWA () {
 
 /** ユーザー操作で「今すぐ更新」を実行 */
 export async function applyUpdateNow () {
-  // 更新がなければ何もしない（auth.jsからの空振り対策）
   if (!_updateAvailable) return
 
   _updateAvailable = false
@@ -166,20 +163,44 @@ export async function applyUpdateNow () {
   ensureOverlay('アップデートを適用中…')
   saveResumePoint()
 
-  // 1. SW更新を試行（既に自動更新済みなら空振りでOK）
+  // 1. updateNowFn() で新SWを activate させる
   try {
-    if (typeof updateNowFn === 'function') await updateNowFn()
+    if (typeof updateNowFn === 'function') await updateNowFn(true)
   } catch (_) {}
 
-  // 2. SWを解除（次回ページロードで再登録される）
-  try {
-    const reg = await navigator.serviceWorker?.getRegistration()
-    if (reg) await reg.unregister()
-  } catch (_) {}
+  // 2. controllerchange を待つ
+  const ok = await waitForControllerChange(SW_TIMEOUT)
 
-  // 3. SWキャッシュを全削除
-  await clearSwCaches()
+  if (ok) {
+    // 成功: 新SWが制御を取った → リロード
+    location.reload()
+  } else {
+    // タイムアウト: フォールバックとしてリロードだけ試みる
+    removeOverlay()
+    showFailBanner()
+  }
+}
 
-  // 4. 強制リロード
-  reloadWithVersionBuster()
+function removeOverlay () {
+  const el = document.getElementById(OVERLAY_ID)
+  if (el) el.remove()
+}
+
+function showFailBanner () {
+  if (document.getElementById(BANNER_ID)) return
+  const el = document.createElement('div')
+  el.id = BANNER_ID
+  el.innerHTML = `
+    <div class="ub-inner">
+      <div class="ub-text">
+        <div class="ub-title">更新の適用に失敗しました</div>
+        <div class="ub-sub">ページを再読み込みしてください</div>
+      </div>
+      <button class="ub-btn" id="ub-reload">再読み込み</button>
+      <button class="ub-close" id="ub-close2" aria-label="閉じる">&times;</button>
+    </div>
+  `
+  document.body.appendChild(el)
+  document.getElementById('ub-reload')?.addEventListener('click', () => location.reload())
+  document.getElementById('ub-close2')?.addEventListener('click', () => dismissBanner())
 }

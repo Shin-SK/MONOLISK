@@ -1,5 +1,4 @@
 // src/auth.js
-import { applyUpdateNow } from '@/plugins/pwa'
 import { api } from '@/api'
 
 const TOKEN_KEY = 'token'
@@ -76,9 +75,6 @@ export async function login(username, password) {
 
   me = (await api.get('me/', { headers: { 'X-Store-Id': String(sid) } })).data
   console.log('[auth] /me re-fetch current_store_id:', me?.current_store_id)
-
-  // ★ ここで“今すぐ更新”を適用（必要なら1回だけ自動リロードされる）
-  await applyUpdateNow()
 
   return me
 }
