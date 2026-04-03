@@ -208,14 +208,37 @@ function showFailBanner () {
   el.innerHTML = `
     <div class="ub-inner">
       <div class="ub-text">
-        <div class="ub-title">更新の適用に失敗しました</div>
-        <div class="ub-sub">ページを再読み込みしてください</div>
+        <div class="ub-title">更新に失敗しました</div>
+        <div class="ub-sub">通常の再読み込みで直らない場合があります</div>
       </div>
-      <button class="ub-btn" id="ub-reload">再読み込み</button>
+      <button class="ub-btn" id="ub-force">強制更新</button>
       <button class="ub-close" id="ub-close2" aria-label="閉じる">&times;</button>
     </div>
   `
   document.body.appendChild(el)
-  document.getElementById('ub-reload')?.addEventListener('click', () => location.reload())
+  document.getElementById('ub-force')?.addEventListener('click', () => forceRecovery())
   document.getElementById('ub-close2')?.addEventListener('click', () => dismissBanner())
+}
+
+// ─── 強制復旧（失敗時専用の脱出ハッチ）───
+async function forceRecovery () {
+  dismissBanner()
+  ensureOverlay('強制更新中…')
+
+  // 1. SW を解除
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations()
+    if (regs) await Promise.all(regs.map(r => r.unregister()))
+  } catch (_) {}
+
+  // 2. PWA関連キャッシュのみ削除（workbox- プレフィックス）
+  try {
+    const keys = await caches.keys()
+    await Promise.all(
+      keys.filter(k => /^workbox-|^sw-/.test(k)).map(k => caches.delete(k))
+    )
+  } catch (_) {}
+
+  // 3. 強制リロード
+  location.reload()
 }
