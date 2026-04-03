@@ -36,15 +36,15 @@ export default defineConfig(({ mode }) => {
 
       Icons({ autoInstall: true }),
 
-      // PWA/Service Worker 設定（本番は自動更新・即時適用）
+      // PWA/Service Worker 設定（手動更新UI: バナーで案内→ユーザー操作で適用）
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         injectRegister: 'auto',
         devOptions: { enabled: false },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         workbox: {
-          skipWaiting: true,
-          clientsClaim: true,
+          skipWaiting: false,
+          clientsClaim: false,
           cleanupOutdatedCaches: true,
           // SPA 直リンク/リロードは index.html にフォールバック
           navigateFallback: '/index.html',
