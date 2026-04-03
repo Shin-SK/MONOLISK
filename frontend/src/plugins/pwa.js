@@ -116,15 +116,9 @@ function saveResumePoint () {
   sessionStorage.setItem('__resume_to', p)
 }
 
-/** controllerchange を待つ（タイムアウト付き） */
-function waitForControllerChange (ms) {
-  return new Promise(resolve => {
-    const sw = navigator.serviceWorker
-    if (!sw) { resolve(false); return }
-    const timer = setTimeout(() => { sw.removeEventListener('controllerchange', ok); resolve(false) }, ms)
-    function ok () { console.log('[pwa] controllerchange received'); clearTimeout(timer); resolve(true) }
-    sw.addEventListener('controllerchange', ok, { once: true })
-  })
+/** ページがまだ生きているか判定するための待機（ライブラリ側reloadを待つ） */
+function waitForReload (ms) {
+  return new Promise(resolve => setTimeout(() => resolve(false), ms))
 }
 
 export function restoreRouteIfNeeded (router) {
@@ -155,15 +149,7 @@ export function setupPWA () {
   updateNowFn = updateFn
 }
 
-/** タイムアウト付きPromise実行 */
-function withTimeout (promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
-  ])
-}
-
-/** ユーザー操作で「今すぐ更新」を実行（全体5秒以内に成功or失敗） */
+/** ユーザー操作で「今すぐ更新」を実行 */
 export async function applyUpdateNow () {
   if (!_updateAvailable) return
 
@@ -172,28 +158,18 @@ export async function applyUpdateNow () {
   ensureOverlay('アップデートを適用中…')
   saveResumePoint()
 
+  // 1. updateNowFn(true) を呼ぶ → ライブラリ側が controlling イベントで reload する
   try {
-    // 1. updateNowFn + controllerchange を並行で走らせ、全体をタイムアウトで囲む
-    const swReady = (async () => {
-      try {
-        console.log('[pwa] calling updateNowFn')
-        if (typeof updateNowFn === 'function') await updateNowFn(true)
-      } catch (_) {}
-      // controllerchange を待つ（updateNowFnが即返った場合のみここに来る）
-      return waitForControllerChange(SW_TIMEOUT)
-    })()
+    console.log('[pwa] calling updateNowFn')
+    if (typeof updateNowFn === 'function') await updateNowFn(true)
+  } catch (_) {}
 
-    const ok = await withTimeout(swReady, SW_TIMEOUT)
+  // 2. ライブラリ側の reload を待つ。ページが離脱すればここに到達しない
+  console.log('[pwa] waiting for library reload...')
+  await waitForReload(SW_TIMEOUT)
 
-    if (ok) {
-      location.reload()
-      return
-    }
-  } catch (_) {
-    // タイムアウト or エラー → 失敗フローへ
-  }
-
-  // 失敗: オーバーレイ解除 → 失敗バナー
+  // 3. ここに来た = ライブラリ側の reload が起きなかった → 失敗
+  console.log('[pwa] update failed, showing recovery banner')
   removeOverlay()
   showFailBanner()
 }

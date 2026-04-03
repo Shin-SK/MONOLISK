@@ -36,10 +36,8 @@ export default defineConfig(({ mode }) => {
 
       Icons({ autoInstall: true }),
 
-      // PWA/Service Worker 設定
-      // ★ selfDestroying: 旧SW一掃用の一時措置。復帰時にfalseに戻してprompt運用へ
+      // PWA/Service Worker 設定（手動更新UI: バナーで案内→ユーザー操作で適用）
       VitePWA({
-        selfDestroying: true,
         registerType: 'prompt',
         injectRegister: 'auto',
         devOptions: { enabled: false },
