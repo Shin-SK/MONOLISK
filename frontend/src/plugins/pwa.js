@@ -80,6 +80,7 @@ function ensureOverlay (msg = 'アップデートを適用中…') {
         <div class="u-card">
           <div class="u-spinner" aria-hidden="true"></div>
           <div class="u-msg">${msg}</div>
+          <div class="u-hint">1分ほどかかる場合があります</div>
         </div>
       </div>
     `
@@ -100,6 +101,7 @@ function ensureOverlay (msg = 'アップデートを適用中…') {
   border:2px solid #ddd; border-top-color:#111; animation:u-spin 1s linear infinite;
 }
 @keyframes u-spin{to{transform:rotate(360deg)}}
+#${OVERLAY_ID} .u-hint{ opacity:.5; font-size:12px; margin-top:2px; }
     `
     document.head.appendChild(style)
     document.body.appendChild(el)
