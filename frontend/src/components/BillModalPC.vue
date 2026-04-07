@@ -1083,6 +1083,7 @@ function handleClose() {
             :ext-minutes="extMinutesView"
             :set-rounds="bill.set_rounds || 0"
             :total-duration-min="totalDurationMin"
+            :subtotal="Number(bill.subtotal || 0)"
             :pax="bill.pax ?? paxFromItems"
             :male="maleFromItems"
             :female="femaleFromItems"

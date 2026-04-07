@@ -152,7 +152,19 @@ class BillCalculator:
 
     # ---------------- Garden 専用ルール ----------------
     def _is_garden(self) -> bool:
-        return getattr(self.store, 'billing_rule', 'standard') == 'garden'
+        rule = getattr(self.store, 'billing_rule', 'standard') or 'standard'
+        # 一時デバッグ: どちらの分岐に入ったか確認用
+        try:
+            import logging
+            logging.getLogger(__name__).info(
+                "[BillCalculator] bill_id=%s store=%s billing_rule=%s",
+                getattr(self.bill, 'id', None),
+                getattr(self.store, 'id', None),
+                rule,
+            )
+        except Exception:
+            pass
+        return rule == 'garden'
 
     def _garden_breakdown(self, subtotal: Decimal):
         """
