@@ -600,6 +600,11 @@ class Bill(models.Model):
     apply_service_charge = models.BooleanField(default=True)
     apply_tax = models.BooleanField(default=True)
     grand_total = models.PositiveIntegerField(default=0)
+    expected_out_manual = models.BooleanField(
+        default=False,
+        help_text="ユーザーが手動で expected_out を明示設定済みなら True。"
+                  "True の間は auto recalc (update_expected_out) で上書きしない。",
+    )
 
     total = models.PositiveIntegerField(default=0)          # close 時に確定
     settled_total = models.PositiveIntegerField(null=True, blank=True, default=None)
@@ -679,7 +684,11 @@ class Bill(models.Model):
         return self.grand_total
 
     # ─── 退店予定再計算 ───────────────────────────
-    def update_expected_out(self, save: bool = False):
+    def update_expected_out(self, save: bool = False, force: bool = False):
+        # ★ ユーザー手動設定済みの伝票では auto recalc をスキップする。
+        #   force=True の場合だけ明示的に再計算を許可する（現状 force 利用箇所なし）。
+        if self.expected_out_manual and not force:
+            return self.expected_out
         minutes = 0
         base_found = False
         for it in self.items.all():

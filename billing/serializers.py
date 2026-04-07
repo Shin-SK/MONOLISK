@@ -1234,18 +1234,24 @@ class BillSerializer(serializers.ModelSerializer):
         if 'discount_rule' not in validated_data:
             validated_data['discount_rule'] = instance.discount_rule
 
+        # ★ ユーザーが expected_out を明示的に PATCH してきたら manual flag を立てる。
+        #   これ以降、auto recalc (update_expected_out) はこの伝票では skip される。
+        if 'expected_out' in validated_data:
+            validated_data['expected_out_manual'] = True
+
         # 通常フィールドをまとめて更新
         opened_at_was_changed = ('opened_at' in validated_data)
         instance = super().update(instance, validated_data)
 
-        # opened_at を変更した場合は expected_out を再計算
-        # さらに closed_at が既にある（締め済み）かつ closed_at を明示更新していないときは
-        # 新しい opened_at に基づく expected_out へ closed_at を合わせる（自動整合）
-        if opened_at_was_changed:
+        # opened_at を変更した場合の expected_out 自動再計算は撤去（手動値を巻き戻す副作用を防ぐ）。
+        # ただし、締め済み伝票で closed_at を明示更新していない・かつ手動設定がない場合のみ
+        # 整合用に再計算 → closed_at を追従させる（既存挙動の最小限維持）。
+        if opened_at_was_changed and instance.closed_at and ('closed_at' not in validated_data) \
+           and not instance.expected_out_manual:
             try:
-                instance.update_expected_out(save=True)
-                if instance.closed_at and ('closed_at' not in validated_data):
-                    instance.closed_at = instance.expected_out
+                new_eo = instance.update_expected_out(save=True, force=True)
+                if new_eo:
+                    instance.closed_at = new_eo
                     instance.save(update_fields=['closed_at'])
             except Exception:
                 pass
