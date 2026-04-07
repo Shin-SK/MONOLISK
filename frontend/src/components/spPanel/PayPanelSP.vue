@@ -19,6 +19,8 @@ const props = defineProps({
   canClose: { type: Boolean, default: false },
   memo: { type: String, default: '' },
   discountRuleId: { type: [Number, null], default: null }, // 現在選択中の割引ルールID
+  // 店舗会計ルール（'standard' / 'garden'）。Garden の場合はサ料/消費税 行を非表示
+  billingRule: { type: String, default: 'standard' },
 })
 const emit = defineEmits([
   'update:settledTotal','update:paidCash','update:paidCard','update:cardBrand',
@@ -336,8 +338,10 @@ watch(
       <div class="sum">
         <div class="d-grid gap-3" style="grid-template-columns: 1fr auto;">
           <div class="label">小計</div>      <div class="value text-end">¥{{ current.sub.toLocaleString() }}</div>
-          <div class="label">サービス料</div><div class="value text-end">¥{{ current.svc.toLocaleString() }}</div>
-          <div class="label">消費税</div>    <div class="value text-end">¥{{ current.tax.toLocaleString() }}</div>
+          <template v-if="billingRule !== 'garden'">
+            <div class="label">サービス料</div><div class="value text-end">¥{{ current.svc.toLocaleString() }}</div>
+            <div class="label">消費税</div>    <div class="value text-end">¥{{ current.tax.toLocaleString() }}</div>
+          </template>
           <div class="label fw-bold fs-5">合計</div><div class="value fw-bold text-end fs-5">¥{{ current.total.toLocaleString() }}</div>
           <template v-if="discountAmount > 0">
             <div class="label text-danger">割引</div><div class="value text-end text-danger">-¥{{ discountAmount.toLocaleString() }}</div>

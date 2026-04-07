@@ -53,11 +53,13 @@ class StoreAdmin(admin.ModelAdmin):
     list_display  = (
         "name",
         "business_hours_display",
+        "billing_rule",
         "service_rate", "tax_rate", "nom_pool_rate",
         "back_rate_free_default","back_rate_nomination_default","back_rate_inhouse_default","back_rate_dohan_default",
         "business_day_cutoff_hour",
     )
     list_editable = (
+        "billing_rule",
         "service_rate","tax_rate","nom_pool_rate",
         "back_rate_free_default","back_rate_nomination_default","back_rate_inhouse_default","back_rate_dohan_default",
     )
@@ -71,6 +73,7 @@ class StoreAdmin(admin.ModelAdmin):
             )
         }),
         (None, {"fields": ("name", "slug")}),
+        ("会計ルール", {"fields": ("billing_rule",)}),
         ("各種レート", {"fields": (
             "service_rate","tax_rate","nom_pool_rate",
             "back_rate_free_default","back_rate_nomination_default","back_rate_inhouse_default","back_rate_dohan_default",

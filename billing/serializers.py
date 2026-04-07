@@ -855,6 +855,9 @@ class BillSerializer(serializers.ModelSerializer):
         write_only=True
     )
 
+    # ★ Garden 等の店舗会計ルールをフロントへ伝える（read-only）
+    store_billing_rule = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = Bill
         fields = (
@@ -880,6 +883,8 @@ class BillSerializer(serializers.ModelSerializer):
             "manual_discounts", "manual_discount_total",
             # ---- 給与スナップショット ----
             "payroll_snapshot", "payroll_dirty",
+            # ---- 店舗会計ルール ----
+            "store_billing_rule",
         )
         read_only_fields = (
             "subtotal", "service_charge", "tax", "grand_total", "total",
@@ -888,8 +893,13 @@ class BillSerializer(serializers.ModelSerializer):
             "manual_discount_total",
             "payroll_snapshot", "payroll_dirty",
             "table_atoms", "table_label", "table_atom_ids",  # Phase2: read-only
+            "store_billing_rule",
         )
         depth = 2
+
+    def get_store_billing_rule(self, obj):
+        store = getattr(getattr(obj, 'table', None), 'store', None)
+        return getattr(store, 'billing_rule', 'standard') or 'standard'
 
     # ---- init：discount_rule を店舗で絞る ----
     def __init__(self, *args, **kwargs):

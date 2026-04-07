@@ -3,7 +3,7 @@ from __future__ import annotations
 Bill / CastPayout 計算ロジック（割引フック + 席種別サービス率対応）
 """
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_FLOOR
+from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from typing import List, Dict
 from billing.payroll.engines import get_engine
 
@@ -150,13 +150,40 @@ class BillCalculator:
         ]
         
 
+    # ---------------- Garden 専用ルール ----------------
+    def _is_garden(self) -> bool:
+        return getattr(self.store, 'billing_rule', 'standard') == 'garden'
+
+    def _garden_breakdown(self, subtotal: Decimal):
+        """
+        Garden 専用ルール:
+            合計   = ceil(subtotal × 1.1 × 1.25 / 100) × 100   （100円未満切り上げ。確定式）
+            税     = floor(subtotal × 0.10)                    （Garden 式の ×1.1 部分。素直内訳）
+            サービス料 = floor(subtotal × 0.25)                （Garden 式の ×1.25 部分。素直内訳）
+
+        ★ 仕様: total と「内訳合算」は一致しない（最大 99 円の切り上げ差）。
+          内訳は "Garden 式の構成要素" として永続化（DB集計の健全性維持のため）。
+          画面側ではサービス料/TAX 行を非表示にして、ユーザーには total のみを見せる。
+        """
+        sub = Decimal(subtotal)
+        raw = sub * Decimal('1.1') * Decimal('1.25')
+        total = (raw / Decimal(100)).quantize(0, rounding=ROUND_CEILING) * Decimal(100)
+        svc = (sub * Decimal('0.25')).quantize(0, rounding=ROUND_FLOOR)
+        tax = (sub * Decimal('0.10')).quantize(0, rounding=ROUND_FLOOR)
+        return svc, tax, total
+
     def execute(self):
         # ★ 変更: 合計（小計+サービス料+税）から割引を引く方式に変更
         subtotal0 = self._subtotal_raw()
-        # まずサービス料・税を計算（割引前）
-        svc0 = self._service_fee(subtotal0)
-        tax0 = self._tax(subtotal0, svc0)
-        total_before_discount = subtotal0 + svc0 + tax0
+
+        if self._is_garden():
+            # Garden ルール: total は専用式で確定。割引は total から差し引く。
+            svc0, tax0, total_before_discount = self._garden_breakdown(subtotal0)
+        else:
+            # 標準ルール（現行維持）
+            svc0 = self._service_fee(subtotal0)
+            tax0 = self._tax(subtotal0, svc0)
+            total_before_discount = subtotal0 + svc0 + tax0
         
         # 合計から割引を適用
         disc = getattr(self.bill, "discount_rule", None)

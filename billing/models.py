@@ -47,10 +47,23 @@ class BillingUser(User):
 
 # ───────── マスター ─────────
 class Store(models.Model):
+    BILLING_RULE_STANDARD = 'standard'
+    BILLING_RULE_GARDEN   = 'garden'
+    BILLING_RULE_CHOICES  = [
+        (BILLING_RULE_STANDARD, '標準'),
+        (BILLING_RULE_GARDEN,   'Garden'),
+    ]
+
     slug = models.SlugField(unique=True)
     name = models.CharField(max_length=50)
     service_rate = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.10'))
     tax_rate     = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.10'))
+    billing_rule = models.CharField(
+        max_length=16,
+        choices=BILLING_RULE_CHOICES,
+        default=BILLING_RULE_STANDARD,
+        help_text="会計計算ルール。standard=標準、garden=Garden専用ルール（× 1.1 × 1.25, 100円未満切り上げ）",
+    )
 
     back_rate_free_default       = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
     back_rate_nomination_default = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))

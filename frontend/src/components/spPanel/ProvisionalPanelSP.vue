@@ -9,6 +9,8 @@ const props = defineProps({
   ed: { type: Object, default: null },             // ★ 追加：useBillEditor を丸ごと渡す
   serviceRate: { type: Number, default: 0.3 },
   taxRate: { type: Number, default: 0.1 },
+  // 店舗会計ルール（'standard' / 'garden'）。Garden の場合は内訳の「サ料・税」表示を非表示
+  billingRule: { type: String, default: 'standard' },
 })
 
 /* ===== データソース（ed優先） ===== */
@@ -224,7 +226,12 @@ function resetAll(){
               <div class="d-flex align-items-center gap-2">
                 <IconDatabase />
                 <span>
-                {{ hypoTotals.sub.toLocaleString() }} + サ¥{{ hypoTotals.svc.toLocaleString() }} + 税¥{{ hypoTotals.tax.toLocaleString() }}
+                <template v-if="billingRule !== 'garden'">
+                  {{ hypoTotals.sub.toLocaleString() }} + サ¥{{ hypoTotals.svc.toLocaleString() }} + 税¥{{ hypoTotals.tax.toLocaleString() }}
+                </template>
+                <template v-else>
+                  小計¥{{ hypoTotals.sub.toLocaleString() }}
+                </template>
                 </span>
               </div>
               <div class="d-flex align-items-center gap-2">
@@ -247,7 +254,12 @@ function resetAll(){
               <span>現在の合計</span><strong>¥{{ baseTotals.total.toLocaleString() }}</strong>
             </div>
             <div class="text-muted small">
-              小計¥{{ baseTotals.sub.toLocaleString() }} + サ¥{{ baseTotals.svc.toLocaleString() }} + 税¥{{ baseTotals.tax.toLocaleString() }}
+              <template v-if="billingRule !== 'garden'">
+                小計¥{{ baseTotals.sub.toLocaleString() }} + サ¥{{ baseTotals.svc.toLocaleString() }} + 税¥{{ baseTotals.tax.toLocaleString() }}
+              </template>
+              <template v-else>
+                小計¥{{ baseTotals.sub.toLocaleString() }}
+              </template>
             </div>
             <div class="mt-2">
               終了予定：<strong>{{ baseEndAt ? baseEndAt.format('HH:mm') : '—' }}</strong>

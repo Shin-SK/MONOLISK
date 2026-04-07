@@ -1518,6 +1518,7 @@ function handleClose() {
       :discount-rule-id="props.bill?.discount_rule ? Number(props.bill.discount_rule) : null"
       :manual-discounts="props.bill?.manual_discounts || []"
       :store-slug="storeSlug"
+      :billing-rule="props.bill?.store_billing_rule || 'standard'"
       :dosukoi-discount-unit="1000"
       :receipt-name="receiptNameForBill"
       @update:settledTotal="setSettledTotal"
@@ -1541,6 +1542,7 @@ function handleClose() {
       :ed="ed"
       :service-rate="props.serviceRate"
       :tax-rate="props.taxRate"
+      :billing-rule="props.bill?.store_billing_rule || 'standard'"
     />
 
     <template #footer>

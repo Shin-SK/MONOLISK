@@ -64,23 +64,23 @@ onBeforeUnmount(() => { mql?.removeEventListener?.('change', syncIsPC) })
 
       <aside class="aside offcanvas-body d-flex flex-column justify-content-between">
         <!-- -------- ナビ ---------- -->
-        <nav class="nav flex-column">
+        <nav class="nav flex-column mb-5">
 
-          <div class="d-flex flex-column mb-3 pb-3 border-bottom gap-3">
+          <div class="d-flex flex-column mb-3 pb-3 border-bottom gap-2">
             <!-- ダッシュボード -->
-            <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-dashboard'})">
+            <a class="nav-link bg-white d-flex align-items-center gap-1" href="#" @click.prevent="nav({name:'mng-dashboard'})">
               <IconHome /><span class="lh-1">ホーム</span>
             </a>
             <!-- 卓伝票（PCではフッター廃止のためここに） -->
-            <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-bill-table'})">
+            <a class="nav-link bg-white d-flex align-items-center gap-1" href="#" @click.prevent="nav({name:'mng-bill-table'})">
               <IconPinned /><span class="lh-1">卓伝票</span>
             </a>
             <!-- 伝票  -->
-            <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-bills'})">
+            <a class="nav-link bg-white d-flex align-items-center gap-1" href="#" @click.prevent="nav({name:'mng-bills'})">
               <IconReceiptYen /><span class="lh-1">伝票一覧</span>
             </a>
             <!-- PL -->
-            <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-pl'})">
+            <a class="nav-link bg-white d-flex align-items-center gap-1" href="#" @click.prevent="nav({name:'mng-pl'})">
               <IconChartHistogram /><span class="lh-1">収支分析</span>
             </a>
           </div>
@@ -257,20 +257,22 @@ onBeforeUnmount(() => { mql?.removeEventListener?.('change', syncIsPC) })
 <style scoped>
 /* PC: 常時表示の固定サイドバー */
 .manager-sidebar-pc {
-  width: 240px;
-  min-width: 240px;
-  height: 100vh;
-  position: sticky;
-  top: 0;
-  left: 0;
-  background: #fff;
+  width: 280px;
+  min-width: 280px;
+  align-self: flex-start;          /* 親 d-md-flex の中で自身は伸ばさない */
+  background: var(--bs-body-bg);    /* main と同じ背景に揃える */
   border-right: 1px solid #e9ecef;
-  overflow-y: auto;
+  overflow: visible;                /* サイドバー単独スクロールを廃止 */
   display: flex;
   flex-direction: column;
 }
 .manager-sidebar-pc :deep(.aside) {
   padding: 1rem;
   flex: 1;
+  background: transparent;
+}
+/* nav-link の bg-white が main と段差を作るので透過に */
+.manager-sidebar-pc :deep(.nav-link.bg-white) {
+  background: transparent !important;
 }
 </style>
