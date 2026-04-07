@@ -524,6 +524,18 @@ const displayGrandTotal = computed(() => {
   const b = props.bill || {}
   return Number((b.total != null && b.total > 0) ? b.total : (b.grand_total ?? 0))
 })
+// items の duration_min × qty を全部足した合計分数（end 計算フォールバック用）
+const totalDurationMin = computed(() => {
+  const items = Array.isArray(props.bill?.items) ? props.bill.items : []
+  let mins = 0
+  for (const it of items) {
+    const dur = Number(it?.duration_min || it?.item_master?.duration_min || 0)
+    const qty = Number(it?.qty || 0)
+    mins += Math.max(0, dur) * Math.max(0, qty)
+  }
+  return mins
+})
+
 const extMinutesView = computed(() => {
   const b = props.bill || {}
   const items = Array.isArray(b.items) ? b.items : []
@@ -1070,6 +1082,7 @@ function handleClose() {
             :expected-out="bill.expected_out"
             :ext-minutes="extMinutesView"
             :set-rounds="bill.set_rounds || 0"
+            :total-duration-min="totalDurationMin"
             :pax="bill.pax ?? paxFromItems"
             :male="maleFromItems"
             :female="femaleFromItems"

@@ -54,6 +54,9 @@ const props = defineProps({
   // PC/List と一致：延長分（分）・セット回数
   extMinutes:  { type: Number, default: 0 },   // bill.ext_minutes
   setRounds:   { type: Number, default: 0 },   // bill.set_rounds
+  // 親が items から計算した「合計セッション分数」フォールバック
+  // （新規伝票でまだ bill.set_rounds が backend 反映前のときに使用）
+  totalDurationMin: { type: Number, default: 0 },
 
   // 小計
   subtotal: { type: Number, default: 0 },   // bill.subtotal
@@ -545,12 +548,20 @@ watch(() => props.openedAt, v => { startISO.value = v || '' }, { immediate: true
 const endISO   = ref('')
 watch(() => props.expectedOut, v => { endISO.value = v || '' }, { immediate: true })
 
+// 既定セッション分数（SET 等が無いときのフォールバック）
+const DEFAULT_SESSION_MIN = 60
+
 const computedEndISO = computed(() => {
   if (endISO.value) return endISO.value
-  if (!startISO.value) return '' // opened_at 無しなら計算もしない
-  const addMin = (Number(props.setRounds)||0) * 60 + (Number(props.extMinutes)||0)
-  if (addMin <= 0) return ''
-  return dayjs(startISO.value).add(addMin, 'minute').toISOString()
+  // 開始時刻が空でも、新規ドラフト時は dayjs() を起点にして表示する
+  const start = startISO.value ? dayjs(startISO.value) : dayjs()
+  // 1) bill.set_rounds / ext_minutes が反映済みならそれを使う
+  let addMin = (Number(props.setRounds)||0) * 60 + (Number(props.extMinutes)||0)
+  // 2) 反映前（新規直後など）は items 合計分数フォールバック
+  if (addMin <= 0) addMin = Number(props.totalDurationMin) || 0
+  // 3) それでも 0 なら既定 60 分
+  if (addMin <= 0) addMin = DEFAULT_SESSION_MIN
+  return start.add(addMin, 'minute').toISOString()
 })
 
 // 表示（HH:mm）と編集用（datetime-local）の両方を持つ
