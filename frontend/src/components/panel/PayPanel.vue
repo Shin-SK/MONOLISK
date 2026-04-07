@@ -1118,10 +1118,8 @@ function removeSavedDiscount(index) {
     <div class="sum">
       <div class="d-grid gap-3" style="grid-template-columns: 1fr auto;">
         <div class="label">小計</div>      <div class="value text-end">¥{{ current.sub.toLocaleString() }}</div>
-        <template v-if="billingRule !== 'garden'">
-          <div class="label">サービス料</div><div class="value text-end">¥{{ current.svc.toLocaleString() }}</div>
-          <div class="label">TAX</div>    <div class="value text-end">¥{{ current.tax.toLocaleString() }}</div>
-        </template>
+        <div class="label">サービス料</div><div class="value text-end">¥{{ current.svc.toLocaleString() }}</div>
+        <div class="label">TAX</div>    <div class="value text-end">¥{{ current.tax.toLocaleString() }}</div>
         <div class="label fw-bold fs-5">合計</div><div class="value fw-bold text-end fs-5">¥{{ current.total.toLocaleString() }}</div>
         <template v-if="discountAmount > 0">
           <div class="label text-danger">{{ discountLabel }}</div><div class="value text-end text-danger">-¥{{ discountAmount.toLocaleString() }}</div>

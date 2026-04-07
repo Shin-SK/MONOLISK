@@ -226,12 +226,7 @@ function resetAll(){
               <div class="d-flex align-items-center gap-2">
                 <IconDatabase />
                 <span>
-                <template v-if="billingRule !== 'garden'">
-                  {{ hypoTotals.sub.toLocaleString() }} + サ¥{{ hypoTotals.svc.toLocaleString() }} + 税¥{{ hypoTotals.tax.toLocaleString() }}
-                </template>
-                <template v-else>
-                  小計¥{{ hypoTotals.sub.toLocaleString() }}
-                </template>
+                {{ hypoTotals.sub.toLocaleString() }} + サ¥{{ hypoTotals.svc.toLocaleString() }} + 税¥{{ hypoTotals.tax.toLocaleString() }}
                 </span>
               </div>
               <div class="d-flex align-items-center gap-2">
@@ -254,12 +249,7 @@ function resetAll(){
               <span>現在の合計</span><strong>¥{{ baseTotals.total.toLocaleString() }}</strong>
             </div>
             <div class="text-muted small">
-              <template v-if="billingRule !== 'garden'">
-                小計¥{{ baseTotals.sub.toLocaleString() }} + サ¥{{ baseTotals.svc.toLocaleString() }} + 税¥{{ baseTotals.tax.toLocaleString() }}
-              </template>
-              <template v-else>
-                小計¥{{ baseTotals.sub.toLocaleString() }}
-              </template>
+              小計¥{{ baseTotals.sub.toLocaleString() }} + サ¥{{ baseTotals.svc.toLocaleString() }} + 税¥{{ baseTotals.tax.toLocaleString() }}
             </div>
             <div class="mt-2">
               終了予定：<strong>{{ baseEndAt ? baseEndAt.format('HH:mm') : '—' }}</strong>
