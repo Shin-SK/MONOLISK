@@ -115,11 +115,14 @@ async function logout () {
   <div class="base managers d-block d-md-flex min-vh-100"
     style="z-index: 99;">
 
+    <!-- ────────── PC固定サイドバー（SPは offcanvas 経由なので非表示） ────────── -->
+    <ManagerSidebar />
+
     <!-- ────────── MAIN ────────── -->
     <main class="main flex-fill container-fluid py-4">
       <div class="wrapper h-100 d-flex flex-column">
-        <header class="header d-flex justify-content-between mb-1">
-            <h2>{{ pageTitle }}</h2>
+        <header class="header d-flex justify-content-between align-items-center mb-1">
+            <h2 class="m-0">{{ pageTitle }}</h2>
             <!-- <span class="today text-muted">{{ today }}</span> -->
              <div class="position-relative">
               <button 
@@ -208,8 +211,8 @@ async function logout () {
       </div>
     </main>
 
-    <!-- ────────── footer ────────── -->
-    <div class="position-fixed bottom-0 w-100 d-flex align-items-center justify-content-between gap-3 bg-white p-2"
+    <!-- ────────── footer (SPのみ表示。PCはサイドバーに移行) ────────── -->
+    <div class="position-fixed bottom-0 w-100 d-md-none d-flex align-items-center justify-content-between gap-3 bg-white p-2"
     style="z-index: 99;">
       <button 
         class="df-center flex-column"
@@ -248,7 +251,6 @@ async function logout () {
         <small>設定</small>
       </button>
 
-       <ManagerSidebar />
     </div>
 
   </div>

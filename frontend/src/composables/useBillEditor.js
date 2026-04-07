@@ -10,6 +10,7 @@ import {
   updateBillTable,
   updateBillCasts,
   setBillDohan,
+  fetchCastShifts,
   api,
 } from '@/api'
 import { enqueue } from '@/utils/txQueue'
@@ -289,13 +290,34 @@ async function chooseCourse(opt){
 
 
   // ベンチ（未選択）
+  // ★ BillBoardPC の「稼働可能キャスト」と完全一致させるため、
+  //   - 自伝票のキャストを除外
+  //   - **他の伝票で着席中（active stay）のキャストも除外**
+  //   する。
+  const billsStoreForBench = useBills()
+  const otherBillsStayIds = computed(() => {
+    const myId = bill.value?.id ?? null
+    const ids = new Set()
+    for (const b of (billsStoreForBench.list || [])) {
+      if (myId != null && Number(b?.id) === Number(myId)) continue
+      for (const s of (b?.stays || [])) {
+        if (s?.left_at) continue
+        const cid = Number(s?.cast?.id ?? s?.cast_id)
+        if (cid) ids.add(cid)
+      }
+    }
+    return ids
+  })
   const benchCasts = computed(() => {
     const chosen = new Set([...mainIds.value, ...freeIds.value, ...inhouseIds.value, ...dohanIds.value])
+    const occupied = otherBillsStayIds.value
     const kw = castKeyword.value.trim().toLowerCase()
     const list = Array.isArray(casts.value) ? casts.value : []
     return list.filter(c => {
       if (!c || c.id == null) return false
-      if (chosen.has(c.id)) return false
+      const cid = Number(c.id)
+      if (chosen.has(cid)) return false
+      if (occupied.has(cid)) return false
       if (!kw) return true
       return (c.stage_name || '').toLowerCase().includes(kw)
     })
@@ -363,23 +385,35 @@ async function chooseCourse(opt){
     await syncCasts()
   }
 
-  onMounted(async () => {
+  // 初期化＋出勤情報取得（storeId 空でも X-Store-Id ヘッダ経由で解決される）
+  async function loadInitialData() {
     try {
+      // store 引数は空文字の場合は渡さない（middleware の X-Store-Id に任せる）
+      const sid = storeId.value || null
       await Promise.all([
-        tablesStore.fetch(storeId.value),
-        mastersStore.fetch(storeId.value),
-        castsStore.fetch(storeId.value),
+        tablesStore.fetch(sid || true),
+        mastersStore.fetch(sid || true),
+        castsStore.fetch(sid || true),
       ])
-      // 出勤情報（任意）
+      // ★ BillBoardPC と完全に同じパラメータで取得（ズレ防止）
       const today = new Date().toISOString().slice(0,10)
-      const { data: shifts } = await api.get('billing/cast-shifts/', {
-        params: { from: today, to: today, store: storeId.value }
-      })
+      const shifts = await fetchCastShifts({ date: today }).catch(() => [])
       onDutySet.value = new Set(
-        shifts.filter(s => s.clock_in && !s.clock_out).map(s => s.cast.id)
+        (Array.isArray(shifts) ? shifts : [])
+          .filter(s => s.clock_in && !s.clock_out)
+          .map(s => Number(s?.cast?.id ?? s?.cast_id))
+          .filter(Boolean)
       )
       initCastsFromBill()
-    } catch(e) { console.error('fetch failed', e) }
+    } catch(e) { console.error('[useBillEditor] loadInitialData failed', e) }
+  }
+
+  onMounted(loadInitialData)
+
+  // bill が後から差し替わったとき（新規 → 確定 など）にも再ロードして
+  // 稼働可能キャストのズレを防ぐ
+  watch(() => bill.value?.table?.store, (sid, prev) => {
+    if (sid && sid !== prev) loadInitialData()
   })
 
   async function save(){
@@ -476,18 +510,18 @@ async function chooseCourse(opt){
     // キュー投入（裏で確定）
     const memoStr = ''  // 必要ならモーダル側から受け取って渡す
 
-    const commonTimePayload = { opened_at: optimisticBill.opened_at, expected_out: optimisticBill.expected_out }
+    // ★ opened_at は create 時に backend(timezone.now) を真とする。
+    //   既存伝票でも、ここで毎回再送すると別パネル保存時に古い時刻で巻き戻すので送らない。
+    //   時刻編集は時刻編集 UI（saveTimes / onUpdateTimes）から個別に patch する。
+    const expectedOnly = { expected_out: optimisticBill.expected_out }
 
     if (isNewBill){
-      enqueue('createBill', { tempId: optimisticId, table_id, ...commonTimePayload, memo: memoStr })
+      enqueue('createBill', { tempId: optimisticId, table_id, ...expectedOnly, memo: memoStr })
       enqueue('updateBillTable', { id: optimisticId, table_id })
-      // create 時に opened_at/expected_out が無視されるケースへの保険
-      enqueue('patchBill', { id: optimisticId, payload: commonTimePayload })
     }else{
       const currentTableId = bill.value.table?.id ?? bill.value.table ?? null
       if (table_id !== currentTableId) enqueue('updateBillTable', { id: optimisticId, table_id })
-      // 既存伝票でも保存時に開始/終了を必ず送る（他パネル保存で現在時刻に戻るのを防ぐ）
-      enqueue('patchBill', { id: optimisticId, payload: { ...commonTimePayload, memo: memoStr } })
+      enqueue('patchBill', { id: optimisticId, payload: { memo: memoStr } })
     }
 
     if ((bill.value?.customers?.length ?? 0) > 0){

@@ -7,6 +7,7 @@ import BillModal       from '@/components/BillModal.vue'
 import BillBoardPC     from '@/components/BillBoardPC.vue'     // PC用（伝票中心）
 import BillBoardSP     from '@/components/BillBoardSP.vue'     // SP用（伝票中心）
 import { api, fetchBill } from '@/api'
+import { useBills } from '@/stores/useBills'
 import { buildBillDraft } from '@/utils/draftbills.js'
 import { startTxQueue } from '@/utils/txQueue'
 startTxQueue()
@@ -52,13 +53,20 @@ function handleNewBill({ tableId, tableIds }){
   showModal.value   = true
 }
 
-const pcRef = ref(null)
-const spRef = ref(null)
+// 注意: ref() ではなく素のオブジェクト。template 内で auto-unwrap されると
+// `spRef.value = el` が `null.value = el` になりエラーになるため。
+const boardRef = { pc: null, sp: null }
+const billsStore = useBills()
 
-function handleSaved(){
+// SP/PC ref が動的バインド（:ref="isSP ? spRef : pcRef"）でうまく解決されない
+// ケースに備え、保存後は必ず billsStore を直接 reload する。
+async function handleSaved(){
   showModal.value = false
-  pcRef.value?.reload?.()
-  spRef.value?.reload?.()
+  try {
+    await billsStore.loadAll(true)
+  } catch (e) { console.error('[DashboardAdmin] reload after save failed', e) }
+  boardRef.pc?.reload?.()
+  boardRef.sp?.reload?.()
 }
 
 async function tryOpenBillFromRoute(){
@@ -84,7 +92,7 @@ watch(
     <div class="tables">
       <component
         :is="isSP ? BillBoardSP : BillBoardPC"
-        :ref="isSP ? spRef : pcRef"
+        :ref="el => { if (isSP) boardRef.sp = el; else boardRef.pc = el }"
         @bill-click="openBillEditor"
         @request-new="handleNewBill"
       />

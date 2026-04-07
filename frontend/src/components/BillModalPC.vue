@@ -1,402 +1,908 @@
 <!-- BillModalPC.vue -->
+<!--
+  ※ 中身（script）は BillModalSP.vue と同等。SP が正の動作で、PC は 3 カラム
+     レイアウトのみ差し替えた版。SP に新機能/修正が入ったら、まず SP を直し、
+     その後ここの script を SP からコピーして合わせること。
+-->
 <script setup>
-import { reactive, ref, watch, computed, onMounted, toRef, unref } from 'vue'
-import BaseModal      from '@/components/BaseModal.vue'
-import Avatar         from '@/components/Avatar.vue'
-import { useCustomers } from '@/stores/useCustomers'
-import { useBillCustomers } from '@/composables/useBillCustomers'
-import { useBills } from '@/composables/useBills'
-import {
-  api,
-  updateBillTimes,
-  updateBillCustomers,
-  updateBillTable,
-  updateBillCasts,
-  toggleBillInhouse,
-  addBillItem, deleteBillItem, closeBill,
-  fetchBill, patchBillItem, patchBill,
-  setBillDiscountByCode,
-  setBillDohan,
-  addSubstituteItem,
-} from '@/api'
-import { useCasts }     from '@/stores/useCasts'
-import { useMasters }   from '@/stores/useMasters'
-import { useTables }    from '@/stores/useTables'
-import dayjs from 'dayjs'
-import CastsPanel    from '@/components/panel/CastsPanel.vue'
+import { computed, ref, toRef, watch, nextTick, watchEffect, onMounted } from 'vue'
+import BaseModal from '@/components/BaseModal.vue'
+import BasicsPanel from '@/components/panel/BasicsPanel.vue'
 import CustomerModal from '@/components/CustomerModal.vue'
-import BasicsPanel   from '@/components/panel/BasicsPanel.vue'
-import CustomerPanel from '@/components/CustomerPanel.vue'
+import { useCustomers } from '@/stores/useCustomers'
+import CastsPanel  from '@/components/panel/CastsPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
-import PayPanel      from '@/components/panel/PayPanel.vue'
-import { enqueue }   from '@/utils/txQueue'
+import PayPanel from '@/components/panel/PayPanel.vue'
+import useBillEditor from '@/composables/useBillEditor'
+import { useBillCustomers } from '@/composables/useBillCustomers'
+import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
+import { useRoles } from '@/composables/useRoles'
+import { enqueue } from '@/utils/txQueue'
+import {
+  api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts,
+  fetchBill, deleteBillItem, patchBillItem, patchBillItemQty, fetchMasters,
+  createBill, patchBill,
+  setBillDiscountByCode, updateBillDiscountRule, settleBill, fetchBillTags,
+  addSubstituteItem,
+ } from '@/api'
 
-/* ---------------------------------------------------------
- * props / emits
- * --------------------------------------------------------- */
-const props = defineProps({
-  modelValue  : Boolean,
-  bill        : Object,
-  serviceRate : { type: Number, default: 0.3 },
-  taxRate     : { type: Number, default: 0.1 },
-})
-const emit  = defineEmits(['update:modelValue','saved','updated','closed'])
+const { hasRole } = useRoles()
+const canProvisional = computed(() => hasRole(['manager','owner']))
 
-/* ---------------------------------------------------------
- * v-model 開閉
- * --------------------------------------------------------- */
-const visible = computed({
-  get : () => props.modelValue,
-  set : v  => emit('update:modelValue', v)
-})
-
-/* 共通ユーティリティ */
-const asId = v => (typeof v === 'object' && v) ? v.id : v
-const catCode    = m => typeof m.category === 'string' ? m.category : m.category?.code
-const showInMenu = m => typeof m.category === 'object' ? m.category.show_in_menu : true
-
-/* ---------------------------------------------------------
- * ストア／マスター／テーブル
- * --------------------------------------------------------- */
-const casts   = ref([])
-const masters = ref([])
-const tables  = ref([])
-const bill    = toRef(props, 'bill')
-
-const castsStore   = useCasts()
-const mastersStore = useMasters()
-const tablesStore  = useTables()
-const onDutySet    = ref(new Set())
-
-const castKeyword  = ref('')
-const customers    = useCustomers()
-
-/* Bill 顧客リスト（注文時の顧客選択用） */
+// ===== ref 先行宣言 =====
+const memoRef = ref('')
+const displayNameRef = ref('')
+const applyServiceChargeRef = ref(true)
+const applyTaxRef = ref(true)
+const billTags = ref([])
+const selectedTagIds = ref([])
+const selectedCustomerId = ref(null)
+const tableIds = ref([])
 const billCustomersComposable = useBillCustomers()
 
-/* PayPanel 参照（割引明細・メモを取り出す） */
-const payRefPc  = ref(null)
+const props = defineProps({
+  modelValue: Boolean,
+  bill: { type: Object, default: null },
+  serviceRate: { type: Number, default: 0.3 },
+  taxRate:    { type: Number, default: 0.1 },
+})
+const emit = defineEmits(['update:modelValue','saved','updated','closed'])
 
-/* ---------------------------------------------------------
- * storeSlug：LS → API で補完（PayPanel用）
- * --------------------------------------------------------- */
+// ===== stay 形状ユーティリティ =====
+function getStayCastId(s) {
+  return Number(s?.cast?.id ?? s?.cast_id ?? s?.cast ?? null)
+}
+function isActiveStay(s) { return !s?.left_at }
+function activeStays() {
+  const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
+  return stays.filter(isActiveStay)
+}
+function recomputeFreeIds() {
+  return Array.from(new Set(
+    activeStays().filter(s => s.stay_type === 'free').map(getStayCastId).filter(Boolean)
+  ))
+}
+function recomputeHelpIds() {
+  return Array.from(new Set(
+    activeStays().filter(s => s.stay_type === 'free' && s.is_help === true).map(getStayCastId).filter(Boolean)
+  ))
+}
+
+// ===== createBill 後の props.bill 同期 =====
+function applyBillPatchToLocal(patch) {
+  if (!patch || !props.bill) return
+  if (patch.id != null) props.bill.id = patch.id
+  if (patch.opened_at !== undefined) props.bill.opened_at = patch.opened_at
+  if (patch.expected_out !== undefined) props.bill.expected_out = patch.expected_out
+  if (patch.apply_service_charge !== undefined) props.bill.apply_service_charge = patch.apply_service_charge
+  if (patch.apply_tax !== undefined) props.bill.apply_tax = patch.apply_tax
+  if (patch.table !== undefined) props.bill.table = patch.table
+  if (patch.table_atom_ids !== undefined) props.bill.table_atom_ids = patch.table_atom_ids
+  if (patch.table_atoms !== undefined) props.bill.table_atoms = patch.table_atoms
+  if (patch.table_label !== undefined) props.bill.table_label = patch.table_label
+  const moneyKeys = ['subtotal','service_charge','tax','grand_total','total','paid_cash','paid_card','settled_total']
+  for (const k of moneyKeys) { if (patch[k] !== undefined) props.bill[k] = patch[k] }
+  if (patch.discount_rule !== undefined) props.bill.discount_rule = patch.discount_rule
+  if (patch.manual_discounts !== undefined) props.bill.manual_discounts = patch.manual_discounts
+  if (patch.memo !== undefined) props.bill.memo = patch.memo
+  if (patch.display_name !== undefined) props.bill.display_name = patch.display_name
+  if (patch.closed_at !== undefined) props.bill.closed_at = patch.closed_at
+}
+
+// ===== 初期化 =====
 const storeSlug = ref('')
 const normalizeSlug = s => String(s || '').trim().toLowerCase().replace(/_/g, '-')
-// 毎回取り直す関数
+
+async function initOnOpen() {
+  pane.value = 'base'
+  rightTab.value = 'order'
+  await refreshStoreSlug()
+  try {
+    billTags.value = await fetchBillTags({ is_active: true })
+  } catch (e) {
+    console.warn('[BillModalPC] fetch bill tags failed', e)
+    billTags.value = []
+  }
+  memoRef.value = props.bill?.memo ?? ''
+  displayNameRef.value = props.bill?.display_name ?? ''
+  selectedTagIds.value = props.bill?.tags?.map(t => t.id) || []
+  resetPaymentFromProps()
+  syncChargeFlagsFromBill()
+
+  ensureServedByDefaultOnOpen()
+
+  syncingTableInit.value = true
+  const initTid = props.bill?.table?.id ?? props.bill?.table ?? null
+  if (initTid != null) ed.tableId.value = Number(initTid)
+
+  const initTids =
+    props.bill?.table_atom_ids ??
+    props.bill?.table_ids ??
+    props.bill?.tables ??
+    []
+
+  let ids = Array.isArray(initTids) ? initTids.map(Number).filter(Boolean) : []
+  if (!ids.length) {
+    const t0 = props.bill?.table?.id ?? props.bill?.table ?? null
+    if (t0 != null) ids = [Number(t0)]
+  }
+  tableIds.value = ids
+
+  await nextTick()
+  syncingTableInit.value = false
+}
+
+function ensureServedByDefaultOnOpen() {
+  const casts = currentCastsForPanel.value || []
+  if (!casts.length) return
+  const ids = casts.map(c => Number(c.id))
+  const cur = Number(ed.servedByCastId?.value || 0) || null
+  if (cur && ids.includes(cur)) return
+  if (ed.servedByCastId) ed.servedByCastId.value = ids[0]
+}
+
 async function refreshStoreSlug() {
   try {
-    // X-Store-Id が切り替わっていれば、その店舗の slug が返る
     const { data } = await api.get('billing/stores/me/')
     storeSlug.value = normalizeSlug(data?.slug)
-    // ローカル保存も更新（PayPanel外でも使うなら）
     if (storeSlug.value) localStorage.setItem('store_slug', storeSlug.value)
   } catch (e) {
     console.warn('[storeSlug] fetch failed', e)
-    // 最低限は localStorage から拾う
     storeSlug.value = normalizeSlug(localStorage.getItem('store_slug') || '')
   }
 }
 
-// モーダルを開いた瞬間に取り直す
-watch(visible, v => { if (v) refreshStoreSlug() }, { immediate: true })
+onMounted(async () => {
+  const ls = localStorage.getItem('store_slug')
+  if (ls) storeSlug.value = normalizeSlug(ls)
+})
 
-// 伝票の store が変わったら取り直す（table.store は数値ID）
+const visible = computed({
+  get: () => props.modelValue,
+  set: v  => emit('update:modelValue', v)
+})
+// SP 互換: pane（PCでは prov 切替のみで使用、レイアウトには使わない）
+const pane = ref('base')
+// PC 専用: 右ペインの 注文/会計 切替
+const rightTab = ref('order')
+const isOrderTab = computed(() => rightTab.value === 'order')
+const isBillTab  = computed(() => rightTab.value === 'pay' || rightTab.value === 'bill')
+
+watch(visible, async v => {
+  if (v) await initOnOpen()
+}, { immediate: false })
+
+watch(() => props.bill?.id, async (billId) => {
+  if (billId && visible.value) {
+    await billCustomersComposable.fetchBillCustomers(billId)
+    selectedCustomerId.value = null
+  }
+}, { immediate: true })
+
+watch(() => props.bill?.table_atom_ids, (v) => {
+  if (!visible.value) return
+  const ids = Array.isArray(v) ? v.map(Number).filter(Boolean) : []
+  if (ids.length) tableIds.value = ids
+}, { deep: true })
+
 watch(() => props.bill?.table?.store, () => {
   if (visible.value) refreshStoreSlug()
 })
 
-// Bill 顧客リストを取得（伝票ID が変わったら再取得）
-watch(() => props.bill?.id, async (billId) => {
-  if (billId && visible.value) {
-    await billCustomersComposable.fetchBillCustomers(billId)
-    selectedCustomerId.value = null  // 顧客選択をリセット
-  }
-}, { immediate: true })
+const ed = useBillEditor(toRef(props,'bill'))
 
-onMounted(async () => {
-  // 1) localStorage 優先
-  const ls = localStorage.getItem('store_slug')
-  if (ls) {
-    storeSlug.value = normalizeSlug(ls)
-  } else {
-    // 2) API: /billing/stores/me/（X-Store-Id に紐づく現在の店舗）
-    try {
-      const { data } = await api.get('billing/stores/me/')
-      storeSlug.value = normalizeSlug(data?.slug)
-      if (storeSlug.value) localStorage.setItem('store_slug', storeSlug.value)
-    } catch (e) {
-      console.warn('[storeSlug] fetch failed', e)
-      storeSlug.value = ''
+const seatType = ref('main')
+function onSeatTypeChange (v) { seatType.value = v || 'main' }
+
+const syncingTableInit = ref(false)
+
+const seatTypeOptions = computed(() => {
+  const tbls = ed.tables?.value || []
+  const set = new Set(tbls.map(t => t?.seat_type || 'main'))
+  if (!set.size) return [
+    { code:'main', label:'メイン' },
+    { code:'counter', label:'カウンター' },
+    { code:'box', label:'ボックス' },
+  ]
+  const label = c => (c==='main' ? 'メイン' : c==='counter' ? 'カウンター' : c==='box' ? 'ボックス' : c)
+  return Array.from(set).map(code => ({ code, label: label(code) }))
+})
+
+const masterMap = ref({})
+async function ensureMasters(){
+  if (Object.keys(masterMap.value).length) return
+  const prim = (ed.masters?.value && ed.masters.value.length) ? ed.masters.value : null
+  const raw  = prim || await fetchMasters()
+  const arr  = Array.isArray(raw) ? raw : (raw?.results ?? [])
+  const dict = {}
+  for (const m of arr) {
+    const code = String(m?.code ?? '').trim()
+    if (!code) continue
+    for (const v of [code, code.toLowerCase(), code.replace(/[-_]/g,'').toLowerCase()]) dict[v] = m
+  }
+  masterMap.value = dict
+}
+const getMasterId = (code, ...alts) => {
+  const map = masterMap.value
+  const cand = [code, ...alts].filter(Boolean).map(s=>String(s))
+  for (const k of cand) {
+    for (const n of [k, k.toLowerCase(), k.replace(/[-_]/g,'').toLowerCase()]) {
+      if (map[n]?.id) return map[n].id
     }
   }
-})
+  console.warn('[master not found candidates]', cand)
+  return null
+}
 
-/* ---------------------------------------------------------
- * 初回ロード：キャスト/マスター/テーブル & 今日の出勤
- * --------------------------------------------------------- */
-const isNew = computed(() => !props.bill?.id)
-
-onMounted(async () => {
+watch(() => ed.tableId.value, async (tid, prev) => {
+  if (syncingTableInit.value) return
+  const nextTid = Number(tid) || null
+  if (!nextTid) return
+  const cur = Number(props.bill?.table?.id) || Number(props.bill?.table) || null
+  if (cur && nextTid === cur) return
+  if (!props.bill?.id) {
+    const list = ed.tables.value || []
+    props.bill.table = list.find(t => Number(t.id) === nextTid) || { id: nextTid }
+    return
+  }
   try {
-    const storeId = props.bill?.table?.store ?? ''
-    await Promise.all([
-      castsStore.fetch(storeId),
-      mastersStore.fetch(storeId),
-      tablesStore.fetch(storeId),
-    ])
-    // 今日 IN のキャスト
-    const today = dayjs().format('YYYY-MM-DD')
-    const { data: todayShifts } = await api.get('billing/cast-shifts/', {
-      params: { from: today, to: today, store: storeId }
-    })
-    onDutySet.value = new Set(
-      (todayShifts || [])
-        .filter(s => s.clock_in && !s.clock_out)
-        .map(s => s.cast.id)
-    )
-    casts.value   = castsStore.list
-    masters.value = mastersStore.list
-    tables.value  = tablesStore.list
+    await updateBillTable(props.bill.id, nextTid)
+    const list = ed.tables.value || []
+    props.bill.table = list.find(t => Number(t.id) === nextTid) || { id: nextTid }
   } catch (e) {
-    console.error('casts/masters/tables fetch failed', e)
+    console.error('[BillModalPC] updateBillTable failed', e)
+    ed.tableId.value = cur
+    alert('テーブルの更新に失敗しました')
   }
 })
 
-/* ---------------------------------------------------------
- * 閉じる
- * --------------------------------------------------------- */
-function tryClose(){
-  const dirty = isNew.value && (
-    pending.value.length ||
-    mainCastIds.value.length ||
-    freeCastIds.value.length ||
-    inhouseSet.value.size ||
-    (props.bill.customers?.length ?? 0) ||
-    form.table_id != null ||
-    !!form.expected_out
-  )
-  if (dirty && !confirm('未保存の内容を破棄します。よろしいですか？')) return
-  visible.value = false
+async function ensureBillId () {
+  if (props.bill?.id) return props.bill.id
+  let tableIdsPayload = []
+  if (tableIds.value && tableIds.value.length > 0) {
+    tableIdsPayload = tableIds.value.map(Number)
+  } else {
+    const tableId =
+      Number(ed.tableId.value) ||
+      Number(props.bill?.table?.id) ||
+      Number(props.bill?.table) ||
+      Number(props.bill?.table_id_hint) ||
+      null
+    if (!tableId) { alert('テーブルが未選択です'); throw new Error('no table') }
+    tableIdsPayload = [tableId]
+  }
+  const paxPayload =
+    Number(props.bill?.pax) ||
+    Number(ed.pax?.value) ||
+    Number(paxFromItems.value) ||
+    0
+
+  const req = {
+    table_ids: tableIdsPayload,
+    expected_out: props.bill?.expected_out ?? null,
+    pax: paxPayload,
+    apply_service_charge: props.bill?.apply_service_charge !== false,
+    apply_tax: props.bill?.apply_tax !== false,
+    display_name: String(displayNameRef.value || props.bill?.display_name || ''),
+  }
+  const b = await createBill(req)
+  applyBillPatchToLocal(b)
+  return b.id
 }
 
-/* 最新化ヘルパー */
-const CLOSE_AFTER_SETTLE = true
-async function refetchAndSync(billId = props.bill?.id){
-  try{
-    const fresh = await fetchBill(billId)
-    if (fresh) Object.assign(props.bill, fresh) // ローカル表示も即最新化
-    emit('saved', fresh || billId)
-  }catch(e){
-    console.error('refresh failed', e)
+async function onApplySet (payload){
+  await ensureMasters()
+  const billId = await ensureBillId()
+  for (const ln of payload.lines.filter(l => l.type==='set')) {
+    if (!ln.qty) continue
+    let mid
+    if (ln.code === 'setMale' || ln.code === 'setFemale') {
+      mid = getMasterId(
+        ln.code,
+        ln.code === 'setMale' ? 'setmale'   : 'setfemale',
+        ln.code === 'setMale' ? 'set-male'  : 'set-female'
+      )
+    } else {
+      mid = getMasterId(ln.code)
+    }
+    if (!mid) { console.warn('master not found:', ln.code); continue }
+    await addBillItem(billId, { item_master: mid, qty: ln.qty })
+  }
+  for (const ln of payload.lines.filter(l => l.type==='addon')) {
+    if (!ln.qty) continue
+    const mid = getMasterId(ln.code, 'addonnight', 'night')
+    if (!mid) { console.warn('addon master not found:', ln.code); continue }
+    await addBillItem(billId, { item_master: mid, qty: ln.qty })
+  }
+  if (payload.discount_code) {
+    await setBillDiscountByCode(billId, payload.discount_code)
+  } else {
+    await updateBillDiscountRule(billId, null)
+  }
+  const totalPaxFromPayload = payload.lines
+    .filter(l => l.type === 'set')
+    .reduce((sum, l) => sum + Number(l.qty || 0), 0)
+  if (totalPaxFromPayload > 0) {
+    await patchBill(billId, { pax: totalPaxFromPayload })
+    await billCustomersComposable.fetchUntilCount(billId, totalPaxFromPayload)
+  }
+  const fresh = await fetchBill(billId).catch(()=>null)
+  if (fresh) {
+    applyBillPatchToLocal(fresh)
+    props.bill.items = fresh.items
+    props.bill.stays = fresh.stays
+    emit('updated', fresh)
   }
 }
 
-/* ---------------------------------------------------------
- * BasicsPanel 連携
- * --------------------------------------------------------- */
-const pendingDiscountCode = ref(null)
-const seatType = ref(
-  props.bill?.table?.seat_type != null ? String(props.bill.table.seat_type) : 'main'
-)
-watch(() => props.bill?.table?.seat_type, v => {
-  if (v != null) seatType.value = String(v)
-})
-watch(seatType, () => { form.table_id = null })
+async function onSaveDiscount(payload) {
+  try {
+    const billId = await ensureBillId()
+    const body = {}
+    if (payload && 'discount_rule' in payload) body.discount_rule = payload.discount_rule
+    if (payload && Array.isArray(payload.manual_discounts)) body.manual_discounts = payload.manual_discounts
+    await settleBill(billId, body)
+    const fresh = await fetchBill(billId).catch(()=>null)
+    if (fresh) {
+      applyBillPatchToLocal(fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    }
+  } catch (e) {
+    console.error('[BillModalPC] onSaveDiscount failed', e)
+    alert('割引の保存に失敗しました')
+  }
+}
 
-const applyServiceCharge = ref(props.bill?.apply_service_charge !== false)
-const applyTax = ref(props.bill?.apply_tax !== false)
-watch(() => props.bill?.apply_service_charge, v => { applyServiceCharge.value = v !== false })
-watch(() => props.bill?.apply_tax, v => { applyTax.value = v !== false })
-
-// 【フェーズ1】人数状態を items から計算（BillModalSP.vue と同様）
 const maleFromItems = computed(() =>
-  (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setMale' ? Number(it.qty||0) : 0), 0)
+  (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setMale'   ? Number(it.qty||0) : 0), 0)
 )
 const femaleFromItems = computed(() =>
   (props.bill?.items || []).reduce((s,it) => s + (String(it.code)==='setFemale' ? Number(it.qty||0) : 0), 0)
 )
 const paxFromItems = computed(() => maleFromItems.value + femaleFromItems.value)
 
-async function onApplyServiceChangePc(v) {
+watch([maleFromItems, femaleFromItems], ([m,f]) => {
+  if (ed?.pax) ed.pax.value = m + f
+}, { immediate:true })
+
+const onChooseCourse = async (opt) => {
+  const res = await ed.chooseCourse(opt)
+  if (res?.updated) emit('updated', props.bill.id)
+}
+const onDutyIds = computed(() => Array.from(ed.onDutySet?.value ?? []))
+const masterNameMap = computed(() => {
+  const list = ed.masters?.value || []; const map = {}
+  for (const m of list) if (m && m.id != null) map[String(m.id)] = m.name
+  return map
+})
+const masterPriceMap = computed(() => {
+  const list = ed.masters?.value || []; const map = {}
+  for (const m of list) if (m && m.id != null) map[String(m.id)] = m.price_regular ?? null
+  return map
+})
+const servedByOptions = computed(() => {
+  return currentCastsForPanel.value.map(c => ({
+    id: c.id,
+    label: c.stage_name || `cast#${c.id}`
+  }))
+})
+const servedByMap = computed(() => { const map = {}; for (const c of servedByOptions.value || []) map[String(c.id)] = c.label; return map })
+
+const normalizeCastId = (v) => {
+  if (v == null || v === '') return null
+  if (typeof v === 'number' || typeof v === 'string') {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  if (typeof v === 'object') {
+    const cand = v.id ?? v.value ?? v.cast_id ?? null
+    const n = Number(cand)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+const normalizeCastIds = (ids) => {
+  const src = Array.isArray(ids) ? ids : []
+  const out = []
+  for (const x of src) {
+    const n = Number(x)
+    if (!Number.isFinite(n)) continue
+    if (!out.includes(n)) out.push(n)
+  }
+  return out
+}
+
+const servedByCastIdModel = computed({
+  get: () => normalizeCastId(ed.servedByCastId?.value),
+  set: (v) => {
+    const n = normalizeCastId(v)
+    if (ed.servedByCastId) ed.servedByCastId.value = n
+  }
+})
+const servedByCastIdsModel = computed({
+  get: () => {
+    const ids = normalizeCastIds(ed.servedByCastIds?.value)
+    if (ids.length) return ids
+    const first = normalizeCastId(ed.servedByCastId?.value)
+    return first != null ? [first] : []
+  },
+  set: (v) => {
+    const ids = normalizeCastIds(v)
+    if (ed.servedByCastIds) ed.servedByCastIds.value = ids
+    if (ed.servedByCastId) ed.servedByCastId.value = ids.length ? ids[0] : null
+  }
+})
+
+watch(
+  () => ed.servedByCastId?.value,
+  (v) => {
+    const n = normalizeCastId(v)
+    if (v !== n && ed.servedByCastId) ed.servedByCastId.value = n
+  },
+  { immediate: true }
+)
+
+/* ========== 税・サービス料トグル ========== */
+function syncChargeFlagsFromBill() {
+  const b = props.bill || {}
+  applyServiceChargeRef.value = b?.apply_service_charge !== false
+  applyTaxRef.value = b?.apply_tax !== false
+}
+watch(() => props.bill?.apply_service_charge, (v) => { applyServiceChargeRef.value = v !== false })
+watch(() => props.bill?.apply_tax, (v) => { applyTaxRef.value = v !== false })
+
+async function patchChargeFlags(payload) {
+  if (!props.bill?.id) return null
+  const updated = await patchBill(props.bill.id, payload)
+  if (updated) {
+    applyBillPatchToLocal(updated)
+    emit('updated', updated)
+  }
+  return updated
+}
+
+async function onApplyServiceChange(v) {
   const next = !!v
-  const prev = applyServiceCharge.value
-  applyServiceCharge.value = next
+  const prev = applyServiceChargeRef.value
+  applyServiceChargeRef.value = next
+  if (props.bill) props.bill.apply_service_charge = next
   if (!props.bill?.id) return
-  try {
-    const updated = await patchBill(props.bill.id, { apply_service_charge: next })
-    if (updated) {
-      Object.assign(props.bill, updated)
-      emit('updated', updated)
-    }
-  } catch (e) {
+  try { await patchChargeFlags({ apply_service_charge: next }) }
+  catch (e) {
     console.error('[BillModalPC] failed to update apply_service_charge', e)
-    applyServiceCharge.value = prev
+    applyServiceChargeRef.value = prev
     if (props.bill) props.bill.apply_service_charge = prev
     alert('サービス料の設定を更新できませんでした')
   }
 }
-
-async function onApplyTaxChangePc(v) {
+async function onApplyTaxChange(v) {
   const next = !!v
-  const prev = applyTax.value
-  applyTax.value = next
+  const prev = applyTaxRef.value
+  applyTaxRef.value = next
+  if (props.bill) props.bill.apply_tax = next
   if (!props.bill?.id) return
-  try {
-    const updated = await patchBill(props.bill.id, { apply_tax: next })
-    if (updated) {
-      Object.assign(props.bill, updated)
-      emit('updated', updated)
-    }
-  } catch (e) {
+  try { await patchChargeFlags({ apply_tax: next }) }
+  catch (e) {
     console.error('[BillModalPC] failed to update apply_tax', e)
-    applyTax.value = prev
+    applyTaxRef.value = prev
     if (props.bill) props.bill.apply_tax = prev
     alert('TAXの設定を更新できませんでした')
   }
 }
 
-async function onUpdateMemoPc(v) {
+async function onMemoChange(v) {
   const next = String(v || '')
   memoRef.value = next
   if (props.bill) props.bill.memo = next
-
   if (!props.bill?.id) return
-  try {
-    await patchBill(props.bill.id, { memo: next })
-  } catch (e) {
-    console.error('[BillModalPC] failed to update memo', e)
-  }
+  try { await patchBill(props.bill.id, { memo: next }) }
+  catch (e) { console.error('[BillModalPC] failed to update memo', e) }
 }
-
-async function onUpdateDisplayNamePc(v) {
+async function onDisplayNameChange(v) {
   const next = String(v || '')
   displayNameRef.value = next
   if (props.bill) props.bill.display_name = next
-
   if (!props.bill?.id) return
-  try {
-    await patchBill(props.bill.id, { display_name: next })
-  } catch (e) {
-    console.error('[BillModalPC] failed to update display_name', e)
+  try { await patchBill(props.bill.id, { display_name: next }) }
+  catch (e) { console.error('[BillModalPC] failed to update display_name', e) }
+}
+async function onSelectedTagIdsChange(v) {
+  selectedTagIds.value = v || []
+  if (props.bill) props.bill.tags = billTags.value.filter(t => selectedTagIds.value.includes(t.id))
+  if (!props.bill?.id) return
+  try { await patchBill(props.bill.id, { tag_ids: selectedTagIds.value }) }
+  catch (e) {
+    console.error('[BillModalPC] failed to update tag_ids', e)
+    selectedTagIds.value = props.bill?.tags?.map(t => t.id) || []
   }
 }
 
-async function onUpdateTableIdsPc(ids) {
+/* ========== Pay 周り ========== */
+const displayGrandTotal = computed(() => {
+  const b = props.bill || {}
+  return Number((b.total != null && b.total > 0) ? b.total : (b.grand_total ?? 0))
+})
+const extMinutesView = computed(() => {
+  const b = props.bill || {}
+  const items = Array.isArray(b.items) ? b.items : []
+  if (!items.length) return 0
+  let mins = 0
+  for (const it of items) {
+    const code = String(it?.code || it?.item_master?.code || '').toLowerCase()
+    if (!code.includes('extension')) continue
+    const dur = Number(it.duration_min || it?.item_master?.duration_min || 30)
+    const qty = Number(it.qty || 0)
+    mins += Math.max(0, dur) * Math.max(0, qty)
+  }
+  return mins || Number(b.ext_minutes || 0) || 0
+})
+const payCurrent = computed(() => {
+  const b = props.bill || {}
+  const sub  = Number(b.subtotal       ?? 0)
+  const svc  = Number(b.service_charge ?? 0)
+  const tax  = Number(b.tax            ?? 0)
+  const total = Number((b.total != null && b.total > 0) ? b.total
+                       : (b.grand_total ?? (sub + svc + tax)))
+  return { sub, svc, tax, total }
+})
+const paidCashRef     = ref(props.bill?.paid_cash ?? 0)
+const paidCardRef     = ref(props.bill?.paid_card ?? 0)
+const cardBrandRef    = ref(props.bill?.card_brand ?? null)
+const settledTotalRef = ref(props.bill?.settled_total ?? (props.bill?.grand_total || 0))
+const paidTotal   = computed(() => (Number(paidCashRef.value)||0) + (Number(paidCardRef.value)||0))
+const targetTotal = computed(() => {
+  const s = settledTotalRef.value
+  return (s != null && s !== '' && Number.isFinite(Number(s))) ? Number(s) : Number(displayGrandTotal.value) || 0
+})
+const diff        = computed(() => paidTotal.value - targetTotal.value)
+const overPay     = computed(() => Math.max(0, diff.value))
+const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= targetTotal.value)
+const payRef = ref(null)
+
+watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
+watch(() => props.bill?.display_name, v => { displayNameRef.value = v ?? '' })
+
+function resetPaymentFromProps() {
+  const b = props.bill || {}
+  paidCashRef.value     = Number(b.paid_cash ?? 0) || 0
+  paidCardRef.value     = Number(b.paid_card ?? 0) || 0
+  cardBrandRef.value    = b.card_brand ?? null
+  settledTotalRef.value = Number(b.settled_total ?? (b.grand_total || 0)) || 0
+  memoRef.value         = b.memo ?? ''
+  displayNameRef.value  = b.display_name ?? ''
+  selectedTagIds.value  = b.tags?.map(t => t.id) || []
+  syncChargeFlagsFromBill()
+}
+
+let _prevBillId = props.bill?.id ?? null
+watch(() => props.bill?.id, (nowId) => {
+  if (nowId == null) return
+  if (_prevBillId !== nowId) {
+    resetPaymentFromProps()
+    _prevBillId = nowId
+  }
+})
+
+const incItem = async (it) => {
+  try{
+    const newQty = (Number(it.qty)||0) + 1
+    await patchBillItemQty(props.bill.id, it.id, newQty)
+    it.qty = newQty
+    it.subtotal = (masterPriceMap.value[String(it.item_master)] || 0) * newQty
+    const fresh = await fetchBill(props.bill.id).catch(()=>null)
+    if (fresh) {
+      applyBillPatchToLocal(fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    } else { emit('updated', props.bill.id) }
+  }catch(e){ console.error(e); alert('数量を増やせませんでした') }
+}
+const decItem = async (it) => {
+  try{
+    const newQty = (Number(it.qty)||0) - 1
+    if (newQty <= 0) {
+      if (!confirm('削除しますか？')) return
+      await deleteBillItem(props.bill.id, it.id)
+    } else {
+      await patchBillItemQty(props.bill.id, it.id, newQty)
+      it.qty = newQty
+      it.subtotal = (masterPriceMap.value[String(it.item_master)] || 0) * newQty
+    }
+    const fresh = await fetchBill(props.bill.id).catch(()=>null)
+    if (fresh) {
+      applyBillPatchToLocal(fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    } else { emit('updated', props.bill.id) }
+  }catch(e){ console.error('[decItem] error:', e); alert('数量を減らせませんでした') }
+}
+const changeServedBy = async ({ item, castIds, castId }) => {
+  try {
+    const ids = normalizeCastIds(
+      Array.isArray(castIds) ? castIds : (castId != null ? [castId] : [])
+    )
+    await patchBillItem(props.bill.id, item.id, {
+      served_by_cast_ids: ids,
+      served_by_cast_id: ids.length ? ids[0] : null,
+    })
+    const fresh = await fetchBill(props.bill.id).catch(() => null)
+    if (fresh) {
+      applyBillPatchToLocal(fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    }
+  } catch (e) {
+    console.error('[changeServedBy] failed', e)
+    alert('担当者の変更に失敗しました')
+  }
+}
+const removeItem = async (it) => {
+  try{
+    await deleteBillItem(props.bill.id, it.id)
+    const fresh = await fetchBill(props.bill.id).catch(()=>null)
+    if (fresh) {
+      applyBillPatchToLocal(fresh)
+      props.bill.items = fresh.items
+      props.bill.stays = fresh.stays
+      emit('updated', fresh)
+    } else { emit('updated', props.bill.id) }
+  }catch(e){ console.error(e); alert('削除に失敗しました') }
+}
+
+const setSettledTotal = (v) => { settledTotalRef.value = Number(v) || 0 }
+const setPaidCash     = (v) => { paidCashRef.value     = Number(v) || 0 }
+const setPaidCard     = (v) => { paidCardRef.value     = Number(v) || 0 }
+function fillRemainderToCard(){
+  const need = Math.max(0, targetTotal.value - (Number(paidCashRef.value)||0))
+  paidCardRef.value = need
+}
+
+function onUpdateTimes({ opened_at, expected_out}){
+  if (opened_at !== undefined)  props.bill.opened_at  = opened_at
+  if (expected_out !== undefined) props.bill.expected_out = expected_out
+  if (props.bill?.id) {
+    enqueue('patchBill', { id: props.bill.id, payload: { opened_at, expected_out }})
+    enqueue('reconcile', { id: props.bill.id })
+  }
+}
+
+function onUpdatePax(newPax) {
+  if (newPax !== undefined) {
+    props.bill.pax = newPax
+    ed.pax.value = newPax
+  }
+}
+
+function onCustomersChanged() {
+  if (props.bill?.id) billCustomersComposable.fetchBillCustomers(props.bill.id)
+}
+
+const customers = useCustomers()
+
+const showCustModal = ref(false)
+const activeCustId  = ref(null)
+function openCustModal(id = null) {
+  activeCustId.value = typeof id === 'object' && id ? id.id : id
+  showCustModal.value = true
+}
+function handleCustPickedPC(cust) { showCustModal.value = false }
+function handleCustSavedPC(cust) { showCustModal.value = false }
+
+watch(() => billCustomersComposable.customers.value, async (bcs) => {
+  if (!bcs?.length) return
+  const custId = bcs[0].customer_id ?? bcs[0].customer
+  if (custId && !customers.cache.get(custId)) await customers.fetchOne(custId)
+}, { immediate: true })
+
+const receiptNameForBill = computed(() => {
+  const bcs = billCustomersComposable.customers.value || []
+  if (!bcs.length) return ''
+  const custId = bcs[0].customer_id ?? bcs[0].customer
+  if (!custId) return ''
+  const cust = customers.cache.get(custId)
+  if (!cust) return ''
+  return cust.receipt_name || cust.full_name || ''
+})
+
+function onUpdateTableIds(ids) {
   const nextIds = Array.isArray(ids)
     ? ids.map(Number).filter(v => Number.isFinite(v))
     : []
-  const prevIds = Array.isArray(form.table_ids) ? [...form.table_ids] : []
+  tableIds.value = nextIds
+  if (ed?.tableId) ed.tableId.value = nextIds.length ? nextIds[0] : null
+  if (props.bill?.id) {
+    enqueue('patchBill', { id: props.bill.id, payload: { tableIds: nextIds }})
+    enqueue('reconcile', { id: props.bill.id })
+  }
+}
 
-  form.table_ids = nextIds
-  form.table_id = nextIds.length ? nextIds[0] : null
-
+async function onDiscountRuleChange(ruleId) {
   if (!props.bill?.id) return
+  const billId = props.bill.id
   try {
-    const updated = await updateBill(props.bill.id, { tableIds: nextIds })
-    if (updated) {
-      Object.assign(props.bill, updated)
-      emit('updated', updated)
-    }
+    props.bill.discount_rule = ruleId
+    await updateBillDiscountRule(billId, ruleId)
+    const fresh = await fetchBill(billId).catch(() => null)
+    if (fresh) emit('updated', fresh)
   } catch (e) {
-    console.error('[BillModalPC] failed to update table_ids', e)
-    form.table_ids = prevIds
-    form.table_id = prevIds.length ? prevIds[0] : null
-    alert('テーブルの更新に失敗しました')
+    console.error('[BillModalPC] failed to update discount rule', e)
+    alert('割引の適用に失敗しました')
   }
 }
 
-async function onApplySet(payload){
-  const lines = Array.isArray(payload?.lines) ? payload.lines : []
-  const discountCode = payload?.discount_code || null
-  const pax = Number(payload?.pax) || 0
-  
-  // pax更新がある場合は先にAPI反映 → リトライ付き顧客再取得
-  if (pax > 0 && props.bill?.id) {
-    try {
-      await patchBill(props.bill.id, { pax })
-      if (props.bill) props.bill.pax = pax
+const historyEvents = computed(() => {
+  const b = props.bill || {}
+  const out = []
+  for (const s of (b.stays || [])) {
+    const cid = getStayCastId(s) || 'unknown'
+    const name = s?.cast?.stage_name
+    const avatar = s?.cast?.avatar_url
+    out.push({ key: `in-${cid}-${s.entered_at}`, when: s.entered_at, name, avatar, stayTag: s.stay_type, ioTag: 'in' })
+    if (s.left_at) {
+      out.push({ key: `out-${cid}-${s.left_at}`, when: s.left_at, name, avatar, stayTag: s.stay_type, ioTag: 'out' })
+    }
+  }
+  out.sort((a, b) => new Date(b.when) - new Date(a.when))
+  return out
+})
 
-      await billCustomersComposable.fetchUntilCount(props.bill.id, pax)
+const closing = ref(false)
+const deleting = ref(false)
 
-      if (import.meta.env.DEV) {
-        console.log(`[BillModalPC] pax更新完了 → 顧客再取得:`, {
-          billId: props.bill.id,
-          '更新後のpax': pax,
-          '顧客数': billCustomersComposable.customers.value?.length || 0,
-        })
+async function confirmClose(){
+  if (closing.value || !props.bill?.id) return
+  if (!window.confirm('本当に会計しますか？')) return
+  closing.value = true
+  try{
+    await nextTick()
+    const billId   = props.bill.id
+    const memoFromPanel = (payRef.value?.getMemo?.() ?? '').toString()
+    const disc = payRef.value?.getDiscountEntry?.() || { label: null, amount: 0 }
+    const memoStr = disc.amount > 0
+      ? `${memoFromPanel}\n割引明細: ${disc.label} / 金額: ¥${disc.amount.toLocaleString()}`
+      : memoFromPanel
+    const settled  = Number(settledTotalRef.value) || Number(displayGrandTotal.value) || 0
+    const paidCash = Number(paidCashRef.value) || 0
+    const paidCard = Number(paidCardRef.value) || 0
+    const cardBrand = cardBrandRef.value ?? null
+    const rows = payRef.value?.getManualDiscounts?.() || []
+
+    props.bill.paid_cash     = paidCash
+    props.bill.paid_card     = paidCard
+    props.bill.card_brand    = cardBrand
+    props.bill.settled_total = settled
+    props.bill.memo          = memoStr
+    props.bill.closed_at     = new Date().toISOString()
+    try{
+      const { useBills } = await import('@/stores/useBills')
+      const bs = useBills()
+      const i = bs.list.findIndex(b => Number(b.id) === Number(billId))
+      if (i >= 0) {
+        const nowISO = new Date().toISOString()
+        bs.list[i] = { ...bs.list[i],
+          paid_cash: paidCash, paid_card: paidCard, card_brand: cardBrand, settled_total: settled,
+          memo: memoStr,
+          closed_at: nowISO,
+          stays: (bs.list[i].stays || []).map(s => s.left_at ? s : ({ ...s, left_at: nowISO })),
+        }
       }
-    } catch (e) {
-      console.error('[applySet] pax update failed:', e)
-      alert('人数の更新に失敗しました')
-      return
+    }catch{}
+
+    const helpIds = recomputeHelpIds()
+    enqueue('patchBill', { id: billId, payload: {
+      paid_cash: paidCash,
+      paid_card: paidCard,
+      card_brand: cardBrand,
+      memo: memoStr,
+      discount_rule: props.bill?.discount_rule ? Number(props.bill.discount_rule) : null,
+      manual_discounts: rows,
+      settled_total: settled,
+      help_ids: helpIds,
+    }})
+    enqueue('closeBill', { id: billId, payload: { settled_total: settled }})
+    enqueue('reconcile', { id: billId })
+
+    emit('saved', { id: billId })
+    visible.value = false
+    pane.value = 'base'
+    {
+      const nowISO = new Date().toISOString()
+      props.bill.stays = (props.bill.stays || []).map(s => s.left_at ? s : ({ ...s, left_at: nowISO }))
     }
-  }
-  
-  if (!lines.length && !discountCode) return
-
-  const byCat  = new Map((masters.value || []).map(m => [String(m?.category?.code || ''), m]))
-  const byCode = new Map((masters.value || []).map(m => [String(m?.code || ''), m]))
-
-  // 行追加
-  for (const ln of lines){
-    const qty = Number(ln?.qty) || 0
-    if (qty <= 0) continue
-
-    const key = String(ln.code || '')
-    const master = byCat.get(key) || byCode.get(key)
-    if (!master) { console.warn('[applySet] master not found:', ln); continue }
-
-    if (isNew.value){
-      pending.value.push({ master_id: master.id, qty, cast_ids: [], cast_id: null })
-    }else{
-      addBillItem(props.bill.id, { item_master: master.id, qty })
-        .then(() => emit('updated', props.bill.id))
-        .catch(e => { console.error(e); alert('追加に失敗しました') })
-    }
-  }
-
-  // 割引コード
-  if (discountCode) {
-    if (isNew.value) {
-      pendingDiscountCode.value = String(discountCode)
-    } else {
-      setBillDiscountByCode(props.bill.id, String(discountCode))
-        .then(() => refetchAndSync(props.bill.id))
-        .catch(e => { console.error(e); alert('割引の適用に失敗しました') })
-    }
+    alert('会計が完了しました')
+  }catch(e){
+    console.error(e)
+    alert('会計に失敗しました（オフラインでも後で確定されます）')
+  }finally{
+    closing.value = false
   }
 }
 
-
-/* ---------------------------------------------------------
- * CastsPanel
- * --------------------------------------------------------- */
+async function confirmDelete(){
+  if (deleting.value) return
+  const billId = props.bill?.id
+  if (!billId) {
+    visible.value = false
+    pane.value = 'base'
+    return
+  }
+  if (!window.confirm('この伝票を削除します。よろしいですか？')) return
+  deleting.value = true
+  try {
+    try {
+      const { useBills } = await import('@/stores/useBills')
+      const bs = useBills()
+      bs.list = (bs.list || []).filter(b => Number(b.id) !== Number(billId))
+    } catch {}
+    enqueue('deleteBill', { id: billId })
+    enqueue('reconcile', { id: billId })
+    emit('saved', { id: billId, deleted: true })
+    visible.value = false
+    pane.value = 'base'
+    alert('伝票を削除しました')
+  } catch (e) {
+    console.error('[BillModalPC] delete failed', e)
+    alert('伝票の削除に失敗しました')
+  } finally {
+    deleting.value = false
+  }
+}
 
 const currentCastsForPanel = computed(() => {
-  const b = props.bill || {}
-  const actives = (b.stays || []).filter(s => !s.left_at)
-  const byId = new Map((casts.value || []).map(c => [Number(c.id), c]))
-  return actives.map(s => {
-    const id = Number(s.cast?.id)
-    const base = byId.get(id) || { id, stage_name: s.cast?.stage_name, avatar_url: null }
-    return {
-      id,
-      stage_name: base.stage_name,
-      avatar_url: base.avatar_url,
-      stay_type: s.stay_type,                // 'free' | 'in' | 'nom' | 'dohan'
-      inhouse : s.stay_type === 'in',
-      dohan   : s.stay_type === 'dohan',
-      is_help : !!s.is_help,
-      role    : s.stay_type === 'nom' ? 'main' : 'free'
+  const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
+  const actives = stays.filter(s => !s.left_at)
+  const byId = new Map((ed.currentCasts?.value || []).map(c => [Number(c.id), c]))
+  return actives
+    .map(s => {
+      const id = getStayCastId(s)
+      if (!id) return null
+      const base = byId.get(id) || {
+        id,
+        stage_name: s?.cast?.stage_name || `cast#${id}`,
+        avatar_url: s?.cast?.avatar_url || null
+      }
+      return {
+        id,
+        stage_name: base.stage_name,
+        avatar_url: base.avatar_url,
+        stay_type: s.stay_type,
+        inhouse: s.stay_type === 'in',
+        dohan: s.stay_type === 'dohan',
+        is_honshimei: s.stay_type === 'nom',
+        is_help: !!s.is_help,
+      }
+    })
+    .filter(Boolean)
+})
+
+watch(() => currentCastsForPanel.value, (casts) => {
+  if (!casts || casts.length === 0) return
+  const currentIds = casts.map(c => c.id)
+  const currentSelected = ed.servedByCastId?.value
+  if (currentSelected && currentIds.includes(currentSelected)) return
+  if (ed.servedByCastId) ed.servedByCastId.value = casts[0].id
+}, { immediate: true })
+
+watch(() => ed.servedByCastId?.value, (newCastId) => {
+  if (!newCastId || !ed.pending?.value) return
+  ed.pending.value.forEach(item => {
+    if (item && item.cast_id == null) {
+      item.cast_id = newCastId
+      if (!Array.isArray(item.cast_ids) || item.cast_ids.length === 0) {
+        item.cast_ids = [Number(newCastId)]
+      }
     }
   })
 })
-const onDutyIds = computed(() => Array.from(onDutySet.value))
 
-// ====== CastsPanel イベント: 楽観更新 → API確定 ======
 function updateStayLocal(castId, next) {
-  const stays = props.bill?.stays || []
-  const t = stays.find(s => !s.left_at && Number(s.cast?.id) === Number(castId))
+  const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
+  const t = stays.find(s => !s.left_at && getStayCastId(s) === Number(castId))
   const nowISO = new Date().toISOString()
   if (t) {
     t.stay_type = next.stay_type
@@ -412,235 +918,101 @@ function updateStayLocal(castId, next) {
   }
 }
 
-function recomputeHelpIds() {
-  return Array.from(new Set(
-    (props.bill?.stays || [])
-      .filter(s => !s.left_at && s.stay_type === 'free' && s.is_help === true)
-      .map(s => Number(s.cast?.id))
-  ))
+async function onSetMain(castId){
+  updateStayLocal(castId, { stay_type:'nom', is_help:false })
+  try { await ed.setMain(Number(castId)) } catch {}
+}
+
+async function onSetMainWithCustomer(payload){
+  const { castId, customerId } = payload
+  if (!castId || !customerId) return
+  updateStayLocal(castId, { stay_type:'nom', is_help:false })
+  if (ed.mainIds && !ed.mainIds.value.includes(Number(castId))) {
+    ed.mainIds.value = [...ed.mainIds.value, Number(castId)]
+  }
+  if (ed.freeIds) ed.freeIds.value = ed.freeIds.value.filter(id => Number(id) !== Number(castId))
+  if (ed.dohanIds) ed.dohanIds.value = ed.dohanIds.value.filter(id => Number(id) !== Number(castId))
+
+  if (props.bill?.id) {
+    const requestPayload = { customer_id: Number(customerId), cast_ids: [Number(castId)] }
+    try {
+      await api.post(`/billing/bills/${props.bill.id}/nominations/`, requestPayload)
+    } catch (e) {
+      console.error('[BillModalPC] POST nominations 失敗', e)
+      alert('本指名の登録に失敗しました')
+      updateStayLocal(castId, { stay_type:'free', is_help:false })
+      if (ed.mainIds) ed.mainIds.value = ed.mainIds.value.filter(id => Number(id) !== Number(castId))
+      if (ed.freeIds && !ed.freeIds.value.includes(Number(castId))) {
+        ed.freeIds.value = [...ed.freeIds.value, Number(castId)]
+      }
+    }
+  }
 }
 
 async function onSetFree(castId){
   updateStayLocal(castId, { stay_type:'free', is_help:false })
-  await updateBillCasts(props.bill.id, {
-    freeIds:[...new Set([...freeCastIds.value, castId])],
-    inIds:[...inhouseSet.value],
-    nomIds:[...mainCastIds.value]
-  }).catch(()=>{})
-  enqueue('patchBill', { id: props.bill.id, payload: { help_ids: recomputeHelpIds() }})
-  enqueue('reconcile', { id: props.bill.id })
+  try { await ed.setFree(Number(castId)) } catch {}
 }
-
 async function onSetInhouse(castId){
   updateStayLocal(castId, { stay_type:'in', is_help:false })
-  inhouseSet.value.add(castId)
-  await updateBillCasts(props.bill.id, {
-    freeIds:[...new Set([...freeCastIds.value, castId])],
-    inIds:[...inhouseSet.value],
-    nomIds:[...mainCastIds.value]
-  }).catch(()=>{})
-  enqueue('patchBill', { id: props.bill.id, payload: { help_ids: recomputeHelpIds() }})
+  try { await ed.setInhouse(Number(castId)) } catch {}
+  const nowHelpIds = recomputeHelpIds()
+  const nowFreeIds = recomputeFreeIds()
+  if (!props.bill?.id) return
+  enqueue('patchBill', { id: props.bill.id, payload: { free_ids: nowFreeIds, help_ids: nowHelpIds } })
   enqueue('reconcile', { id: props.bill.id })
 }
-
-async function onSetMain(castId){
-  updateStayLocal(castId, { stay_type:'nom', is_help:false })
-  if (!mainCastIds.value.includes(castId)) mainCastIds.value.push(castId)
-  await updateBillCasts(props.bill.id, {
-    freeIds:[...new Set([...freeCastIds.value, castId])],
-    inIds:[...inhouseSet.value],
-    nomIds:[...mainCastIds.value]
-  }).catch(()=>{})
-}
-
 async function onSetDohan(castId){
   updateStayLocal(castId, { stay_type:'dohan', is_help:false })
-  dohanSet.value.add(castId)
-  await setBillDohan(props.bill.id, castId).catch(()=>{})
+  try { await ed.setDohan(Number(castId)) } catch {}
 }
-
-async function onSetHelp(castId){
-  // HELP = free + is_help=true
-  updateStayLocal(castId, { stay_type:'free', is_help:true })
-  await updateBillCasts(props.bill.id, {
-    freeIds:[...new Set([...freeCastIds.value, castId])],
-    inIds:[...inhouseSet.value],
-    nomIds:[...mainCastIds.value]
-  }).catch(()=>{})
-  enqueue('patchBill', { id: props.bill.id, payload: { help_ids: recomputeHelpIds() }})
-  enqueue('reconcile', { id: props.bill.id })
-}
-
 async function onRemoveCast(castId){
-  const t = (props.bill?.stays || []).find(s => !s.left_at && Number(s.cast?.id) === Number(castId))
+  const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
+  const t = stays.find(s => !s.left_at && getStayCastId(s) === Number(castId))
   if (t) t.left_at = new Date().toISOString()
-  await updateBillCasts(props.bill.id, {
-    freeIds: freeCastIds.value.filter(id=>id!==castId),
-    inIds  : [...inhouseSet.value].filter(id=>id!==castId),
-    nomIds : mainCastIds.value.filter(id=>id!==castId),
-  }).catch(()=>{})
-  enqueue('patchBill', { id: props.bill.id, payload: { help_ids: recomputeHelpIds() }})
-  enqueue('reconcile', { id: props.bill.id })
+  try { await ed.removeCast(Number(castId)) } catch {}
 }
-
-
-/* ---------------------------------------------------------
- * キャスト系状態
- * --------------------------------------------------------- */
-const mainCastIds  = ref([])
-const freeCastIds  = ref([])
-const inhouseSet   = ref(new Set())
-const dohanSet     = ref(new Set())
-
-function toggleMainDohan (cid) {
-  const isDohan = dohanSet.value.has(cid)
-  if (isDohan) {
-    dohanSet.value.delete(cid)
-    if (!mainCastIds.value.includes(cid)) mainCastIds.value.push(cid)
-  } else {
-    mainCastIds.value = mainCastIds.value.filter(x => x !== cid)
-    dohanSet.value.add(cid)
-  }
-}
-
-async function toggleInhouse (cid) {
-  if (isNew.value) {
-    const nowIn = inhouseSet.value.has(cid)
-    if (nowIn) inhouseSet.value.delete(cid); else inhouseSet.value.add(cid)
-    if (!freeCastIds.value.includes(cid)) freeCastIds.value.push(cid)
-    return
-  }
-  const nowIn = inhouseSet.value.has(cid)
-  try {
-    const { stay_type } = await toggleBillInhouse(props.bill.id, { cast_id: cid, inhouse: !nowIn })
-    if (stay_type === 'in') {
-      inhouseSet.value.add(cid)
-      if (!freeCastIds.value.includes(cid)) freeCastIds.value.push(cid)
-    } else {
-      inhouseSet.value.delete(cid)
-      if (!freeCastIds.value.includes(cid)) freeCastIds.value.push(cid)
-    }
-  } catch (e) { console.error(e); alert('場内フラグの更新に失敗しました') }
-}
-
-/* ---------------------------------------------------------
- * 右ペイン：注文/会計タブ
- * --------------------------------------------------------- */
-const rightTab   = ref('order')  // 'order' | 'bill'
-const isBillTab  = computed(() => rightTab.value === 'bill')
-const isOrderTab = computed(() => rightTab.value === 'order')
-
-/* 顧客モーダル */
-const activeCustId  = ref(null)
-const showCustModal = ref(false)
-function openCustModal (id = null) {
-  console.log('[BillModalPC] openCustModal called', id)
-  activeCustId.value = asId(id)
-  showCustModal.value = true
-  console.log('[BillModalPC] showCustModal =', showCustModal.value, 'activeCustId =', activeCustId.value)
-}
-function clearCustomer(target) {
-  const id = asId(target)
-  props.bill.customers = (props.bill.customers || []).filter(c => asId(c) !== id)
-  props.bill.customer_display_name = props.bill.customers.length ? props.bill.customer_display_name : ''
-  if (!isNew.value) {
-    const ids = (props.bill.customers||[]).map(asId).filter(Boolean)
-    enqueue('patchBill', { id: props.bill.id, payload: { customer_ids: ids }})
-    enqueue('reconcile', { id: props.bill.id })
-  }
-}
-async function handleCustPicked (cust) {
-  const ids = new Set((props.bill.customers ?? []).map(asId))
-  ids.add(cust.id)
-  props.bill.customers = [...ids]
-  props.bill.customer_display_name = cust.alias?.trim() || cust.full_name || `#${cust.id}`
-  if (!isNew.value) {
-    const list = props.bill.customers.map(asId).filter(Boolean)
-    enqueue('patchBill', { id: props.bill.id, payload: { customer_ids: list }})
-    enqueue('reconcile', { id: props.bill.id })
-  }
-  showCustModal.value = false
-}
-function handleCustSaved(cust) {
-  const ids = new Set(props.bill.customers ?? [])
-  ids.add(cust.id)
-  props.bill.customers = [...ids]
-  props.bill.customer_display_name = cust.alias?.trim() || cust.full_name || `#${cust.id}`
-  showCustModal.value = false
-}
-
-/* ---------------------------------------------------------
- * 注文（カテゴリ/マスター）
- * --------------------------------------------------------- */
-const catOptions = computed(() => {
-  const codes = [...new Set(
-    masters.value
-      .filter(m => m.category?.show_in_menu)
-      .map(m => m.category.code)
-  )]
-  return codes.map(code => {
-    const m = masters.value.find(v => v.category.code === code)
-    return { value: code, label: m?.category.name ?? code }
-  })
-})
-const selectedCat  = ref('drink')
-const orderMasters = computed(() => masters.value.filter(m => catCode(m) === selectedCat.value))
-
-const normalizeCastIds = (ids) => {
-  const src = Array.isArray(ids) ? ids : []
-  const out = []
-  for (const x of src) {
-    const n = Number(x)
-    if (!Number.isFinite(n)) continue
-    if (!out.includes(n)) out.push(n)
-  }
-  return out
-}
-
-/* SP の OrderPanelSP に合わせた変換 */
-const servedByCastId = ref(null)
-const servedByCastIds = ref([])
-const servedByOptions = computed(() =>
-  (currentCasts.value || []).map(c => ({ id: c.id, label: c.stage_name }))
-)
-const servedByMap = computed(() =>
-  Object.fromEntries((currentCasts.value || []).map(c => [String(c.id), c.stage_name]))
-)
-const masterNameMap = computed(() =>
-  Object.fromEntries((masters.value || []).map(m => [String(m.id), m.name]))
-)
-const masterPriceMap = computed(() =>
-  Object.fromEntries((masters.value || []).map(m => [String(m.id), Number(m.price_regular) || 0]))
-)
-const orderMastersForPanel = computed(() =>
-  orderMasters.value.map(m => ({ ...m, price: m.price ?? m.price_regular ?? 0 }))
-)
-
-/* 注文ペンディング */
-const pending = ref([])   // [{ master_id, qty, cast_ids, cast_id, customer_id }]
-const selectedCustomerId = ref(null)  // 注文作成時の顧客選択
-// 【フェーズ3】castIds と customerId を引数で受け取る
-const onAddPending   = (masterId, qty, castIds, customerId) => {
-  const ids = normalizeCastIds(
-    Array.isArray(castIds)
-      ? castIds
-      : (castIds != null ? [castIds] : servedByCastIds.value)
-  )
-  pending.value.push({
-    master_id: masterId,
-    qty: Number(qty)||0,
-    cast_ids: ids,
-    cast_id: ids.length ? ids[0] : (servedByCastId.value ?? null),
-    customer_id: customerId ?? selectedCustomerId.value ?? null
-  })
-}
-const onRemovePending = (i) => pending.value.splice(i, 1)
-const onClearPending  = () => (pending.value = [])
-const onPlaceOrder    = async () => { await save() }
-
-const onAddSubstitute = async (masterId) => {
+async function onSetHelp(castId) {
   if (!props.bill?.id) return
-  const castId = servedByCastIds.value.length ? servedByCastIds.value[0] : servedByCastId.value
+  const billId = props.bill.id
+  updateStayLocal(castId, { stay_type:'free', is_help:true })
+  const freeIds = recomputeFreeIds()
+  const helpIds = recomputeHelpIds()
+  enqueue('patchBill', { id: billId, payload: { free_ids: freeIds, help_ids: helpIds }})
+  enqueue('reconcile', { id: billId })
+}
+
+function normalizeHelpBeforeSave(){
+  let changed = false
+  for (const s of (props.bill?.stays || [])) {
+    if (!s.left_at && s.is_help && s.stay_type !== 'free') {
+      s.is_help = false
+      changed = true
+    }
+  }
+  if (changed) {
+    const ids = recomputeHelpIds()
+    enqueue('patchBill', { id: props.bill.id, payload: { help_ids: ids } })
+    enqueue('reconcile', { id: props.bill.id })
+  }
+}
+
+const saving = ref(false)
+async function handleSave(){
+  if (saving.value) return
+  saving.value = true
+  try{
+    normalizeHelpBeforeSave()
+    const optimistic = await ed.save()
+    emit('saved', optimistic)
+  }finally{
+    saving.value = false
+  }
+}
+
+async function onAddSubstitute(masterId) {
+  if (!props.bill?.id) return
+  const castId = servedByCastIdsModel.value.length ? servedByCastIdsModel.value[0] : servedByCastIdModel.value
   if (!castId) { alert('キャストを選択してください'); return }
   try {
     await addSubstituteItem(props.bill.id, {
@@ -656,631 +1028,282 @@ const onAddSubstitute = async (masterId) => {
   }
 }
 
-async function onChangeServedBy({ item, castIds, castId }) {
-  if (!props.bill?.id) return
-  try {
-    const ids = normalizeCastIds(
-      Array.isArray(castIds)
-        ? castIds
-        : (castId != null ? [castId] : [])
-    )
-    await patchBillItem(props.bill.id, item.id, {
-      served_by_cast_ids: ids,
-      served_by_cast_id: ids.length ? ids[0] : null,
-    })
-    const fresh = await fetchBill(props.bill.id).catch(() => null)
-    if (fresh) {
-      Object.assign(props.bill, fresh)
-      props.bill.items = fresh.items
-      props.bill.stays = fresh.stays
-      emit('updated', fresh)
-    }
-  } catch (e) {
-    console.error('[onChangeServedBy]', e)
-    alert('担当者の変更に失敗しました')
-  }
+function handleClose() {
+  emit('saved', props.bill)
+  visible.value = false
+  pane.value = 'base'
 }
-
-/* ---------------------------------------------------------
- * 場内/配席/キャスト表示
- * --------------------------------------------------------- */
-const currentCasts = computed(() => {
-  const list = []
-  for (const id of mainCastIds.value) {
-    if (dohanSet.value.has(id)) continue
-    const c = casts.value.find(x => x.id === id)
-    if (c) list.push({ ...c, role:'main' })
-  }
-  for (const id of dohanSet.value) {
-    const c = casts.value.find(x => x.id === id)
-    if (c) list.push({ ...c, role:'dohan' })
-  }
-  const others = new Set([...freeCastIds.value, ...inhouseSet.value])
-  others.forEach(id => {
-    if (mainCastIds.value.includes(id) || dohanSet.value.has(id)) return
-    const c = casts.value.find(x => x.id === id)
-    if (c) list.push({ ...c, role:'free', inhouse: inhouseSet.value.has(id) })
-  })
-  return list
-})
-const filteredCasts = computed(() => {
-  const base = (casts.value || []).filter(c => onDutySet.value.has(c.id))
-  if (!castKeyword.value.trim()) return base
-  const kw = castKeyword.value.toLowerCase()
-  return base.filter(c => c.stage_name.toLowerCase().includes(kw))
-})
-function toggleMain(id){
-  if (mainCastIds.value.includes(id)){
-    mainCastIds.value = mainCastIds.value.filter(x => x !== id)
-  }else{
-    mainCastIds.value.push(id)
-    if (!freeCastIds.value.includes(id)) freeCastIds.value.push(id)
-  }
-}
-function removeCast(id) {
-  mainCastIds.value = mainCastIds.value.filter(c => c !== id)
-  freeCastIds.value = freeCastIds.value.filter(c => c !== id)
-  inhouseSet.value.delete(id)
-  dohanSet.value.delete(id)
-}
-
-/* 履歴タイムライン */
-const historyEvents = computed(() => {
-  if (!props.bill) return []
-  const events = []
-  ;(props.bill.stays || []).forEach(s => {
-    events.push({ key: `${s.cast.id}-in-${s.entered_at}`,  when: s.entered_at,  id: s.cast.id, name: s.cast.stage_name, avatar: s.cast.avatar_url, stayTag: s.stay_type, ioTag:'in' })
-    if (s.left_at) events.push({ key: `${s.cast.id}-out-${s.left_at}`, when: s.left_at, id: s.cast.id, name: s.cast.stage_name, avatar: s.cast.avatar_url, stayTag: s.stay_type, ioTag:'out' })
-  })
-  return events.sort((a, b) => new Date(b.when) - new Date(a.when))
-})
-
-/* ---------------------------------------------------------
- * ヘッダー情報・時刻編集
- * --------------------------------------------------------- */
-const headerInfo = computed(() => {
-  const b = props.bill || {}
-  const fmt = (dt) => dt ? dayjs(dt).format('HH:mm') : '-'
-  return {
-    id     : b.id,
-    table  : b.table?.number ?? '-',
-    start  : fmt(b.opened_at),
-    end    : fmt(b.expected_out),
-    sets   : b.set_rounds ?? 0,
-    extCnt : b.ext_minutes ? Math.ceil(b.ext_minutes / 30) : 0,
-  }
-})
-const editingTime = ref(false)
-async function saveTimes () {
-  if (isNew.value) { editingTime.value = false; return }
-  
-  // opened_at は必須（現在値を保持）
-  const openedISO   = form.opened_at ? dayjs(form.opened_at).toISOString() : dayjs(props.bill.opened_at).toISOString()
-  const expectedISO = form.expected_out ? dayjs(form.expected_out).toISOString() : null
-  
-  if (openedISO === props.bill.opened_at && expectedISO === props.bill.expected_out) {
-    editingTime.value = false; return
-  }
-  try {
-    await updateBillTimes(props.bill.id, { opened_at: openedISO, expected_out: expectedISO })
-    props.bill.opened_at = openedISO; props.bill.expected_out = expectedISO
-    editingTime.value = false
-  } catch (e) { console.error(e); alert('保存に失敗しました') }
-}
-
-/* ---------------------------------------------------------
- * 金額・フォーム
- * --------------------------------------------------------- */
-const current = computed(() => {
-  const b = bill.value || {}
-  const sub  = Number(b.subtotal ?? 0)
-  const svc  = Number(b.service_charge ?? 0)
-  const tax  = Number(b.tax ?? 0)
-  const total = Number(b.grand_total ?? (sub + svc + tax))
-  return { sub, svc, tax, total }
-})
-
-/* 初期化ヘルパー */
-const toIdsFromAtoms = (atoms) => {
-  // atoms: ['A','B'] | [{id,name}, ...] | undefined
-  if (!Array.isArray(atoms)) return []
-  // 文字列配列なら ID は取れない → 空配列（サーバから table_atom_ids を採用する前提）
-  const first = atoms[0]
-  if (typeof first === 'string') return []
-  return atoms.map(a => a.id).filter(Boolean)
-}
-
-const form = reactive({
-  table_id: props.bill?.table?.id ?? props.bill?.table ?? null,
-  table_ids: props.bill?.table_atom_ids
-    ? [...props.bill.table_atom_ids]                    // 推奨：サーバの ID 配列
-    : toIdsFromAtoms(props.bill?.table_atoms || []),    // 互換フォールバック
-  opened_at: props.bill?.opened_at
-    ? dayjs(props.bill.opened_at).format('YYYY-MM-DDTHH:mm')
-    : dayjs().format('YYYY-MM-DDTHH:mm'),
-  expected_out: props.bill?.expected_out
-    ? dayjs(props.bill.expected_out).format('YYYY-MM-DDTHH:mm')
-    : '',
-  nominated_casts: [],
-  inhouse_casts: [],
-  paid_cash: props.bill?.paid_cash ?? 0,
-  paid_card: props.bill?.paid_card ?? 0,
-  card_brand: props.bill?.card_brand ?? null,
-  settled_total: props.bill?.settled_total ?? (props.bill?.grand_total || 0),
-})
-
-const memoRef = ref(props.bill?.memo ?? '')
-const displayNameRef = ref(props.bill?.display_name ?? '')
-watch(() => props.bill?.memo, v => { memoRef.value = v ?? '' })
-watch(() => props.bill?.display_name, v => { displayNameRef.value = v ?? '' })
-
-// 伝票の顧客をキャッシュに読み込む
-watch(() => billCustomersComposable.customers.value, async (bcs) => {
-  if (!bcs?.length) return
-  const custId = bcs[0]?.customer_id ?? bcs[0]?.customer
-  if (custId && !customers.cache.get(custId)) {
-    await customers.fetchOne(custId)
-  }
-}, { immediate: true })
-
-/* 領収書補助 */
-const receiptNameForBill = computed(() => {
-  const bcs = billCustomersComposable.customers.value || []
-  if (!bcs.length) return ''
-  const custId = bcs[0].customer_id ?? bcs[0].customer
-  if (!custId) return ''
-  const cust = customers.cache.get(custId)
-  if (!cust) return ''
-  return cust.receipt_name || cust.full_name || ''
-})
-const receiptTotal = computed(() => Number(targetTotal.value) || 0)
-const receiptExTax = computed(() => Math.ceil(receiptTotal.value / 1.1))
-const receiptTax   = computed(() => receiptTotal.value - receiptExTax.value)
-
-/* 差額等 */
-const displayGrandTotal = computed(() => bill.value?.grand_total ?? 0)
-const paidTotal   = computed(() => (form.paid_cash || 0) + (form.paid_card || 0))
-const targetTotal = computed(() => {
-  const s = form.settled_total
-  return (s != null && s !== '' && Number.isFinite(Number(s))) ? Number(s) : displayGrandTotal.value
-})
-const diff        = computed(() => paidTotal.value - targetTotal.value)
-const overPay     = computed(() => Math.max(0, diff.value))
-const canClose    = computed(() => targetTotal.value > 0 && paidTotal.value >= targetTotal.value)
-function fillRemainderToCard () {
-  const need = Math.max(0, targetTotal.value - (form.paid_cash || 0))
-  form.paid_card = need
-}
-
-/* ---------------------------------------------------------
- * 会計確定（PayPanel の割引明細を取り込み）
- * --------------------------------------------------------- */
-const closing = ref(false)
-function handleUpdateDiscountRule(ruleId){
-  enqueue('patchBill', { id: props.bill.id, payload: { discount_rule: ruleId }})
-  enqueue('reconcile', { id: props.bill.id })
-}
-async function confirmClose(){
-  if (closing.value) return
-  closing.value = true
-  try{
-    const billId   = props.bill.id
-    const memoFromPanel = String(memoRef.value || '')
-    const disc = payRefPc.value?.getDiscountEntry?.() || { label: null, amount: 0 }
-    const memoStr = disc.amount > 0
-      ? `${memoFromPanel}\n割引明細: ${disc.label} / 金額: ¥${disc.amount.toLocaleString()}`
-      : memoFromPanel
-    const settled  = form.settled_total || displayGrandTotal.value
-    const paidCash = form.paid_cash || 0
-    const paidCard = form.paid_card || 0
-    const cardBrand = form.card_brand ?? null
-    const rows = payRefPc.value?.getManualDiscounts?.() || []
-
-    // 楽観反映
-    Object.assign(props.bill, {
-      paid_cash: paidCash, paid_card: paidCard, card_brand: cardBrand,
-      settled_total: settled, memo: memoStr,
-      closed_at: new Date().toISOString(),
-    })
-
-    // 一覧ストアも即時更新（残像を消す）：stays を退席扱いに
-    try {
-      const { useBills } = await import('@/stores/useBills')
-      const bs = useBills()
-      const i = bs.list.findIndex(b => Number(b.id) === Number(billId))
-      if (i >= 0) {
-        const nowISO = new Date().toISOString()
-        bs.list[i] = {
-          ...bs.list[i],
-          paid_cash: paidCash,
-          paid_card: paidCard,
-          card_brand: cardBrand,
-          settled_total: settled,
-          memo: memoStr,
-          closed_at: nowISO,
-          stays: (bs.list[i].stays || []).map(s => s.left_at ? s : ({ ...s, left_at: nowISO })),
-        }
-      }
-    } catch {}
-
-    // 裏送信
-   enqueue('patchBill', { id: billId, payload: {
-     paid_cash: paidCash,
-     paid_card: paidCard,
-     card_brand: cardBrand,
-     memo: memoStr,
-     discount_rule: props.bill?.discount_rule ?? null, // ルールも維持
-     manual_discounts: rows,                            // ★ 追加：手入力割引を保存
-     settled_total: settled,                            // 差分が出ないよう合わせて送る
-   }})
-    enqueue('closeBill', { id: billId, payload: { settled_total: settled }})
-    enqueue('reconcile', { id: billId })
-
-    emit('saved', { id: billId })
-    if (CLOSE_AFTER_SETTLE) visible.value = false
-  }catch(e){
-    console.error(e)
-    alert('会計に失敗しました（オフラインでも後で確定されます）')
-  }finally{
-    closing.value = false
-  }
-}
-
-/* ---------------------------------------------------------
- * 注文保存フロー
- * --------------------------------------------------------- */
-const { createBill, updateBill } = useBills()
-const saving = ref(false)
-async function save () {
-  if (saving.value) return
-  saving.value = true
-
-  const wasNew = isNew.value
-  let billId = props.bill.id
-
-  try {
-    // ❶ 新規POST
-    if (wasNew) {
-      const payload = {
-        tableIds: form.table_ids && form.table_ids.length > 0 ? form.table_ids : [],
-        memo        : String(memoRef.value || ''),
-        display_name: String(displayNameRef.value || ''),
-        apply_service_charge: applyServiceCharge.value,
-        apply_tax: applyTax.value,
-      }
-      // 新規作成時は opened_at を送らない（backend の timezone.now() を使う）
-      if (form.expected_out) {
-        payload.expected_out = dayjs(form.expected_out).toISOString()
-      }
-      const created = await createBill(payload)
-      billId = created.id
-      props.bill.id = billId
-      props.bill.opened_at = created.opened_at
-      props.bill.apply_service_charge = created.apply_service_charge
-      props.bill.apply_tax = created.apply_tax
-      if ((props.bill.customers?.length ?? 0) > 0) {
-        await updateBillCustomers(billId, props.bill.customers)
-      }
-    } else {
-      // 既存：卓/時刻 PATCH
-      // Check if table_ids has changed compared to current bill's tables
-      const currentTableIds = props.bill?.table_atoms ? props.bill.table_atoms.map(atom => atom.id) : []
-      const tableIdsChanged = JSON.stringify(form.table_ids.sort()) !== JSON.stringify(currentTableIds.sort())
-      
-      if (tableIdsChanged) {
-        await updateBill(billId, {
-          tableIds: form.table_ids && form.table_ids.length > 0 ? form.table_ids : [],
-        })
-      }
-      
-      // PATCH payload: opened_at は値がある時だけ送る（null 禁止）
-      const patchPayload = {
-        memo        : String(memoRef.value || ''),
-        display_name: String(displayNameRef.value || ''),
-        apply_service_charge: applyServiceCharge.value,
-        apply_tax: applyTax.value,
-      }
-      
-      if (form.opened_at) {
-        patchPayload.opened_at = dayjs(form.opened_at).toISOString()
-      }
-      if (form.expected_out) {
-        patchPayload.expected_out = dayjs(form.expected_out).toISOString()
-      }
-      
-      await patchBill(billId, patchPayload)
-    }
-
-    // ❷ キャスト
-    if (mainCastIds.value.length || inhouseSet.value.size || freeCastIds.value.length) {
-      await updateBillCasts(billId, {
-        nomIds  : [...mainCastIds.value],
-        inIds   : [...inhouseSet.value],
-        freeIds : [...freeCastIds.value],
-      })
-    }
-
-    for (const cid of dohanSet.value) {
-      await setBillDohan(billId, cid)
-    }
-
-    // ❸ pending 注文
-    for (const it of pending.value) {
-      const castIds = normalizeCastIds(it.cast_ids || (it.cast_id != null ? [it.cast_id] : []))
-      const payload = {
-        item_master: it.master_id,
-        qty: it.qty,
-        served_by_cast_ids: castIds,
-        served_by_cast_id: castIds.length ? castIds[0] : (it.cast_id ?? undefined)
-      }
-      if (it.customer_id) {
-        payload.customer_id = it.customer_id
-      }
-      await addBillItem(billId, payload)
-    }
-    pending.value = []
-
-    // ❹ 新規時 pending 割引コード適用
-    if (pendingDiscountCode.value) {
-      try {
-        await setBillDiscountByCode(billId, String(pendingDiscountCode.value))
-      } catch (e) {
-        console.error(e); alert('割引の適用に失敗しました')
-      } finally {
-        pendingDiscountCode.value = null
-      }
-    }
-
-    // ❺ 最新化
-    await refetchAndSync(billId)
-    rightTab.value = 'bill'
-  } catch (e) {
-    console.error(e)
-    alert('保存に失敗しました')
-  } finally {
-    saving.value = false
-  }
-}
-
-/* ---------------------------------------------------------
- * 伝票 or stays 変更時の同期・人数引き継ぎ
- * --------------------------------------------------------- */
-watch(
-  () => [props.bill, props.bill?.stays?.length],
-  () => {
-    const b = props.bill
-    if (!b) return
-
-    form.table_id     = b.table?.id ?? b.table_id_hint ?? null
-    form.paid_cash     = b.paid_cash ?? 0
-    form.paid_card     = b.paid_card ?? 0
-    form.card_brand    = b.card_brand ?? null
-    form.settled_total = b.settled_total ?? b.grand_total ?? 0
-    if (Array.isArray(b.customers)) b.customers = b.customers.map(asId)
-
-    const active   = (b.stays ?? []).filter(s => !s.left_at)
-    const stayNom  = active.filter(s => s.stay_type === 'nom'  ).map(s => s.cast.id)
-    const stayFree = active.filter(s => s.stay_type === 'free' ).map(s => s.cast.id)
-    const stayIn   = active.filter(s => s.stay_type === 'in'   ).map(s => s.cast.id)
-    const stayDhn  = active.filter(s => s.stay_type === 'dohan').map(s => s.cast.id)
-
-    mainCastIds.value  = stayNom
-    freeCastIds.value  = [...new Set([...stayFree, ...stayIn])]
-    inhouseSet.value   = new Set(stayIn)
-    dohanSet.value     = new Set(stayDhn)
-  },
-  { immediate: true }
-)
-
-/* main が変わったら free から除去 */
-watch(mainCastIds, list => {
-  const filtered = freeCastIds.value.filter(id => !list.includes(id))
-  if (filtered.length !== freeCastIds.value.length) {
-    freeCastIds.value = filtered
-  }
-})
-watch(freeCastIds, list => {
-  const deduped = list.filter(id => !mainCastIds.value.includes(id))
-  if (deduped.length !== list.length) {
-    freeCastIds.value = deduped
-    return
-  }
-})
 </script>
 
-
 <template>
-  <!-- 伝票がまだ無い瞬間は描画しない -->
-  <BaseModal
-    v-if="props.bill"
-    v-model="visible"
-  >
-    <button
-      class="btn-close position-absolute"
-      style="margin-left: unset; top:8px; right:8px; z-index: 999999999;"
-      @click="tryClose"
-    /> <!-- 閉じるボタン -->
-    <div class="p-2 row flex-fill align-items-stretch billmodal-pc h-100 overflow-hidden" >
-
-      <div class="d-flex col-4 min-h-0"><!-- 左ペイン -->
-        <div class="outer flex-fill">
-            <div class="menu d-md-none">
-              <div class="nav nav-pills nav-fill small gap-2">
-                <button type="button" class="nav-link" :class="{active: pane==='base'}"    @click="pane='base'">基本</button>
-                <button type="button" class="nav-link" :class="{active: pane==='customer'}" @click="pane='customer'">顧客</button>
-              </div>
-            </div>
-            <div class="d-flex justify-content-between flex-md-column flex-row flex-fill">
-
-            <!-- ▼ パネル群（PCは常時 / SPはpaneで出し分け） -->
-            <BasicsPanel
-              :bill-id="bill?.id"
-              :active-pane="pane"
-              :tables="tables"
-              :table-id="form.table_id"
-              :table-ids="form.table_ids"
-              :pax="paxFromItems"
-              :male="maleFromItems"
-              :female="femaleFromItems"
-              :course-options="courseOptions"
-              :apply-service="applyServiceCharge"
-              :apply-tax="applyTax"
-              :memo="memoRef"
-              :display-name="displayNameRef"
-
-              v-model:seatType="seatType"
-
-              @update:tableId="v => (form.table_id = v)"
-              @update:tableIds="onUpdateTableIdsPc"
-              @update:applyService="onApplyServiceChangePc"
-              @update:applyTax="onApplyTaxChangePc"
-              @update:memo="onUpdateMemoPc"
-              @update:display-name="onUpdateDisplayNamePc"
-              @chooseCourse="(opt, qty) => chooseCourse(opt, qty)"
-              @jumpToBill="rightTab = 'bill'"
-              @applySet="onApplySet"
-              @save="save"
-              @edit-customer="openCustModal"
-            />
-          </div>
+  <BaseModal v-if="bill" v-model="visible" class="billmodal-pc">
+    <template #header>
+      <div id="header" class="header-bar d-flex align-items-center justify-content-between p-2">
+        <div class="page-title fs-4 fw-bold">伝票</div>
+        <div class="button-area d-flex gap-2 fs-5">
+          <button class="btn btn-sm btn-outline-danger" :disabled="deleting" @click="confirmDelete" aria-label="delete"><IconTrash /></button>
+          <button class="btn btn-sm btn-primary" :disabled="saving" @click="handleSave" aria-label="save"><IconDeviceFloppy /></button>
+          <button class="btn btn-sm btn-light" @click="handleClose" aria-label="close"><IconX /></button>
         </div>
       </div>
+    </template>
 
-      <div class="outer d-flex flex-column gap-4 col-4"><!-- 真ん中 -->
-        <CastsPanel
-          :current-casts="currentCastsForPanel"
-          :bench-casts="casts"
-          :on-duty-ids="onDutyIds"
-          :keyword="castKeyword"
-          @update:keyword="v => (castKeyword.value = v)"
-          @setFree="onSetFree"
-          @setInhouse="onSetInhouse"
-          @setDohan="onSetDohan"
-          @setMain="onSetMain"
-          @setHelp="onSetHelp"
-          @removeCast="onRemoveCast"
-          @save="save"
-        />
-      </div>
-
-      <div class="outer d-flex flex-column position-relative col-4"><!-- 右ペイン -->
-        <!-- タブ -->
-        <div class="tab nav nav-pills g-1 mb-5 row w-75" role="tablist" aria-label="右ペイン切替">
-          <button
-            type="button"
-            class="nav-link col d-flex align-items-center gap-2"
-            :class="{ active: isOrderTab }"
-            role="tab"
-            :aria-selected="isOrderTab"
-            @click="rightTab='order'"
-          ><IconShoppingCart />注文</button>
-          <button
-            type="button"
-            class="nav-link col d-flex align-items-center gap-2"
-            :class="{ active: isBillTab }"
-            role="tab"
-            :aria-selected="isBillTab"
-            @click="rightTab='bill'"
-          ><IconReceiptYen />会計</button>
-        </div>
-        <div class="order-panel-pc" v-show="isOrderTab">
-            <OrderPanelSP
-              :cat-options="catOptions"
-              :selected-cat="selectedCat"
-              :order-masters="orderMastersForPanel"
-              :served-by-options="servedByOptions"
-              :served-by-cast-id="servedByCastId"
-              :served-by-cast-ids="servedByCastIds"
-              :pending="pending"
-              :master-name-map="masterNameMap"
-              :served-by-map="servedByMap"
-              :master-price-map="masterPriceMap"
-              :bill-customers="billCustomersComposable.customers.value || []"
-              :selected-customer-id="selectedCustomerId"
-              :readonly="false"
-              :bill-id="props.bill?.id"
-              :bill-closed="!!props.bill?.closed_at"
-              @update:selectedCat="v => (selectedCat = v)"
-              @update:servedByCastId="v => (servedByCastId = v)"
-              @update:servedByCastIds="v => (servedByCastIds = v)"
-              @update:selectedCustomerId="v => (selectedCustomerId = v)"
-              @addPending="onAddPending"
-              @removePending="onRemovePending"
-              @clearPending="onClearPending"
-              @placeOrder="onPlaceOrder"
-              @addSubstitute="onAddSubstitute"
-            />
-        </div>
-
-        <div class="summary" v-if="isBillTab">
-          <PayPanel
+    <div class="billmodal-pc-body">
+      <!-- 左ペイン: 基本情報 -->
+      <div class="bm-col">
+        <div class="outer">
+          <BasicsPanel
             :bill-id="props.bill?.id"
-            :items="props.bill.items || []"
-            :substitute-items="props.bill.substitute_items || []"
+            :tables="ed.tables.value || []"
+            :table-id="ed.tableId.value"
+            :table-ids="tableIds"
+            :current-casts="currentCastsForPanel"
+            :course-options="ed.courseOptions.value || []"
+            :seat-type-options="seatTypeOptions"
+            :seat-type="seatType"
+            :show-customer="true"
+            :customer="ed.selectedCustomer.value"
+            :customer-name="ed.customerName.value"
+            :customer-results="ed.custResults.value"
+            :customer-searching="ed.custLoading.value"
+            :opened-at="bill.opened_at"
+            :expected-out="bill.expected_out"
+            :ext-minutes="extMinutesView"
+            :set-rounds="bill.set_rounds || 0"
+            :pax="bill.pax ?? paxFromItems"
+            :male="maleFromItems"
+            :female="femaleFromItems"
+            :apply-service="applyServiceChargeRef"
+            :apply-tax="applyTaxRef"
+            :memo="memoRef"
+            :display-name="displayNameRef"
+            :tags="billTags"
+            :selected-tag-ids="selectedTagIds"
+            :history-events="historyEvents"
+            :bill-customers-from-parent="(billCustomersComposable.customers.value?.length > 0) ? billCustomersComposable.customers.value : null"
+            @update-times="onUpdateTimes"
+            @update:seatType="onSeatTypeChange"
+            @update:tableId="v => (ed.tableId.value = v)"
+            @update:tableIds="onUpdateTableIds"
+            @update:pax="onUpdatePax"
+            @update:applyService="onApplyServiceChange"
+            @update:applyTax="onApplyTaxChange"
+            @update:memo="onMemoChange"
+            @update:display-name="onDisplayNameChange"
+            @update:selectedTagIds="onSelectedTagIdsChange"
+            @chooseCourse="(opt, qty) => onChooseCourse(opt, qty)"
+            @clearCustomer="ed.clearCustomer"
+            @searchCustomer="ed.searchCustomers"
+            @pickCustomer="ed.pickCustomerInline"
+            @applySet="onApplySet"
+            @save="handleSave"
+            @customers-changed="onCustomersChanged"
+            @edit-customer="openCustModal"
+          />
+        </div>
+      </div>
+
+      <!-- 中央ペイン: キャスト -->
+      <div class="bm-col">
+        <div class="outer">
+          <CastsPanel
+            :current-casts="currentCastsForPanel"
+            :bench-casts="ed.benchCasts.value"
+            :on-duty-ids="onDutyIds"
+            :keyword="ed.castKeyword.value"
+            :history-events="historyEvents"
+            :bill-id="props.bill?.id"
+            :bill-customers="billCustomersComposable.customers.value || []"
+            @update:keyword="v => (ed.castKeyword.value = v)"
+            @setFree="onSetFree"
+            @setInhouse="onSetInhouse"
+            @setDohan="onSetDohan"
+            @setMain="onSetMain"
+            @setMainWithCustomer="onSetMainWithCustomer"
+            @removeCast="onRemoveCast"
+            @setHelp="onSetHelp"
+            @save="handleSave"
+          />
+        </div>
+      </div>
+
+      <!-- 右ペイン: 注文 / 会計 / 仮 切替（左カラムと同じアンダーラインタブ） -->
+      <div class="bm-col">
+        <div class="right-tabs sticky-top bg-white" role="tablist">
+          <button type="button" class="rt-btn" :class="{ active: rightTab === 'order' }" @click="rightTab='order'">
+            注文
+          </button>
+          <button type="button" class="rt-btn" :class="{ active: rightTab === 'pay' }" @click="rightTab='pay'">
+            会計
+          </button>
+          <button v-if="canProvisional" type="button" class="rt-btn"
+                  :class="{ active: rightTab === 'prov' }" @click="rightTab='prov'">
+            仮
+          </button>
+        </div>
+
+        <div class="outer">
+          <OrderPanel
+            v-show="rightTab === 'order'"
+            :cat-options="ed.orderCatOptions.value || []"
+            :selected-cat="ed.selectedOrderCat.value"
+            :order-masters="ed.orderMasters.value || []"
+            v-model:served-by-cast-id="servedByCastIdModel"
+            v-model:served-by-cast-ids="servedByCastIdsModel"
+            :pending="ed.pending.value"
             :master-name-map="masterNameMap"
             :served-by-map="servedByMap"
             :served-by-options="servedByOptions"
+            :master-price-map="masterPriceMap"
+            :bill-customers="billCustomersComposable.customers.value || []"
+            :selected-customer-id="selectedCustomerId"
+            :bill-id="props.bill?.id"
+            :bill-closed="!!props.bill?.closed_at"
+            @update:selectedCat="v => (ed.selectedOrderCat.value = v)"
+            @update:selectedCustomerId="v => (selectedCustomerId = v)"
+            @addPending="(id, qty, castIds, customerId) => {
+              const q = Math.max(1, Number(qty || 1))
+              const ids = (Array.isArray(castIds) ? castIds : []).map(Number).filter(Number.isFinite)
+              ed.pending.value.push({
+                master_id: Number(id),
+                qty: q,
+                cast_ids: ids,
+                cast_id: ids.length ? ids[0] : null,
+                customer_id: (customerId == null || customerId === '') ? null : Number(customerId)
+              })
+            }"
+            @removePending="i => ed.pending.value.splice(i,1)"
+            @clearPending="() => (ed.pending.value = [])"
+            @placeOrder="handleSave"
+            @addSubstitute="onAddSubstitute"
+          />
 
-            :current="current"
+          <PayPanel
+            v-show="rightTab === 'pay'"
+            ref="payRef"
+            :bill-id="props.bill?.id"
+            :bill="props.bill"
+            :pane="rightTab"
+            :items="bill.items || []"
+            :substitute-items="bill.substitute_items || []"
+            :master-name-map="masterNameMap"
+            :served-by-map="servedByMap"
+            :served-by-options="servedByOptions"
+            :bill-opened-at="bill.opened_at || ''"
+            :current="payCurrent"
             :display-grand-total="displayGrandTotal"
-
-            :settled-total="form.settled_total"
-            :paid-cash="form.paid_cash"
-            :paid-card="form.paid_card"
-            :card-brand="form.card_brand"
-            :bill-opened-at="props.bill.opened_at || ''"
-
+            :memo="props.bill?.memo || ''"
+            :tags="props.bill?.tags || []"
+            :settled-total="settledTotalRef"
+            :paid-cash="paidCashRef"
+            :paid-card="paidCardRef"
+            :card-brand="cardBrandRef"
             :diff="diff"
             :over-pay="overPay"
             :can-close="canClose"
-
-            :memo="memoRef"
-            :discount-rule-id="props.bill.discount_rule"
+            :discount-rule-id="props.bill?.discount_rule ? Number(props.bill.discount_rule) : null"
+            :manual-discounts="props.bill?.manual_discounts || []"
             :store-slug="storeSlug"
             :dosukoi-discount-unit="1000"
             :receipt-name="receiptNameForBill"
-            ref="payRefPc"
-
-            @update:settledTotal="v => (form.settled_total = v)"
-            @update:paidCash="v => (form.paid_cash = v)"
-            @update:paidCard="v => (form.paid_card = v)"
-            @update:cardBrand="v => (form.card_brand = v)"
+            @update:settledTotal="setSettledTotal"
+            @update:paidCash="setPaidCash"
+            @update:paidCard="setPaidCard"
+            @update:cardBrand="v => (cardBrandRef = v)"
             @fillRemainderToCard="fillRemainderToCard"
             @confirmClose="confirmClose"
-            @update:discountRule="handleUpdateDiscountRule"
-
-            @incItem="it => enqueue('addBillItem', { id: props.bill.id, item: { item_master: it.item_master, qty: 1 }})"
-            @decItem="it => enqueue('addBillItem', { id: props.bill.id, item: { item_master: it.item_master, qty: -1 }})"
-            @deleteItem="it => cancelItem(0, it)"
-            @changeServedBy="onChangeServedBy"
+            @incItem="incItem"
+            @decItem="decItem"
+            @deleteItem="removeItem"
+            @changeServedBy="changeServedBy"
+            @update:discountRule="onDiscountRuleChange"
+            @saveDiscount="onSaveDiscount"
           />
 
+          <ProvisionalPanelSP
+            v-show="rightTab === 'prov' && canProvisional"
+            :key="`prov-${props.bill?.id || 'new'}`"
+            :bill="props.bill || {}"
+            :ed="ed"
+            :service-rate="props.serviceRate"
+            :tax-rate="props.taxRate"
+          />
         </div>
       </div>
-
     </div>
 
     <!-- 顧客情報編集モーダル -->
     <CustomerModal
       v-model="showCustModal"
       :customer-id="activeCustId"
-      @picked="handleCustPicked"
-      @saved="handleCustSaved"
+      @picked="handleCustPickedPC"
+      @saved="handleCustSavedPC"
     />
   </BaseModal>
 </template>
 
-
-
 <style scoped lang="scss">
-
-.btn-check:checked + .btn, :not(.btn-check) + .btn:active, .btn:first-child:active, .btn.active, .btn.show
-{
-  border: unset !important;
+/* PC モーダル本体：フル幅 + 3 等分グリッド + ページ全体で 1 つの縦スクロール */
+.billmodal-pc {
+  :deep(.modal-dialog),
+  :deep(.modal-fullscreen) {
+    max-width: 100vw !important;
+    width: 100vw !important;
+    margin: 0 !important;
+  }
+  :deep(.modal-content) {
+    overflow-x: hidden;
+    width: 100%;
+  }
+  :deep(.modal-body) {
+    display: block !important;       /* d-flex を解除 */
+    overflow-x: hidden;
+    width: 100%;
+    padding: 0.5rem 1rem;
+  }
 }
-
-.modal-footer{
-  display: none;
+.billmodal-pc-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;  /* フル幅で 3 等分 */
+  gap: 1rem;
+  width: 100%;
+  align-items: start;
 }
-
+.billmodal-pc-body .bm-col {
+  min-width: 0;                        /* グリッド子のはみ出し防止 */
+}
+.billmodal-pc-body .outer {
+  background: #fff;
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow: visible;
+  min-width: 0;
+}
+/* 右ペイン: 左カラムと同じアンダーラインタブ（カラム幅いっぱいで等分割） */
+.right-tabs {
+  display: flex;
+  width: 100%;
+  border-bottom: 1px solid #e9ecef;
+  padding: 0.5rem 0 0;
+  top: 0;
+  z-index: 5;
+}
+.right-tabs .rt-btn {
+  flex: 1 1 0;
+  border: none;
+  background: transparent;
+  color: #6c757d;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.5rem 0.25rem;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  text-align: center;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.right-tabs .rt-btn:hover { color: #000; }
+.right-tabs .rt-btn.active {
+  color: #000;
+  border-bottom-color: #000;
+}
 </style>

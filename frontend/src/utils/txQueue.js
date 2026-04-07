@@ -50,13 +50,12 @@ const runners = {
     return { realId: res.id }
   },
   async patchBill(p){
-    // opened_at/expected_out を送らない PATCH で現在時刻にリセットされるのを防ぐ
-    const store = useBills()
-    const b = store.list.find(x => Number(x.id) === Number(p.id)) || {}
+    // ★ opened_at / expected_out は呼び出し側のペイロードをそのまま通す。
+    //   過去にここで expected_out を store の値で auto-fill していたが、
+    //   ローカル store がまだ古い値の状態で別 patch（memo 等）が走ると、
+    //   auto-fill 経由で古い終了時刻を再送して巻き戻す原因になっていたため撤去。
+    //   未指定の場合は serializer の partial=True に任せる（変更しない）。
     const payload = { ...p.payload }
-    // opened_at はバックエンド側で更新禁止のため送らない
-    delete payload.opened_at
-    if (payload.expected_out === undefined) payload.expected_out = b.expected_out ?? null
     await patchBill(p.id, payload)
   },               // {id, payload}
   async updateBillCustomers(p){ await updateBillCustomers(p.id, p.customer_ids) },

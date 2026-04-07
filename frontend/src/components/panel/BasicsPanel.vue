@@ -580,8 +580,8 @@ function cancelEditHeader(){
 }
 function confirmEditHeader(){
   // ローカル入力 → ISO に変換して親へ通知。空は null 扱い
-  const opened_at    = startLocal.value ? roundTo5min(dayjs(startLocal.value)).toISOString() : null
-  const expected_out = endLocal.value   ? roundTo5min(dayjs(endLocal.value)).toISOString()   : null
+  const opened_at    = startLocal.value ? dayjs(startLocal.value).toISOString() : null
+  const expected_out = endLocal.value   ? dayjs(endLocal.value).toISOString()   : null
   // 楽観更新（このパネルの表示も即更新）
   startISO.value = opened_at || ''
   endISO.value   = expected_out || ''

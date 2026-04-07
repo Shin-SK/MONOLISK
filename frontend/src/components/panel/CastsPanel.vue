@@ -250,8 +250,8 @@ if (import.meta.env.DEV) {
         </div>
       </div>
 
-      <!-- フッター固定ボタン（画面下部に固定） -->
-      <div class="savebutton position-fixed bottom-0 start-0 end-0 p-3" style="bottom: 80px !important; z-index: 1000;">
+      <!-- 保存ボタン（カラム内 sticky。フロート廃止） -->
+      <div class="savebutton position-sticky bottom-0 start-0 end-0 p-2 bg-white border-top mt-3" style="z-index: 5;">
         <button class="btn btn-primary w-100" @click="$emit('save')">保存</button>
       </div>
 

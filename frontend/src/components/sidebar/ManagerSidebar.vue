@@ -1,5 +1,6 @@
 <!-- ManagerSidebar.vue -->
 <script setup>
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUser }   from '@/stores/useUser'
 import { useAuth }   from '@/stores/useAuth'
@@ -36,17 +37,28 @@ async function logout () {
   await auth.logout()
   router.push('/login')
 }
+
+// PC は常時表示の固定サイドバー、SP は offcanvas
+const isPC = ref(false)
+let mql = null
+function syncIsPC(){ isPC.value = window.matchMedia('(min-width: 768px)').matches }
+onMounted(() => {
+  syncIsPC()
+  mql = window.matchMedia('(min-width: 768px)')
+  mql.addEventListener?.('change', syncIsPC)
+})
+onBeforeUnmount(() => { mql?.removeEventListener?.('change', syncIsPC) })
 </script>
 
 <template>
-  <teleport to="body">
+  <teleport to="body" :disabled="isPC">
     <div
       id="managerSidebar"
-      class="offcanvas offcanvas-start"
+      :class="isPC ? 'manager-sidebar-pc' : 'offcanvas offcanvas-start'"
       tabindex="-1"
       aria-labelledby="managerSidebarLabel">
 
-      <div class="offcanvas-header">
+      <div class="offcanvas-header" v-if="!isPC">
         <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="閉じる"></button>
       </div>
 
@@ -58,6 +70,10 @@ async function logout () {
             <!-- ダッシュボード -->
             <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-dashboard'})">
               <IconHome /><span class="lh-1">ホーム</span>
+            </a>
+            <!-- 卓伝票（PCではフッター廃止のためここに） -->
+            <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-bill-table'})">
+              <IconPinned /><span class="lh-1">卓伝票</span>
             </a>
             <!-- 伝票  -->
             <a class="nav-link bg-white d-flex align-items-center gap-1 fs-5" href="#" @click.prevent="nav({name:'mng-bills'})">
@@ -237,3 +253,24 @@ async function logout () {
     </div>
   </teleport>
 </template>
+
+<style scoped>
+/* PC: 常時表示の固定サイドバー */
+.manager-sidebar-pc {
+  width: 240px;
+  min-width: 240px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  left: 0;
+  background: #fff;
+  border-right: 1px solid #e9ecef;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.manager-sidebar-pc :deep(.aside) {
+  padding: 1rem;
+  flex: 1;
+}
+</style>
