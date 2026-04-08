@@ -75,8 +75,10 @@ export const useBills = defineStore('bills', {
         if (!nb || nb.id == null) continue
         const ex = byId.get(nb.id)
         if (ex) {
-          // サーバからの新データで上書き（ただしローカルの確定状態は後退させない）
-          const merged = { ...ex, ...nb }
+          // ★ ゴースト対策：旧キーを残したままマージすると、サーバ応答に
+          //   含まれないフィールド（編集で消えた items / customers / 派生値 等）が
+          //   居残ってしまうため、新レスポンスのキーで完全に置き換える。
+          const merged = { ...nb }
           // 楽観的に closed_at を付けている場合、サーバ未反映のレスポンスで消さない
           if (ex.closed_at && !nb.closed_at) {
             merged.closed_at = ex.closed_at
@@ -85,7 +87,11 @@ export const useBills = defineStore('bills', {
             // settled_total が既にローカルにあれば維持
             if (ex.settled_total && !nb.settled_total) merged.settled_total = ex.settled_total
           }
-          Object.assign(ex, merged)     // 既存オブジェクトを上書き
+          // 既存オブジェクトの参照は維持しつつ、中身は新レスポンスで総入れ替え
+          for (const k of Object.keys(ex)) {
+            if (!(k in merged)) delete ex[k]
+          }
+          Object.assign(ex, merged)
         } else {
           this.list.push(nb)        // 新規だけ追加
         }

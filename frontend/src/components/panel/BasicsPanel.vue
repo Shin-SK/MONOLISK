@@ -428,15 +428,30 @@ const seatTypeOptionsAuto = computed(() => {
 })
 
 // 卓の絞り込みは seat_type（id）で
+// ★ A案：seat_type_code が NULL の卓（席種未設定運用）は常に含める。
+//   ボード側は席種フィルタなしで全件出るのに、モーダル側だけ NULL 卓が
+//   消える不親切を解消する。
 const filteredTables = computed(() => {
   const code = String(seatTypeRef.value || '')
+  // 「席種未設定」判定（seat_type_code も seat_type(id) も無い）
+  const isUnassigned = (t) => {
+    const c = t?.seat_type_code
+    const id = t?.seat_type
+    return (c == null || c === '') && (id == null || id === '')
+  }
   if (!code) return safeTables.value
-  // ① code で合うテーブル（サーバが seat_type_code を返せる場合）
-  const byCode = safeTables.value.filter(t => String(t?.seat_type_code ?? '') === code)
+  // ① code で合う卓 + 未設定卓
+  const byCode = safeTables.value.filter(t =>
+    String(t?.seat_type_code ?? '') === code || isUnassigned(t)
+  )
   if (byCode.length) return byCode
-  // ② 保険：code -> id に変換して id で絞る（古いレスポンスでも動く）
+  // ② 保険：code -> id に変換して id で絞る（古いレスポンスでも動く）+ 未設定卓
   const id = seatTypeIdByCode.value.get(code)
-  if (id != null) return safeTables.value.filter(t => Number(t?.seat_type) === id)
+  if (id != null) {
+    return safeTables.value.filter(t =>
+      Number(t?.seat_type) === id || isUnassigned(t)
+    )
+  }
   // ③ 何も合わなければ全件（UX保険）
   return safeTables.value
 })
