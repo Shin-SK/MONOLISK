@@ -50,6 +50,23 @@ class StoreAdmin(admin.ModelAdmin):
     # ★ これが必須（autocomplete の相手にされるため）
     search_fields = ("name", "slug")
 
+    def get_form(self, request, obj=None, **kwargs):
+        # 料金マスタ FK の選択肢を、編集中の store の ItemMaster だけに絞る
+        form = super().get_form(request, obj, **kwargs)
+        fee_fields = (
+            'dohan_item_master',
+            'main_nomination_item_master',
+            'inhouse_nomination_item_master',
+        )
+        for fname in fee_fields:
+            if fname in form.base_fields:
+                if obj is not None:
+                    form.base_fields[fname].queryset = ItemMaster.objects.filter(store=obj)
+                else:
+                    # 新規作成時は store 未確定なので空にする
+                    form.base_fields[fname].queryset = ItemMaster.objects.none()
+        return form
+
     list_display  = (
         "name",
         "business_hours_display",
@@ -78,6 +95,15 @@ class StoreAdmin(admin.ModelAdmin):
             "service_rate","tax_rate","nom_pool_rate",
             "back_rate_free_default","back_rate_nomination_default","back_rate_inhouse_default","back_rate_dohan_default",
         )}),
+        ("必須料金マスタ", {
+            "description": "本指/同伴/場内が会計に自動計上される際に使われる ItemMaster を指定。"
+                           "店舗ごとに ItemMaster.code の命名が違ってもよい（例: garden は GDN_companion など）。",
+            "fields": (
+                "main_nomination_item_master",
+                "inhouse_nomination_item_master",
+                "dohan_item_master",
+            ),
+        }),
     )
     
     

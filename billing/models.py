@@ -111,6 +111,36 @@ class Store(models.Model):
         help_text="営業終了時刻（営業日内の相対時刻。例: 27.0 = 朝3:00）"
     )
 
+    # ─────────────── 必須料金マスタ参照 ───────────────
+    # 店舗ごとに ItemMaster.code の命名規則が異なるため、code 文字列ではなく
+    # FK で「この店の同伴料はどの ItemMaster か」を明示する設計にする。
+    dohan_item_master = models.ForeignKey(
+        'ItemMaster', null=True, blank=True,
+        on_delete=models.PROTECT, related_name='+',
+        help_text="同伴料として会計に自動計上される ItemMaster",
+    )
+    main_nomination_item_master = models.ForeignKey(
+        'ItemMaster', null=True, blank=True,
+        on_delete=models.PROTECT, related_name='+',
+        help_text="本指名料として会計に自動計上される ItemMaster",
+    )
+    inhouse_nomination_item_master = models.ForeignKey(
+        'ItemMaster', null=True, blank=True,
+        on_delete=models.PROTECT, related_name='+',
+        help_text="場内指名料として会計に自動計上される ItemMaster",
+    )
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        errs = {}
+        for field in ('dohan_item_master', 'main_nomination_item_master', 'inhouse_nomination_item_master'):
+            im = getattr(self, field, None)
+            if im is not None and self.pk and im.store_id != self.pk:
+                errs[field] = '同じ店舗の ItemMaster を指定してください。'
+        if errs:
+            raise ValidationError(errs)
+
     @property
     def business_hours_display(self) -> str:
         """営業時間を表示用フォーマット（例: 20:00-27:00）"""
