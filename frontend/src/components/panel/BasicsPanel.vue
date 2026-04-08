@@ -1117,7 +1117,7 @@ function customLabel(customer) {
       <div class="area mb-5">
         <h3 class="fs-5 fw-bold"><IconPinned />複数テーブル選択</h3>
         <TablePicker
-          :tables="filteredTables"
+          :tables="safeTables"
           :modelValue="tableIds"
           :multiple="true"
           labelKey="number"
@@ -1316,7 +1316,7 @@ function customLabel(customer) {
           <div class="col-6">
             <div v-if="editingTable">
               <TablePicker
-                :tables="filteredTables"
+                :tables="safeTables"
                 v-model="editTableIdsLocal"
                 :multiple="true"
                 labelKey="number"
