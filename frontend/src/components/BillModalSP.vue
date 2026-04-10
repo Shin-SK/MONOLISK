@@ -7,6 +7,7 @@ import { useCustomers } from '@/stores/useCustomers'
 import CastsPanel  from '@/components/panel/CastsPanel.vue'
 import OrderPanel  from '@/components/panel/OrderPanel.vue'
 import PayPanel from '@/components/panel/PayPanel.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import useBillEditor from '@/composables/useBillEditor'
 import { useBillCustomers } from '@/composables/useBillCustomers'
 import ProvisionalPanelSP from '@/components/spPanel/ProvisionalPanelSP.vue'
@@ -15,7 +16,7 @@ import { enqueue } from '@/utils/txQueue'
 import {
   api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts,
   fetchBill, deleteBillItem, patchBillItem, patchBillItemQty, fetchMasters,
-  createBill, patchBill,
+  createBill, patchBill, closeBill,
   setBillDiscountByCode, updateBillDiscountRule, settleBill, fetchBillTags,
   addSubstituteItem,
  } from '@/api'
@@ -477,7 +478,19 @@ const servedByOptions = computed(() => {
     label: c.stage_name || `cast#${c.id}`
   }))
 })
-const servedByMap = computed(() => { const map = {}; for (const c of servedByOptions.value || []) map[String(c.id)] = c.label; return map })
+const servedByMap = computed(() => {
+  const map = {}
+  // ① active キャスト（currentCastsForPanel 由来）を優先
+  for (const c of servedByOptions.value || []) map[String(c.id)] = c.label
+  // ② 退席済みキャストも名前解決（cast#267 防止）
+  const stays = Array.isArray(props.bill?.stays) ? props.bill.stays : []
+  for (const s of stays) {
+    const id = getStayCastId(s)
+    if (!id || map[String(id)]) continue
+    map[String(id)] = s?.cast?.stage_name || `cast#${id}`
+  }
+  return map
+})
 
 /* 提供者IDを常に数値/Nullに正規化する */
 const normalizeCastId = (v) => {
@@ -981,6 +994,18 @@ const historyEvents = computed(() => {
   return out
 })
 
+const showNomFeeConfirm = ref(false)
+let _nomFeeResolve = null
+const _pendingDohanCastId = ref(null)
+
+function askNominationFee(castId) {
+  _pendingDohanCastId.value = castId
+  showNomFeeConfirm.value = true
+  return new Promise(resolve => { _nomFeeResolve = resolve })
+}
+function onNomFeeOk() { if (_nomFeeResolve) _nomFeeResolve(true); _nomFeeResolve = null }
+function onNomFeeCancel() { if (_nomFeeResolve) _nomFeeResolve(false); _nomFeeResolve = null }
+
 const closing = ref(false)
 const deleting = ref(false)
 async function confirmClose(){
@@ -1001,35 +1026,10 @@ async function confirmClose(){
     const paidCard = Number(paidCardRef.value) || 0
     const cardBrand = cardBrandRef.value ?? null
     const rows = payRef.value?.getManualDiscounts?.() || []
-
-    // ① 楽観反映（UI即更新）
-    props.bill.paid_cash     = paidCash
-    props.bill.paid_card     = paidCard
-    props.bill.card_brand    = cardBrand
-    props.bill.settled_total = settled
-    props.bill.memo          = memoStr
-    props.bill.closed_at     = new Date().toISOString()   // “閉店”を即時表示
-    // 可能ならリスト側も同期
-    try{
-      const { useBills } = await import('@/stores/useBills')
-      const bs = useBills()
-      const i = bs.list.findIndex(b => Number(b.id) === Number(billId))
-      if (i >= 0) {
-        const nowISO = new Date().toISOString()
-        bs.list[i] = { ...bs.list[i],
-          paid_cash: paidCash, paid_card: paidCard, card_brand: cardBrand, settled_total: settled,
-          memo: memoStr,
-          closed_at: nowISO,
-          // ★ ゴースト消し：UI用に“座ってる人”全員を即退席にする
-          stays: (bs.list[i].stays || []).map(s => s.left_at ? s : ({ ...s, left_at: nowISO })),
-        }
-      }
-    }catch{}
-
-    // ② 裏送信（順序安全：patch → close → reconcile）
-    // ✅ 確認3: onSetInhouse 後 help_ids から外れる
     const helpIds = recomputeHelpIds()
-    enqueue('patchBill', { id: billId, payload: {
+
+    // ① PATCH: 支払情報・割引を同期保存（close 計算に必要）
+    await patchBill(billId, {
       paid_cash: paidCash,
       paid_card: paidCard,
       card_brand: cardBrand,
@@ -1038,24 +1038,38 @@ async function confirmClose(){
       manual_discounts: rows,
       settled_total: settled,
       help_ids: helpIds,
-    }})
-    enqueue('closeBill', { id: billId, payload: { settled_total: settled }})
-    enqueue('reconcile', { id: billId })
+    })
 
-    // ③ 親へ通知（UIはもう閉店表示。ここでモーダルも閉じる）
+    // ② CLOSE: 同期実行。成功するまで「完了」と見せない
+    await closeBill(billId, { settled_total: settled })
+
+    // ③ 成功確定 → UI反映 + reconcile
+    const nowISO = new Date().toISOString()
+    props.bill.paid_cash     = paidCash
+    props.bill.paid_card     = paidCard
+    props.bill.card_brand    = cardBrand
+    props.bill.settled_total = settled
+    props.bill.memo          = memoStr
+    props.bill.closed_at     = nowISO
+    props.bill.stays = (props.bill.stays || []).map(s => s.left_at ? s : ({ ...s, left_at: nowISO }))
+    try{
+      const { useBills } = await import('@/stores/useBills')
+      const bs = useBills()
+      const real = await fetchBill(billId).catch(() => null)
+      if (real) {
+        const i = bs.list.findIndex(b => Number(b.id) === Number(billId))
+        if (i >= 0) bs.list[i] = real
+        else bs.list.unshift(real)
+      }
+    }catch{}
+
     emit('saved', { id: billId })
     visible.value = false
-    // ★ 会計後は次回 'base' パネルを開く（ゴースト防止の一環）
     pane.value = 'base'
-    // visible=false の前に、モーダル内のstaysも退席に（重複ブロックは削除）
-    {
-      const nowISO = new Date().toISOString()
-      props.bill.stays = (props.bill.stays || []).map(s => s.left_at ? s : ({ ...s, left_at: nowISO }))
-    }
     alert('会計が完了しました')
   }catch(e){
-    console.error(e)
-    alert('会計に失敗しました（オフラインでも後で確定されます）')
+    console.error('[confirmClose] failed:', e)
+    alert('会計の確定に失敗しました: ' + (e?.response?.data?.detail || e?.message || '通信エラー'))
   }finally{
     closing.value = false
   }
@@ -1291,7 +1305,8 @@ async function onSetInhouse(castId){
 
 async function onSetDohan(castId){
   updateStayLocal(castId, { stay_type:'dohan', is_help:false })
-  try { await ed.setDohan(Number(castId)) } catch {}
+  const addNom = await askNominationFee(castId)
+  try { await ed.setDohan(Number(castId), { addNominationFee: addNom }) } catch {}
 }
 
 async function onRemoveCast(castId){
@@ -1580,6 +1595,13 @@ function handleClose() {
       @saved="handleCustSavedSP"
     />
   </BaseModal>
+
+  <ConfirmDialog
+    v-model="showNomFeeConfirm"
+    message="指名料を加算しますか？"
+    @ok="onNomFeeOk"
+    @cancel="onNomFeeCancel"
+  />
 </template>
 
 <style scoped lang="scss">

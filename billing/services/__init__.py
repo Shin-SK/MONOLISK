@@ -26,6 +26,7 @@ def __getattr__(name):
 from billing.service_utils import (
     sync_nomination_fees,
     sync_dohan_fees,
+    sync_dohan_nomination_fees,
     calc_bill_totals,
     get_cast_sales,
     apply_bill_calculation,
@@ -39,6 +40,7 @@ __all__ = [
     # legacy utility functions
     'sync_nomination_fees',
     'sync_dohan_fees',
+    'sync_dohan_nomination_fees',
     'calc_bill_totals',
     'get_cast_sales',
     'apply_bill_calculation',

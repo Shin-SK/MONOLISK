@@ -292,6 +292,25 @@ def sync_dohan_fees(
         logger.exception("[fee-sync] sync_dohan_fees failed for bill=%s", getattr(bill, 'id', None))
 
 
+def sync_dohan_nomination_fees(
+    bill: Bill,
+    add_ids: Set[int], remove_ids: Set[int],
+):
+    """同伴キャストに対して本指名料行だけを追加/削除する。
+    stay_type は変えない。料金行（is_nomination=True）のみ操作。
+    """
+    try:
+        _sync_fee_lines(
+            bill,
+            cast_ids_added=add_ids,
+            cast_ids_removed=remove_ids,
+            fee_kind='main',
+        )
+        apply_bill_calculation(bill)
+    except Exception:
+        logger.exception("[fee-sync] sync_dohan_nomination_fees failed for bill=%s", getattr(bill, 'id', None))
+
+
 from .calculator import BillCalculator
 
 def apply_bill_calculation(bill):

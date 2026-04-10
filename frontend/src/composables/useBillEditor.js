@@ -353,7 +353,7 @@ async function chooseCourse(opt){
     await syncCasts()
   }
 
-  async function setDohan(id){
+  async function setDohan(id, { addNominationFee = false } = {}){
     // 即ローカル反映（同伴は他カテゴリと排他）
     mainIds.value    = mainIds.value.filter(x => x !== id)
     inhouseIds.value = inhouseIds.value.filter(x => x !== id)
@@ -367,6 +367,7 @@ async function chooseCourse(opt){
       inIds:   [...inhouseIds.value],
       freeIds: [...freeIds.value],
       dohanIds:[...dohanIds.value],
+      dohanAddNomFeeIds: addNominationFee ? [id] : [],
     })
   }
 

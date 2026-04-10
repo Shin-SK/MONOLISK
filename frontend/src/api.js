@@ -163,7 +163,7 @@ export const updateBillMemo = (id, memo) =>
  */
 export const updateBillCasts = (
   billId,
-  { nomIds = [], inIds = [], freeIds = [], dohanIds = [] } = {}
+  { nomIds = [], inIds = [], freeIds = [], dohanIds = [], dohanAddNomFeeIds = [] } = {}
 ) => {
   // freeIds から本指名・同伴を除外（送信ノイズ低減）
   const filteredFree = (freeIds || []).filter(id => !nomIds.includes(id) && !dohanIds.includes(id))
@@ -173,6 +173,7 @@ export const updateBillCasts = (
     free_ids        : filteredFree,  // フリー（本指名/同伴除外後）
   }
   if (dohanIds && dohanIds.length) body.dohan_ids = dohanIds  // ★同伴（ある時だけ送る）
+  if (dohanAddNomFeeIds && dohanAddNomFeeIds.length) body.dohan_add_nomination_fee_ids = dohanAddNomFeeIds
   return api.patch(`billing/bills/${billId}/`, body).then(res => res.data)
 }
 

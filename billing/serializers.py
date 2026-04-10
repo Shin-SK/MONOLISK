@@ -1387,8 +1387,18 @@ class BillSerializer(serializers.ModelSerializer):
                     st.save(update_fields=['stay_type'])
 
             # --- 同伴料行の差分同期（前集合 vs 今回指定集合） ---
-            from .services import sync_dohan_fees
+            from .services import sync_dohan_fees, sync_dohan_nomination_fees
             sync_dohan_fees(instance, prev_dohan=prev_dohan_before, new_dohan=dohan_ids)
+
+            # --- 同伴 + 指名料加算（フロントから指定されたキャストのみ） ---
+            nom_fee_raw = self.context['request'].data.get('dohan_add_nomination_fee_ids', None)
+            if nom_fee_raw is not None:
+                nom_fee_ids = set(to_ids(nom_fee_raw))
+                # 今回新規追加かつ指名料加算を選択したキャストのみ追加
+                add_ids = nom_fee_ids & (dohan_ids - prev_dohan_before)
+                # 同伴から外れたキャストの指名料も削除
+                remove_ids = prev_dohan_before - dohan_ids
+                sync_dohan_nomination_fees(instance, add_ids=add_ids, remove_ids=remove_ids)
 
 
 

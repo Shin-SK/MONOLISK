@@ -60,7 +60,7 @@ const runners = {
   },               // {id, payload}
   async updateBillCustomers(p){ await updateBillCustomers(p.id, p.customer_ids) },
   async updateBillCasts(p){
-    const payload = { nomIds: p.nomIds || [], inIds: p.inIds || [], freeIds: p.freeIds || [], dohanIds: p.dohanIds || [] }
+    const payload = { nomIds: p.nomIds || [], inIds: p.inIds || [], freeIds: p.freeIds || [], dohanIds: p.dohanIds || [], dohanAddNomFeeIds: p.dohanAddNomFeeIds || [] }
     let res = null
     try {
       res = await updateBillCasts(p.billId, payload)
@@ -87,6 +87,9 @@ const runners = {
   deleteBill: deleteBillRunner,
   async closeBill(p){            // { id, payload:{ settled_total } }
     await closeBill(p.id, p.payload || {})
+    // close 成功 → 即座に reconcile して確定状態を取得
+    const real = await fetchBill(p.id).catch(()=>null)
+    if (real) upsertBillInStore(real)
   },
   async reconcile(p){                                                   // {id}
     const real = await fetchBill(p.id).catch(()=>null)
@@ -118,16 +121,16 @@ export function startTxQueue(){
         queue.splice(idx,1); save(queue)
       }catch(e){
         try { console.warn('[diag txQueue:taskError]', { kind: task.kind, payload: task.payload, error: e?.message }) } catch(_){ /* noop */ }
-        
+
         // 404 の場合は破棄（DBリセット/古いID残骸）
-        const status = e?.response?.status
-        if (status === 404) {
+        const st = e?.response?.status
+        if (st === 404) {
           console.warn('[txQueue] 404 detected, discarding task:', task.kind, task.payload)
           queue.splice(idx, 1)
           save(queue)
           continue
         }
-        
+
         task.tries = (task.tries||0)+1
         const wait = Math.min(60000, Math.pow(2, task.tries) * 1000) // 最大60秒
         task.nextAt = Date.now() + wait

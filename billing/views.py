@@ -371,7 +371,16 @@ class BillViewSet(viewsets.ModelViewSet):
             bill.opened_at = timezone.now()
             bill.save(update_fields=["opened_at"])
 
-        bill.close()
+        try:
+            bill.close()
+        except Exception as e:
+            logging.getLogger(__name__).exception(
+                "Bill.close() failed for bill_id=%s: %s", bill.id, e
+            )
+            return Response(
+                {"detail": f"close failed: {e}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response({"ok": True}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"], url_path="nomination-summaries")
