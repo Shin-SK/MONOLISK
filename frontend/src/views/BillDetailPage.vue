@@ -303,7 +303,7 @@ async function removeBill() {
   deleting.value = true
   try {
     await deleteBill(id)
-    router.push({ name: route.name?.startsWith('Staff') ? 'StaffBillList' : 'BillList' })
+    router.push({ name: route.name === 'StaffBillDetail' ? 'staff-bills' : 'mng-bills' })
   } catch (e) {
     console.error(e)
     errorMsg.value = '削除に失敗しました: ' + (e?.response?.data?.detail || e.message || e)
