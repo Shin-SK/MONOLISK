@@ -43,8 +43,8 @@ export default defineConfig(({ mode }) => {
         devOptions: { enabled: false },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         workbox: {
-          skipWaiting: false,
-          clientsClaim: false,
+          skipWaiting: true,
+          clientsClaim: true,
           cleanupOutdatedCaches: true,
           // SPA 直リンク/リロードは index.html にフォールバック
           navigateFallback: '/index.html',

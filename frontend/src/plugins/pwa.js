@@ -1,10 +1,11 @@
 // src/plugins/pwa.js
-// PWA更新方式: バナー通知 → 強制更新で確実に適用
+// PWA更新方式: バナー通知 → Workbox正規フローで更新適用
 import { registerSW } from 'virtual:pwa-register'
 
 const BANNER_ID = 'update-banner'
 const OVERLAY_ID = 'update-overlay'
 let _updateAvailable = false
+let _updateSW = null
 
 /** 更新が利用可能かどうか */
 export function isUpdateAvailable () { return _updateAvailable }
@@ -80,7 +81,6 @@ function ensureOverlay (msg = 'アップデートを適用中…') {
         <div class="u-card">
           <div class="u-spinner" aria-hidden="true"></div>
           <div class="u-msg">${msg}</div>
-          <div class="u-hint">1分ほどかかる場合があります</div>
         </div>
       </div>
     `
@@ -101,7 +101,6 @@ function ensureOverlay (msg = 'アップデートを適用中…') {
   border:2px solid #ddd; border-top-color:#111; animation:u-spin 1s linear infinite;
 }
 @keyframes u-spin{to{transform:rotate(360deg)}}
-#${OVERLAY_ID} .u-hint{ opacity:.5; font-size:12px; margin-top:2px; }
     `
     document.head.appendChild(style)
     document.body.appendChild(el)
@@ -124,7 +123,7 @@ export function restoreRouteIfNeeded (router) {
 
 // ─── PWA セットアップ ───
 export function setupPWA () {
-  registerSW({
+  _updateSW = registerSW({
     immediate: true,
     onNeedRefresh () {
       console.log('[pwa] onNeedRefresh fired')
@@ -136,7 +135,7 @@ export function setupPWA () {
   })
 }
 
-// ─── 更新適用（強制更新: SW解除 + キャッシュ削除 + reload）───
+// ─── 更新適用（Workbox正規フロー: skipWaiting → reload）───
 async function applyUpdate () {
   _updateAvailable = false
   dismissBanner()
@@ -148,21 +147,15 @@ async function applyUpdate () {
   const p = url.pathname + url.search + url.hash
   sessionStorage.setItem('__resume_to', p)
 
-  // 1. SW を解除
-  try {
-    const regs = await navigator.serviceWorker?.getRegistrations()
-    if (regs) await Promise.all(regs.map(r => r.unregister()))
-  } catch (_) {}
+  // Workbox正規フロー: waiting中の新SWにskipWaitingメッセージを送信
+  if (_updateSW) {
+    try {
+      await _updateSW()
+    } catch (e) {
+      console.warn('[pwa] updateSW failed, falling back to reload:', e)
+    }
+  }
 
-  // 2. PWA関連キャッシュ削除
-  try {
-    const keys = await caches.keys()
-    await Promise.all(
-      keys.filter(k => /^workbox-|^sw-/.test(k)).map(k => caches.delete(k))
-    )
-  } catch (_) {}
-
-  // 3. reload
   location.reload()
 }
 
