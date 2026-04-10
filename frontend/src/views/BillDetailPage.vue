@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import {
   fetchBill, fetchBillEditLogs, createBillEditLog, fetchMasters,
   fetchCasts, fetchCustomers,
-  patchBill, addBillItem, patchBillItem, deleteBillItem,
+  patchBill, addBillItem, patchBillItem, deleteBillItem, deleteBill,
 } from '@/api'
 import PayrollSnapshotPanel from '@/components/expenses/PayrollSnapshotPanel.vue'
 
@@ -296,6 +296,22 @@ function formatDiff(diff) {
   return parts.join(' / ')
 }
 
+// ── 伝票削除 ──
+const deleting = ref(false)
+async function removeBill() {
+  if (!confirm(`伝票 #${id} を削除しますか？この操作は元に戻せません。`)) return
+  deleting.value = true
+  try {
+    await deleteBill(id)
+    router.push({ name: route.name?.startsWith('Staff') ? 'StaffBillList' : 'BillList' })
+  } catch (e) {
+    console.error(e)
+    errorMsg.value = '削除に失敗しました: ' + (e?.response?.data?.detail || e.message || e)
+  } finally {
+    deleting.value = false
+  }
+}
+
 onMounted(() => { load(); loadLogs() })
 </script>
 
@@ -306,6 +322,9 @@ onMounted(() => { load(); loadLogs() })
       <div class="d-flex gap-2">
         <template v-if="!editing">
           <button class="btn btn-primary btn-sm" @click="startEdit">編集</button>
+          <button class="btn btn-outline-danger btn-sm" :disabled="deleting" @click="removeBill">
+            {{ deleting ? '削除中…' : '削除' }}
+          </button>
         </template>
         <template v-else>
           <button class="btn btn-success btn-sm" :disabled="saving" @click="saveAll">
