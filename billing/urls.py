@@ -20,6 +20,7 @@ from .views import (
      DailyZipDownloadView,
      DailyReportDownloadView,
      CastManualSubtotalView,
+     BillEditLogListView,
 )
 
 from .api.pl_views import DailyPLAPIView, MonthlyPLAPIView, YearlyPLAPIView
@@ -59,6 +60,9 @@ urlpatterns = [
          BillItemViewSet.as_view({"get": "retrieve", "put": "update",
                                   "patch": "partial_update", "delete": "destroy"}),
          name="billitem-detail"),
+
+    path("bills/<int:bill_pk>/edit-logs/",
+         BillEditLogListView.as_view(), name="billeditlog-list"),
 
     path("bills/<int:bill_pk>/substitute-items/",
          BillSubstituteItemViewSet.as_view({"get": "list", "post": "create"}),

@@ -15,7 +15,7 @@ import { useRoles } from '@/composables/useRoles'
 import { enqueue } from '@/utils/txQueue'
 import {
   api, addBillItem, updateBillCustomers, updateBillTable, updateBillCasts,
-  fetchBill, deleteBillItem, patchBillItem, patchBillItemQty, fetchMasters,
+  fetchBill, deleteBill, deleteBillItem, patchBillItem, patchBillItemQty, fetchMasters,
   createBill, patchBill, closeBill,
   setBillDiscountByCode, updateBillDiscountRule, settleBill, fetchBillTags,
   addSubstituteItem,
@@ -1088,25 +1088,23 @@ async function confirmDelete(){
   if (!ok) return
   deleting.value = true
   try {
-    // 楽観更新：一覧から除外
+    // 同期確定：サーバー成功を待ってからUIに反映する
+    await deleteBill(billId)
+
+    // 成功後にのみ一覧から除外
     try {
       const { useBills } = await import('@/stores/useBills')
       const bs = useBills()
       bs.list = (bs.list || []).filter(b => Number(b.id) !== Number(billId))
     } catch {}
 
-    // 非同期削除（オフライン対応キュー）
-    enqueue('deleteBill', { id: billId })
-    enqueue('reconcile', { id: billId })
-
-    // 親へ通知してモーダルを閉じる
     emit('saved', { id: billId, deleted: true })
     visible.value = false
     pane.value = 'base'
     alert('伝票を削除しました')
   } catch (e) {
     console.error('[BillModalSP] delete failed', e)
-    alert('伝票の削除に失敗しました')
+    alert('伝票の削除に失敗しました: ' + (e?.response?.data?.detail || e?.message || '通信エラー'))
   } finally {
     deleting.value = false
   }

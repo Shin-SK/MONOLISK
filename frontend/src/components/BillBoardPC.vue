@@ -390,13 +390,16 @@ defineExpose({ reload })
         <div
           v-for="bill in openBills"
           :key="bill.id"
-          class="table-wrap"
+          class="table-wrap position-relative"
           @pointerdown="onPD(bill, $event)"
           @pointermove="onPM"
           @pointerup="onPU(bill)"
           @pointercancel="onPC"
           @pointerleave="onPC"
         >
+          <!-- 同期状態（オーバーレイ） -->
+          <span v-if="bill._syncState === 'pending'" class="sync-badge badge bg-secondary">保存中...</span>
+          <span v-else-if="bill._syncState === 'failed'" class="sync-badge badge bg-danger">同期失敗</span>
           <CastTableDnD
             :title="billTableLabel(bill, tablesById)"
             :bill-id="bill.id"
@@ -430,4 +433,12 @@ defineExpose({ reload })
 
 <style scoped>
 .table-wrap { touch-action: manipulation; }
+.sync-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  font-size: 0.7rem;
+  opacity: 0.9;
+}
 </style>

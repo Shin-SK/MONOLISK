@@ -278,10 +278,13 @@ defineExpose({ reload })
       <div
         v-for="bill in openBills"
         :key="bill.id"
-        class="bill-card card"
+        class="bill-card card position-relative"
         :class="{ 'border border-danger': getAlertState(bill) }"
         @click="onTapBill(bill)"
       >
+        <!-- 同期状態（オーバーレイ） -->
+        <span v-if="bill._syncState === 'pending'" class="sync-badge badge bg-secondary">保存中...</span>
+        <span v-else-if="bill._syncState === 'failed'" class="sync-badge badge bg-danger">同期失敗</span>
         <!-- ヘッダー -->
         <div v-if="bill.display_name && String(bill.display_name).trim()" class="display-name df-center w-100 bg-white p-1">
           <span  class="fs-4 fw-bold text-primary">
@@ -372,5 +375,14 @@ defineExpose({ reload })
 
 .vacant-grid .btn {
   width: 100%;
+}
+
+.sync-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  font-size: 0.7rem;
+  opacity: 0.9;
 }
 </style>

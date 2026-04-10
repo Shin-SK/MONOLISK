@@ -87,8 +87,19 @@ export const useBills = defineStore('bills', {
             // settled_total が既にローカルにあれば維持
             if (ex.settled_total && !nb.settled_total) merged.settled_total = ex.settled_total
           }
+          // _syncState, _dirty はサーバー応答で上書きしない（txQueue が管理する）
+          if (ex._syncState) merged._syncState = ex._syncState
+          if (ex._dirty) merged._dirty = ex._dirty
+          // dirty フィールドはローカル値を保護
+          const dirty = ex._dirty
+          if (dirty && dirty.size > 0) {
+            for (const f of dirty) {
+              if (f in ex) merged[f] = ex[f]
+            }
+          }
           // 既存オブジェクトの参照は維持しつつ、中身は新レスポンスで総入れ替え
           for (const k of Object.keys(ex)) {
+            if (k.startsWith('_')) continue // _dirty, _syncState は保護
             if (!(k in merged)) delete ex[k]
           }
           Object.assign(ex, merged)

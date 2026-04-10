@@ -35,6 +35,7 @@ from .models import (
     PersonnelExpenseCategory, PersonnelExpense, PersonnelExpenseSettlementEvent, PayrollRun,
     BillSubstituteItem,
     CastManualSubtotal,
+    BillEditLog,
 )
 from .serializers import (
     StoreSerializer, TableSerializer, BillSerializer,
@@ -322,6 +323,15 @@ class BillViewSet(viewsets.ModelViewSet):
             import logging
             logging.getLogger(__name__).exception("reconcile failed on bill create %s", bill.id)
 
+    def _require_manage_if_closed(self, bill):
+        """クローズ済み伝票の編集はマネージャー以上を要求"""
+        if bill.closed_at is not None:
+            from accounts.caps import get_caps_for
+            sid = self._sid()
+            caps = get_caps_for(self.request.user, sid)
+            if 'manage_master' not in caps:
+                raise PermissionDenied('クローズ済み伝票の編集は管理者以上の権限が必要です。')
+
     def perform_update(self, serializer):
         sid = self._sid()
         if "table_ids" in serializer.validated_data:
@@ -332,8 +342,9 @@ class BillViewSet(viewsets.ModelViewSet):
             if table and table.store_id != sid:
                 raise ValidationError({"table": "他店舗の卓は指定できません。"})
 
-        # discount_ruleが更新された場合、再計算を実行
+        # ★ クローズ済み伝票の権限チェック
         bill = serializer.instance
+        self._require_manage_if_closed(bill)
         discount_rule_updated = 'discount_rule' in serializer.validated_data
         service_toggle_updated = 'apply_service_charge' in serializer.validated_data
         tax_toggle_updated = 'apply_tax' in serializer.validated_data
@@ -641,12 +652,24 @@ class BillItemViewSet(viewsets.ModelViewSet):
             .filter(bill_id=self.kwargs["bill_pk"], bill__table__store_id=sid)
         )
 
+    def _require_manage_if_closed(self, bill):
+        """クローズ済み伝票の編集はマネージャー以上を要求"""
+        if bill.closed_at is not None:
+            from accounts.caps import get_caps_for
+            sid = StoreScopedModelViewSet.require_store(self, self.request)
+            caps = get_caps_for(self.request.user, sid)
+            if 'manage_master' not in caps:
+                raise PermissionDenied('クローズ済み伝票の編集は管理者以上の権限が必要です。')
+
     def perform_create(self, serializer):
         request = self.request
         sid = StoreScopedModelViewSet.require_store(self, request)
         bill = get_object_or_404(Bill.objects.select_related("table__store"), pk=self.kwargs["bill_pk"])
         if bill.table.store_id != sid:
             raise PermissionDenied("他店舗の伝票です。")
+
+        # ★ クローズ済み伝票の権限チェック
+        self._require_manage_if_closed(bill)
 
         # ★ オブジェクト（bill）に対する権限判定
         self.check_object_permissions(request, bill)
@@ -666,8 +689,50 @@ class BillItemViewSet(viewsets.ModelViewSet):
 
         serializer.save(bill=bill, **extra)
 
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        self._require_manage_if_closed(instance.bill)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._require_manage_if_closed(instance.bill)
+        instance.delete()
+
 
 # ───────── 立替明細 ─────────
+# ───────── 伝票編集履歴 ─────────
+class BillEditLogListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, bill_pk):
+        logs = BillEditLog.objects.filter(bill_id=bill_pk).order_by('-created_at')
+        data = []
+        for log in logs:
+            username = None
+            if log.user:
+                username = log.user.get_full_name() or log.user.username
+            data.append({
+                'id': log.id,
+                'action': log.action,
+                'diff': log.diff,
+                'created_at': log.created_at,
+                'username': username,
+            })
+        return Response(data)
+
+    def post(self, request, bill_pk):
+        """フロントの一括保存完了時にまとめてdiffを記録"""
+        bill = get_object_or_404(Bill, pk=bill_pk)
+        action = request.data.get('action', 'edit')
+        diff = request.data.get('diff', {})
+        if diff:
+            BillEditLog.objects.create(
+                bill=bill, user=request.user,
+                action=action, diff=diff,
+            )
+        return Response({'ok': True}, status=status.HTTP_201_CREATED)
+
+
 class BillSubstituteItemViewSet(
     mixins.ListModelMixin,
     mixins.CreateModelMixin,

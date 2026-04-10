@@ -742,14 +742,14 @@ class Bill(models.Model):
     
     def close(self, settled_total: int | None = None):
         from .calculator import BillCalculator
-        """伝票を締め、金額・CastPayout・日次サマリを確定保存"""
+        """伝票を締め、金額・日次サマリを確定保存。給与計算は別タイミングで実行。"""
         # 二重クローズ防止
         if self.closed_at is not None:
             raise ValidationError({'closed_at': 'この伝票は既にクローズ済みです。'})
 
         # ★ discount_ruleを確実に取得するため、DBから最新状態を取得
         self.refresh_from_db()
-        
+
         # 閉店時刻は原則「opened_at + SET/EXT 合計分」に合わせる
         # expected_out が未計算の可能性もあるため、ここで最新を計算
         try:
@@ -757,12 +757,9 @@ class Bill(models.Model):
         except Exception:
             latest_expected = None
 
-        # ← ここを追加
         if settled_total is None and self.paid_total:
             settled_total = int(self.paid_total)
 
-        # CastPayout, CastDailySummary は同一ファイル内なので直接参照可能
-        from billing.services import generate_payroll_snapshot
         from billing.services.backrate import resolve_back_rate
 
         with transaction.atomic():
@@ -810,28 +807,14 @@ class Bill(models.Model):
             # 閉店時刻は実際の締め時刻とし、expected_out は別管理
             self.closed_at = timezone.now()
 
-            # ① 給与スナップショット生成（初回クローズのみ。上書きしない）
-            if not self.payroll_snapshot:
-                self.payroll_snapshot = generate_payroll_snapshot(self)
-
-            # ③ 伝票を確定（discount_ruleも保存 + payroll_snapshot）
+            # ③ 伝票を確定（売上・会計のみ。給与計算は走らせない）
             self.save(update_fields=[
                 'subtotal', 'service_charge', 'tax', 'grand_total',
-                'total', 'settled_total', 'closed_at', 'discount_rule', 'payroll_snapshot'
+                'total', 'settled_total', 'closed_at', 'discount_rule',
             ])
 
-            # ③ 一括退席
+            # ④ 一括退席
             self.stays.filter(left_at__isnull=True).update(left_at=self.closed_at)
-
-            # ④ CastPayout をリフレッシュ
-            # ★ Phase B: snapshot.by_cast を唯一のソースにして，stay_map 参照廃止
-            self.payouts.all().delete()
-            try:
-                CastPayout.objects.bulk_create(result.cast_payouts)
-                logger.info(f"[Bill.close] created {len(result.cast_payouts)} CastPayouts for bill_id={self.id}")
-            except Exception as e:
-                logger.exception(f"[Bill.close] CastPayout bulk_create failed for bill_id={self.id}: {e}")
-                raise
 
             # ⑤ cast_id → 売上合計を集計
             sales_map = defaultdict(int)
@@ -839,7 +822,7 @@ class Bill(models.Model):
             for it in self.items.select_related('served_by_cast', 'item_master__category'):
                 if not it.served_by_cast:
                     continue
-                sales_map[it.served_by_cast_id] += it.subtotal   # ← “小計” で集計中ならこれ
+                sales_map[it.served_by_cast_id] += it.subtotal
                 cat_code = (getattr(getattr(it, 'item_master', None), 'category', None) or None)
                 cat_code = (getattr(cat_code, 'code', '') or '').lower()
                 if cat_code in ('champagne', 'original-champagne'):
@@ -857,23 +840,16 @@ class Bill(models.Model):
                 stay = self.stays.select_related("bill__table__store").first()
                 if stay and stay.bill_id and stay.bill.table_id:
                     store_id = stay.bill.table.store_id
-            
+
             if not store_id:
                 logger.warning(f"[Bill.close] could not determine store_id for bill_id={self.id}, skipping CastDailySummary")
             else:
-                # ⑥ CastDailySummary を upsert
-                # ★ Phase B: snapshot.by_cast から stay_type を取得（stay_map 廃止）
+                # ⑥ CastDailySummary を upsert（staysから直接stay_typeを取得）
                 stay_type_map = {}
-                if self.payroll_snapshot and isinstance(self.payroll_snapshot, dict):
-                    by_cast = self.payroll_snapshot.get('by_cast', [])
-                    for cast_rec in by_cast:
-                        cid = cast_rec.get('cast_id')
-                        st = cast_rec.get('stay_type', 'free')
-                        if cid:
-                            stay_type_map[cid] = st
-                
+                for s in self.stays.all():
+                    stay_type_map[s.cast_id] = s.stay_type or 'free'
+
                 for cid, amt in sales_map.items():
-                    # stay_type を snapshot から取得、なければ'free'デフォルト
                     stay_type = stay_type_map.get(cid, 'free')
                     col = {
                         'nom': 'sales_nom', 'in': 'sales_in', 'free': 'sales_free',
@@ -890,7 +866,7 @@ class Bill(models.Model):
                         rec.sales_champ = (rec.sales_champ or 0) + champ_add
                         update_fields.append('sales_champ')
                     rec.save(update_fields=update_fields)
-                
+
                 # ⑦ 時間別サマリを更新（リアルタイム集計）
                 self._update_hourly_summary(store_id, stay_type_map, sales_map)
 
@@ -1141,9 +1117,6 @@ class BillItem(models.Model):
             return self.back_rate
 
     def save(self, *args, **kwargs):
-        if self.bill and self.bill.closed_at is not None:
-            raise ValidationError('クローズ済みの伝票明細は変更できません。')
-
         self.is_nomination = bool(self.is_nomination)
         self.is_inhouse    = bool(self.is_inhouse)
         self.is_dohan      = bool(self.is_dohan)
@@ -1163,18 +1136,31 @@ class BillItem(models.Model):
             if cat_code in ('set', 'ext', 'extension') or ('set' in code) or ('extension' in code):
                 self.bill.update_expected_out(save=True)
 
-            # ★ ここで金額を再計算（OPEN中でも常に最新に）
+        # ★ 金額を再計算（OPEN/CLOSED問わず常に最新に）
+        if self.bill:
             _recalc_bill_after_items_change(self.bill)
 
     def delete(self, *args, **kwargs):
         bill = self.bill
-        if bill and bill.closed_at is not None:
-            raise ValidationError('クローズ済みの伝票明細は削除できません。')
         super().delete(*args, **kwargs)
         if bill and bill.closed_at is None:
             bill.update_expected_out(save=True)
-            # ★ 削除時も再計算
+        # ★ 削除時も再計算（OPEN/CLOSED問わず）
+        if bill:
             _recalc_bill_after_items_change(bill)
+
+
+# ───────── 伝票編集履歴 ─────────
+class BillEditLog(models.Model):
+    bill      = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name='edit_logs')
+    user      = models.ForeignKey(settings.AUTH_USER_MODEL,
+                                  on_delete=models.SET_NULL, null=True)
+    action    = models.CharField(max_length=30)   # patch_bill / add_item / patch_item / delete_item
+    diff      = models.JSONField(default=dict)    # {field: {old, new}} or item snapshot
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
 
 class BillItemCast(models.Model):
@@ -1743,7 +1729,7 @@ class CastGoal(models.Model):
     start_date   = models.DateField(null=True, blank=True)
     end_date     = models.DateField(null=True, blank=True)
     active       = models.BooleanField(default=True)
-    # 通知済みマイルストーン（50/80/90/100）を保持して“1回だけ”通知する用
+    # 通知済みマイルストーン（50/80/90/100）を保持して"1回だけ"通知する用
     milestones_hit = models.JSONField(default=list, blank=True)
     created_at   = models.DateTimeField(auto_now_add=True)
     updated_at   = models.DateTimeField(auto_now=True)
@@ -1758,7 +1744,7 @@ class CastGoal(models.Model):
     def __str__(self):
         return f'Goal({self.cast_id}:{self.metric} {self.target_value} {self.period_kind})'
 
-    # 期間の決定（指定がなければ “今日/今週/月” を自動補完）
+    # 期間の決定（指定がなければ "今日/今週/月" を自動補完）
     def _default_bounds(self, today=None):
         from datetime import timedelta
         tz_today = today or timezone.localdate()

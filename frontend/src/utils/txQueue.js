@@ -18,11 +18,54 @@ function save(q){ localStorage.setItem(LS_KEY, JSON.stringify(q)) }
 let queue = load()
 let running = false
 
+// dirty 保護対象フィールド（これ以外は通常マージ）
+const DIRTY_FIELDS = new Set(['opened_at', 'expected_out', 'table_ids', 'stays', 'items', 'memo'])
+
 function upsertBillInStore(b){
   const store = useBills()
   const i = store.list.findIndex(x => Number(x.id) === Number(b.id))
-  if (i >= 0) store.list[i] = b
-  else store.list.unshift(b)
+  if (i >= 0) {
+    const ex = store.list[i]
+    const dirty = ex._dirty
+    if (dirty && dirty.size > 0) {
+      // dirty フィールドはローカル値を保護、それ以外はサーバー値で上書き
+      for (const k of Object.keys(b)) {
+        if (dirty.has(k)) continue
+        ex[k] = b[k]
+      }
+      // サーバー応答にないキーを削除（dirty以外）
+      for (const k of Object.keys(ex)) {
+        if (k.startsWith('_')) continue // _dirty, _syncState は保護
+        if (!(k in b) && !dirty.has(k)) delete ex[k]
+      }
+    } else {
+      store.list[i] = b
+    }
+  } else {
+    store.list.unshift(b)
+  }
+}
+
+function setSyncState(billId, state){
+  const store = useBills()
+  const bill = store.list.find(x => Number(x.id) === Number(billId))
+  if (bill) bill._syncState = state
+}
+
+function addDirtyFields(billId, fields){
+  const store = useBills()
+  const bill = store.list.find(x => Number(x.id) === Number(billId))
+  if (!bill) return
+  if (!bill._dirty) bill._dirty = new Set()
+  for (const f of fields) {
+    if (DIRTY_FIELDS.has(f)) bill._dirty.add(f)
+  }
+}
+
+function clearDirty(billId){
+  const store = useBills()
+  const bill = store.list.find(x => Number(x.id) === Number(billId))
+  if (bill) bill._dirty = new Set()
 }
 function replaceTempIdInStore(tempId, realId){
   const store = useBills()
@@ -93,7 +136,12 @@ const runners = {
   },
   async reconcile(p){                                                   // {id}
     const real = await fetchBill(p.id).catch(()=>null)
-    if (real) upsertBillInStore(real)
+    if (real) {
+      // reconcile 成功 → dirty 全クリアしてからサーバー値で上書き
+      clearDirty(p.id)
+      upsertBillInStore(real)
+      setSyncState(p.id, 'synced')
+    }
   }
 }
 
@@ -124,14 +172,26 @@ export function startTxQueue(){
 
         // 404 の場合は破棄（DBリセット/古いID残骸）
         const st = e?.response?.status
+        const billId = task.payload?.id || task.payload?.billId
         if (st === 404) {
           console.warn('[txQueue] 404 detected, discarding task:', task.kind, task.payload)
           queue.splice(idx, 1)
           save(queue)
+          if (billId) setSyncState(billId, 'failed')
           continue
         }
 
         task.tries = (task.tries||0)+1
+
+        // リトライ上限（10回）超過 → 破棄して failed
+        if (task.tries >= 10) {
+          console.error('[txQueue] max retries exceeded, discarding task:', task.kind, task.payload)
+          queue.splice(idx, 1)
+          save(queue)
+          if (billId) setSyncState(billId, 'failed')
+          continue
+        }
+
         const wait = Math.min(60000, Math.pow(2, task.tries) * 1000) // 最大60秒
         task.nextAt = Date.now() + wait
         queue[idx] = task; save(queue)
@@ -141,9 +201,37 @@ export function startTxQueue(){
   })().catch(e => { console.error('[txQueue] fatal', e); running=false })
 }
 
+// billId が明確に取れるタスクのみ pending を付ける
+const PENDING_KINDS = new Set(['patchBill', 'updateBillCasts', 'addBillItem', 'updateBillTable', 'updateBillCustomers', 'reconcile'])
+
+// enqueue 時の dirty フィールド特定
+function detectDirtyFields(kind, payload) {
+  if (kind === 'patchBill' && payload?.payload) {
+    // patchBill の payload キーから dirty フィールドを特定
+    const keys = Object.keys(payload.payload)
+    const mapped = []
+    for (const k of keys) {
+      if (k === 'tableIds') mapped.push('table_ids')
+      else mapped.push(k)
+    }
+    return mapped
+  }
+  if (kind === 'updateBillCasts') return ['stays']
+  if (kind === 'addBillItem') return ['items']
+  return []
+}
+
 export function enqueue(kind, payload){
   const t = { id:`${Date.now()}-${Math.random().toString(36).slice(2)}`, kind, payload, tries:0, nextAt:0 }
   queue.push(t); save(queue)
+  if (PENDING_KINDS.has(kind)) {
+    const billId = payload?.id || payload?.billId
+    if (billId && billId > 0) {
+      setSyncState(billId, 'pending')
+      const dirtyFields = detectDirtyFields(kind, payload)
+      if (dirtyFields.length) addDirtyFields(billId, dirtyFields)
+    }
+  }
   if (!running) startTxQueue()
   return t.id
 }

@@ -90,6 +90,12 @@ export const fetchBill = (id, { noCache=false } = {}) =>
   api.get(`billing/bills/${id}/`, noCache ? { cache:false } : undefined)
      .then(r => r.data)
 
+export const fetchBillEditLogs = (billId) =>
+  api.get(`billing/bills/${billId}/edit-logs/`, { cache: false }).then(r => r.data)
+
+export const createBillEditLog = (billId, action, diff) =>
+  api.post(`billing/bills/${billId}/edit-logs/`, { action, diff }).then(r => r.data)
+
 // 一覧リロード用の helper（任意。なければ store 側で api.get を直叩きでOK）
 export const fetchBillsList = ({ params={}, noCache=false, meta={} } = {}) =>
   api.get('billing/bills/', {
