@@ -985,15 +985,14 @@ class Bill(models.Model):
 
 
 def _recalc_bill_after_items_change(bill):
-    if bill.closed_at is not None:
-        return  # 締め後は再計算しない
     from .calculator import BillCalculator
     r = BillCalculator(bill).execute()
     bill.subtotal       = r.subtotal
     bill.service_charge = r.service_fee
     bill.tax            = r.tax
     bill.grand_total    = r.total
-    bill.save(update_fields=['subtotal','service_charge','tax','grand_total'])
+    bill.total          = r.total
+    bill.save(update_fields=['subtotal','service_charge','tax','grand_total','total'])
 
 
 
