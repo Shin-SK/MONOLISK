@@ -4,6 +4,7 @@ import { registerSW } from 'virtual:pwa-register'
 
 const BANNER_ID = 'update-banner'
 const OVERLAY_ID = 'update-overlay'
+const SUPPRESS_KEY = '__update_just_applied'
 let _updateAvailable = false
 let _updateSW = null
 
@@ -13,13 +14,31 @@ export function isUpdateAvailable () { return _updateAvailable }
 /** 外部から更新フラグを立てる（update-watcher用フォールバック） */
 export function markUpdateAvailable () {
   if (_updateAvailable) return
+  if (_isUpdateSuppressed()) return
   _updateAvailable = true
   showBanner()
+}
+
+/** 更新適用直後のreloadでバナーを再表示しないための抑制チェック */
+function _isUpdateSuppressed () {
+  try {
+    const ts = sessionStorage.getItem(SUPPRESS_KEY)
+    if (!ts) return false
+    // 60秒以内なら抑制（reload直後を想定）
+    if (Date.now() - Number(ts) < 60_000) {
+      console.log('[pwa] update suppressed (just applied)')
+      sessionStorage.removeItem(SUPPRESS_KEY)
+      return true
+    }
+    sessionStorage.removeItem(SUPPRESS_KEY)
+  } catch { /* noop */ }
+  return false
 }
 
 // ─── 通知バナー（画面下部に固定、操作を遮らない）───
 function showBanner () {
   if (document.getElementById(BANNER_ID)) return
+  if (_isUpdateSuppressed()) return
   const el = document.createElement('div')
   el.id = BANNER_ID
   el.innerHTML = `
@@ -127,6 +146,7 @@ export function setupPWA () {
     immediate: true,
     onNeedRefresh () {
       console.log('[pwa] onNeedRefresh fired')
+      if (_isUpdateSuppressed()) return
       _updateAvailable = true
       showBanner()
     },
@@ -140,6 +160,9 @@ async function applyUpdate () {
   _updateAvailable = false
   dismissBanner()
   ensureOverlay('アップデートを適用中…')
+
+  // 更新適用フラグ: reload後のバナー再表示を抑制
+  try { sessionStorage.setItem(SUPPRESS_KEY, String(Date.now())) } catch { /* noop */ }
 
   // セッション保存（reload後の復帰用）
   const url = new URL(window.location.href)
