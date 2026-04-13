@@ -1,6 +1,7 @@
 <!-- CastsPanelSP.vue（差し替え） -->
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
+import dayjs from 'dayjs'
 import Avatar from '@/components/Avatar.vue'
 
 const props = defineProps({
@@ -8,9 +9,11 @@ const props = defineProps({
   benchCasts:   { type: Array,  default: () => [] },
   onDutyIds:    { type: Array,  default: () => [] },
   keyword:      { type: String, default: '' },
+  billId: { type: [Number, null], default: null },
+  billCustomers: { type: Array, default: () => [] },
 })
-// 同伴イベントを追加
-const emit = defineEmits(['update:keyword','setFree','setInhouse','setMain','setDohan','setHelp','removeCast','save'])
+// 同伴イベントを追加 + setMainWithCustomer を追加
+const emit = defineEmits(['update:keyword','setFree','setInhouse','setMain','setDohan','setHelp','removeCast','save','setMainWithCustomer'])
 
 const isOnDuty = (c) => Array.isArray(props.onDutyIds) && props.onDutyIds.includes(Number(c?.id))
 
@@ -53,26 +56,66 @@ const tagClass = (c) => {
        : st === 'help' ? 'bg-purple text-white'
        :                  'bg-blue text-white'
 }
-/* フリー⇄場内トグル（本指/同伴はここでは触らない） */
+/* フリー⇄場内トグル + 本指/同伴からはフリーに戻す */
 function toggleFreeInhouse(c) {
-  // 本指・同伴はここでは触らない
-  if (c.role === 'main' || c.dohan) return
-
-  // 現在の状態を正規化
   const st = c.stay_type ?? (c.inhouse ? 'in' : 'free')
+
+  // 本指・同伴 → タップでフリーに戻す
+  if (st === 'nom' || st === 'dohan') {
+    emit('setFree', c.id)
+    return
+  }
+
   const help = !!c.is_help
 
-  // 青( free, !help ) → 紫( free, help ) → 緑( in ) → 青 …
   if (st === 'in') {
-    // 緑 → 青
     emit('setFree', c.id)
   } else if (st === 'free' && !help) {
-    // 青 → 紫
     emit('setHelp', c.id)
   } else {
-    // 紫( free+help ) → 緑
     emit('setInhouse', c.id)
   }
+}
+
+// 【本指×顧客機能】顧客選択モーダル
+const showPickCustomer = ref(false)
+const pendingMainCastId = ref(null)
+const selectedCustomerIdForMain = ref(null)
+
+function openMainWithCustomerPick(castId) {
+  pendingMainCastId.value = castId
+  if (props.billCustomers && props.billCustomers.length > 0) {
+    const firstBc = props.billCustomers[0]
+    selectedCustomerIdForMain.value = firstBc.customer_id ?? firstBc.customer
+  } else {
+    selectedCustomerIdForMain.value = null
+  }
+  showPickCustomer.value = true
+}
+
+function cancelPickCustomer() {
+  showPickCustomer.value = false
+  pendingMainCastId.value = null
+  selectedCustomerIdForMain.value = null
+}
+
+function confirmPickCustomer() {
+  if (!selectedCustomerIdForMain.value || !pendingMainCastId.value) {
+    alert('顧客を選択してください')
+    return
+  }
+  emit('setMainWithCustomer', {
+    castId: pendingMainCastId.value,
+    customerId: selectedCustomerIdForMain.value
+  })
+  showPickCustomer.value = false
+  pendingMainCastId.value = null
+  selectedCustomerIdForMain.value = null
+}
+
+function getCustomerDisplayName(bc) {
+  const cid = bc.customer_id ?? bc.customer
+  return bc.display_name || bc.customer_name || `Guest-${String(cid).padStart(6, '0')}`
 }
 
 if (import.meta.env.DEV) {
@@ -105,9 +148,13 @@ if (import.meta.env.DEV) {
               </div>
               <div class="name">{{ c.stage_name }}</div>
             </div>
-            <button class="text-white" @click.stop="emit('removeCast', c.id)" aria-label="remove">
-              <IconX :size="16" />
-            </button>
+            <div class="d-flex align-items-center gap-1">
+              <button v-if="c.stay_type !== 'nom'" class="btn btn-sm btn-danger" style="font-size:.7rem;padding:2px 6px;" @click.stop="openMainWithCustomerPick(c.id)">本指</button>
+              <button v-if="c.stay_type !== 'dohan'" class="btn btn-sm btn-secondary text-white" style="font-size:.7rem;padding:2px 6px;" @click.stop="emit('setDohan', c.id)">同伴</button>
+              <button class="text-white" @click.stop="emit('removeCast', c.id)" aria-label="remove">
+                <IconX :size="16" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -154,6 +201,51 @@ if (import.meta.env.DEV) {
       <button class="btn btn-primary w-100" @click="$emit('save')">保存</button>
     </div>
   </div>
+
+  <!-- 【本指×顧客機能】顧客選択モーダル -->
+  <div
+    v-if="showPickCustomer"
+    class="pick-overlay"
+    @click.self="cancelPickCustomer"
+  >
+    <div class="pick-dialog">
+      <div class="pick-header">
+        <div class="fw-bold">本指名の顧客を選択</div>
+        <button type="button" class="btn-close" @click="cancelPickCustomer"></button>
+      </div>
+      <div class="pick-body">
+        <div v-if="!billCustomers || billCustomers.length === 0" class="text-muted">
+          顧客が登録されていません
+        </div>
+        <div v-else class="d-flex flex-column gap-2">
+          <label
+            v-for="bc in billCustomers"
+            :key="bc.id"
+            class="d-flex align-items-center gap-2 p-2 border rounded"
+            :class="{ 'border-primary bg-primary bg-opacity-10': (bc.customer_id ?? bc.customer) === selectedCustomerIdForMain }"
+            style="cursor: pointer;"
+          >
+            <input
+              type="radio"
+              :value="bc.customer_id ?? bc.customer"
+              v-model="selectedCustomerIdForMain"
+              class="form-check-input m-0"
+            />
+            <div class="flex-grow-1">
+              <div class="fw-bold">{{ getCustomerDisplayName(bc) }}</div>
+              <div v-if="bc.arrived_at" class="small text-muted">
+                入店：{{ dayjs(bc.arrived_at).format('HH:mm') }}
+              </div>
+            </div>
+          </label>
+        </div>
+      </div>
+      <div class="pick-footer">
+        <button type="button" class="btn btn-secondary" @click="cancelPickCustomer">キャンセル</button>
+        <button type="button" class="btn btn-primary" @click="confirmPickCustomer">決定</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped lang="scss">
@@ -169,4 +261,30 @@ if (import.meta.env.DEV) {
   pointer-events: none;
   user-select: none;
 }
+
+.pick-overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+.pick-dialog{
+  width: min(520px, 100%);
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.pick-header, .pick-footer{
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pick-header{ border-bottom: 1px solid #eee; }
+.pick-footer{ border-top: 1px solid #eee; gap: 8px; justify-content: flex-end; }
+.pick-body{ padding: 12px; max-height: 60vh; overflow: auto; }
 </style>

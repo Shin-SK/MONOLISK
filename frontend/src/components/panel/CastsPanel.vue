@@ -130,24 +130,25 @@ const tagClass = (c) => {
        : st === 'help' ? 'bg-purple text-white'
        :                  'bg-blue text-white'
 }
-/* フリー⇄場内トグル（本指/同伴はここでは触らない） */
+/* フリー⇄場内トグル + 本指/同伴からはフリーに戻す */
 function toggleFreeInhouse(c) {
-  // 本指・同伴はここでは触らない
-  if (c.role === 'main' || c.dohan) return
-
   // 現在の状態を正規化
   const st = c.stay_type ?? (c.inhouse ? 'in' : 'free')
+
+  // 本指・同伴 → タップでフリーに戻す
+  if (st === 'nom' || st === 'dohan') {
+    emit('setFree', c.id)
+    return
+  }
+
   const help = !!c.is_help
 
   // 青( free, !help ) → 紫( free, help ) → 緑( in ) → 青 …
   if (st === 'in') {
-    // 緑 → 青
     emit('setFree', c.id)
   } else if (st === 'free' && !help) {
-    // 青 → 紫
     emit('setHelp', c.id)
   } else {
-    // 紫( free+help ) → 緑
     emit('setInhouse', c.id)
   }
 }
@@ -215,9 +216,13 @@ if (import.meta.env.DEV) {
                 </div>
                 <div class="name">{{ c.stage_name }}</div>
               </div>
-              <button class="text-white" @click.stop="emit('removeCast', c.id)" aria-label="remove">
-                <IconX :size="16" />
-              </button>
+              <div class="d-flex align-items-center gap-1">
+                <button v-if="c.stay_type !== 'nom'" class="btn btn-sm btn-danger" style="font-size:.7rem;padding:2px 6px;" @click.stop="openMainWithCustomerPick(c.id)">本指</button>
+                <button v-if="c.stay_type !== 'dohan'" class="btn btn-sm btn-secondary text-white" style="font-size:.7rem;padding:2px 6px;" @click.stop="emit('setDohan', c.id)">同伴</button>
+                <button class="text-white" @click.stop="emit('removeCast', c.id)" aria-label="remove">
+                  <IconX :size="16" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
