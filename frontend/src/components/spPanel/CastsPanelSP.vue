@@ -1,6 +1,6 @@
 <!-- CastsPanelSP.vue（差し替え） -->
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import dayjs from 'dayjs'
 import Avatar from '@/components/Avatar.vue'
 
@@ -118,6 +118,18 @@ function getCustomerDisplayName(bc) {
   return bc.display_name || bc.customer_name || `Guest-${String(cid).padStart(6, '0')}`
 }
 
+// ⓘポップオーバー
+const openPopoverId = ref(null)
+function togglePopover(id) {
+  openPopoverId.value = openPopoverId.value === id ? null : id
+}
+function closePopover() {
+  openPopoverId.value = null
+}
+function onDocClick() { openPopoverId.value = null }
+onMounted(() => document.addEventListener('click', onDocClick))
+onUnmounted(() => document.removeEventListener('click', onDocClick))
+
 if (import.meta.env.DEV) {
   // 今出ている配列が見たい時
   window.__cur = safeCurrent
@@ -148,12 +160,15 @@ if (import.meta.env.DEV) {
               </div>
               <div class="name">{{ c.stage_name }}</div>
             </div>
-            <div class="d-flex align-items-center gap-1">
-              <button v-if="c.stay_type !== 'nom'" class="btn btn-sm btn-danger" style="font-size:.7rem;padding:2px 6px;" @click.stop="openMainWithCustomerPick(c.id)">本指</button>
-              <button v-if="c.stay_type !== 'dohan'" class="btn btn-sm btn-secondary text-white" style="font-size:.7rem;padding:2px 6px;" @click.stop="emit('setDohan', c.id)">同伴</button>
-              <button class="text-white" @click.stop="emit('removeCast', c.id)" aria-label="remove">
-                <IconX :size="16" />
+            <div style="position:relative;">
+              <button class="cast-info-btn" @click.stop="togglePopover(c.id)" aria-label="操作">
+                <IconInfoCircle :size="18" />
               </button>
+              <div v-if="openPopoverId === c.id" class="cast-popover" @click.stop>
+                <button v-if="c.stay_type !== 'nom'" class="btn btn-sm btn-danger" @click="openMainWithCustomerPick(c.id); closePopover()">本指名</button>
+                <button v-if="c.stay_type !== 'dohan'" class="btn btn-sm btn-secondary text-white" @click="emit('setDohan', c.id); closePopover()">同伴</button>
+                <button class="btn btn-sm btn-outline-dark" @click="emit('removeCast', c.id); closePopover()">退席</button>
+              </div>
             </div>
           </div>
         </div>
@@ -260,6 +275,36 @@ if (import.meta.env.DEV) {
   filter: grayscale(100%);
   pointer-events: none;
   user-select: none;
+}
+
+.cast-info-btn{
+  background: none;
+  border: none;
+  padding: 0 4px;
+  margin-left: 12px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: #fff !important;
+  opacity: .85;
+  &:hover{ opacity: 1; }
+}
+
+.cast-popover{
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+  .btn{ padding: 6px 14px; font-size: .85rem; }
 }
 
 .pick-overlay{
