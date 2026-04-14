@@ -1,12 +1,14 @@
 // src/plugins/pwa.js
-// PWA更新方式: バナー通知 → Workbox正規フローで更新適用
+// PWA/SW 撤去フェーズ（リリース1）:
+//   - バナー表示は version.json ベース（update-watcher.js）に一本化
+//   - SW 自体は selfDestroying 版を register（既存 SW を剥がすため）
+//   - 更新適用は単純な location.reload() のみ（HTML は no-store なので最新が来る）
 import { registerSW } from 'virtual:pwa-register'
 
 const BANNER_ID = 'update-banner'
 const OVERLAY_ID = 'update-overlay'
 const SUPPRESS_KEY = '__update_just_applied'
 let _updateAvailable = false
-let _updateSW = null
 
 /** 更新が利用可能かどうか */
 export function isUpdateAvailable () { return _updateAvailable }
@@ -140,22 +142,16 @@ export function restoreRouteIfNeeded (router) {
   }
 }
 
-// ─── PWA セットアップ ───
+// ─── SW セットアップ（selfDestroying SW を登録するためだけに残す） ───
 export function setupPWA () {
-  _updateSW = registerSW({
+  // バナー表示はここで行わない（version.json 経路に一本化）
+  registerSW({
     immediate: true,
-    onNeedRefresh () {
-      console.log('[pwa] onNeedRefresh fired')
-      if (_isUpdateSuppressed()) return
-      _updateAvailable = true
-      showBanner()
-    },
-    onOfflineReady () { /* noop */ },
     onRegisterError (e) { console.warn('[pwa] register error:', e) }
   })
 }
 
-// ─── 更新適用（Workbox正規フロー: skipWaiting → reload）───
+// ─── 更新適用（単純 reload）───
 async function applyUpdate () {
   _updateAvailable = false
   dismissBanner()
@@ -169,15 +165,6 @@ async function applyUpdate () {
   url.searchParams.delete('v')
   const p = url.pathname + url.search + url.hash
   sessionStorage.setItem('__resume_to', p)
-
-  // Workbox正規フロー: waiting中の新SWにskipWaitingメッセージを送信
-  if (_updateSW) {
-    try {
-      await _updateSW()
-    } catch (e) {
-      console.warn('[pwa] updateSW failed, falling back to reload:', e)
-    }
-  }
 
   location.reload()
 }

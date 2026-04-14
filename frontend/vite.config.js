@@ -36,43 +36,13 @@ export default defineConfig(({ mode }) => {
 
       Icons({ autoInstall: true }),
 
-      // PWA/Service Worker 設定（手動更新UI: バナーで案内→ユーザー操作で適用）
+      // PWA/SW 撤去フェーズ（リリース1）: 既存 SW を自殺させて剥がす
+      // 次リリースで vite-plugin-pwa ごと削除予定
       VitePWA({
-        registerType: 'prompt',
+        selfDestroying: true,
+        registerType: 'autoUpdate',
         injectRegister: 'auto',
         devOptions: { enabled: false },
-        includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
-        workbox: {
-          cleanupOutdatedCaches: true,
-          // SPA 直リンク/リロードは index.html にフォールバック
-          navigateFallback: '/index.html',
-          // HTMLでない拡張子やAPI/手動配信ディレクトリは除外
-          navigateFallbackAllowlist: [/^\/(?:$|[^.].*)/],
-          navigateFallbackDenylist: [/^\/api\//, /^\/manuals\//],
-          maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-          globIgnores: ['**/*.map'],
-          runtimeCaching: [
-            {
-              urlPattern: ({ url }) => url.pathname.startsWith('/api'),
-              handler: 'NetworkOnly',
-              options: { fetchOptions: { credentials: 'include' } }
-            }
-          ]
-        },
-        manifest: {
-          name: 'MONOLISK',
-          short_name: 'MONOLISK',
-          start_url: '/',
-          scope: '/',
-          display: 'standalone',
-          background_color: '#ffffff',
-          theme_color: '#111111',
-          icons: [
-            { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-            { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
-            { src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png', purpose: 'any' }
-          ]
-        }
       }),
 
       visualizer({ filename: 'report.html', open: true, gzipSize: true, brotliSize: true }),
