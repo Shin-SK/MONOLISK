@@ -29,7 +29,7 @@ from .permissions import RequireCap, CastHonshimeiForBill, CanOrderBillItem
 
 from .models import (
     Store, Table, Bill, BillCustomer, ItemMaster, BillItem, BillCastStay,
-    Cast, CastPayout, ItemCategory, CastShift, CastDailySummary,
+    Cast, CastPayout, ItemCategory, StoreCategoryPreference, CastShift, CastDailySummary,
     Staff, StaffShift, Customer, CustomerLog, CustomerTag,
     StoreNotice, StoreSeatSetting, DiscountRule, BillTag,
     PersonnelExpenseCategory, PersonnelExpense, PersonnelExpenseSettlementEvent, PayrollRun,
@@ -244,7 +244,7 @@ class StoreViewSet(StoreScopedModelViewSet):
 # 商品マスタ / 卓
 # ────────────────────────────────────────────────────────────────────
 class ItemMasterViewSet(NoStoreListMixin, StoreScopedModelViewSet):
-    queryset = ItemMaster.objects.select_related("category")
+    queryset = ItemMaster.objects.select_related("category").prefetch_related("category__preferences")
     serializer_class = ItemMasterSerializer
 
 
@@ -928,27 +928,50 @@ class CastItemDetailView(generics.ListAPIView):
         return qs.distinct().order_by("-bill__closed_at")
 
 
-class ItemCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+class ItemCategoryViewSet(NoStoreListMixin, viewsets.ReadOnlyModelViewSet):
     """
-    GET  /item-categories/           一覧
-    GET  /item-categories/<pk>/      単件
-    POST /item-categories/reorder/   並び順一括更新（sort_order のみ）
+    GET  /item-categories/           一覧（店舗別 sort_order/show_in_menu を merge 済みで返す）
+    GET  /item-categories/<pk>/      単件（同上）
+    POST /item-categories/reorder/   並び順一括更新（StoreCategoryPreference を upsert）
 
-    カテゴリ本体の CRUD は引き続き admin から行う想定。
-    現場からの並び替えだけをこのエンドポイントで受ける。
+    カテゴリ本体（code/name/major_group/back_rate 等）の CRUD は引き続き admin。
+    ここで扱うのは「この店舗での見せ方」だけ。
     """
-    queryset = ItemCategory.objects.all()
+    queryset = ItemCategory.objects.all().prefetch_related('preferences')
     serializer_class = ItemCategorySerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def _sid(self):
+        # request.store を唯一の正本とし、StoreMembership チェック込みで store_id を取得
+        return StoreScopedModelViewSet.require_store(self, self.request)
+
+    def get_queryset(self):
+        sid = self._sid()
+        # 店舗別の有効 sort_order で並べ替えるため annotate する
+        pref_sort = StoreCategoryPreference.objects.filter(
+            store_id=sid,
+            category_id=OuterRef('pk'),
+            sort_order__isnull=False,
+        ).values('sort_order')[:1]
+        return (
+            ItemCategory.objects
+            .annotate(
+                _eff_sort=Coalesce(Subquery(pref_sort), F('sort_order')),
+            )
+            .order_by('_eff_sort', 'code')
+            .prefetch_related('preferences')
+        )
 
     @action(detail=False, methods=['post'], url_path='reorder')
     def reorder(self, request):
         """
-        並び順を一括更新する。
+        店舗別の並び順を一括更新する。
         Body: {"order": ["drink", "champagne", "food", ...]}
-        送られた順に sort_order を 10, 20, 30, ... と振り直す。
-        リクエストに含まれないカテゴリは既存値のまま。
+        送られた順に StoreCategoryPreference.sort_order を 10, 20, 30, ... と振り直す。
+        リクエストに含まれないカテゴリは既存の Preference（または ItemCategory デフォルト）のまま。
         """
+        sid = self._sid()
+
         order = request.data.get('order')
         if not isinstance(order, list) or not all(isinstance(c, str) for c in order):
             return Response(
@@ -956,7 +979,6 @@ class ItemCategoryViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 重複 code は先勝ち（あとから来たものは無視）
         seen = set()
         ordered_codes = []
         for c in order:
@@ -964,26 +986,31 @@ class ItemCategoryViewSet(viewsets.ReadOnlyModelViewSet):
                 seen.add(c)
                 ordered_codes.append(c)
 
-        # 存在するものだけ更新
         existing = {
             c.code: c
             for c in ItemCategory.objects.filter(code__in=ordered_codes)
         }
-        updated = []
+
+        updated_codes = []
         with transaction.atomic():
             n = 10
             for code in ordered_codes:
                 cat = existing.get(code)
                 if not cat:
                     continue
-                cat.sort_order = n
-                cat.save(update_fields=['sort_order'])
-                updated.append(cat)
+                StoreCategoryPreference.objects.update_or_create(
+                    store_id=sid,
+                    category=cat,
+                    defaults={'sort_order': n},
+                )
+                updated_codes.append(code)
                 n += 10
 
-        ser = ItemCategorySerializer(ItemCategory.objects.all(), many=True)
+        # レスポンスは merge 済み一覧で返す（list と同じ並び）
+        qs = self.get_queryset()
+        ser = self.get_serializer(qs, many=True)
         return Response(
-            {'updated': [c.code for c in updated], 'categories': ser.data},
+            {'updated': updated_codes, 'categories': ser.data},
             status=status.HTTP_200_OK,
         )
 

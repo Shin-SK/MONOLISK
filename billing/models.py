@@ -323,6 +323,46 @@ class ItemCategory(models.Model):
     def __str__(self): return self.name
 
 
+class StoreCategoryPreference(models.Model):
+    """
+    店舗別のカテゴリ表示設定（ItemCategory のグローバル値を上書き）。
+    レコードが無い / フィールドが None なら ItemCategory の値にフォールバックする。
+    """
+    store = models.ForeignKey(
+        'billing.Store', on_delete=models.CASCADE,
+        related_name='category_preferences',
+    )
+    category = models.ForeignKey(
+        'billing.ItemCategory', on_delete=models.CASCADE,
+        related_name='preferences',
+    )
+    sort_order = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='表示順（店舗別）',
+        help_text='未設定時は ItemCategory.sort_order にフォールバック',
+    )
+    show_in_menu = models.BooleanField(
+        null=True, blank=True,
+        verbose_name='POS表示（店舗別）',
+        help_text='未設定時は ItemCategory.show_in_menu にフォールバック',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['store', 'sort_order', 'category']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['store', 'category'],
+                name='uniq_storecatpref_store_category',
+            ),
+        ]
+        verbose_name = '店舗別カテゴリ設定'
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        return f'{self.store_id} / {self.category_id}'
+
+
 class Cast(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,

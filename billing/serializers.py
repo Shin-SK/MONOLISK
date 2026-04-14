@@ -22,7 +22,31 @@ from .models_profile import get_user_avatar_url
 from django.db import transaction
 from django.db.models import Sum
 
-from .models import Bill, BillDiscountLine
+from .models import Bill, BillDiscountLine, StoreCategoryPreference
+
+
+def _resolve_category_display(category, store_id):
+    """
+    店舗別の (sort_order, show_in_menu) を解決する。
+    StoreCategoryPreference が (store, category) にあれば上書き、
+    フィールド値が NULL なら ItemCategory の値にフォールバックする。
+    prefetch_related('preferences') 済みなら追加クエリは発生しない。
+    """
+    sort_order = category.sort_order
+    show_in_menu = category.show_in_menu
+    if not store_id:
+        return sort_order, show_in_menu
+    cache = getattr(category, '_prefetched_objects_cache', None)
+    if cache is not None and 'preferences' in cache:
+        pref = next((p for p in cache['preferences'] if p.store_id == store_id), None)
+    else:
+        pref = category.preferences.filter(store_id=store_id).first()
+    if pref is not None:
+        if pref.sort_order is not None:
+            sort_order = pref.sort_order
+        if pref.show_in_menu is not None:
+            show_in_menu = pref.show_in_menu
+    return sort_order, show_in_menu
 from billing.constants import (
     BILLITEM_QTY_MIN, BILLITEM_QTY_MAX,
     BILLITEM_PRICE_MIN, BILLITEM_PRICE_MAX,
@@ -149,11 +173,13 @@ class CastItemDetailSerializer(serializers.ModelSerializer):
     def get_category(self, obj):
         c = getattr(getattr(obj, 'item_master', None), 'category', None)
         if not c: return None
+        sid = getattr(getattr(obj, 'bill', None), 'store_id', None)
+        sort_order, show_in_menu = _resolve_category_display(c, sid)
         return {
             'code': c.code,
             'name': c.name,
-            'show_in_menu': c.show_in_menu,
-            'sort_order': c.sort_order,
+            'show_in_menu': show_in_menu,
+            'sort_order': sort_order,
         }
     def get_table_no(self, obj):
         tbl = getattr(getattr(obj, 'bill', None), 'table', None)
@@ -164,11 +190,29 @@ class ItemCategorySerializer(serializers.ModelSerializer):
         model  = ItemCategory
         fields = ("code", "name", "sort_order", "show_in_menu")
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        sid = getattr(getattr(request, 'store', None), 'id', None)
+        sort_order, show_in_menu = _resolve_category_display(instance, sid)
+        data['sort_order'] = sort_order
+        data['show_in_menu'] = show_in_menu
+        return data
+
 
 class ItemCategoryMiniSerializer(serializers.ModelSerializer):
     class Meta:
         model  = ItemCategory
         fields = ('code', 'name', 'show_in_menu', 'sort_order')
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        sid = getattr(getattr(request, 'store', None), 'id', None)
+        sort_order, show_in_menu = _resolve_category_display(instance, sid)
+        data['sort_order'] = sort_order
+        data['show_in_menu'] = show_in_menu
+        return data
 
 
 
@@ -176,11 +220,13 @@ class ItemMasterSerializer(serializers.ModelSerializer):
     category = serializers.SerializerMethodField()
 
     def get_category(self, obj):
+        sid = getattr(obj, 'store_id', None)
+        sort_order, show_in_menu = _resolve_category_display(obj.category, sid)
         return {
             "code": obj.category.code,
             "name": obj.category.name,
-            "show_in_menu": obj.category.show_in_menu,
-            "sort_order": obj.category.sort_order,
+            "show_in_menu": show_in_menu,
+            "sort_order": sort_order,
         }
 
     category_code = serializers.SlugRelatedField(

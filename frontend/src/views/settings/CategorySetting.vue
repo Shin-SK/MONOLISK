@@ -8,16 +8,28 @@ const loading = ref(false)
 const saving  = ref(false)
 const error   = ref('')
 const message = ref('')
+const showOff = ref(false)  // 非表示(OFF)カテゴリを表示するか
 
-// 表示用にソート（sort_order 昇順 → code 昇順）
+// 全件をグループソート（ON先 → OFF後、各内は sort_order 昇順 → code 昇順）
 const sorted = computed(() => {
   return [...cats.value].sort((a, b) => {
+    const ag = a.show_in_menu ? 0 : 1
+    const bg = b.show_in_menu ? 0 : 1
+    if (ag !== bg) return ag - bg
     const ao = Number(a.sort_order ?? 0)
     const bo = Number(b.sort_order ?? 0)
     if (ao !== bo) return ao - bo
     return String(a.code || '').localeCompare(String(b.code || ''))
   })
 })
+
+// 表示用（showOff=false なら ON のみ）
+const visible = computed(() => {
+  if (showOff.value) return sorted.value
+  return sorted.value.filter(c => c.show_in_menu)
+})
+
+const offCount = computed(() => cats.value.filter(c => !c.show_in_menu).length)
 
 async function load() {
   error.value = ''
@@ -35,11 +47,13 @@ async function load() {
 }
 
 function move(index, delta) {
-  // sorted 表示上のインデックスで入れ替え、実体の sort_order を更新
-  const arr = sorted.value
+  // 現在表示中の visible 上のインデックスで入れ替え、実体の sort_order を更新
+  const arr = visible.value
   const target = arr[index]
   const swap   = arr[index + delta]
   if (!target || !swap) return
+  // ON/OFF グループ跨ぎの移動は禁止（視覚的な並び崩れ防止）
+  if (!!target.show_in_menu !== !!swap.show_in_menu) return
 
   // cats.value 上の実体を取得
   const ti = cats.value.findIndex(c => c.code === target.code)
@@ -53,6 +67,17 @@ function move(index, delta) {
   cats.value[si] = { ...cats.value[si], sort_order: to }
 }
 
+// 指定位置で ↑ が無効か（先頭 or 直上がグループ違い）
+function cantUp(i) {
+  if (i <= 0) return true
+  return !!visible.value[i - 1]?.show_in_menu !== !!visible.value[i]?.show_in_menu
+}
+// 指定位置で ↓ が無効か（末尾 or 直下がグループ違い）
+function cantDown(i) {
+  if (i >= visible.value.length - 1) return true
+  return !!visible.value[i + 1]?.show_in_menu !== !!visible.value[i]?.show_in_menu
+}
+
 function moveUp(index)   { move(index, -1) }
 function moveDown(index) { move(index, +1) }
 
@@ -61,7 +86,9 @@ async function save() {
   error.value = ''
   message.value = ''
   try {
-    // 現在の表示順 (sorted) でコード列を送信
+    // 全件を ON→OFF グループ順で送信（OFF非表示時も含めて送る）
+    // バックエンドは送られた順に 10, 20, 30... と振り直すので、
+    // ON ブロックが常に小さい番号、OFF ブロックが後ろになり、並びが安定する
     const order = sorted.value.map(c => c.code)
     const res = await api.post('billing/item-categories/reorder/', { order })
     const data = res.data?.categories
@@ -90,6 +117,11 @@ onMounted(load)
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="m-0">カテゴリ表示順</h5>
         <div class="d-flex gap-2">
+          <button class="btn btn-outline-secondary btn-sm"
+                  @click="showOff = !showOff"
+                  :disabled="saving">
+            {{ showOff ? '非表示を隠す' : `非表示も表示 (${offCount})` }}
+          </button>
           <button class="btn btn-outline-secondary btn-sm" @click="reload" :disabled="saving">再読込</button>
           <button class="btn btn-primary btn-sm" @click="save" :disabled="saving">
             {{ saving ? '保存中…' : '並び順を保存' }}
@@ -99,6 +131,7 @@ onMounted(load)
 
       <p class="small text-muted mb-3">
         注文画面などのカテゴリ表示順を変更できます。<br>
+        <strong>この並び順はこの店舗専用です。</strong>他店舗には影響しません。<br>
         ↑↓ボタンで並び替え、「並び順を保存」で確定します。<br>
         カテゴリ自体の追加・削除・コード変更は運営に依頼してください。
       </p>
@@ -118,8 +151,10 @@ onMounted(load)
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(c, i) in sorted" :key="c.code">
-              <td class="text-muted">{{ c.sort_order ?? 0 }}</td>
+            <tr v-for="(c, i) in visible"
+                :key="c.code"
+                :class="{ 'table-off-row': !c.show_in_menu }">
+              <td class="text-muted">{{ c.show_in_menu ? (i + 1) : '-' }}</td>
               <td>{{ c.name }}</td>
               <td><code>{{ c.code }}</code></td>
               <td>
@@ -128,15 +163,17 @@ onMounted(load)
               </td>
               <td>
                 <button class="btn btn-outline-secondary btn-sm me-1"
-                        :disabled="i === 0 || saving"
+                        :disabled="cantUp(i) || saving"
                         @click="moveUp(i)">↑</button>
                 <button class="btn btn-outline-secondary btn-sm"
-                        :disabled="i === sorted.length - 1 || saving"
+                        :disabled="cantDown(i) || saving"
                         @click="moveDown(i)">↓</button>
               </td>
             </tr>
-            <tr v-if="!sorted.length">
-              <td colspan="5" class="text-center text-muted">カテゴリがありません</td>
+            <tr v-if="!visible.length">
+              <td colspan="5" class="text-center text-muted">
+                {{ cats.length ? '表示中のカテゴリがありません（「非表示も表示」で全件見えます）' : 'カテゴリがありません' }}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -152,5 +189,9 @@ table {
 code {
   font-size: 0.85em;
   color: #666;
+}
+.table-off-row {
+  background-color: #f8f9fa;
+  color: #888;
 }
 </style>
