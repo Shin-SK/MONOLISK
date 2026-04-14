@@ -29,6 +29,7 @@ const routes = [
         children: [
           { path: 'store',           name: 'settings-store',      component: () => import('@/views/settings/StoreSetting.vue') },
           { path: 'menu',            name: 'settings-menu',       component: () => import('@/views/settings/MenuSetting.vue') },
+          { path: 'categories',      name: 'settings-categories', component: () => import('@/views/settings/CategorySetting.vue') },
           { path: 'table',           name: 'settings-table',      component: () => import('@/views/settings/TableSetting.vue') },
           { path: 'staff',           name: 'settings-staff-list', component: () => import('@/views/settings/AdminStaffList.vue') },
           { path: 'staff/:id(\\d+)', name: 'settings-staff-form', component: () => import('@/views/settings/AdminStaffForm.vue'), props: true },

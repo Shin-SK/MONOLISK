@@ -149,7 +149,12 @@ class CastItemDetailSerializer(serializers.ModelSerializer):
     def get_category(self, obj):
         c = getattr(getattr(obj, 'item_master', None), 'category', None)
         if not c: return None
-        return {'code': c.code, 'name': c.name, 'show_in_menu': c.show_in_menu}
+        return {
+            'code': c.code,
+            'name': c.name,
+            'show_in_menu': c.show_in_menu,
+            'sort_order': c.sort_order,
+        }
     def get_table_no(self, obj):
         tbl = getattr(getattr(obj, 'bill', None), 'table', None)
         return (getattr(tbl, 'code', '') or '') if tbl else ''
@@ -157,13 +162,13 @@ class CastItemDetailSerializer(serializers.ModelSerializer):
 class ItemCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model  = ItemCategory
-        fields = ("code", "name")     # これだけで OK
+        fields = ("code", "name", "sort_order", "show_in_menu")
 
 
 class ItemCategoryMiniSerializer(serializers.ModelSerializer):
     class Meta:
         model  = ItemCategory
-        fields = ('code', 'name', 'show_in_menu')
+        fields = ('code', 'name', 'show_in_menu', 'sort_order')
 
 
 
@@ -175,6 +180,7 @@ class ItemMasterSerializer(serializers.ModelSerializer):
             "code": obj.category.code,
             "name": obj.category.name,
             "show_in_menu": obj.category.show_in_menu,
+            "sort_order": obj.category.sort_order,
         }
 
     category_code = serializers.SlugRelatedField(

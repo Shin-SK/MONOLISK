@@ -930,13 +930,62 @@ class CastItemDetailView(generics.ListAPIView):
 
 class ItemCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    GET /item-categories/      一覧
-    GET /item-categories/<pk>/ 単件
-    （作成・更新・削除は admin から行う想定）
+    GET  /item-categories/           一覧
+    GET  /item-categories/<pk>/      単件
+    POST /item-categories/reorder/   並び順一括更新（sort_order のみ）
+
+    カテゴリ本体の CRUD は引き続き admin から行う想定。
+    現場からの並び替えだけをこのエンドポイントで受ける。
     """
     queryset = ItemCategory.objects.all()
     serializer_class = ItemCategorySerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['post'], url_path='reorder')
+    def reorder(self, request):
+        """
+        並び順を一括更新する。
+        Body: {"order": ["drink", "champagne", "food", ...]}
+        送られた順に sort_order を 10, 20, 30, ... と振り直す。
+        リクエストに含まれないカテゴリは既存値のまま。
+        """
+        order = request.data.get('order')
+        if not isinstance(order, list) or not all(isinstance(c, str) for c in order):
+            return Response(
+                {'detail': 'order must be a list of category codes (strings).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 重複 code は先勝ち（あとから来たものは無視）
+        seen = set()
+        ordered_codes = []
+        for c in order:
+            if c and c not in seen:
+                seen.add(c)
+                ordered_codes.append(c)
+
+        # 存在するものだけ更新
+        existing = {
+            c.code: c
+            for c in ItemCategory.objects.filter(code__in=ordered_codes)
+        }
+        updated = []
+        with transaction.atomic():
+            n = 10
+            for code in ordered_codes:
+                cat = existing.get(code)
+                if not cat:
+                    continue
+                cat.sort_order = n
+                cat.save(update_fields=['sort_order'])
+                updated.append(cat)
+                n += 10
+
+        ser = ItemCategorySerializer(ItemCategory.objects.all(), many=True)
+        return Response(
+            {'updated': [c.code for c in updated], 'categories': ser.data},
+            status=status.HTTP_200_OK,
+        )
 
 
 class BillTagViewSet(NoStoreListMixin, StoreScopedModelViewSet):

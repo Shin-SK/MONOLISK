@@ -20,13 +20,12 @@ const norm = v => String(v ?? '').toLowerCase()
 
 const catsSorted = computed(() => {
   const arr = [...cats.value]
-  // drink 最上位 → 日本語名昇順
-  arr.sort((a,b) => {
-    const ad = norm(a.code) === 'drink'
-    const bd = norm(b.code) === 'drink'
-    if (ad && !bd) return -1
-    if (!ad && bd) return 1
-    return (a.name || '').localeCompare(b.name || '', 'ja')
+  // ItemCategory.sort_order 昇順 → code 昇順（CategorySetting.vue の並びと統一）
+  arr.sort((a, b) => {
+    const ao = Number(a?.sort_order ?? 0)
+    const bo = Number(b?.sort_order ?? 0)
+    if (ao !== bo) return ao - bo
+    return String(a?.code || '').localeCompare(String(b?.code || ''))
   })
   return arr
 })

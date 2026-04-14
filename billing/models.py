@@ -311,6 +311,14 @@ class ItemCategory(models.Model):
         default=False,
         help_text='本指名プールから除外（例: TC）'
     )
+    sort_order = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name='表示順',
+        help_text='注文画面タブ等の並び順（昇順）。同値時は code 昇順'
+    )
+
+    class Meta:
+        ordering = ['sort_order', 'code']
 
     def __str__(self): return self.name
 

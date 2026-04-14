@@ -41,12 +41,25 @@ export default function useBillEditor(billObjRef){
   const orderCatOptions = computed(() => {
     const list = Array.isArray(masters.value) ? masters.value : []
     const shown = list.filter(m => m?.category && m.category?.show_in_menu === true)
-    const codes = [...new Set(shown.map(m => catCode(m)))]
-    return codes.map(code => {
-      const first = shown.find(m => catCode(m) === code)
-      const label = (typeof first?.category === 'object' ? first.category.name : code)
-      return { value: code, label }
+    // code 単位でまとめ、代表の category オブジェクトを保持
+    const map = new Map()
+    for (const m of shown) {
+      const code = catCode(m)
+      if (!code) continue
+      if (!map.has(code)) map.set(code, m.category)
+    }
+    // category.sort_order 昇順 → code 昇順で並べ替え
+    const entries = Array.from(map.entries())
+    entries.sort((a, b) => {
+      const ao = Number(a[1]?.sort_order ?? 0)
+      const bo = Number(b[1]?.sort_order ?? 0)
+      if (ao !== bo) return ao - bo
+      return String(a[0]).localeCompare(String(b[0]))
     })
+    return entries.map(([code, cat]) => ({
+      value: code,
+      label: (typeof cat === 'object' ? (cat?.name ?? code) : code),
+    }))
   })
   const selectedOrderCat = ref(null)
   watch(orderCatOptions, (opts) => {
