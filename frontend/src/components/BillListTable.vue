@@ -51,7 +51,7 @@ async function loadCastsAndShifts () {
 
 onMounted(async () => {                                   // ★tablesStore.fetch だけ
   await Promise.all([
-    billsStore.loadAll(),
+    billsStore.loadAll(true),
     tablesStore.fetch(),          // テーブル一覧
     loadCastsAndShifts(),         // キャスト＋シフト
   ])
@@ -112,7 +112,7 @@ watch(showModal, async (v) => {
   if (v) {
     stopPolling()
   } else {
-    await billsStore.loadAll()
+    await billsStore.loadAll(true)
     await refreshShifts()
     startPolling()
   }
@@ -121,7 +121,7 @@ watch(showModal, async (v) => {
 // タブ非表示中は停止（復帰時に即同期）
 function onVis() {
   if (document.hidden) stopPolling()
-  else { billsStore.loadAll(); refreshShifts(); startPolling() }
+  else { billsStore.loadAll(true); refreshShifts(); startPolling() }
 }
 document.addEventListener('visibilitychange', onVis)
 
@@ -142,9 +142,11 @@ const getOpenBill = id => openBillMap.value.get(id) ?? null
 // ────────────────────────────────
 const unassigned = computed(() => {
   const stayIds = new Set(
-    billsStore.list.flatMap(b => (b.stays||[])
-      .filter(s => !s.left_at)
-      .map(s => Number(s.cast.id)))
+    billsStore.list
+      .filter(b => !b.closed_at)
+      .flatMap(b => (b.stays||[])
+        .filter(s => !s.left_at)
+        .map(s => Number(s.cast.id)))
   )
   // ★ 出勤中だけ（clock_in あり && clock_out なし）
   const presentIds = new Set(
@@ -196,7 +198,7 @@ async function handleToggleStay({ castId, billId, nextKind }) {
   /* 3) 3 配列まとめて送信 → 上書きされても全員残る */
   await updateBillCasts(billId, lists)
 
-  await billsStore.loadAll()            // UI / モーダルを同期
+  await billsStore.loadAll(true)            // UI / モーダルを同期
 }
 // ────────────────────────────────
 //  DnD ハンドラ
@@ -231,7 +233,7 @@ async function handleUpdateStay({ castId, fromBillId, toBillId, toTableId }) {
       /* 並び順だけ最新にして丸ごと送信 */
       const lists = makeLists(bill)
       await updateBillCasts(fromBillId, lists)
-      await billsStore.loadAll()
+      await billsStore.loadAll(true)
     }
     return                                  // ← ここで完結
   }
@@ -263,7 +265,7 @@ async function handleUpdateStay({ castId, fromBillId, toBillId, toTableId }) {
   }
 
   /* ⑤ 最後にストアを同期 ------------------------ */
-  await billsStore.loadAll()
+  await billsStore.loadAll(true)
 }
 
 
@@ -317,14 +319,14 @@ const closeModal = async () => {
   // ❶ Bill 一覧を再取得
   // ❷ キャストの出勤・空き状況も更新
   await Promise.all([
-    billsStore.loadAll(),
+    billsStore.loadAll(true),
     loadCastsAndShifts()
   ])
 }
 
 /* BillModal からの @updated 用 : 伝票だけ再取得  */
 async function refreshBills () {
-  await billsStore.loadAll()
+  await billsStore.loadAll(true)
 }
 
 

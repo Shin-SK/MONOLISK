@@ -38,7 +38,7 @@ async function loadCastsAndShifts () {
 onMounted(async () => {
   initialLoading.value = true
   try {
-    await Promise.all([ billsStore.loadAll(), tablesStore.fetch(), loadCastsAndShifts() ])
+    await Promise.all([ billsStore.loadAll(true), tablesStore.fetch(), loadCastsAndShifts() ])
   } finally {
     initialLoading.value = false
     startPolling()
@@ -137,9 +137,11 @@ function calcPax(bill) {
 /* ── 空きキャスト ── */
 const unassigned = computed(() => {
   const stayIds = new Set(
-    billsStore.list.flatMap(b => (b.stays||[])
-      .filter(s => !s.left_at)
-      .map(s => Number(s.cast.id)))
+    billsStore.list
+      .filter(b => !b.closed_at)
+      .flatMap(b => (b.stays||[])
+        .filter(s => !s.left_at)
+        .map(s => Number(s.cast.id)))
   )
   const presentIds = new Set(
     shiftsToday.value
@@ -189,7 +191,7 @@ function stopPolling() {
 }
 function onVis() {
   if (document.hidden) stopPolling()
-  else { billsStore.loadAll(); refreshShifts(); startPolling() }
+  else { billsStore.loadAll(true); refreshShifts(); startPolling() }
 }
 document.addEventListener('visibilitychange', onVis)
 onBeforeUnmount(() => {
@@ -198,7 +200,7 @@ onBeforeUnmount(() => {
 })
 
 /* ── 親からの再読込 ── */
-function reload(){ billsStore.loadAll(); refreshShifts() }
+function reload(){ billsStore.loadAll(true); refreshShifts() }
 defineExpose({ reload })
 </script>
 

@@ -53,6 +53,12 @@ function addDraft(){
   form.start=form.end=''
 }
 function removeDraft(i){ draftShifts.value.splice(i,1) }
+
+/* ---------- 期間プリセット ---------- */
+function setRangeAll(){
+  dateFrom.value = '2000-01-01'
+  dateTo.value   = dayjs().add(5,'year').format('YYYY-MM-DD')
+}
 async function submitAll(){
   if(!draftShifts.value.length) return
   await Promise.all(draftShifts.value.map(p=>createCastShift({ cast_id:castId, ...p })))
@@ -244,6 +250,12 @@ onMounted(load)
         @click="load"
       >
         再表示
+      </button>
+      <button
+        class="btn btn-outline-secondary mb-1"
+        @click="setRangeAll"
+      >
+        全期間
       </button>
 
       <div class="ms-auto d-flex align-items-center gap-2 mb-1">

@@ -44,7 +44,7 @@ async function loadCastsAndShifts () {
 
 onMounted(async () => {
   await Promise.all([
-    billsStore.loadAll(),
+    billsStore.loadAll(true),
     tablesStore.fetch(),
     loadCastsAndShifts(),
   ])
@@ -164,7 +164,7 @@ watch(showModal, async (v) => {
   if (v) {
     stopPolling()
   } else {
-    await billsStore.loadAll()
+    await billsStore.loadAll(true)
     await refreshShifts()
     startPolling()
   }
@@ -172,7 +172,7 @@ watch(showModal, async (v) => {
 
 function onVis() {
   if (document.hidden) stopPolling()
-  else { billsStore.loadAll(); refreshShifts(); startPolling() }
+  else { billsStore.loadAll(true); refreshShifts(); startPolling() }
 }
 document.addEventListener('visibilitychange', onVis)
 
@@ -187,9 +187,11 @@ onBeforeUnmount(() => {
 // ────────────────────────────────
 const unassigned = computed(() => {
   const stayIds = new Set(
-    billsStore.list.flatMap(b => (b.stays||[])
-      .filter(s => !s.left_at)
-      .map(s => Number(s.cast.id)))
+    billsStore.list
+      .filter(b => !b.closed_at)
+      .flatMap(b => (b.stays||[])
+        .filter(s => !s.left_at)
+        .map(s => Number(s.cast.id)))
   )
   const presentIds = new Set(
     shiftsToday.value
@@ -232,7 +234,7 @@ async function handleToggleStay({ castId, billId, nextKind }) {
     push(castId, nextKind)
   }
   await updateBillCasts(billId, lists)
-  await billsStore.loadAll()
+  await billsStore.loadAll(true)
 }
 
 // ────────────────────────────────
@@ -261,7 +263,7 @@ async function handleUpdateStay({ castId, fromBillId, toBillId, toTableId }) {
     if (bill) {
       const lists = makeLists(bill)
       await updateBillCasts(fromBillId, lists)
-      await billsStore.loadAll()
+      await billsStore.loadAll(true)
     }
     return
   }
@@ -290,7 +292,7 @@ async function handleUpdateStay({ castId, fromBillId, toBillId, toTableId }) {
     await updateBillCasts(newBill.id, { freeIds: [castId] })
   }
 
-  await billsStore.loadAll()
+  await billsStore.loadAll(true)
 }
 
 // ────────────────────────────────
@@ -318,17 +320,17 @@ function openModal (bill) {
 const closeModal = async () => {
   showModal.value = false
   await Promise.all([
-    billsStore.loadAll(),
+    billsStore.loadAll(true),
     loadCastsAndShifts()
   ])
 }
 
 async function refreshBills () {
-  await billsStore.loadAll()
+  await billsStore.loadAll(true)
 }
 
 /* 親からの再読込 */
-function reload(){ billsStore.loadAll(); refreshShifts() }
+function reload(){ billsStore.loadAll(true); refreshShifts() }
 defineExpose({ reload })
 </script>
 

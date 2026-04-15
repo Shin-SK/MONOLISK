@@ -44,6 +44,7 @@ function bgColor(el){
   if (el.kind === 'dohan' || el.dohan === true) return 'secondary'
 
   if (el.kind === 'free'){
+    if (el.is_help) return 'purple'
     const mins = dayjs(tick.value).diff(dayjs(el.entered_at),'minute')
     return mins >=30 ? 'orange'
          : mins >=20 ? 'orange'

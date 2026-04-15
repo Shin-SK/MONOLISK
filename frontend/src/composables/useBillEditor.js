@@ -303,34 +303,19 @@ async function chooseCourse(opt){
 
 
   // ベンチ（未選択）
-  // ★ BillBoardPC の「稼働可能キャスト」と完全一致させるため、
-  //   - 自伝票のキャストを除外
-  //   - **他の伝票で着席中（active stay）のキャストも除外**
-  //   する。
-  const billsStoreForBench = useBills()
-  const otherBillsStayIds = computed(() => {
-    const myId = bill.value?.id ?? null
-    const ids = new Set()
-    for (const b of (billsStoreForBench.list || [])) {
-      if (myId != null && Number(b?.id) === Number(myId)) continue
-      for (const s of (b?.stays || [])) {
-        if (s?.left_at) continue
-        const cid = Number(s?.cast?.id ?? s?.cast_id)
-        if (cid) ids.add(cid)
-      }
-    }
-    return ids
-  })
+  // 本日出勤中（clock_in あり・clock_out なし）のキャストのみを候補にする。
+  // 一覧画面（BillBoardPC/SP, BillListTable 等）と基準を揃える。
+  // 自伝票で選択済みのキャストは除外。他伝票で着席中のキャストは除外しない（複数卓所属を許可）。
   const benchCasts = computed(() => {
     const chosen = new Set([...mainIds.value, ...freeIds.value, ...inhouseIds.value, ...dohanIds.value])
-    const occupied = otherBillsStayIds.value
+    const onDuty = onDutySet.value
     const kw = castKeyword.value.trim().toLowerCase()
     const list = Array.isArray(casts.value) ? casts.value : []
     return list.filter(c => {
       if (!c || c.id == null) return false
       const cid = Number(c.id)
       if (chosen.has(cid)) return false
-      if (occupied.has(cid)) return false
+      if (!onDuty.has(cid)) return false
       if (!kw) return true
       return (c.stage_name || '').toLowerCase().includes(kw)
     })
